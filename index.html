@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Police Chase</title>
+<style>
+  :root {
+    --ink: #e8eef5;
+    --dim: #8c9bab;
+    --panel: rgba(10, 14, 20, 0.72);
+    --edge: rgba(140, 170, 200, 0.22);
+    --hot: #ff3b30;
+    --warn: #ffb020;
+    --cool: #35d0a5;
+    --blue: #4ea3ff;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    background: #05070a; color: var(--ink);
+    font-family: ui-monospace, "Cascadia Mono", "Consolas", monospace;
+    user-select: none; -webkit-user-select: none;
+  }
+  canvas#view { display: block; width: 100vw; height: 100vh; }
+
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    border-radius: 6px;
+    backdrop-filter: blur(6px);
+  }
+
+  /* ---- wanted / heat, top left ---- */
+  #heat { position: absolute; top: 14px; left: 14px; padding: 10px 12px; min-width: 210px; }
+  #stars { font-size: 20px; letter-spacing: 3px; line-height: 1; color: #3a4450; }
+  #stars b { color: var(--hot); font-weight: 400; text-shadow: 0 0 10px rgba(255,59,48,.6); }
+  #heatbar { height: 4px; margin-top: 8px; background: #1b2028; border-radius: 2px; overflow: hidden; }
+  #heatfill { height: 100%; width: 0%; background: var(--hot); transition: width .12s linear; }
+  #status { margin-top: 7px; font-size: 11px; color: var(--dim); letter-spacing: .5px; }
+  #status.spotted { color: var(--hot); }
+  #status.searching { color: var(--warn); }
+  #status.clear { color: var(--cool); }
+
+  /* ---- minimap, top right ---- */
+  #mapwrap { position: absolute; top: 14px; right: 14px; padding: 6px; }
+  #minimap { display: block; width: 190px; height: 190px; border-radius: 3px; }
+
+  /* ---- speedo, bottom left ---- */
+  #dash { position: absolute; bottom: 14px; left: 14px; padding: 10px 12px; display: flex; align-items: flex-end; gap: 14px; }
+  #speedo { display: block; width: 128px; height: 128px; }
+  #gearbox { text-align: center; padding-bottom: 6px; }
+  #gear { font-size: 34px; line-height: 1; font-weight: 600; }
+  #gearlabel { font-size: 9px; color: var(--dim); letter-spacing: 2px; margin-top: 2px; }
+  #tyres { display: grid; grid-template-columns: 10px 10px; gap: 3px; margin-top: 10px; justify-content: center; }
+  .tyre { width: 10px; height: 14px; border-radius: 2px; background: #2b3038; }
+
+  #dmgwrap { margin-top: 12px; width: 62px; }
+  #dmglabel { font-size: 9px; color: var(--dim); letter-spacing: 1.5px; margin-bottom: 4px; }
+  #dmgbar { height: 5px; background: #1b2028; border-radius: 3px; overflow: hidden; }
+  #dmgfill { height: 100%; width: 0%; background: var(--cool); transition: width .15s linear, background .3s; }
+  #dmgpct { font-size: 10px; color: var(--dim); margin-top: 3px; }
+  #dmgpct.warn { color: var(--warn); }
+  #dmgpct.bad { color: var(--hot); }
+
+  /* ---- radio feed, bottom right ---- */
+  #radio {
+    position: absolute; bottom: 14px; right: 14px; width: 330px;
+    padding: 9px 11px; font-size: 11px; line-height: 1.5;
+  }
+  #radio h4 { margin: 0 0 6px; font-size: 9px; letter-spacing: 2px; color: var(--dim); font-weight: 500; }
+  #radiolog div { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #radiolog div span { color: var(--blue); }
+  #radiolog div.hot span { color: var(--hot); }
+  #radiolog div:last-child { color: var(--ink); }
+
+  /* ---- centre overlay ---- */
+  #overlay {
+    position: absolute; inset: 0; display: none;
+    align-items: center; justify-content: center; flex-direction: column;
+    background: rgba(4, 6, 9, .82); text-align: center;
+  }
+  #overlay.show { display: flex; }
+  #otitle { font-size: 54px; letter-spacing: 8px; margin: 0; }
+  #osub { color: var(--dim); margin-top: 12px; font-size: 13px; letter-spacing: 1px; }
+  #ohint { color: var(--dim); margin-top: 30px; font-size: 12px; }
+
+  /* ---- main menu ---- */
+  #menu {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    flex-direction: column; background: radial-gradient(circle at 50% 35%, #101822, #05070a 70%);
+    z-index: 60;
+  }
+  #menu.gone { display: none; }
+  #menu h1 { font-size: 34px; letter-spacing: 12px; margin: 0 0 6px; font-weight: 400; }
+  #menusub { color: var(--dim); font-size: 12px; letter-spacing: 3px; margin-bottom: 34px; }
+  #maps { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; padding: 0 20px; }
+  .mapcard {
+    width: 310px; padding: 18px 20px 20px; text-align: left; cursor: pointer;
+    background: rgba(14, 20, 28, .82); border: 1px solid var(--edge); border-radius: 8px;
+    transition: border-color .15s, transform .15s, background .15s;
+  }
+  .mapcard:hover, .mapcard:focus {
+    border-color: var(--blue); transform: translateY(-3px);
+    background: rgba(20, 30, 42, .92); outline: none;
+  }
+  .mapcard canvas { display: block; width: 100%; height: 150px; border-radius: 4px; background: #0d1116; }
+  .mapcard h2 { font-size: 17px; margin: 14px 0 3px; font-weight: 500; letter-spacing: 1px; }
+  .mapcard .tag { font-size: 10px; color: var(--blue); letter-spacing: 2px; margin-bottom: 9px; }
+  .mapcard p { font-size: 11.5px; line-height: 1.6; color: var(--dim); margin: 0; }
+  #menuhint { margin-top: 30px; font-size: 11px; color: var(--dim); }
+
+  /* ---- loading ---- */
+  #boot {
+    position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+    flex-direction: column; background: #05070a; z-index: 50;
+  }
+  #boot.on { display: flex; }
+  #boot h1 { font-size: 26px; letter-spacing: 9px; margin: 0 0 26px; font-weight: 400; }
+  #bootbar { width: 260px; height: 2px; background: #171c24; }
+  #bootfill { height: 100%; width: 0%; background: var(--blue); transition: width .2s; }
+  #boottext { margin-top: 14px; font-size: 11px; color: var(--dim); height: 16px; }
+  #booterr { margin-top: 14px; font-size: 11px; color: var(--hot); max-width: 560px; white-space: pre-wrap; text-align: left; }
+
+  /* ---- help ---- */
+  #help {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    padding: 22px 30px; font-size: 12px; line-height: 1.9; display: none;
+  }
+  #help.show { display: block; }
+  #help h3 { margin: 0 0 14px; font-size: 11px; letter-spacing: 3px; color: var(--dim); font-weight: 500; }
+  #help kbd {
+    display: inline-block; min-width: 20px; text-align: center;
+    padding: 1px 6px; margin-right: 8px;
+    border: 1px solid var(--edge); border-radius: 3px; background: rgba(255,255,255,.05);
+  }
+  #help td { padding-right: 16px; }
+  #help td.k { white-space: nowrap; }
+
+  #hint { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--dim); }
+
+  /* ---- busted meter ---- */
+  #bust {
+    position: absolute; top: 16%; left: 50%; transform: translateX(-50%);
+    width: 340px; text-align: center; opacity: 0; transition: opacity .18s;
+  }
+  #bust.on { opacity: 1; }
+  #bustlabel {
+    font-size: 15px; letter-spacing: 6px; color: var(--hot); margin-bottom: 7px;
+    text-shadow: 0 0 16px rgba(255,59,48,.7);
+  }
+  #busttrack {
+    height: 13px; background: rgba(8,10,14,.8); border: 1px solid rgba(255,59,48,.5);
+    border-radius: 7px; overflow: hidden; box-shadow: 0 0 22px rgba(255,59,48,.28);
+  }
+  #bustfill {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, #ff9a1f, #ff3b30);
+  }
+  #bustsecs { margin-top: 6px; font-size: 26px; font-weight: 600; color: #fff; }
+  #bust.pulse #bustlabel, #bust.pulse #bustsecs { animation: bustpulse .45s infinite; }
+  @keyframes bustpulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
+</style>
+</head>
+<body>
+
+<canvas id="view"></canvas>
+
+<div id="hud">
+  <div id="heat" class="panel">
+    <div id="stars">☆☆☆☆☆</div>
+    <div id="heatbar"><div id="heatfill"></div></div>
+    <div id="status" class="clear">NO ACTIVE PURSUIT</div>
+  </div>
+
+  <div id="mapwrap" class="panel"><canvas id="minimap" width="380" height="380"></canvas></div>
+
+  <div id="dash" class="panel">
+    <canvas id="speedo" width="256" height="256"></canvas>
+    <div id="gearbox">
+      <div id="gear">N</div>
+      <div id="gearlabel">GEAR</div>
+      <div id="tyres">
+        <div class="tyre" id="t0"></div><div class="tyre" id="t1"></div>
+        <div class="tyre" id="t2"></div><div class="tyre" id="t3"></div>
+      </div>
+      <div id="dmgwrap">
+        <div id="dmglabel">DAMAGE</div>
+        <div id="dmgbar"><div id="dmgfill"></div></div>
+        <div id="dmgpct">0%</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="radio" class="panel">
+    <h4>DISPATCH — CHANNEL 3</h4>
+    <div id="radiolog"></div>
+  </div>
+
+  <div id="help" class="panel">
+    <h3>CONTROLS</h3>
+    <table>
+      <tr><td class="k"><kbd>W</kbd><kbd>↑</kbd></td><td>Throttle</td>
+          <td class="k"><kbd>Space</kbd></td><td>Handbrake</td></tr>
+      <tr><td class="k"><kbd>S</kbd><kbd>↓</kbd></td><td>Brake / reverse</td>
+          <td class="k"><kbd>C</kbd></td><td>Camera</td></tr>
+      <tr><td class="k"><kbd>A</kbd><kbd>D</kbd></td><td>Steer</td>
+          <td class="k"><kbd>R</kbd></td><td>Respawn / flip</td></tr>
+      <tr><td class="k"><kbd>Shift</kbd></td><td>Clutch kick</td>
+          <td class="k"><kbd>P</kbd></td><td>Pause</td></tr>
+      <tr><td class="k"><kbd>H</kbd></td><td>This help</td>
+          <td class="k"><kbd>F3</kbd></td><td>Debug overlay</td></tr>
+      <tr><td class="k"><kbd>M</kbd></td><td>Mute sound</td>
+          <td class="k"></td><td></td></tr>
+    </table>
+  </div>
+
+  <div id="bust">
+    <div id="bustlabel">BUSTED</div>
+    <div id="busttrack"><div id="bustfill"></div></div>
+    <div id="bustsecs">5.0</div>
+  </div>
+
+  <div id="hint">H — controls</div>
+
+  <div id="overlay">
+    <h1 id="otitle">BUSTED</h1>
+    <div id="osub"></div>
+    <div id="ohint">Press <b>R</b> to run again</div>
+  </div>
+</div>
+
+<div id="menu">
+  <h1>POLICE CHASE</h1>
+  <div id="menusub">CHOOSE YOUR GROUND</div>
+  <div id="maps"></div>
+  <div id="menuhint">Press <b>M</b> in game to come back here</div>
+</div>
+
+<div id="boot">
+  <h1>POLICE CHASE</h1>
+  <div id="bootbar"><div id="bootfill"></div></div>
+  <div id="boottext">starting…</div>
+  <div id="booterr"></div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three.module.min.js",
+    "rapier": "./vendor/rapier.mjs"
+  }
+}
+</script>
+
+<script type="module">
+  const errBox = document.getElementById('booterr');
+  const show = (m) => { errBox.textContent += m + '\n'; };
+  window.addEventListener('error', e => show('ERROR: ' + (e.error?.stack || e.message)));
+  window.addEventListener('unhandledrejection', e => show('ERROR: ' + (e.reason?.stack || e.reason)));
+  import('./src/main.js').catch(e => show('BOOT FAILED: ' + (e.stack || e)));
+</script>
+
+</body>
+</html>
