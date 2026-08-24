@@ -23,6 +23,58 @@ import { clamp, clamp01, lerp } from '../util/math.js';
  */
 const ENGINE_ORDER = 4;
 
+/** The recorded engine loop, and what it is doing. */
+const ENGINE_SAMPLE = '/resources/sounds/freesound_community-engine-61234.mp3';
+
+/**
+ * The recording is a steady idle: 31 s with a rock-solid 50 Hz fundamental and
+ * no rev sweep in it at all, so it cannot be sliced into per-rev bands -- it
+ * has to be pitch shifted. 50 Hz of firing frequency on a V8 is 750 rpm.
+ */
+const SAMPLE_RPM = 750;
+
+/**
+ * Pitch is compressed rather than proportional. Idle to redline is an 8:1
+ * ratio, and a single sample stretched that far is a mosquito at the top end.
+ * At 0.62 the sample still rises monotonically through about two octaves,
+ * while the synthesised sub underneath tracks the *true* firing frequency --
+ * and the ear takes its pitch cue from the bass, so the engine still reads as
+ * revving all the way to the limiter.
+ */
+const PITCH_EXP = 0.62;
+
+/** The stable stretch of the recording to loop, in seconds. */
+const LOOP_FROM = 2.0, LOOP_TO = 15.0, LOOP_FADE = 0.2;
+
+/**
+ * Fold a region of a recording into a seamless mono loop by crossfading the
+ * material just past the loop end back over its beginning. Looping a raw
+ * region clicks at the seam every pass, which at idle is several times a second.
+ */
+function makeSeamlessLoop(ctx, raw, fromSec, toSec, fadeSec) {
+  const sr = raw.sampleRate;
+  const from = Math.floor(fromSec * sr);
+  const fade = Math.floor(fadeSec * sr);
+  const len = Math.min(Math.floor((toSec - fromSec) * sr), raw.length - from - fade) - fade;
+  if (len <= fade * 2) return null;
+
+  const chans = raw.numberOfChannels;
+  const src = new Float32Array(len + fade);
+  for (let c = 0; c < chans; c++) {
+    const data = raw.getChannelData(c);
+    for (let i = 0; i < len + fade; i++) src[i] += data[from + i] / chans;
+  }
+
+  const out = ctx.createBuffer(1, len, sr);
+  const o = out.getChannelData(0);
+  o.set(src.subarray(0, len));
+  for (let i = 0; i < fade; i++) {
+    const t = i / fade;
+    o[i] = o[i] * t + src[len + i] * (1 - t);
+  }
+  return out;
+}
+
 /**
  * Soft clipping curve for the waveshaper. tanh rather than a hard clip: it
  * rounds into saturation the way a real exhaust does, instead of adding the
@@ -128,20 +180,41 @@ export class GameAudio {
     this.engineMix = ctx.createGain();
     this.engineMix.gain.value = 1;
 
-    const mkOsc = (gain, detune, wave) => {
+    const mkOsc = (gain, detune, wave, dest) => {
       const o = ctx.createOscillator();
       if (wave) o.setPeriodicWave(wave); else o.type = 'sine';
       o.detune.value = detune || 0;
       const g = ctx.createGain();
       g.gain.value = gain;
-      o.connect(g); g.connect(this.engineMix);
+      o.connect(g); g.connect(dest || this.engineMix);
       o.start();
       return o;
     };
-    this.oscSub = mkOsc(0.62, 0, null);            // half order, sine, weight
-    this.oscA = mkOsc(0.55, 0, engineWave);        // firing frequency
-    this.oscB = mkOsc(0.42, 9, engineWave);        // second bank, detuned
-    this.oscHarm = mkOsc(0.20, -6, engineWave);    // upper body
+    // The sub always plays: it tracks the true firing frequency across the
+    // whole rev range, which is what keeps the pitch reading correctly once
+    // the sampled layer's pitch has been compressed. Its level is faded in
+    // with revs -- it exists to put back the bottom end that pitching the
+    // recording up takes away, and at idle it is below what a laptop speaker
+    // can reproduce anyway, so down there it only eats headroom.
+    this.subGain = ctx.createGain();
+    this.subGain.gain.value = 0.3;
+    this.subGain.connect(this.engineMix);
+    this.oscSub = mkOsc(0.9, 0, null, this.subGain);
+
+    // The rest are the synthesised stand-in, used until the recording has
+    // loaded and as the fallback if it cannot be fetched at all.
+    this.synthGain = ctx.createGain();
+    this.synthGain.gain.value = 1;
+    this.synthGain.connect(this.engineMix);
+    this.oscA = mkOsc(0.55, 0, engineWave, this.synthGain);
+    this.oscB = mkOsc(0.42, 9, engineWave, this.synthGain);
+    this.oscHarm = mkOsc(0.20, -6, engineWave, this.synthGain);
+
+    // Sampled layer, faded in when the file arrives.
+    this.sampleGain = ctx.createGain();
+    this.sampleGain.gain.value = 0;
+    this.sampleGain.connect(this.engineMix);
+    this.sampleSource = null;
 
     // Clean path: the note as heard off the throttle.
     this.engineFilter = ctx.createBiquadFilter();
@@ -241,6 +314,40 @@ export class GameAudio {
     this.sirenOsc.start();
 
     this.ready = true;
+    this._loadEngineSample();
+  }
+
+  /**
+   * Fetch, decode and loop the engine recording, then crossfade it in over the
+   * synthesised layer. Deliberately fire-and-forget: if the file is missing or
+   * the decode fails, the synth carries on and the game is none the wiser.
+   */
+  async _loadEngineSample() {
+    const ctx = this.ctx;
+    try {
+      const res = await fetch(ENGINE_SAMPLE);
+      if (!res.ok) throw new Error('http ' + res.status);
+      const raw = await ctx.decodeAudioData(await res.arrayBuffer());
+      const loop = makeSeamlessLoop(ctx, raw, LOOP_FROM, LOOP_TO, LOOP_FADE);
+      if (!loop) throw new Error('loop region too short');
+
+      const src = ctx.createBufferSource();
+      src.buffer = loop;
+      src.loop = true;
+      src.connect(this.sampleGain);
+      src.start();
+
+      this.sampleSource = src;
+      this.sampleReady = true;
+
+      // Hand the mid and top of the note over to the recording; the sub keeps
+      // the true firing frequency underneath it.
+      const t = ctx.currentTime;
+      this.sampleGain.gain.setTargetAtTime(1.45, t, 0.25);
+      this.synthGain.gain.setTargetAtTime(0.14, t, 0.25);
+    } catch (e) {
+      this.sampleReady = false;
+    }
   }
 
   toggleMute() {
@@ -301,6 +408,16 @@ export class GameAudio {
     this.oscB.frequency.setTargetAtTime(f0, t, smooth);
     this.oscHarm.frequency.setTargetAtTime(f0 * 2, t, smooth);
 
+    // The recording is an idle loop, so revving it means playing it faster.
+    // The exponent compresses an 8:1 rev range into about two octaves, which
+    // keeps the top end from turning into a mosquito.
+    if (this.sampleSource) {
+      const rate = clamp(Math.pow(rpm / SAMPLE_RPM, PITCH_EXP), 0.55, 4.4);
+      this.sampleSource.playbackRate.setTargetAtTime(rate, t, smooth);
+    }
+    // Bring the sub in as the sample climbs and thins out.
+    this.subGain.gain.setTargetAtTime(0.22 + revs * 0.95, t, smooth);
+
     // Opening the filter with throttle is what makes the engine sound like it
     // is working rather than just spinning faster.
     this.engineFilter.frequency.setTargetAtTime(
@@ -325,7 +442,7 @@ export class GameAudio {
 
     // Duck the note briefly while the clutch is out mid-shift.
     const shifting = player.shiftTimer > 0 ? 0.35 : 1;
-    const engVol = (0.050 + load * 0.090 + revs * 0.055) * shifting;
+    const engVol = (0.085 + load * 0.130 + revs * 0.080) * shifting;
     this.engineGain.gain.setTargetAtTime(engVol, t, smooth);
 
     this.intakeFilter.frequency.setTargetAtTime(300 + revs * 1500, t, smooth);

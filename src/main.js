@@ -15,6 +15,7 @@ import { Dispatcher } from './ai/dispatcher.js';
 import { Officer, ROLE } from './ai/officer.js';
 import { Driver, SKILL } from './ai/driver.js';
 import { Heat } from './game/heat.js';
+import { RoadblockManager } from './game/roadblock.js';
 import { ChaseCamera } from './game/camera.js';
 import { Hud } from './game/hud.js';
 import { Input } from './core/input.js';
@@ -94,6 +95,7 @@ class Game {
     boot.set(0.88, 'briefing units…');
     this.heat = new Heat(this);
     this.dispatcher = new Dispatcher(this);
+    this.roadblocks = new RoadblockManager(this);
     this.hud = new Hud(this);
     this.input = new Input();
     this.camera3 = new ChaseCamera(this.camera);
@@ -311,8 +313,95 @@ class Game {
     return new Officer(this, v, { skill, kind });
   }
 
+  /**
+   * Put a unit on the road *in front of* the target, pointing the same way.
+   *
+   * Spawned rather than reassigned: getting a car that is already behind you
+   * round to the front takes longer than a chase lasts, and the point of a
+   * rolling block is that it is there when you arrive.
+   */
+  spawnPoliceAhead(target, tier) {
+    if (this.vehicles.length >= MAX_VEHICLES) return null;
+    const g = this.graph;
+
+    let dx = target.linvel.x, dz = target.linvel.z;
+    if (Math.hypot(dx, dz) < 4) { dx = target.forward.x; dz = target.forward.z; }
+    const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+
+    // Somewhere the target is heading. Around 150 m is the sweet spot: beyond
+    // the far clip of a city street, so the car is never seen to appear, but
+    // close enough that they run up on it within a few seconds rather than
+    // spending half the chase reeling it in.
+    const reach = g.reachable(target.position.x, target.position.z, dx, dz, 26, 0.9);
+    const candidates = [];
+    for (const [id, rec] of reach) {
+      const n = g.nodes[id];
+      const d = dist2(n.x, n.z, target.position.x, target.position.z);
+      if (d < 90 || d > 240) continue;
+      // Reachable-going-forwards is not the same as in front: a loop back
+      // round the block reaches nodes behind the target quite legitimately,
+      // and a car put down there is not a block, it is a tail. Insist the site
+      // is genuinely up the road, within about a 50 degree cone.
+      if (((n.x - target.position.x) * dx + (n.z - target.position.z) * dz) < d * 0.64) continue;
+      candidates.push({ node: n, via: rec.viaNode, score: Math.abs(d - 150) });
+    }
+    if (!candidates.length) return null;
+    // Best-fitting site first, but keep going down the list: a site can fail
+    // late (verge, occupied, no usable edge) and one bad node should not cost
+    // us the block.
+    candidates.sort((a, b) => a.score - b.score);
+
+    for (const best of candidates.slice(0, 6)) {
+      // Face the way the target will be travelling when they reach us.
+      let edge = best.via >= 0 ? g.edgeBetween(best.via, best.node.id) : null;
+      if (!edge) { const eid = best.node.edges[0]; edge = eid === undefined ? null : g.edges[eid]; }
+      if (!edge) continue;
+
+      const towardNode = edge.a === best.node.id;
+      const along = towardNode ? 22 : Math.max(0, edge.length - 22);
+      const p = g.pointAt(edge, along);
+      const sign = towardNode ? -1 : 1;
+      const heading = Math.atan2(p.tx * sign, p.tz * sign);
+
+      const lane = Math.min(3.0, edge.width * 0.25);
+      const pos = {
+        x: p.x + -p.tz * sign * lane * DRIVE_SIDE,
+        y: 0.95,
+        z: p.z + p.tx * sign * lane * DRIVE_SIDE,
+      };
+      if (this.sim.surfaceAt(pos.x, pos.z) !== 1) continue;
+      let occupied = false;
+      for (const v of this.vehicles) {
+        if (dist2(v.position.x, v.position.z, pos.x, pos.z) < 8) { occupied = true; break; }
+      }
+      if (occupied) continue;
+
+      const kind = tier >= 4 ? 'interceptor' : 'patrol';
+      const v = this.createVehicle(kind, kind, pos, heading, { police: true });
+      v.lampPhase = this.rng();
+      // Already rolling, so it does not have to accelerate from a standstill in
+      // front of a car doing 120.
+      v.setVelocity({ x: Math.sin(heading) * 18, y: 0, z: Math.cos(heading) * 18 });
+
+      return new Officer(this, v, { skill: SKILL.advanced, kind });
+    }
+    return null;
+  }
+
   despawnPolice(officer) {
     this.removeVehicle(officer.vehicle);
+  }
+
+  /** Materials for a parked roadblock car, matching its geometry's groups. */
+  carMaterialsFor(geo) {
+    return carMaterials(geo, shinyVertexMaterial());
+  }
+
+  coneMaterial() {
+    if (!this._coneMat) {
+      this._coneMat = new THREE.MeshLambertMaterial({ color: 0xe2561d });
+    }
+    return this._coneMat;
   }
 
   // =================================================================== events
@@ -366,6 +455,7 @@ class Game {
     this.hud.hideOverlay();
     this.heat.reset();
     this.dispatcher.reset();
+    this.roadblocks.reset();
     this.player.repair();
     this.player.teleport(this.startPlace.position, this.startPlace.heading);
     this.skids.clear();
@@ -471,6 +561,7 @@ class Game {
 
     // ---- AI, then heat ----
     this.dispatcher.update(dt, player);
+    this.roadblocks.update(dt, player);
     this.heat.update(dt, player, this.dispatcher);
     this._checkProvocation(dt);
 

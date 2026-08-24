@@ -151,6 +151,69 @@ A PIT and a rolling box are mutually exclusive across the whole pursuit. Boxing
 units hold station relative to the target; a PIT car arriving across their line
 wrecks both manoeuvres.
 
+### Roadblocks
+
+From three stars, control starts putting cars across roads. Sites are not
+picked at random — they come out of the same forward expansion of the road
+graph the dispatcher uses to solve intercepts, so a block only ever goes in
+somewhere you are actually heading, and driving unpredictably is a real defence
+against them.
+
+Two exist at a time. They go in about 200 m ahead — beyond the point you could
+see one appear, close enough that you have little time to re-plan — and are
+taken away once you are 200 m past. Two or three patrol cars sit angled across
+the carriageway with a line of cones 11 m up the approach, so the block reads
+before you are in it.
+
+Measured at four stars on both maps: never more than two alive, going in at a
+median of 157–198 m ahead and coming out at a median of 200–202 m behind.
+
+### The rolling block
+
+Distinct from an intercept, which races to a junction and waits. A rolling
+block is a car put down on the road *in front of* you, pointing the same way
+and already doing 18 m/s, whose whole job is to sit there and be slower than
+you are.
+
+How much slower depends on the gap: from a long way ahead it gives away a third
+of your speed so the gap closes in seconds rather than half a minute, easing
+back to just under your pace once you are on it — enough to hold the block, not
+so little that it simply gets rammed off the road. It tracks the centreline of
+whatever road it is on and matches your position across the carriageway, which
+is what keeps it in front of you rather than politely alongside. Once you are
+past it, or it has been left 14 m off to one side, it gives up the role and
+rejoins the chase as an ordinary pursuer.
+
+Three things about it took some finding, and all three are the same mistake in
+different clothes — a unit that *is* the blocker being quietly treated as
+though it were not:
+
+* it was spawned into the roster after the frame's list of available units had
+  already been taken, so the validation a few lines below decided it was not a
+  real unit and dropped the block on the frame it was created;
+* it gave up by returning pursuit controls while still holding the BLOCK role,
+  so it came straight back in next frame and reported the block ended all over
+  again — which held the dispatcher's cooldown open and stopped any further
+  block ever being called;
+* and because a car sitting on the road in front of you is one of the closest
+  units there is, the pursuit loop drafted it straight back into the pack on
+  the next role tick. Blocks lasted 0.2 s.
+
+With those fixed, measured over 120 s at four stars on each map: eight blocks
+called per run, **100% of them in front**, no spawn failures, at a median of
+123–127 m. Blockers are the best-behaved cars on the road — **0%** of their
+time is spent more than 6 m outside a carriageway, against 8–14% for ordinary
+pursuers.
+
+Every block ends the way it should: the give-up points recorded were the target
+73 m past it, or 14–37 m off to one side. None ended for any other reason. A
+block lives a median of 3.4–4.5 s against the test's harness driver, which
+picks a fresh random destination every couple of hundred metres and so turns
+off far more erratically than anyone actually fleeing; against a quarry
+committed to a road the same code held blocks for a median of 12 s with half of
+them turning into a sustained engagement. It is a tactic, not a wall — going
+round it is meant to work, and costs you the time it takes.
+
 ### Getting busted
 
 Drop below 3 km/h with a police car within 3 m of your bodywork and a five
@@ -210,8 +273,17 @@ where you are, and hands each unit a job:
   between roughly 25 and 155 km/h. Tested in isolation: no spin at 58 km/h,
   reliable spins at 79 and 101 km/h, officer wrecks himself at 122.
 * **Rolling box** — three units take lead / flank / trail slots and squeeze.
+* **Rolling block** — from two stars, a car put down on the road in front of you
+  and driven deliberately slowly. See [The rolling block](#the-rolling-block).
+* **Roadblocks** — from three stars, cars parked across a road you are heading
+  for. See [Roadblocks](#roadblocks).
 * **Escalation** — five heat tiers change how many units respond, what cars they
   bring (patrol → interceptor → unmarked) and which tactics they may attempt.
+  Climbing a tier takes roughly **74 seconds** of being watched at a steady
+  pace, 44 if you are giving them something to write down and 36 flat out. A
+  tier is a real escalation — new car types, new tactics unlocked — and at the
+  earlier rate you reached the top in half a minute and never played the middle
+  of the range at all.
 
 Police cars are **2.4–2.8× tougher** than yours, so they survive being shunted.
 Once a unit is genuinely damaged it drops off the minimap, and it is removed from
@@ -245,11 +317,35 @@ a 5:1 panel stretches the letters into something unreadable.
 
 ## Sound
 
-Synthesised with WebAudio — no samples.
+Everything is synthesised with WebAudio except the engine, which is a recorded
+loop with a synthesised layer underneath it.
 
 ### The engine
 
-Three plain oscillators through a lowpass sound like a synth drone. A real
+The supplied recording (`resources/sounds/freesound_community-engine-61234.mp3`)
+was analysed before being used, and it turned out to be 31.75 s of **steady
+idle** — a constant 50 Hz fundamental with no rev sweep anywhere in it. That
+rules out the usual approach of slicing a recording into rev bands and
+crossfading between them: there are no bands to slice. So it is used the only
+way a single steady loop can be, pitch-shifted, with two things done to stop
+that sounding like a tape being spooled:
+
+* **Compressed pitch mapping.** Playback rate follows `(rpm / 750) ^ 0.62`
+  rather than the literal ratio, so 750–7000 rpm maps to 1.08×–3.96× instead of
+  1×–9.3×. A literal mapping is correct and sounds absurd — chipmunk at the top
+  end — because pitching a recording up drags its formants and its noise floor
+  up with it.
+* **A synthesised sub underneath**, which does run at the true firing
+  frequency. The loop supplies the texture and the sub supplies the weight, so
+  the note keeps its bottom end at high revs even though the sample has been
+  pitched well above where it was recorded.
+
+The loop points are chosen inside the steady middle of the file and crossfaded
+— material from past the loop end is faded back over its start — so there is no
+click at the seam.
+
+Underneath, and on its own if the sample fails to load, is the synthesised
+engine. Three plain oscillators through a lowpass sound like a synth drone. A real
 exhaust is a train of pressure pulses pushed through a resonant pipe, so the
 engine is built the same way:
 
@@ -382,7 +478,10 @@ src/
     vehicle.js         suspension, tyre forces, gearbox, damage
   world/
     roadgraph.js       nodes/edges, A*, reachability, path smoothing
-    citygen.js         layout rules, meshes, colliders, street names
+    common.js          shared terrain, surfaces, road meshes, trees
+    citygen.js         Ashfield City — grid, motorway ring, slip roads
+    towngen.js         Wexbury — organic rings, A-roads, bypass, village
+    maps.js            map registry
   ai/
     dispatcher.js      perception, role assignment, intercept solver
     officer.js         per-unit state machine
@@ -390,9 +489,13 @@ src/
     tactics.js         PIT and rolling box
   game/
     vehicles.js        car specs and procedural bodywork
+    livery.js          procedural police livery texture atlas
     heat.js            wanted level, cooldown, arrest
-    audio.js           synthesised engine, tyres, siren, impacts
+    roadblock.js       roadblock siting, construction, despawn
+    audio.js           sampled + synthesised engine, tyres, siren, impacts
     camera.js  hud.js  effects.js
+  core/
+    menu.js            map selection at startup
 ```
 
 ### Tuning

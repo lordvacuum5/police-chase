@@ -62,6 +62,8 @@ export class Dispatcher {
     this.interceptTimer = 0;
     this.spawnTimer = 0;
     this.pitCooldown = 0;
+    this.blockCooldown = 0;
+    this.blockUnit = null;
     this.activePit = null;
     this.boxAssignment = null;
     this.boxTightness = 0;
@@ -76,6 +78,7 @@ export class Dispatcher {
 
   update(dt, target) {
     this.pitCooldown -= dt;
+    this.blockCooldown -= dt;
     this._updateKnowledge(dt, target);
     this._manageRoster(dt, target);
 
@@ -202,6 +205,8 @@ export class Dispatcher {
       }
       this.activePit = null;
       this.boxAssignment = null;
+      // No contact means nothing to get in front of.
+      this.blockUnit = null;
       return;
     }
 
@@ -222,6 +227,18 @@ export class Dispatcher {
       assigned.add(this.activePit);
     } else if (this.activePit) {
       this.activePit = null;
+    }
+
+    // An existing blocker is spoken for. This has to happen before pursuit is
+    // handed out: a car sitting on the road in front of the target is one of
+    // the closest units there is, so the pursuit loop would otherwise draft it
+    // straight back into the pack on the very next role tick.
+    if (this.blockUnit) {
+      if (this.blockUnit.vehicle.disabled || !available.includes(this.blockUnit)) {
+        this.blockUnit = null;
+      } else {
+        assigned.add(this.blockUnit);
+      }
     }
 
     // ---- 3. direct pursuit ----
@@ -269,6 +286,25 @@ export class Dispatcher {
       }
     }
 
+    // ---- 5b. rolling block ----
+    // A unit put on the road in front of the target, going the same way but
+    // slower. Distinct from an intercept, which races to a junction and waits.
+    if (this.tier >= 2 && k.seen && !this.blockUnit && this.blockCooldown <= 0
+        && Math.abs(target.forwardSpeed) > 12) {
+      this.blockCooldown = 14;
+      const u = this.game.spawnPoliceAhead(target, this.tier);
+      if (u) {
+        this.units.push(u);
+        // Also into `available`, which was snapshotted before this unit
+        // existed -- otherwise the validation immediately below decides it is
+        // not a real unit and drops the block on the frame it was created.
+        available.push(u);
+        u.setRole(ROLE.BLOCK);
+        this.blockUnit = u;
+        assigned.add(u);
+        this.game.radio(`${u.callsign} ahead of them — slow them down`, true);
+      }
+    }
     // ---- 6. intercepts ----
     const free = available.filter((u) => !assigned.has(u));
     if (this.interceptTimer <= 0) {
@@ -411,6 +447,12 @@ export class Dispatcher {
   }
 
   // ------------------------------------------------------------------ events
+
+  /** A blocker that has been passed, or has lost the target, goes back in the pack. */
+  onBlockEnded(unit) {
+    if (this.blockUnit === unit) this.blockUnit = null;
+    this.blockCooldown = Math.max(this.blockCooldown, 8);
+  }
 
   onPitFinished(unit, result) {
     if (this.activePit === unit) this.activePit = null;

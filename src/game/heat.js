@@ -55,9 +55,14 @@ export class Heat {
         this.evadeTimer = 0;
         // Being watched is itself incriminating: the longer they hold contact,
         // the more resources get committed.
-        let rate = 0.030;
-        if (Math.abs(player.forwardSpeed) > 38) rate += 0.020;
-        if (player.isDrifting) rate += 0.010;
+        // Deliberately slow. A tier is a real escalation -- new car types, new
+        // tactics unlocked -- and reaching the top in half a minute meant you
+        // never played the middle of the range at all. Roughly seventy seconds
+        // of being watched per tier at a steady pace, less if you are giving
+        // them something to write down.
+        let rate = 0.0135;
+        if (Math.abs(player.forwardSpeed) > 38) rate += 0.0090;
+        if (player.isDrifting) rate += 0.0050;
         this.value = clamp(this.value + rate * dt, 0, MAX);
         this.peak = Math.max(this.peak, this.value);
       } else {

@@ -23,6 +23,7 @@ export const ROLE = {
   INTERCEPT: 'intercept',
   PIT: 'pit',
   BOX: 'box',
+  BLOCK: 'block',
   SEARCH: 'search',
   DISABLED: 'disabled',
 };
@@ -128,6 +129,7 @@ export class Officer {
       case ROLE.INTERCEPT: controls = this._intercept(dt, target); break;
       case ROLE.PIT:       controls = this._pit(dt, target); break;
       case ROLE.BOX:       controls = this._box(dt, target); break;
+      case ROLE.BLOCK:     controls = this._block(dt, target); break;
       case ROLE.RESPOND:   controls = this._goTo(dt, this.orders.point, 1.0); break;
       case ROLE.SEARCH:    controls = this._search(dt); break;
       default:             controls = this._patrol(dt); break;
@@ -271,6 +273,74 @@ export class Officer {
     return this.driver.driveTo(res.aim, res.speed, dt, {
       allowHandbrake: res.allowHandbrake !== false,
     });
+  }
+
+  /**
+   * The rolling block: sit on the road in front of the target, travelling the
+   * same way but deliberately slower, and slide across to stay in their way.
+   *
+   * It is not a wall -- you can go round it, and it will try to move with you.
+   * What it does is scrub speed off a runner who would otherwise be gone, and
+   * hand the units behind a chance to close.
+   */
+  _block(dt, target) {
+    if (!target) return this._patrol(dt);
+    const v = this.vehicle;
+    const g = this.game.graph;
+    const r = relativeTo(target, v);
+
+    const snap = g.nearestEdge(v.position.x, v.position.z);
+    if (!snap) return this._pursue(dt, target);
+
+    // Once they are past us the block has failed; fall back into the chase.
+    // The sideways test only applies once they are actually on us: a blocker
+    // two hundred metres up a curving road is legitimately well off to one
+    // side in the target's frame, and giving up on that would end every block
+    // on the frame it began.
+    //
+    // How far sideways counts as "gone round us" depends on the road. A fixed
+    // fourteen metres is narrower than a dual carriageway, so on the widest
+    // roads the block was giving up on a target that had merely moved into the
+    // far lane -- exactly where it should have been following them across.
+    const engaged = r.long < 45;
+    const sidestep = Math.max(14, snap.edge.width * 0.75);
+    if (r.long < -7 || (engaged && Math.abs(r.lat) > sidestep)) {
+      // Change role, not just behaviour. Returning pursuit controls while
+      // still holding the BLOCK role means we come straight back in here next
+      // frame and report the block ended all over again, which holds the
+      // dispatcher's cooldown open and stops any further block being called.
+      this.game.dispatcher.onBlockEnded(this);
+      this.setRole(ROLE.PURSUE);
+      return this._pursue(dt, target);
+    }
+
+    // Road direction, oriented the way we are travelling.
+    const dir = g.edgeDirection(snap.edge, snap.along, { x: 0, z: 1 });
+    if (dir.x * v.forward.x + dir.z * v.forward.z < 0) { dir.x = -dir.x; dir.z = -dir.z; }
+
+    // Where the target sits across the carriageway, measured from our own
+    // point on the centreline. Matching it is what keeps us in front of them
+    // rather than politely alongside.
+    const rx = target.position.x - snap.x, rz = target.position.z - snap.z;
+    const lat = clamp(rx * dir.z - rz * dir.x, -(snap.edge.width * 0.5 - 2),
+      snap.edge.width * 0.5 - 2);
+
+    const lead = 16 + v.speed * 0.35;
+    _aim.set(
+      snap.x + dir.x * lead + dir.z * lat,
+      0,
+      snap.z + dir.z * lead - dir.x * lat,
+    );
+
+    // Slower than them, so they run up on us -- but the margin depends on the
+    // gap. From a long way ahead we give away a lot of speed so the gap closes
+    // in seconds rather than half a minute; once they are on us we ease back to
+    // just under their pace, which holds the block instead of simply being
+    // rammed off the road.
+    const factor = lerp(0.88, 0.66, clamp01((r.long - 20) / 90));
+    const speed = clamp(Math.abs(target.forwardSpeed) * factor, 7, this._chaseSpeed());
+    this.driver.setPath([]);
+    return this.driver.driveTo(_aim, speed, dt, { allowHandbrake: false });
   }
 
   _box(dt, target) {
