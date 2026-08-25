@@ -125,6 +125,60 @@ the aim point* (probing along the nose reads the building on the outside of
 every corner as a wall and reduces the whole force to a crawl), and the grip
 limit of the arc it is being asked to turn through.
 
+### Better brakes than yours
+
+Fleet cars stop considerably shorter than the runner does, and it is built from
+three separate things rather than a single fudge factor.
+
+**Anti-lock.** Without it, brake torque past the grip limit simply stops the
+wheel, and a locked tyre slides at the sliding-friction fraction of peak — so
+the last part of the pedal makes the stop *longer*. It is modelled as a closed
+loop on slip ratio, integrating the error to trim brake torque toward the peak
+of the curve.
+
+Getting there took two wrong turns worth recording. A bang-bang version that
+waits for lock-up and then backs off stops nothing — by the time last step's
+slip ratio says the wheel is locked, it *is* locked. A fixed torque cap at the
+tyre's peak is no better, because that cap sits *above* the force a locked tyre
+still generates, so nothing can spin the wheel back up.
+
+**A bug in the wheel integrator**, which is what was really holding the wheels
+down. The semi-implicit wheel update linearises the tyre about its current slip
+using `f.stiffness` — but that is the slope at the *origin* of the force curve,
+and past the peak the curve is flat. Out at full lock it is completely flat, so
+the origin slope invents an enormous damping term that holds a stopped wheel
+stopped however little brake torque is left on it. Anti-lock could correctly cut
+the torque to a third and still not get a wheel turning. The stiffness estimate
+now falls off with slip, so it is the real local slope; low-slip behaviour, which
+is what the semi-implicit step was added for, is untouched. Wheel lock-up
+through a stop went from 96% to **7%**.
+
+**Braking rubber.** Anti-lock alone only brings the heavier patrol car level
+with the runner, because in this tyre model a locked tyre keeps 84% of peak and
+locking costs almost nothing. `brakes.gripBonus` scales the longitudinal force
+while the pedal is down and the force opposes motion — so it buys stopping
+distance and nothing else. A police car corners and accelerates exactly as it
+did.
+
+From 100 km/h on dry road:
+
+| | stop | mean | wheels locked | vs runner |
+|---|---|---|---|---|
+| Runner (you) | 33.3 m | 1.18 g | 95% | — |
+| Patrol | 26.8 m | 1.47 g | 7% | **6.5 m shorter** |
+| Interceptor | 25.7 m | 1.56 g | 7% | **7.6 m shorter** |
+| Unmarked | 24.4 m | 1.61 g | 7% | **8.9 m shorter** |
+
+The AI plans against only four fifths of the advantage. Planning on all of it
+means arriving at every junction on the limit with nothing in hand, and the
+measured cost was five times as much car-to-car contact — a unit stops in the
+distance it promised itself, and the one behind does not.
+
+It is not free. Cars that can brake later carry more speed, and on the town map
+the median pursuit pace went from 44 to 54 km/h with scenery contact rising
+from 0.29 to 0.39 per car-minute. That is the trade being bought: they commit
+harder because they can.
+
 ### Braking for the junction, not for the target
 
 A unit running alongside its target commits to a speed on the strength of a

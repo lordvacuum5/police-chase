@@ -122,7 +122,9 @@ export const SPECS = {
         [4500, 482], [5500, 435], [6500, 352], [7200, 282],
       ],
     }),
-    brakes: { maxTorque: 2300, frontBias: 0.66, handbrakeTorque: 2800 },
+    // Fleet brakes: bigger discs, and an anti-lock system the runner has not
+    // got. See README, "Better brakes than yours".
+    brakes: { maxTorque: 3500, frontBias: 0.64, handbrakeTorque: 2800, abs: 1, gripBonus: 1.52 },
     aero: { dragArea: 0.76, downforce: 0.25 },
     gripScale: 0.97,
     gripBias: { front: 1.0, rear: 1.06 },
@@ -146,6 +148,7 @@ export const SPECS = {
         [4500, 560], [5500, 512], [6500, 424], [7200, 344],
       ],
     }),
+    brakes: { maxTorque: 3800, frontBias: 0.63, handbrakeTorque: 3000, abs: 1, gripBonus: 1.58 },
     aero: { dragArea: 0.70, downforce: 0.40 },
     gripScale: 0.99,
     gripBias: { front: 1.0, rear: 1.08 },
@@ -165,6 +168,7 @@ export const SPECS = {
         [4500, 590], [5500, 538], [6500, 444], [7200, 360],
       ],
     }),
+    brakes: { maxTorque: 4000, frontBias: 0.62, handbrakeTorque: 3200, abs: 1, gripBonus: 1.62 },
     aero: { dragArea: 0.67, downforce: 0.44 },
     gripScale: 1.0,
     gripBias: { front: 1.0, rear: 1.09 },

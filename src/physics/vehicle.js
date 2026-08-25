@@ -14,7 +14,7 @@
 import * as THREE from 'three';
 import { RAPIER, GROUP, groups, raycast, RAY_GROUNDS } from './world.js';
 import {
-  tyreForces, slipRatioOf, slipAngleOf, slipIntensity,
+  tyreForces, slipRatioOf, slipAngleOf, slipIntensity, loadedMu,
   TYRE_ROAD, TYRE_GRASS, TYRE_PAVED,
 } from './tyre.js';
 import { clamp, clamp01, lerp, damp, sign, moveTowards, smoothstep, TAU } from '../util/math.js';
@@ -228,6 +228,7 @@ export class Vehicle {
       condition: 1,           // 1 healthy, 0 shredded (spike strips reduce this)
       surface: 1,
       arb: 0,
+      absTrim: 1,             // anti-lock torque trim, integrated on slip error
       contact: new THREE.Vector3(),
       normal: new THREE.Vector3(0, 1, 0),
       worldPos: new THREE.Vector3(),
@@ -633,7 +634,44 @@ export class Vehicle {
     for (let i = 0; i < 4; i++) {
       const w = this.wheels[i];
       const drive = isDriven[i] ? perWheelTorque : 0;
-      const brakeTorque = (w.front ? frontBrake : rearBrake) + (w.front ? 0 : handbrake);
+
+      // --- anti-lock ---
+      //
+      // Without this, brake torque past the grip limit simply stops the wheel,
+      // and a locked tyre slides at the sliding-friction fraction of peak --
+      // about 84% -- so the last part of the pedal makes the stop *longer*.
+      //
+      // Modelled as a torque limit rather than as a cut-and-restore cycle: the
+      // brake is never allowed to ask the wheel for more than the tyre can
+      // currently put down. A bang-bang version that waits for lock-up and then
+      // backs off was tried first and stopped nothing -- by the time last
+      // step's slip ratio says the wheel is locked, it is locked, and the
+      // measured result was wheels locked for most of the stop and a heavy
+      // patrol car braking *worse* than the runner.
+      let service = w.front ? frontBrake : rearBrake;
+      const abs = s.brakes.abs || 0;
+      if (abs > 0 && braking > 0.02 && w.grounded && Math.abs(this.forwardSpeed) > 2) {
+        const grip = SURFACE_TYRES[w.surface] || TYRE_ROAD;
+        const bias = s.gripBias ? (w.front ? s.gripBias.front : s.gripBias.rear) : 1;
+        const peak = loadedMu(grip, w.load, w.condition)
+          * w.load * s.gripScale * bias * this.assist.grip;
+
+        // Closed loop on slip ratio, not a fixed cap on torque. A fixed cap
+        // does not work: set at the tyre's peak it sits *above* the force a
+        // locked tyre still generates, so once a wheel has stopped nothing can
+        // spin it back up and it stays locked for the whole stop -- measured,
+        // with the fronts pinned at slip 1.0 and the car braking worse than
+        // with no ABS at all. The trim has to be able to go below the tyre's
+        // current output, which means integrating the error.
+        const err = grip.peakSlipRatio - Math.abs(w.slipRatio);
+        w.absTrim = clamp(w.absTrim + err * 6 * dt, 0.30, 1.15);
+        service = lerp(service, Math.min(service, peak * w.radius * w.absTrim), abs);
+      } else if (braking <= 0.02) {
+        w.absTrim = 1;
+      }
+      // The handbrake is deliberately outside it -- locking the rears is the
+      // entire point of pulling it.
+      const brakeTorque = service + (w.front ? 0 : handbrake);
       const I = Math.max(0.4, w.radius * w.radius * s.wheelMass + (isDriven[i] ? reflected : 0));
 
       if (!w.grounded) {
@@ -685,6 +723,19 @@ export class Vehicle {
       const bias = s.gripBias ? (w.front ? s.gripBias.front : s.gripBias.rear) : 1;
       const f = tyreForces(tyre, Fs, w.slipRatio, w.slipAngle, w.condition,
         s.gripScale * bias * this.assist.grip);
+      // Fleet braking rubber. Applied to the longitudinal force only, and only
+      // while the pedal is down and the force is opposing motion, so it buys
+      // stopping distance and nothing else -- a police car does not corner or
+      // accelerate any better for having it. Anti-lock alone only brings the
+      // heavier patrol car level with the runner, because in this tyre model a
+      // locked tyre still keeps 84% of peak and locking therefore costs almost
+      // nothing; this is what actually makes the fleet out-brake you.
+      //
+      // Modifies f.Fx, not w.Fx: the latter is the telemetry copy, and the
+      // force that reaches the body is read from f a few lines below.
+      const bb = s.brakes.gripBonus;
+      if (bb && bb !== 1 && braking > 0.02 && f.Fx * vLong < 0) f.Fx *= bb;
+
       w.Fx = f.Fx;
       w.Fy = f.Fy;
       w.load = Fs;
@@ -705,8 +756,21 @@ export class Vehicle {
       // the no-slip speed every step and buzzes. Linearising the tyre force
       // about the current slip and solving for the new speed damps exactly
       // that overshoot without changing where the wheel settles.
+      //
+      // `f.stiffness` is the slope at the *origin* of the force curve, which is
+      // only the local slope while the tyre is near its linear range. Past the
+      // peak the curve is flat, and out at full lock it is completely flat --
+      // so using the origin slope there invents an enormous damping term that
+      // holds a stopped wheel stopped however little brake torque is left on
+      // it. That is why locked wheels stayed locked, and why an anti-lock
+      // system that had correctly cut the torque to a third still could not
+      // get a wheel turning again. Fall the estimate off with slip so it is
+      // the real local slope, which leaves the low-slip behaviour it was added
+      // for exactly as it was.
+      const slipRel = Math.abs(w.slipRatio) / tyre.peakSlipRatio;
+      const localSlope = 1 / (1 + slipRel * slipRel);
       const denom = Math.max(Math.abs(vLong), 2.0);
-      const dFdOmega = (f.stiffness * w.radius) / denom;
+      const dFdOmega = (f.stiffness * localSlope * w.radius) / denom;
       const implicitGain = 1 + (dt * w.radius * dFdOmega) / I;
 
       let omega = w.omega + (((drive - f.Fx * w.radius) / I) * dt) / implicitGain;

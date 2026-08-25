@@ -198,6 +198,29 @@ export class Driver {
   }
 
   /**
+   * What fraction of the available friction this car can actually turn into
+   * deceleration.
+   *
+   * A car without anti-lock has to leave a margin: brake past the limit and
+   * the wheels lock, and a locked tyre slides at the sliding-friction fraction
+   * of peak, so the last part of the pedal makes the stop *longer*. A car with
+   * ABS can be planned right up against the limit, because the modulation
+   * holds it there. Without this the fleet's better brakes would sit unused --
+   * the planner would go on asking for the same speeds it always did.
+   */
+  _brakeFraction(base) {
+    const b = this.v.spec.brakes;
+    const abs = b.abs || 0;
+    // Only four fifths of the braking advantage is planned against. Planning
+    // on all of it means arriving at every junction on the limit with nothing
+    // in hand, and the measured cost was five times as much car-to-car contact
+    // -- a unit stops in the distance it promised itself and the one behind
+    // does not.
+    const bonus = 1 + ((b.gripBonus || 1) - 1) * 0.8;
+    return (base + (1 - base) * 0.92 * abs) * bonus;
+  }
+
+  /**
    * The cornering friction this driver should plan against: what is actually
    * under the tyres, trimmed by skill, by the combined-slip budget, and by
    * how much grip recent evidence says it is really getting.
@@ -237,7 +260,7 @@ export class Driver {
     // use the help they have been given.
     const assist = v.assist || { grip: 1, boost: 1 };
     const mu = this._mu();
-    const aBrake = mu * 9.81 * 0.9;
+    const aBrake = mu * 9.81 * this._brakeFraction(0.9);
 
     let limit = roadCap;
     let acc = 0;
@@ -292,7 +315,7 @@ export class Driver {
   safeSpeed(alpha, aimDist, aimX, aimZ) {
     const v = this.v;
     const mu = this._mu();
-    const aBrake = mu * 9.81 * 0.85;
+    const aBrake = mu * 9.81 * this._brakeFraction(0.85);
 
     this._clearTimer -= 1;
     if (this._clearTimer <= 0) {
