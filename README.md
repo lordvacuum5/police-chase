@@ -125,6 +125,59 @@ the aim point* (probing along the nose reads the building on the outside of
 every corner as a wall and reduces the whole force to a crawl), and the grip
 limit of the arc it is being asked to turn through.
 
+### Braking for the junction, not for the target
+
+A unit running alongside its target commits to a speed on the strength of a
+clear line *to the target*. Then the target turns, and the unit arrives at the
+junction far too fast to take it — and goes straight on into whatever is on the
+far side. It cannot predict your moves, and should not: what it can do is never
+be going faster than the road it is on can absorb.
+
+Two things were missing. The clearance probe only ever looked toward the aim
+point, which answers "is the way I want to go clear" — at speed a different
+question from "is the way I am *going* clear", and the second one is the one
+that ends with a car in a wall. And every check was collider-based, so open
+ground was invisible: a bend with a field on the outside of it has nothing
+solid anywhere near it, and the way ahead reads as completely clear right up
+until the car is in the field.
+
+So there are now two more caps on every speed command:
+
+* a second clearance probe along the direction of travel, giving a plain
+  stopping distance;
+* **road runout** — how far the car can carry on along its current trajectory
+  before it leaves the carriageway, walked over the surface raster rather than
+  cast as a ray, because what is being looked for is the absence of road, not
+  the presence of an obstacle. Arriving somewhere the road ends in thirty
+  metres means being slow enough to *turn* within thirty metres, so the cap is
+  the cornering limit for that radius.
+
+The runout probe follows an **arc**, curving at whatever rate the car is
+turning at right now, and that distinction is the whole value of it. Probed in
+a straight line, a car correctly following a bend is forever about to leave the
+road — on the town map the check fired 84% of the time and degenerated into a
+flat speed limit. Along the arc, a car turning enough to make the bend sees
+clear road ahead, and a car that is not sees the field it is about to arrive
+in. That is exactly the difference between making a junction and going straight
+on at it.
+
+Measured over 90 s at four stars, same script both ways. Impacts are counted as
+step changes in speed rather than as damage, because units more than 30 m from
+the player are damage-shielded and a damage-based count quietly ignores most of
+the map:
+
+| per car-minute | Ashfield before | after | Wexbury before | after |
+|---|---|---|---|---|
+| hit scenery | 0.44 | **0.00** | 1.37 | **0.29** |
+| hit another car | 0.51 | **0.12** | 0.26 | **0.23** |
+| stopped dead | 0.06 | 0.12 | 0.85 | **0.35** |
+| time on grass | 0.8% | **0.4%** | 18% | **11.6%** |
+| median speed | 50.9 km/h | 49.3 | 39.9 km/h | **44.2** |
+
+Ashfield pays about 1.6 km/h of median pace, and 7 km/h off the top end, for
+never hitting the scenery at all. Wexbury gets it for free — it comes out
+faster, because the time was not being spent driving.
+
 ### Knowing how much grip they have
 
 Both of those planners used to assume dry tarmac — a hard-coded 1.42 — whatever

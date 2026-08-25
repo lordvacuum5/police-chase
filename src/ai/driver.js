@@ -20,6 +20,15 @@ import { raycast, RAY_GROUNDS } from '../physics/world.js';
 const _p = new THREE.Vector3();
 const _origin = new THREE.Vector3();
 const _probe = new THREE.Vector3();
+const _run = new THREE.Vector3();
+
+/**
+ * How far ahead the travel-direction checks look, and how finely the surface
+ * is sampled. 110 m is a little over the braking distance from motorway speed,
+ * so a road that carries on past it imposes no limit at all.
+ */
+const RUNOUT_PROBE = 110;
+const RUNOUT_STEP = 2.5;
 
 /** Skill presets. A rookie overdrives corners and cannot catch a slide. */
 export const SKILL = {
@@ -41,6 +50,8 @@ export class Driver {
     this.reverseTimer = 0;
     this.reactTimer = 0;
     this._clear = 70;
+    this._clearTravel = RUNOUT_PROBE;
+    this._runout = RUNOUT_PROBE;
     this._clearTimer = 0;
     this.crossTrack = 0;
     this._laneKeep = false;
@@ -283,19 +294,44 @@ export class Driver {
     const mu = this._mu();
     const aBrake = mu * 9.81 * 0.85;
 
-    // Probe toward where we are actually going, not along the nose. A nose
-    // probe reads the building on the outside of every corner as a wall to
-    // brake for, and the unit crawls round the city at 30 km/h.
     this._clearTimer -= 1;
     if (this._clearTimer <= 0) {
+      this._clearTimer = 3;
+
+      // Probe toward where we are actually going, not along the nose. A nose
+      // probe reads the building on the outside of every corner as a wall to
+      // brake for, and the unit crawls round the city at 30 km/h.
       _probe.set(aimX - v.position.x, 0, aimZ - v.position.z);
       if (_probe.lengthSq() < 1) _probe.copy(v.forward);
       _probe.normalize();
       this._clear = this.clearAhead(_probe, Math.min(70, aimDist + 25));
-      this._clearTimer = 3;
+
+      // And a second probe along the direction the car is genuinely
+      // travelling. The aim probe answers "is the way I want to go clear";
+      // this answers "is the way I am going clear", and at speed those are
+      // different questions. The second one is the one that ends with a car
+      // in a wall: a unit running alongside its target commits to a speed on
+      // the strength of a clear line to the target, the target turns, and the
+      // unit arrives at the junction far too fast to take it.
+      this._travelDir(_probe);
+      this._clearTravel = this.clearAhead(_probe, RUNOUT_PROBE);
+      this._runout = this.roadRunout(RUNOUT_PROBE);
     }
+
     const usable = Math.max(0, this._clear - 7);
     let limit = Math.sqrt(2 * aBrake * usable);
+
+    // Stopping distance along the line of travel.
+    limit = Math.min(limit, Math.sqrt(2 * aBrake * Math.max(0, this._clearTravel - 7)));
+
+    // How much road is left in front of us, which is the junction question:
+    // arriving somewhere the carriageway ends in thirty metres means being
+    // slow enough to *turn* within thirty metres, whether or not there is
+    // anything solid there to hit. Open ground has no collider at all, so
+    // nothing above this notices a bend with a field on the outside of it.
+    if (this._runout < RUNOUT_PROBE) {
+      limit = Math.min(limit, cornerSpeedLimit(Math.max(9, this._runout), mu));
+    }
 
     // And no faster than the corner we are turning into. Pure pursuit follows
     // an arc of radius Ld / (2 sin alpha), so that arc sets a grip limit too.
@@ -304,6 +340,65 @@ export class Driver {
       limit = Math.min(limit, cornerSpeedLimit(Math.max(6, aimDist / (2 * sa)), mu));
     }
     return limit;
+  }
+
+  /** Unit vector along the way the car is actually moving. */
+  _travelDir(out) {
+    const v = this.v;
+    if (v.speed > 2.5) {
+      out.set(v.linvel.x / v.speed, 0, v.linvel.z / v.speed);
+      if (out.lengthSq() > 0.25) return out.normalize();
+    }
+    return out.copy(v.forward);
+  }
+
+  /**
+   * How far the car can carry on along its current trajectory before it runs
+   * out of road.
+   *
+   * Walks the surface raster rather than casting rays, because the thing being
+   * looked for is the absence of carriageway, not the presence of an obstacle
+   * -- and the two are not the same. A bend with a field on the outside of it
+   * has nothing solid anywhere near it, so every collider-based check says the
+   * way ahead is completely clear right up until the car is in the field.
+   *
+   * The probe follows an *arc*, not a straight line, curving at whatever rate
+   * the car is turning at right now. That distinction is the whole value of
+   * it: probed straight, a car correctly following a bend is forever about to
+   * leave the road, and on the town map the check fired 84% of the time and
+   * simply became a speed limit. Along the arc, a car that is turning enough
+   * to make the bend sees clear road, and a car that is not sees the field it
+   * is about to arrive in -- which is exactly the difference between making a
+   * junction and going straight on at it.
+   */
+  roadRunout(maxDist) {
+    const v = this.v;
+    const sim = v.sim;
+    if (!sim || !sim.surfaceAt) return maxDist;
+
+    this._travelDir(_run);
+    let hx = _run.x, hz = _run.z;
+    const nose = v.spec.dims.l * 0.5;
+    let x = v.position.x + hx * nose;
+    let z = v.position.z + hz * nose;
+
+    // Curvature of the current trajectory, radians per metre, clamped to a
+    // radius no tighter than the car could actually hold.
+    const k = v.speed > 3
+      ? clamp(v.yawRate / v.speed, -1 / 8, 1 / 8)
+      : 0;
+    const a = k * RUNOUT_STEP;
+    const ca = Math.cos(a), sa = Math.sin(a);
+
+    for (let d = 0; d <= maxDist; d += RUNOUT_STEP) {
+      if (sim.surfaceAt(x, z) === 0) return d;
+      x += hx * RUNOUT_STEP;
+      z += hz * RUNOUT_STEP;
+      const nx = hx * ca - hz * sa;
+      hz = hx * sa + hz * ca;
+      hx = nx;
+    }
+    return maxDist;
   }
 
   /**
