@@ -763,6 +763,25 @@ export class Vehicle {
   get rpmFraction() { return clamp01(this.rpm / this.spec.engine.redline); }
   get isDrifting() { return Math.abs(this.slipAngleBody) > 0.22 && this.speed > 8; }
 
+  /**
+   * Peak friction actually available under the car right now, averaged over
+   * the grounded wheels.
+   *
+   * The AI needs this. Planning a corner against the road figure while two
+   * wheels are on a verge asks for grip that is not there, and the answer to
+   * a car that has slid onto grass cannot be to keep demanding road-surface
+   * cornering from it.
+   */
+  get surfaceMu() {
+    let sum = 0, n = 0;
+    for (const w of this.wheels) {
+      if (!w.grounded) continue;
+      sum += (SURFACE_TYRES[w.surface] || TYRE_ROAD).mu;
+      n++;
+    }
+    return n ? sum / n : TYRE_ROAD.mu;
+  }
+
   /** Wheel centre in world space, accounting for suspension travel. */
   wheelCentre(i, out) {
     const w = this.wheels[i];

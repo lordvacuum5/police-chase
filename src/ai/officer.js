@@ -24,6 +24,7 @@ export const ROLE = {
   PIT: 'pit',
   BOX: 'box',
   BLOCK: 'block',
+  HOLD: 'hold',
   SEARCH: 'search',
   DISABLED: 'disabled',
 };
@@ -123,6 +124,17 @@ export class Officer {
       : this.role === ROLE.SEARCH ? 1.5
         : 3.0;
 
+    // Off the hard surface: getting back onto it is the only job.
+    //
+    // Nothing used to say this, and following a road you are not on is not the
+    // same as rejoining it -- a unit that ended up on a verge kept aiming at
+    // its lookahead point on the carriageway and ground along the grass beside
+    // it at walking pace, sometimes for the rest of the chase. On the town map
+    // that was a fifth of the pursuit's time. Aim at the road itself, not at
+    // where the road was taking us.
+    const regain = this._regainRoad(dt);
+    if (regain) { v.setControls(regain); return; }
+
     let controls;
     switch (this.role) {
       case ROLE.PURSUE:    controls = this._pursue(dt, target); break;
@@ -130,6 +142,7 @@ export class Officer {
       case ROLE.PIT:       controls = this._pit(dt, target); break;
       case ROLE.BOX:       controls = this._box(dt, target); break;
       case ROLE.BLOCK:     controls = this._block(dt, target); break;
+      case ROLE.HOLD:      controls = this._hold(dt, target); break;
       case ROLE.RESPOND:   controls = this._goTo(dt, this.orders.point, 1.0); break;
       case ROLE.SEARCH:    controls = this._search(dt); break;
       default:             controls = this._patrol(dt); break;
@@ -195,6 +208,70 @@ export class Officer {
    * where it is -- tailing the exact position is what produces the classic
    * conga line of police cars.
    */
+  /**
+   * If this car is off the carriageway, controls that drive it back on.
+   * Returns null when it is where it should be.
+   *
+   * The aim point is deliberately a little way *along* the road rather than
+   * the closest point on it: aiming at the nearest point means driving at the
+   * kerb square on, which is how a car ends up sitting against it with the
+   * wheels turned.
+   */
+  _regainRoad(dt) {
+    const v = this.vehicle;
+    const sim = this.game.sim;
+    if (this.role === ROLE.HOLD) return null;
+    if (!sim || !sim.surfaceAt || sim.surfaceAt(v.position.x, v.position.z) !== 0) {
+      this.offRoadFor = 0;
+      return null;
+    }
+
+    // A wheel clipping a verge is not worth abandoning the chase for.
+    this.offRoadFor = (this.offRoadFor || 0) + dt;
+    if (this.offRoadFor < 0.35) return null;
+
+    const g = this.game.graph;
+    const snap = g.nearestEdge(v.position.x, v.position.z);
+    if (!snap) return null;
+
+    const dir = g.edgeDirection(snap.edge, snap.along, { x: 0, z: 1 });
+    if (dir.x * v.forward.x + dir.z * v.forward.z < 0) { dir.x = -dir.x; dir.z = -dir.z; }
+    _aim.set(snap.x + dir.x * 10, 0, snap.z + dir.z * 10);
+
+    this.driver.setPath([]);
+    // ignoreSurroundings, because the thing we are driving toward is a road we
+    // are currently beside, and the clearance probe would read the kerb, the
+    // fence and the hedge as reasons to stop.
+    return this.driver.driveTo(_aim, 13, dt, {
+      allowHandbrake: false, ignoreSurroundings: true, lane: false,
+    });
+  }
+
+  /**
+   * Is the straight line between two points actually road?
+   *
+   * A clear line of sight is not the same as a road, and treating the two as
+   * equivalent is what put a quarter of the pursuit on the grass. On a grid a
+   * clear view of the car ahead usually does mean you are both on the same
+   * street; on a town map of curving roads it means the line cuts the bend,
+   * straight over whatever is inside it. Nothing then pulled the unit back --
+   * it was driving at a point, not following a road -- so it crossed the field
+   * and rejoined wherever it happened to arrive.
+   */
+  _surfaceClear(from, to) {
+    const sim = this.game.sim;
+    if (!sim || !sim.surfaceAt) return true;
+    const dx = to.x - from.x, dz = to.z - from.z;
+    const len = Math.hypot(dx, dz);
+    if (len < 1) return true;
+    const steps = clamp(Math.round(len / 7), 2, 14);
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      if (sim.surfaceAt(from.x + dx * t, from.z + dz * t) === 0) return false;
+    }
+    return true;
+  }
+
   _pursue(dt, target) {
     if (!target) return this._patrol(dt);
     const v = this.vehicle;
@@ -209,10 +286,12 @@ export class Officer {
       _eye.copy(v.position); _eye.y += 1.0;
       _aim2.copy(target.position); _aim2.y += 0.8;
       this._hasLos = hasLineOfSight(this.game.world, _eye, _aim2, 1.5);
+      this._directIsDrivable = this._surfaceClear(v.position, target.position);
     }
 
-    if (d > 85 || !this._hasLos) {
-      // Far away, or no clear line: the road network matters more.
+    if (d > 85 || !this._hasLos || !this._directIsDrivable) {
+      // Far away, no clear line, or a clear line that is not a road: the road
+      // network matters more.
       return this._goTo(dt, target.position, 1.0);
     }
 
@@ -273,6 +352,70 @@ export class Officer {
     return this.driver.driveTo(res.aim, res.speed, dt, {
       allowHandbrake: res.allowHandbrake !== false,
     });
+  }
+
+  /**
+   * Manning a roadblock.
+   *
+   * These are ordinary police cars, not scenery: they are parked across the
+   * carriageway with the handbrake on, and they stay there. What they are
+   * waiting for is a reason to stop waiting -- either you get past them, or
+   * you give up and go back the way you came. Either way the block has done
+   * its job and there is no sense in three cars sitting in a road you are no
+   * longer on, so they come off the handbrake and join the chase.
+   *
+   * `orders.site` is the centre of the block and `orders.approach` is a unit
+   * vector pointing back up the road you arrive along, so `s` below is how far
+   * short of the block you still are. It starts positive, and goes negative
+   * the moment you are through.
+   */
+  _hold(dt, target) {
+    const out = this._parked();
+    if (!target) return out;
+
+    const o = this.orders;
+    const site = o.site, ap = o.approach;
+    if (!site || !ap) return out;
+
+    const rx = target.position.x - site.x, rz = target.position.z - site.z;
+    const s = rx * ap.x + rz * ap.z;
+    const range = Math.hypot(rx, rz);
+
+    // Through the block. Everyone here goes after them.
+    if (s < -14) return this._release('past');
+
+    // Turned back. Not simply "far away" -- a target that has not reached the
+    // block yet is far away by definition, and a block that abandoned its post
+    // on that basis would never be there when you arrived. This is about a
+    // target who was closing and has stopped closing: they got near enough to
+    // see it, and are now well beyond that again.
+    if (range < (o.sawItFrom || 130)) o.committed = true;
+    if (o.committed && s > 0 && range > 150) {
+      o.turnedAway = (o.turnedAway || 0) + dt;
+      if (o.turnedAway > 2.0) return this._release('turned back');
+    } else {
+      o.turnedAway = 0;
+    }
+
+    return out;
+  }
+
+  /** Stationary, brakes on. Used by anyone whose job is to be an obstacle. */
+  _parked() {
+    const out = this.driver.out;
+    out.throttle = 0;
+    out.brake = 1;
+    out.steer = 0;
+    out.handbrake = 1;
+    out.clutchKick = false;
+    return out;
+  }
+
+  /** Leave a roadblock and join the pursuit. */
+  _release(why) {
+    if (this.game.roadblocks) this.game.roadblocks.onUnitReleased(this, why);
+    this.setRole(ROLE.PURSUE);
+    return this._parked();
   }
 
   /**

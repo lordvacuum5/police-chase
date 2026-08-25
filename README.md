@@ -125,6 +125,60 @@ the aim point* (probing along the nose reads the building on the outside of
 every corner as a wall and reduces the whole force to a crawl), and the grip
 limit of the arc it is being asked to turn through.
 
+### Knowing how much grip they have
+
+Both of those planners used to assume dry tarmac — a hard-coded 1.42 — whatever
+the car was actually standing on. Grass is 0.62, less than half, so a unit with
+two wheels on a verge was planning corners against more than twice the grip it
+had; and having started to slide it went on asking for exactly the speed that
+caused the slide, so the slide continued to the next junction. Three things
+changed:
+
+* **Plan against the real surface.** `Vehicle.surfaceMu` averages the peak
+  friction under the grounded wheels, and both planners use it.
+* **Believe the evidence.** `gripEstimate` falls while the car is genuinely
+  sliding and returns slowly once it has hooked up, so a driver who has just
+  been caught out spends the next few seconds driving within itself. Floored
+  well short of a crawl — the point is to stop chasing grip that is not there,
+  not to turn everyone who steps out once into a learner.
+* **Actually lift.** While sideways, the speed target is capped *below current
+  speed*, scaled by how far gone the car is and by whether this driver can hold
+  a slide at all.
+
+### Getting back on the road
+
+Two more failures put units on grass and kept them there, and neither was a
+slide.
+
+`_pursue` drove straight at the target whenever it had line of sight within
+85 m. On a grid, a clear view of the car ahead usually does mean you are both
+on the same street; on a town map of curving roads it means the line cuts the
+bend, straight over whatever is inside it. Line of sight is now checked against
+the surface as well as the geometry — a clear view over a field is not a road.
+
+And nothing said what to do once off the carriageway. A unit shoved onto a
+verge kept aiming at its lookahead point on the road it was no longer on and
+ground along beside it at walking pace, sometimes for the rest of the chase.
+Routes were never the problem: **not one planned waypoint was ever off-road** —
+the cars had simply left them, a median of 25 m. Now, being off the hard
+surface makes rejoining it the only job, aiming a little way *along* the road
+rather than at the nearest point on it, because aiming at the nearest point
+means driving at the kerb square on and sitting against it with the wheels
+turned.
+
+Measured over 90 s at four stars, same script both ways:
+
+| | Ashfield before | after | Wexbury before | after |
+|---|---|---|---|---|
+| time on grass | 4.5% | **0.3%** | 25.5% | **12.4%** |
+| more than 6 m off the carriageway | 15.7% | **7.9%** | 20.7% | **11.4%** |
+| sideways past 26° | 0.5% | **0.3%** | 0.9% | **0.1%** |
+| mean damage | 0.045 | **0.000** | 0.089 | **0.018** |
+| median speed | 52.9 km/h | 51.7 | 42.9 km/h | **49.5** |
+
+On the town map they end up both tidier and *faster*, because the time was
+never being spent driving — it was being spent stuck on a verge.
+
 ### Backing out
 
 A unit that has buried itself in something stops, selects reverse, backs out
@@ -159,14 +213,49 @@ graph the dispatcher uses to solve intercepts, so a block only ever goes in
 somewhere you are actually heading, and driving unpredictably is a real defence
 against them.
 
-Two exist at a time. They go in about 200 m ahead — beyond the point you could
-see one appear, close enough that you have little time to re-plan — and are
-taken away once you are 200 m past. Two or three patrol cars sit angled across
-the carriageway with a line of cones 11 m up the approach, so the block reads
-before you are in it.
+They go in about 200 m ahead — beyond the point you could see one appear, close
+enough that you have little time to re-plan — and are taken away once you are
+200 m past.
+
+**The cars are real police units, not scenery.** They are parked across the
+carriageway with the handbrake on, they take damage, they can be shunted, and
+they stay where they are until one of two things happens: you get through the
+block, or you give up and go back the way you came. Either way the block has
+done its job, so they come off the handbrake and join the chase. Beating a
+roadblock therefore costs you three more cars behind you — which is the price
+of going round rather than turning back.
+
+"Turned back" is deliberately not the same as "far away". A target that has not
+reached the block yet is far away by definition, and a block that abandoned its
+post on that basis would never be there when you arrived. It means a target who
+was closing and has stopped: they got near enough to see it, and are now well
+beyond that again, for a sustained couple of seconds.
+
+How many cars depends on how much road there is to cover. Two cars on a
+fifteen-metre street leave a five-metre gap straight up the middle, which is
+not a roadblock, it is a chicane — so the block works out what one angled car
+actually spans and puts down enough of them to close the carriageway, staggered
+into two rows so that packing them edge to edge does not sit them inside each
+other. A line of cones goes in 11 m up the approach, so the block reads before
+you are in it.
+
+They are also deliberately occasional: at least 34 s apart, longer after one
+has been beaten, and never within 320 m of the last one. Set any shorter and a
+block stops being a set piece and becomes weather — you round a corner, there
+is a block, you go round it, and there is another one.
 
 Measured at four stars on both maps: never more than two alive, going in at a
-median of 157–198 m ahead and coming out at a median of 200–202 m behind.
+median of 157–198 m ahead and coming out at a median of 200–202 m behind. Held
+for the full 90 s of a test where the target never came near; released on
+`past` when the target drove through at 54 km/h, and on `turned back` after
+21.6 s when it went elsewhere.
+
+One bug worth recording, because it produced behaviour that looked like
+anything but its cause: the road tangent runs from an edge's `a` end to its
+`b` end, so a target arriving *at* the `a` end is travelling against it.
+Getting that sign backwards pointed every car the wrong way down the road and
+made the block read every approaching car as one that had already gone
+through — so blocks dissolved on the frame they were built.
 
 ### The rolling block
 

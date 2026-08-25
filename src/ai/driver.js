@@ -50,6 +50,14 @@ export class Driver {
     this.speedTarget = 0;
     this.avoidBias = 0;
 
+    // How much of the available grip this driver currently believes it can
+    // use. Starts optimistic and is knocked down by evidence -- see
+    // _updateGrip. This is the difference between a driver who slides once and
+    // one who slides all the way to the next junction.
+    this.gripEstimate = 1;
+    this.slideTimer = 0;
+    this.strayTimer = 0;
+
     // How far over the posted limit this driver is willing to go. 1 is a
     // patrol car obeying the signs; a unit in pursuit sets this high and is
     // then bounded only by grip and by what its car will do.
@@ -97,6 +105,22 @@ export class Driver {
     const rx = v.position.x - a.x, rz = v.position.z - a.z;
     this.crossTrack = rx * dz - rz * dx;
 
+    // Come off the route far enough and following it stops being a plan.
+    //
+    // Nothing used to notice this. A unit shoved off line by a collision, or
+    // one that overshot a junction, went on aiming at a lookahead point on a
+    // road it was no longer on -- and drove straight across whatever lay
+    // between, which on the town map meant a quarter of the pursuit's time was
+    // spent on grass a median of 25 m from its own path. The routes were never
+    // the problem: not one planned waypoint was off-road. Ask for a new line
+    // from where the car actually is instead.
+    if (Math.abs(this.crossTrack) > 10) {
+      this.strayTimer += 1 / 60;
+      if (this.strayTimer > 0.6) { this.needsRepath = true; this.strayTimer = 0; }
+    } else {
+      this.strayTimer = 0;
+    }
+
     // Never aim at a waypoint that is behind us or sitting on the bonnet:
     // pure pursuit responds to a target behind the car by turning as hard as
     // it can, which in a city means into the nearest wall.
@@ -132,6 +156,65 @@ export class Driver {
    * we can see. Walks forward along the path, converts each curve into a grip
    * limit, and backs that limit up through the braking distance.
    */
+  /**
+   * Keep track of how much grip this car is really getting.
+   *
+   * Two separate failures were making units slide indefinitely. They planned
+   * every corner against the dry-road figure even with two wheels on a verge,
+   * where there is less than half that; and having started to slide they went
+   * on asking for exactly the speed that caused it, so the slide simply
+   * continued to the next junction.
+   *
+   * `gripEstimate` falls quickly while the car is actually sliding and comes
+   * back slowly once it has hooked up again, so a driver who has just been
+   * caught out spends the next few seconds driving within itself.
+   */
+  _updateGrip(dt) {
+    const v = this.v;
+    const sliding = v.maxSlip > 0.62 || Math.abs(v.slipAngleBody) > 0.20;
+    if (sliding) {
+      this.slideTimer = Math.min(this.slideTimer + dt, 3);
+      // A better driver reads it earlier and gives away less.
+      const give = lerp(1.1, 0.5, this.skill.throttleControl);
+      // Floored well short of a crawl. The point is to stop chasing grip that
+      // is not there, not to turn every unit that steps out once into a
+      // learner -- these still have a pursuit to win.
+      this.gripEstimate = Math.max(0.72, this.gripEstimate - give * dt);
+    } else {
+      this.slideTimer = Math.max(0, this.slideTimer - dt * 1.5);
+      this.gripEstimate = Math.min(1, this.gripEstimate + 0.55 * dt);
+    }
+  }
+
+  /**
+   * The cornering friction this driver should plan against: what is actually
+   * under the tyres, trimmed by skill, by the combined-slip budget, and by
+   * how much grip recent evidence says it is really getting.
+   */
+  _mu() {
+    const v = this.v;
+    const assist = v.assist || { grip: 1, boost: 1 };
+    return v.surfaceMu * this.skill.grip * 0.87 * assist.grip * this.gripEstimate;
+  }
+
+  /**
+   * Speed ceiling while the car is sideways.
+   *
+   * Asking a car that is already sliding for the speed that put it there just
+   * prolongs the slide -- which is exactly what these units were doing, all
+   * the way across the verge and into whatever was on the other side. This
+   * demands a genuine lift: a target below what the car is doing now, scaled
+   * by how far gone it is and by whether this driver can hold a slide at all.
+   */
+  slideLift() {
+    const v = this.v;
+    const slip = Math.abs(v.slipAngleBody);
+    if (slip <= 0.20 || v.speed <= 7) return Infinity;
+    const severity = clamp01((slip - 0.20) / 0.45);
+    const keep = lerp(0.96, 0.68, severity * lerp(1.15, 0.75, this.skill.throttleControl));
+    return v.speed * keep;
+  }
+
   planSpeed(roadCap = Infinity) {
     const v = this.v;
     const skill = this.skill;
@@ -142,7 +225,7 @@ export class Driver {
     // Assisted units may plan against their boosted grip, or they would never
     // use the help they have been given.
     const assist = v.assist || { grip: 1, boost: 1 };
-    const mu = 1.42 * skill.grip * 0.87 * assist.grip;
+    const mu = this._mu();
     const aBrake = mu * 9.81 * 0.9;
 
     let limit = roadCap;
@@ -197,7 +280,7 @@ export class Driver {
    */
   safeSpeed(alpha, aimDist, aimX, aimZ) {
     const v = this.v;
-    const mu = 1.42 * this.skill.grip * 0.87;
+    const mu = this._mu();
     const aBrake = mu * 9.81 * 0.85;
 
     // Probe toward where we are actually going, not along the nose. A nose
@@ -289,6 +372,7 @@ export class Driver {
     const out = this.out;
     const skill = this.skill;
 
+    this._updateGrip(dt);
     this._laneKeep = opts.lane === true;
     const s = this.steerToward(aim.x, aim.z, dt);
     out.steer = s.steer;
@@ -305,6 +389,8 @@ export class Driver {
     if (opts.ignoreSurroundings !== true) {
       speed = Math.min(speed, this.safeSpeed(s.alpha, s.distance, aim.x, aim.z));
     }
+
+    speed = Math.min(speed, this.slideLift());
     this.speedTarget = speed;
 
     // ---- unstick ----

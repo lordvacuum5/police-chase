@@ -154,7 +154,11 @@ export class Dispatcher {
   _manageRoster(dt, target) {
     this.spawnTimer -= dt;
     const want = this.rules.units;
-    const alive = this.units.filter((u) => !u.vehicle.disabled);
+    // Cars manning a roadblock do not count against the pursuit's budget, and
+    // are not the roster's to retire. They are standing in a road on purpose;
+    // counting them as active pursuers would quietly starve the chase of the
+    // cars that are actually chasing.
+    const alive = this.units.filter((u) => !u.vehicle.disabled && u.role !== ROLE.HOLD);
 
     if (alive.length < want && this.spawnTimer <= 0) {
       this.spawnTimer = 1.6;
@@ -171,6 +175,7 @@ export class Dispatcher {
     // still counts as active would quietly starve the pursuit of cars.
     for (let i = this.units.length - 1; i >= 0; i--) {
       const u = this.units[i];
+      if (u.role === ROLE.HOLD) continue;   // the roadblock owns its own cars
       const d = u.distanceTo(target.position);
       const far = d > 900;
 
@@ -200,6 +205,7 @@ export class Dispatcher {
 
     if (this.tier === 0 || k.timeSinceSeen > LOST_CONTACT_SECONDS) {
       for (const u of this.units) {
+        if (u.role === ROLE.HOLD) continue;
         if (u.role !== ROLE.PATROL && this.tier === 0) u.setRole(ROLE.PATROL);
         else if (this.tier > 0 && u.role !== ROLE.SEARCH) u.setRole(ROLE.SEARCH, { point: k.position.clone() });
       }
@@ -210,7 +216,9 @@ export class Dispatcher {
       return;
     }
 
-    const available = this.units.filter((u) => !u.vehicle.disabled);
+    // Cars manning a roadblock are not available for anything: they are where
+    // they are meant to be, and they decide for themselves when to leave.
+    const available = this.units.filter((u) => !u.vehicle.disabled && u.role !== ROLE.HOLD);
     available.sort((a, b) => a.distanceTo(k.position) - b.distanceTo(k.position));
 
     const assigned = new Set();
@@ -447,6 +455,24 @@ export class Dispatcher {
   }
 
   // ------------------------------------------------------------------ events
+
+  /**
+   * Take on a unit somebody else created -- currently the roadblock manager.
+   * It goes on the board and on the minimap immediately, but keeps whatever
+   * role its owner gave it until it gives that role up itself.
+   */
+  adopt(unit) {
+    if (!this.units.includes(unit)) this.units.push(unit);
+  }
+
+  /** Remove a unit from the board and from the world. */
+  retire(unit) {
+    const i = this.units.indexOf(unit);
+    if (i >= 0) this.units.splice(i, 1);
+    if (this.blockUnit === unit) this.blockUnit = null;
+    if (this.activePit === unit) this.activePit = null;
+    this.game.despawnPolice(unit);
+  }
 
   /** A blocker that has been passed, or has lost the target, goes back in the pack. */
   onBlockEnded(unit) {

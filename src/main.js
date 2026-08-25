@@ -314,6 +314,25 @@ class Game {
   }
 
   /**
+   * Put a unit at an exact position and heading, for callers that have already
+   * chosen the spot -- roadblocks, which need cars in a specific arrangement
+   * across a specific carriageway rather than anywhere convenient.
+   */
+  spawnPoliceAt(position, heading, tier) {
+    if (this.vehicles.length >= MAX_VEHICLES) return null;
+    for (const other of this.vehicles) {
+      if (dist2(other.position.x, other.position.z, position.x, position.z) < 4.2) return null;
+    }
+    const kind = tier >= 4 && this.rng() < 0.5 ? 'interceptor' : 'patrol';
+    const v = this.createVehicle(kind, kind, position, heading, { police: true });
+    v.lampPhase = this.rng();
+    // Parked, not arriving: no roll-on velocity, and the lights are already
+    // going before you come round the corner.
+    v.setVelocity({ x: 0, y: 0, z: 0 });
+    return new Officer(this, v, { skill: SKILL.advanced, kind });
+  }
+
+  /**
    * Put a unit on the road *in front of* the target, pointing the same way.
    *
    * Spawned rather than reassigned: getting a car that is already behind you
@@ -343,6 +362,16 @@ class Game {
       // and a car put down there is not a block, it is a tail. Insist the site
       // is genuinely up the road, within about a 50 degree cone.
       if (((n.x - target.position.x) * dx + (n.z - target.position.z) * dz) < d * 0.64) continue;
+      // Not on top of a roadblock. Both this and the roadblock siting draw
+      // from the same forward expansion and both want the soonest road ahead,
+      // so left alone they pick the same stretch and you meet a rolling block
+      // and a roadblock together, which reads as one overlong obstacle rather
+      // than two separate problems.
+      let nearBlock = false;
+      for (const b of this.roadblocks.blocks) {
+        if (dist2(n.x, n.z, b.x, b.z) < 140) { nearBlock = true; break; }
+      }
+      if (nearBlock) continue;
       candidates.push({ node: n, via: rec.viaNode, score: Math.abs(d - 150) });
     }
     if (!candidates.length) return null;
@@ -390,11 +419,6 @@ class Game {
 
   despawnPolice(officer) {
     this.removeVehicle(officer.vehicle);
-  }
-
-  /** Materials for a parked roadblock car, matching its geometry's groups. */
-  carMaterialsFor(geo) {
-    return carMaterials(geo, shinyVertexMaterial());
   }
 
   coneMaterial() {

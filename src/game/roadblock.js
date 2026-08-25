@@ -6,26 +6,43 @@
 // appear on the road ahead of you rather than behind, and moving unpredictably
 // is a real defence against them.
 //
-// Two exist at a time. They are put down at about 200 m ahead -- far enough
-// that you never see one appear, close enough that you have little time to
-// re-plan -- and taken away once you are 200 m past.
+// The cars are ordinary police units, not scenery. They are parked across the
+// carriageway with the handbrake on and they stay there until you are through
+// the block or have turned back, at which point they come off the handbrake
+// and join the chase. A roadblock you have beaten therefore costs you three
+// more cars behind you, which is the point of going round rather than through.
+//
+// Two exist at a time at most, and they are deliberately occasional. A block
+// every few seconds stops being a set piece and becomes weather.
 
 import * as THREE from 'three';
-import { GROUP, addStaticBox } from '../physics/world.js';
+import { ROLE } from '../ai/officer.js';
 import { dist2, clamp } from '../util/math.js';
 
 const MAX_BLOCKS = 2;
 const SPAWN_MIN = 170, SPAWN_MAX = 260;   // metres ahead to look for a site
 const DESPAWN = 200;                      // metres behind before it is removed
-const MIN_APART = 150;
-const RESPAWN_DELAY = 6;
+const MIN_APART = 220;
+
+/**
+ * Minimum seconds between blocks, and the extra wait after one has actually
+ * been used. Set low these stop reading as a set piece: you round a corner,
+ * there is a block, you go round it, and there is another one. The force does
+ * not have infinite cars and should not feel as though it does.
+ */
+const RESPAWN_DELAY = 34;
+const AFTER_BEATEN = 26;
+
+/** How far you must travel between blocks, so they cannot chase you down a street. */
+const MIN_TRAVEL = 320;
 
 export class RoadblockManager {
   constructor(game) {
     this.game = game;
     this.blocks = [];
-    this.timer = 0;
+    this.timer = RESPAWN_DELAY * 0.5;
     this.coneGeo = null;
+    this.lastSite = null;
   }
 
   /** Minimum heat before the force starts putting cars across roads. */
@@ -36,6 +53,13 @@ export class RoadblockManager {
 
     for (let i = this.blocks.length - 1; i >= 0; i--) {
       const b = this.blocks[i];
+
+      // Units that have left to join the chase are the dispatcher's problem
+      // now; the block only owns the ones still standing on it.
+      for (let j = b.units.length - 1; j >= 0; j--) {
+        if (b.units[j].role !== ROLE.HOLD) b.units.splice(j, 1);
+      }
+
       const d = dist2(b.x, b.z, target.position.x, target.position.z);
       // Only remove it once it is well behind -- never while it is on screen.
       if (d > DESPAWN || !this.allowed) {
@@ -44,13 +68,28 @@ export class RoadblockManager {
       }
     }
 
-    if (this.allowed && this.blocks.length < MAX_BLOCKS && this.timer <= 0) {
-      this.timer = RESPAWN_DELAY;
-      const site = this._findSite(target);
-      if (site) {
-        this.blocks.push(this._build(site));
-        this.game.radio(`Roadblock going in on ${site.name}`, true);
-      }
+    if (!this.allowed || this.blocks.length >= MAX_BLOCKS || this.timer > 0) return;
+    if (this.lastSite && dist2(this.lastSite.x, this.lastSite.z,
+      target.position.x, target.position.z) < MIN_TRAVEL) return;
+
+    this.timer = RESPAWN_DELAY;
+    const site = this._findSite(target);
+    if (!site) return;
+
+    const block = this._build(site);
+    if (!block) return;
+    this.blocks.push(block);
+    this.lastSite = { x: site.x, z: site.z };
+    this.game.radio(`Roadblock going in on ${site.name}`, true);
+  }
+
+  /** A unit has left its post. Slow the next block down a little. */
+  onUnitReleased(unit, why) {
+    this.timer = Math.max(this.timer, AFTER_BEATEN);
+    if (why === 'past' && !this._reported) {
+      this._reported = true;
+      this.game.radio(`${unit.callsign} — they're through the block, all units`, true);
+      setTimeout(() => { this._reported = false; }, 4000);
     }
   }
 
@@ -102,8 +141,15 @@ export class RoadblockManager {
     const along = towardNode ? 28 : Math.max(0, edge.length - 28);
     const p = g.pointAt(edge, along);
 
+    // The tangent points along increasing `along`, which runs from the edge's
+    // a end to its b end. A target arriving *at* the a end is therefore
+    // travelling against it. Getting this backwards points the cars the wrong
+    // way down the road and makes the block read every approaching car as one
+    // that has already gone through.
+    const sgn = towardNode ? -1 : 1;
+
     return {
-      x: p.x, z: p.z, tx: p.tx, tz: p.tz,
+      x: p.x, z: p.z, tx: p.tx * sgn, tz: p.tz * sgn,
       width: edge.width, name: edge.name || 'the road ahead',
     };
   }
@@ -114,31 +160,50 @@ export class RoadblockManager {
     const heading = Math.atan2(tx, tz);
     const nx = -tz, nz = tx;                 // across the carriageway
 
-    const block = { x, z, meshes: [], bodies: [] };
+    const block = { x, z, meshes: [], units: [] };
 
     // Cars angled across the road, as they are parked in reality -- side on to
     // the traffic so they present the longest possible obstacle.
-    const count = width > 18 ? 3 : 2;
-    const geo = game._geometryFor('patrol', 'patrol', true, false);
-    const spread = width * 0.5 - 2.4;
+    //
+    // How many depends on how much road there is to cover. Two cars on a
+    // fifteen-metre street leave a five-metre gap straight up the middle,
+    // which is not a roadblock, it is a chicane: work out what one angled car
+    // actually spans and put down enough of them to close the carriageway.
+    const ANG = Math.PI * 0.42;
+    const cover = Math.abs(4.7 * Math.sin(ANG)) + Math.abs(1.92 * Math.cos(ANG));
+    const spread = Math.max(0, width * 0.5 - cover * 0.5);
+    // Capped: a block is not allowed to eat the whole vehicle budget and
+    // leave nothing to actually chase you with.
+    const count = clamp(Math.ceil((spread * 2) / cover) + 1, 2, 4);
+    // Points back up the road the target arrives along.
+    const approach = { x: -tx, z: -tz };
+    const tier = game.heat.tier;
 
     for (let i = 0; i < count; i++) {
       const f = count === 1 ? 0 : (i / (count - 1)) * 2 - 1;   // -1 .. 1
-      const px = x + nx * f * spread;
-      const pz = z + nz * f * spread;
-      const ang = heading + Math.PI * 0.42 * (i % 2 ? 1 : -1);
+      // Staggered into two rows rather than one line. Packed tightly enough
+      // across the road to leave no gap, the cars would be sitting inside each
+      // other; offsetting alternate ones a few metres up the road keeps their
+      // lateral coverage overlapping while their bodies stay well clear.
+      const back = (i % 2 ? 1 : -1) * 3.0;
+      const px = x + nx * f * spread + tx * back;
+      const pz = z + nz * f * spread + tz * back;
+      const ang = heading + ANG * (i % 2 ? 1 : -1);
 
-      const mesh = new THREE.Mesh(geo, game.carMaterialsFor(geo));
-      mesh.position.set(px, 0.47, pz);
-      mesh.rotation.y = ang;
-      mesh.castShadow = true;
-      game.scene.add(mesh);
-      block.meshes.push(mesh);
-
-      block.bodies.push(addStaticBox(
-        game.world, px, 0.62, pz, 1.05, 0.62, 2.4, GROUP.PROP, ang,
-      ));
+      const unit = game.spawnPoliceAt({ x: px, y: 0.95, z: pz }, ang, tier);
+      if (!unit) continue;
+      unit.setRole(ROLE.HOLD, {
+        site: { x, z },
+        approach,
+        sawItFrom: 130,
+      });
+      game.dispatcher.adopt(unit);
+      block.units.push(unit);
     }
+
+    // If not one car could be placed there is no block; do not leave a line of
+    // cones across an open road.
+    if (!block.units.length) return null;
 
     // A line of cones on the approach, so the block reads before you are in it.
     if (!this.coneGeo) {
@@ -148,8 +213,8 @@ export class RoadblockManager {
     const coneMat = game.coneMaterial();
     for (let i = -3; i <= 3; i++) {
       const t = i / 3;
-      const cx = x + nx * t * (width * 0.5 - 0.8) + tx * 11;
-      const cz = z + nz * t * (width * 0.5 - 0.8) + tz * 11;
+      const cx = x + nx * t * (width * 0.5 - 0.8) - tx * 11;
+      const cz = z + nz * t * (width * 0.5 - 0.8) - tz * 11;
       const cone = new THREE.Mesh(this.coneGeo, coneMat);
       cone.position.set(cx, 0, cz);
       game.scene.add(cone);
@@ -161,14 +226,18 @@ export class RoadblockManager {
 
   _dispose(b) {
     for (const m of b.meshes) this.game.scene.remove(m);
-    for (const body of b.bodies) this.game.world.removeRigidBody(body);
     b.meshes.length = 0;
-    b.bodies.length = 0;
+    // Only the cars still standing on the block. Anything that has joined the
+    // chase has already been removed from this list and belongs to the
+    // dispatcher.
+    for (const u of b.units) this.game.dispatcher.retire(u);
+    b.units.length = 0;
   }
 
   reset() {
     for (const b of this.blocks) this._dispose(b);
     this.blocks.length = 0;
-    this.timer = 0;
+    this.timer = RESPAWN_DELAY * 0.5;
+    this.lastSite = null;
   }
 }
