@@ -14,7 +14,7 @@
 
 import * as THREE from 'three';
 import { clamp, clamp01, lerp, sign, angleDelta, curveRadius, dist2, smoothstep } from '../util/math.js';
-import { cornerSpeedLimit } from '../physics/tyre.js';
+import { cornerSpeedLimit, TYRE_GRASS } from '../physics/tyre.js';
 import { raycast, RAY_GROUNDS } from '../physics/world.js';
 
 const _p = new THREE.Vector3();
@@ -29,6 +29,12 @@ const _run = new THREE.Vector3();
  */
 const RUNOUT_PROBE = 110;
 const RUNOUT_STEP = 2.5;
+
+/**
+ * Nominal radius a unit assumes it may need to turn through once it is off the
+ * carriageway. Sets the pace it aims to be down to by the time it gets there.
+ */
+const OFF_ROAD_ARC = 45;
 
 /** Skill presets. A rookie overdrives corners and cannot catch a slide. */
 export const SKILL = {
@@ -60,6 +66,10 @@ export class Driver {
     this.steerHold = 0;
     this.speedTarget = 0;
     this.avoidBias = 0;
+    // Steering push away from scenery, and how close the nearest solid thing
+    // is along the line of travel.
+    this.wallBias = 0;
+    this.wallNear = 999;
 
     // How much of the available grip this driver currently believes it can
     // use. Starts optimistic and is knocked down by evidence -- see
@@ -68,6 +78,12 @@ export class Driver {
     this.gripEstimate = 1;
     this.slideTimer = 0;
     this.strayTimer = 0;
+
+    // Whether this driver may leave the carriageway to cut a corner or take a
+    // line across open ground. Everything in a pursuit may; a patrol car
+    // pottering about on its beat may not, and that difference in how they
+    // move is part of how you tell them apart.
+    this.allowOffRoad = false;
 
     // How far over the posted limit this driver is willing to go. 1 is a
     // patrol car obeying the signs; a unit in pursuit sets this high and is
@@ -125,7 +141,9 @@ export class Driver {
     // spent on grass a median of 25 m from its own path. The routes were never
     // the problem: not one planned waypoint was off-road. Ask for a new line
     // from where the car actually is instead.
-    if (Math.abs(this.crossTrack) > 10) {
+    // Wider tolerance for a unit that is allowed to cut: leaving the line is
+    // what it is for, and repathing every time it did would be constant churn.
+    if (Math.abs(this.crossTrack) > (this.allowOffRoad ? 22 : 10)) {
       this.strayTimer += 1 / 60;
       if (this.strayTimer > 0.6) { this.needsRepath = true; this.strayTimer = 0; }
     } else {
@@ -353,7 +371,19 @@ export class Driver {
     // anything solid there to hit. Open ground has no collider at all, so
     // nothing above this notices a bend with a field on the outside of it.
     if (this._runout < RUNOUT_PROBE) {
-      limit = Math.min(limit, cornerSpeedLimit(Math.max(9, this._runout), mu));
+      if (this.allowOffRoad) {
+        // Running out of road is not a wall for these, it is a change of
+        // surface: they are allowed to go across it. What is still required is
+        // arriving at a speed the verge can actually hold, so this brakes
+        // toward a grass-appropriate pace rather than toward a stop. Buildings
+        // and trees are somebody else's problem -- they have colliders, and
+        // the travel probe above sees them.
+        const off = cornerSpeedLimit(OFF_ROAD_ARC,
+          TYRE_GRASS.mu * (v.spec.offRoadGrip || 1) * 0.87 * this.skill.grip);
+        limit = Math.min(limit, Math.sqrt(off * off + 2 * aBrake * this._runout));
+      } else {
+        limit = Math.min(limit, cornerSpeedLimit(Math.max(9, this._runout), mu));
+      }
     }
 
     // And no faster than the corner we are turning into. Pure pursuit follows
@@ -455,12 +485,19 @@ export class Driver {
     // through curves -- the car tracks a chord inside the bend rather than the
     // lane. This pulls it back onto the line, scaled down with speed so it
     // does not become a twitch at motorway pace.
+    // A unit allowed off the carriageway keeps far less of it: lane keeping is
+    // precisely the term that stops a car cutting a corner, and cutting the
+    // corner is the point. Enough is left to stop it wandering.
     if (this._laneKeep) {
-      deltaRad -= Math.atan2(this.crossTrack * 0.55, v.speed + 4);
+      const pull = this.allowOffRoad ? 0.14 : 0.55;
+      deltaRad -= Math.atan2(this.crossTrack * pull, v.speed + 4);
     }
 
-    // Lateral bias injected by collision avoidance.
-    deltaRad += this.avoidBias;
+    // Lateral bias injected by collision avoidance, and by scenery the car is
+    // about to touch. The scenery term is deliberately the stronger of the
+    // two: hitting a building ends a unit's chase, being untidy around another
+    // car does not.
+    deltaRad += this.avoidBias + this.wallBias;
 
     // Scale against the lock currently available, not the absolute maximum.
     // The car limits steering by speed, so normalising by maxAngle would make
@@ -506,6 +543,24 @@ export class Driver {
     // to drive into a wall.
     if (opts.ignoreSurroundings !== true) {
       speed = Math.min(speed, this.safeSpeed(s.alpha, s.distance, aim.x, aim.z));
+    }
+
+    // Something solid is genuinely close along the line of travel. This is not
+    // the planned braking distance -- by the time this fires, the plan has
+    // already failed -- it is the last-resort clamp that keeps a unit which has
+    // run wide from carrying its mistake into a wall. It applies even when the
+    // caller asked to ignore the surroundings, because "get back to the road"
+    // is not a good enough reason to drive through a house on the way.
+    // Deliberately pessimistic, unlike the planners above. Those may assume
+    // the car's full straight-line braking; this one fires when the plan has
+    // already gone wrong, which usually means the car is also turning and the
+    // friction budget is being spent on that instead. Assuming three quarters
+    // of the grip and keeping six metres in hand is what stops a marginal stop
+    // from being a contact.
+    if (this.wallNear < 34) {
+      const mu = this._mu();
+      const usable = Math.max(0, this.wallNear - 6);
+      speed = Math.min(speed, Math.sqrt(2 * mu * 9.81 * 0.75 * usable));
     }
 
     speed = Math.min(speed, this.slideLift());
@@ -606,8 +661,67 @@ export class Driver {
    * steering bias, letting the pursuit logic keep control of where the unit is
    * actually going.
    */
+  /**
+   * Steer away from scenery, rather than only braking for it.
+   *
+   * Every clearance check up to now answers "how hard must I brake", and
+   * braking is not always the answer -- a car that has run wide is going to
+   * touch the wall on its outside whatever it does with the pedal, because the
+   * wall is not in front of it. This casts a fan either side of the line of
+   * travel and pushes the steering away from whichever side is closer, which
+   * is what actually keeps a unit out of a building it is sliding towards.
+   *
+   * Allowed to run off the carriageway makes this more important, not less:
+   * cutting a corner means deliberately pointing at ground the road planner
+   * was keeping the car away from.
+   */
+  _avoidScenery(dt) {
+    const v = this.v;
+    const reach = clamp(9 + v.speed * 1.5, 12, 60);
+    this._travelDir(_run);
+
+    // Clearance either side of the line of travel, and dead ahead. Measuring
+    // both flanks and steering toward the roomier one is what handles the case
+    // that matters: a wall square in front. Summing per-ray pushes does not --
+    // a centre ray has no side to push toward, so a building directly ahead
+    // produced a bias of exactly zero and the car drove into it at 60 km/h.
+    // The wide rays feed the steering only. They must not feed the braking
+    // clamp: on any ordinary street there is a building about seven metres to
+    // either side, and braking for those would reduce the whole force to a
+    // crawl everywhere. What they are for is the blocker sliding across the
+    // carriageway to stay in front of you, which puts its flank into a wall
+    // that nothing looking forward ever sees.
+    let leftClear = reach, rightClear = reach, nearest = reach;
+    for (const ang of [-1.4, -0.95, -0.55, -0.2, 0.2, 0.55, 0.95, 1.4]) {
+      const ca = Math.cos(ang), sa = Math.sin(ang);
+      _probe.set(_run.x * ca - _run.z * sa, 0, _run.x * sa + _run.z * ca);
+      _origin.copy(v.position).addScaledVector(v.forward, v.spec.dims.l * 0.45);
+      _origin.y += 0.6;
+      const hit = raycast(v.world, _origin, _probe, reach, RAY_GROUNDS, v.body);
+      const toi = hit ? hit.toi : reach;
+      // Only what is more or less in the way counts as something to slow for.
+      if (Math.abs(ang) <= 0.55 && toi < nearest) nearest = toi;
+      if (ang < 0) leftClear = Math.min(leftClear, toi);
+      else rightClear = Math.min(rightClear, toi);
+    }
+
+    // Urgency from how close the nearest thing is; direction from which side
+    // has more room. Squared so distant scenery is ignored and something about
+    // to be hit dominates.
+    // Urgency from whichever flank is tightest, not from the forward-only
+    // figure, so a wall alongside is reacted to even with open road ahead.
+    const tightest = Math.min(leftClear, rightClear, nearest);
+    const urgency = clamp01(1 - tightest / reach);
+    const bias = ((leftClear - rightClear) / reach) * urgency * urgency * 2.4;
+
+    this.wallBias = lerp(this.wallBias, clamp(bias, -0.8, 0.8), 1 - Math.exp(-12 * dt));
+    this.wallNear = nearest;
+    return this.wallBias;
+  }
+
   avoid(others, dt) {
     const v = this.v;
+    this._avoidScenery(dt);
     let bias = 0;
     const range = clamp(9 + v.speed * 0.85, 12, 45);
 

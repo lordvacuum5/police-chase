@@ -721,8 +721,14 @@ export class Vehicle {
       // Per-axle grip trim: a little extra at the rear buys traction and
       // stability without making the whole car feel glued down.
       const bias = s.gripBias ? (w.front ? s.gripBias.front : s.gripBias.rear) : 1;
+      // Off-road tyres. Only applies on the loose stuff, so a car with them is
+      // no better on tarmac -- it is simply less helpless the moment it leaves
+      // it. Pursuit units are allowed to cut corners and take lines across open
+      // ground, and being allowed to do it is not much use on a surface that
+      // gives up less than half the grip of the road.
+      const loose = w.surface === 0 ? (s.offRoadGrip || 1) : 1;
       const f = tyreForces(tyre, Fs, w.slipRatio, w.slipAngle, w.condition,
-        s.gripScale * bias * this.assist.grip);
+        s.gripScale * bias * this.assist.grip * loose);
       // Fleet braking rubber. Applied to the longitudinal force only, and only
       // while the pedal is down and the force is opposing motion, so it buys
       // stopping distance and nothing else -- a police car does not corner or
@@ -840,7 +846,8 @@ export class Vehicle {
     let sum = 0, n = 0;
     for (const w of this.wheels) {
       if (!w.grounded) continue;
-      sum += (SURFACE_TYRES[w.surface] || TYRE_ROAD).mu;
+      const loose = w.surface === 0 ? (this.spec.offRoadGrip || 1) : 1;
+      sum += (SURFACE_TYRES[w.surface] || TYRE_ROAD).mu * loose;
       n++;
     }
     return n ? sum / n : TYRE_ROAD.mu;

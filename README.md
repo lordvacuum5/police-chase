@@ -252,6 +252,71 @@ changed:
   speed*, scaled by how far gone the car is and by whether this driver can hold
   a slide at all.
 
+### Cutting corners
+
+Everything except a patrol car may leave the carriageway: cut a corner, put two
+wheels on the verge, or take a line straight across open ground. A patrol car on
+its beat keeps to the road, and that difference in how they move is part of how
+you tell one from the other before the lights come on.
+
+Allowing it is four changes, not one, because several separate things were
+quietly holding units on the tarmac:
+
+* **Lane keeping** is the term that stops a car cutting a corner, so a driver
+  allowed off-road keeps only a quarter of it — enough not to wander.
+* **Running out of road stops being a wall.** For these units it is a change of
+  surface: the speed check brakes toward a pace the verge can hold rather than
+  toward a stop.
+* **The direct-pursuit test no longer requires the line to be road.** Driving
+  at the target across whatever lies between *is* the corner cutting.
+* **"Get back on the road" became a rescue, not a rule** — it now fires only
+  for a unit that has genuinely bogged down, not one that is deliberately
+  taking a line.
+
+They also get tyres for it. `offRoadGrip` applies only on the loose, so a
+police car is no better on tarmac — it is simply less helpless the moment it
+leaves it. Grass mu goes 0.62 to about 0.96. Before, a unit that cut a corner
+crawled at 6–10 km/h on the other side, which is not a shortcut; it now carries
+about 42 km/h off-road.
+
+### Not driving into buildings
+
+Every clearance check before this answered "how hard must I brake", and braking
+is not always the answer — a car that has run wide is going to touch the wall on
+its outside whatever it does with the pedal, because the wall is not in front of
+it. Units now cast a fan either side of the line of travel and steer toward
+whichever side has more room.
+
+Three details, each of which was a real bug found by measuring:
+
+* **A wall dead ahead produced a bias of exactly zero.** Summing a push per ray
+  gives the centre ray no side to push toward, so a building directly in front
+  produced no avoidance at all and the car drove into it at 60 km/h. Measuring
+  both flanks and steering to the roomier one fixes it.
+* **The wide rays must not feed the braking clamp.** On any ordinary street
+  there is a building about seven metres to either side; braking for those
+  would reduce the whole force to a crawl everywhere. They steer, they do not
+  slow. Only what is roughly in the way slows the car.
+* **The rolling block was aiming into buildings.** It picked its aim point by
+  extrapolating a straight line down the road's current tangent — fine on a
+  straight, and on any bend it lands outside the curve, which is inside a
+  building. Every scenery impact left in the pursuit was a blocker doing this,
+  at 58–64 km/h with something solid at just about its own lead distance. It
+  now follows the carriageway polyline.
+
+The last-resort clamp inside `driveTo` is deliberately pessimistic where the
+planners above are not: it fires only when the plan has already gone wrong,
+which usually means the car is also turning and spending its friction on that,
+so it assumes three quarters of the grip and keeps six metres in hand.
+
+Scenery impacts per car-minute, measured over 150 s at four stars, counted as
+step changes in speed with no other car nearby:
+
+| | before | after |
+|---|---|---|
+| Ashfield | 0.44 | **0.07** |
+| Wexbury | 0.49 | **0.03** |
+
 ### Getting back on the road
 
 Two more failures put units on grass and kept them there, and neither was a

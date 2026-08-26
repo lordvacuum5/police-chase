@@ -124,6 +124,13 @@ export class Officer {
       : this.role === ROLE.SEARCH ? 1.5
         : 3.0;
 
+    // Anything that is not pottering about on its beat may cut a corner, put
+    // two wheels on the verge, or take a line straight across open ground. A
+    // patrol car keeps to the carriageway, and that difference in how they
+    // move is part of how you tell one from the other before the lights come
+    // on.
+    this.driver.allowOffRoad = this.role !== ROLE.PATROL;
+
     // Off the hard surface: getting back onto it is the only job.
     //
     // Nothing used to say this, and following a road you are not on is not the
@@ -226,9 +233,19 @@ export class Officer {
       return null;
     }
 
-    // A wheel clipping a verge is not worth abandoning the chase for.
     this.offRoadFor = (this.offRoadFor || 0) + dt;
-    if (this.offRoadFor < 0.35) return null;
+
+    // A unit that is allowed off the carriageway is not lost, it is taking a
+    // line -- so this stops being "get back on the road" and becomes purely a
+    // rescue for one that has genuinely bogged down. Without the distinction
+    // the corner cutting would be dragged straight back onto the tarmac the
+    // moment it began.
+    if (this.driver.allowOffRoad) {
+      if (v.speed > 7 || this.offRoadFor < 1.5) return null;
+    } else if (this.offRoadFor < 0.35) {
+      // A wheel clipping a verge is not worth abandoning a patrol for.
+      return null;
+    }
 
     const g = this.game.graph;
     const snap = g.nearestEdge(v.position.x, v.position.z);
@@ -239,12 +256,13 @@ export class Officer {
     _aim.set(snap.x + dir.x * 10, 0, snap.z + dir.z * 10);
 
     this.driver.setPath([]);
-    // ignoreSurroundings, because the thing we are driving toward is a road we
-    // are currently beside, and the clearance probe would read the kerb, the
-    // fence and the hedge as reasons to stop.
-    return this.driver.driveTo(_aim, 13, dt, {
-      allowHandbrake: false, ignoreSurroundings: true, lane: false,
-    });
+    // Not ignoreSurroundings any more. It was set because the clearance probe
+    // reads the kerb and the hedge beside the road as reasons to stop -- but a
+    // car crawling back onto the carriageway with every check switched off
+    // will happily drive through a house to get there, and did. The
+    // last-resort wall clamp inside driveTo now covers the genuinely solid
+    // case while leaving the kerb alone.
+    return this.driver.driveTo(_aim, 13, dt, { allowHandbrake: false, lane: false });
   }
 
   /**
@@ -286,12 +304,13 @@ export class Officer {
       _eye.copy(v.position); _eye.y += 1.0;
       _aim2.copy(target.position); _aim2.y += 0.8;
       this._hasLos = hasLineOfSight(this.game.world, _eye, _aim2, 1.5);
-      this._directIsDrivable = this._surfaceClear(v.position, target.position);
     }
 
-    if (d > 85 || !this._hasLos || !this._directIsDrivable) {
-      // Far away, no clear line, or a clear line that is not a road: the road
-      // network matters more.
+    if (d > 85 || !this._hasLos) {
+      // Far away, or no clear line: the road network matters more. Note there
+      // is deliberately no "and the direct line is road" test here any more --
+      // driving at the target across whatever lies between is the corner
+      // cutting, and it is allowed.
       return this._goTo(dt, target.position, 1.0);
     }
 
@@ -468,12 +487,21 @@ export class Officer {
     const lat = clamp(rx * dir.z - rz * dir.x, -(snap.edge.width * 0.5 - 2),
       snap.edge.width * 0.5 - 2);
 
+    // Follow the carriageway forward rather than extrapolating a straight line
+    // down the current tangent. Straight-line lead is fine on a straight and
+    // wrong on every bend -- it puts the aim point outside the curve, and on a
+    // road that turns even moderately that is inside a building. Every scenery
+    // impact left in the pursuit was a blocker doing exactly this, at 58 to
+    // 64 km/h with something solid at just about its own lead distance.
     const lead = 16 + v.speed * 0.35;
-    _aim.set(
-      snap.x + dir.x * lead + dir.z * lat,
-      0,
-      snap.z + dir.z * lead - dir.x * lat,
-    );
+    // nearestEdge gives a point and a distance along, but no tangent -- take
+    // that from pointAt so we know which way along the polyline we are going.
+    const here = g.pointAt(snap.edge, snap.along);
+    const alongSign = (dir.x * here.tx + dir.z * here.tz) >= 0 ? 1 : -1;
+    const at = clamp(snap.along + alongSign * lead, 0, snap.edge.length);
+    const p = g.pointAt(snap.edge, at);
+    const tx = p.tx * alongSign, tz = p.tz * alongSign;
+    _aim.set(p.x + tz * lat, 0, p.z - tx * lat);
 
     // Slower than them, so they run up on us -- but the margin depends on the
     // gap. From a long way ahead we give away a lot of speed so the gap closes
