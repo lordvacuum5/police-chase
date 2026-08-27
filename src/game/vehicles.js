@@ -128,8 +128,9 @@ export const SPECS = {
     aero: { dragArea: 0.76, downforce: 0.25 },
     gripScale: 0.97,
     gripBias: { front: 1.0, rear: 1.06 },
-    // Fleet tyres bite on the loose. Grass mu goes 0.62 -> 0.96.
-    offRoadGrip: 1.55,
+    // Fleet tyres bite on the loose. Grass mu goes 0.62 -> about 1.1, so a
+    // line straight across country is a real option rather than a bog.
+    offRoadGrip: 1.80,
     durability: 2.6,
     topSpeedHint: 82,
   }),
@@ -154,7 +155,7 @@ export const SPECS = {
     aero: { dragArea: 0.70, downforce: 0.40 },
     gripScale: 0.99,
     gripBias: { front: 1.0, rear: 1.08 },
-    offRoadGrip: 1.60,
+    offRoadGrip: 1.85,
     durability: 2.8,
     topSpeedHint: 94,
   }),
@@ -175,7 +176,7 @@ export const SPECS = {
     aero: { dragArea: 0.67, downforce: 0.44 },
     gripScale: 1.0,
     gripBias: { front: 1.0, rear: 1.09 },
-    offRoadGrip: 1.62,
+    offRoadGrip: 1.88,
     durability: 2.4,
     topSpeedHint: 98,
   }),

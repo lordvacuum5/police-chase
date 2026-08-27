@@ -1,3 +1,4 @@
+
 // Do units hit scenery, and if so, who and while doing what?
 //
 // Impacts are detected as a step change in speed rather than as damage: units
@@ -56,15 +57,34 @@ window.__runBuildings = async function (seconds = 120) {
     const prevSpeed = new Map();
     const byRole = {}, hits = [];
     let t = 0, grass = 0, sceneryHits = 0, carHits = 0, stalls = 0;
+    // Does going straight actually get them to the target? Track how close
+    // the nearest unit is, and how often one falls back to the road network.
+    const nearestDist = [];
+    let ticks = 0, within60 = 0, fallback = 0;
     const stalled = new Map();
     const spd = [], offRoadSpd = [];
 
     for (let i = 0; i < Math.round(seconds / 0.1); i++) {
+      // Exactly one step per iteration. Two of them here -- which is what an
+      // earlier edit of this file accidentally did -- advances the sim 0.2 s
+      // while the speed delta below is still read as a 0.1 s difference, and
+      // ordinary hard braking then registers as a collision. It inflated the
+      // impact rate by two orders of magnitude and made every A/B taken with
+      // it meaningless.
       g.stepHeadless(0.1);
+      ticks++;
+      let closest = Infinity;
+      for (const u of g.dispatcher.units) {
+        if (u.role === 'hold' || u.role === 'disabled') continue;
+        const dd = Math.hypot(u.position.x - p.position.x, u.position.z - p.position.z);
+        if (dd < closest) closest = dd;
+      }
+      if (closest < Infinity) { nearestDist.push(closest); if (closest < 60) within60++; }
       for (const u of g.dispatcher.units) {
         const v = u.vehicle;
         if (u.role === 'hold' || u.role === 'disabled') continue;
         t++;
+        if (u._roadFallback > 0) fallback++;
         const onGrass = g.sim.surfaceAt(v.position.x, v.position.z) === 0;
         if (onGrass) { grass++; offRoadSpd.push(v.speed * 3.6); }
         spd.push(v.speed * 3.6);
@@ -115,6 +135,9 @@ window.__runBuildings = async function (seconds = 120) {
       sceneryHitsByRole: byRole,
       stallsPerCarMin: perMin(stalls),
       onGrassPct: +(100 * grass / Math.max(1, t)).toFixed(1),
+      nearestUnitDistMedian_m: med(nearestDist),
+      someoneWithin60mPct: +(100 * within60 / Math.max(1, ticks)).toFixed(1),
+      roadFallbackPct: +(100 * fallback / Math.max(1, t)).toFixed(1),
       kphMedian: med(spd),
       kphMedianWhileOffRoad: med(offRoadSpd),
       sampleHits: hits,

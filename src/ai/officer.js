@@ -298,19 +298,33 @@ export class Officer {
     // Only chase the target's position directly when there is actually a clear
     // line to it. Driving at a car you cannot see means driving at whatever is
     // between you and it, which in a city of eighty-metre blocks is a building.
+    // Straight at them, as the crow flies, at any range. Distance is not a
+    // reason to take the roads and neither is the surface: grass, verges,
+    // playing fields and car parks are all just ground, and a unit crosses
+    // them. The only thing that sends a car back to the road network is
+    // something solid actually in the way.
+    //
+    // The check is a corridor, not a ray. A single centre line threading the
+    // gap between two buildings reads as clear for something with no width;
+    // the car is two metres across and closing at whatever the target is
+    // doing, and it takes the corner of the building.
     this._losTimer = (this._losTimer || 0) - dt;
     if (this._losTimer <= 0) {
       this._losTimer = 0.2;
-      _eye.copy(v.position); _eye.y += 1.0;
-      _aim2.copy(target.position); _aim2.y += 0.8;
-      this._hasLos = hasLineOfSight(this.game.world, _eye, _aim2, 1.5);
+      const dx = target.position.x - v.position.x, dz = target.position.z - v.position.z;
+      const len = Math.hypot(dx, dz) || 1;
+      const nx = -dz / len, nz = dx / len;
+      let open = true;
+      for (const off of [-2.2, 0, 2.2]) {
+        _eye.set(v.position.x + nx * off, v.position.y + 1.0, v.position.z + nz * off);
+        _aim2.set(target.position.x + nx * off, target.position.y + 0.8, target.position.z + nz * off);
+        if (!hasLineOfSight(this.game.world, _eye, _aim2, 1.5)) { open = false; break; }
+      }
+      this._hasLos = open;
     }
 
-    if (d > 85 || !this._hasLos) {
-      // Far away, or no clear line: the road network matters more. Note there
-      // is deliberately no "and the direct line is road" test here any more --
-      // driving at the target across whatever lies between is the corner
-      // cutting, and it is allowed.
+    if (!this._hasLos) {
+      // Something solid in the way. The road network is the way round it.
       return this._goTo(dt, target.position, 1.0);
     }
 

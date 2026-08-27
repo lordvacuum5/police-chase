@@ -252,6 +252,40 @@ changed:
   speed*, scaled by how far gone the car is and by whether this driver can hold
   a slide at all.
 
+### Going straight at you
+
+A unit in pursuit drives at you as the crow flies, at any range. Distance is not
+a reason to take the roads and neither is the surface — grass, verges, playing
+fields and car parks are all just ground, and a car crosses them at whatever
+speed they will take. The only thing that sends a pursuer back to the road
+network is something solid actually in the way.
+
+The obstruction test is a **corridor, not a ray**. A single centre line
+threading the gap between two buildings reads as clear for something with no
+width; the car is two metres across and closing at whatever you are doing, and
+it takes the corner of the building. Three lines a car's width apart is the
+difference.
+
+Measured over 120 s at four stars, against the same code with the old
+"direct only within 85 m" rule:
+
+| | by road beyond 85 m | crow flies |
+|---|---|---|
+| nearest unit, median | 64.7 m | **31.4 m** |
+| someone within 60 m | 44.8% | **81.9%** |
+| scenery impacts /car-min | 0.10 | 0.13 |
+| median pursuit speed | 55.3 km/h | 58.6 km/h |
+
+Half the distance, for two extra scenery contacts in two minutes across a
+dozen cars. On Wexbury the nearest unit sits at a median of 21 m with someone
+inside 60 m for 84% of the chase.
+
+Note what is *not* in that change: intercepts, responses to a shout, searches
+and patrols still use the roads. An intercept's whole purpose is to get
+somewhere you are not yet, and a unit crossing town to a position you were last
+reported at is genuinely quicker on the network than in a straight line through
+a housing estate.
+
 ### Cutting corners
 
 Everything except a patrol car may leave the carriageway: cut a corner, put two
