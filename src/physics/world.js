@@ -71,7 +71,12 @@ export function raycast(world, origin, dir, maxToi, filterGroups = undefined, ex
 
 // Reused so the sweep does not allocate a shape every call; the AI runs this
 // several times a car, several times a second.
-const _sweepShape = new RAPIER.Cuboid(0.95, 0.5, 0.35);
+// Deliberately wider than the car. The widest police car is 1.96 m across, so
+// a 1.90 m probe has *negative* margin: a gap it reports as clear is one the
+// car does not actually fit through, and threading a tight gap ends in a
+// scrape every time. 2.36 m leaves about 20 cm each side, which is roughly
+// what a driver would want before committing to a gap at speed.
+const _sweepShape = new RAPIER.Cuboid(1.18, 0.5, 0.35);
 const _sweepRot = { x: 0, y: 0, z: 0, w: 1 };
 const _sweepPos = { x: 0, y: 0, z: 0 };
 

@@ -262,7 +262,7 @@ third; regaining sight clears it and resets the clock.
 
 Ducking behind one building is not an escape. Staying out of sight is. Only
 once the bar empties do they fall back to your last known position, and only
-after that does it become the thirty-second search.
+after that does it become the sixty-second search.
 
 ### Seeing what will actually fit
 
@@ -278,8 +278,13 @@ the car actually cares about — will *this* fit through there.
 
 | scenery impacts /car-min | ray fan | swept box |
 |---|---|---|
-| Ashfield | 0.13 | **0.04** |
-| Wexbury | 0.12 | **0.04** |
+| Ashfield | 0.13 | **0.10** |
+| Wexbury | 0.12 | **0.07** |
+
+The swept box on its own measured 0.04 on both maps. The faster fleet engines
+above cost a little of that back — more speed means more energy to get rid of —
+and the widened probe recovers part of it. Every remaining contact on either map
+is the rolling block.
 
 One thing tried and rejected: extending the close-range speed clamp into a
 general "be slow enough to turn within whatever you can see" rule. It reads as
@@ -287,6 +292,26 @@ obviously correct and made the city *worse* — there is a building about thirty
 metres ahead at every junction, so units simply became timid, the nearest one
 sat 50 m back instead of 25, and contacts went up as they bunched behind each
 other.
+
+### Keeping up
+
+The patrol car — the one you meet most, and the only kind fielded below three
+stars — was genuinely slower than the runner: 0–100 in 8.18 s against your 7.50,
+and 9 km/h down after ten seconds. Flooring it simply left them behind, which is
+not a chase. The fleet engines are up, and every car they field now
+out-accelerates you:
+
+| | 0–100 km/h | at 10 s | vs you |
+|---|---|---|---|
+| Runner (you) | 7.50 s | 123 km/h | — |
+| Patrol | 6.98 s | 129 km/h | **+6** |
+| Interceptor | 6.45 s | 135 km/h | **+12** |
+| Unmarked | 5.97 s | 143 km/h | **+20** |
+
+The verge is less of a cliff for you too. Bare grass at μ 0.62 feels like ice
+the moment you clip it; the runner now gets `offRoadGrip` as well, taking it to
+about 0.96 — enough to gather the car up rather than be a passenger. Still well
+short of the fleet's 1.80, so they keep the advantage off the tarmac.
 
 ### Going straight at you
 
@@ -587,7 +612,7 @@ where you are, and hands each unit a job:
   forward cone at all — it is scanning every direction, not staring out of the
   windscreen — and 20% more range than a plain reacquire. Break contact and the
   dispatcher dead-reckons for a couple of seconds, drives at your last known
-  position for five, then searches for the rest of a **30 second** window —
+  position for five, then searches for the rest of a **60 second** window —
   which is exactly the countdown on the HUD, and exactly how long you must stay
   hidden before the heat starts to fall.
 * **Routing starts where the car is.** A route returns a path beginning at a

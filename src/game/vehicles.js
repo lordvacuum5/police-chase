@@ -102,6 +102,11 @@ export const SPECS = {
     brakes: { maxTorque: 2400, frontBias: 0.62, handbrakeTorque: 4400 },
     gripScale: 1.0,
     gripBias: { front: 1.0, rear: 1.05 },
+    // Bare grass is 0.62 -- less than half the road figure -- which makes the
+    // verge feel like ice the moment you clip it. This takes it to about 0.96,
+    // enough to gather the car up rather than simply passenger it. Still well
+    // short of the fleet's 1.80, so they keep the advantage off the tarmac.
+    offRoadGrip: 1.55,
     durability: 1.25,
     topSpeedHint: 80,
   }),
@@ -118,8 +123,8 @@ export const SPECS = {
     }),
     engine: Object.assign({}, baseEngine, {
       torqueCurve: [
-        [800, 272], [1500, 385], [2500, 472], [3500, 500],
-        [4500, 482], [5500, 435], [6500, 352], [7200, 282],
+        [800, 322], [1500, 455], [2500, 558], [3500, 590],
+        [4500, 569], [5500, 514], [6500, 416], [7200, 333],
       ],
     }),
     // Fleet brakes: bigger discs, and an anti-lock system the runner has not
@@ -132,7 +137,7 @@ export const SPECS = {
     // line straight across country is a real option rather than a bog.
     offRoadGrip: 1.80,
     durability: 2.6,
-    topSpeedHint: 82,
+    topSpeedHint: 88,
   }),
 
   /** Highway interceptor. Turns up at heat 3 and can actually stay with you. */
@@ -147,8 +152,8 @@ export const SPECS = {
     // that cannot out-accelerate the car it is chasing is just scenery.
     engine: Object.assign({}, baseEngine, {
       torqueCurve: [
-        [800, 300], [1500, 430], [2500, 528], [3500, 570],
-        [4500, 560], [5500, 512], [6500, 424], [7200, 344],
+        [800, 324], [1500, 464], [2500, 570], [3500, 616],
+        [4500, 605], [5500, 553], [6500, 458], [7200, 372],
       ],
     }),
     brakes: { maxTorque: 3800, frontBias: 0.63, handbrakeTorque: 3000, abs: 1, gripBonus: 1.58 },
@@ -157,7 +162,7 @@ export const SPECS = {
     gripBias: { front: 1.0, rear: 1.08 },
     offRoadGrip: 1.85,
     durability: 2.8,
-    topSpeedHint: 94,
+    topSpeedHint: 99,
   }),
 
   /** Unmarked pursuit car. Fastest thing they have, and hardest to spot. */
@@ -168,8 +173,8 @@ export const SPECS = {
     suspension: Object.assign({}, baseSuspension, { arbRear: 8800 }),
     engine: Object.assign({}, baseEngine, {
       torqueCurve: [
-        [800, 315], [1500, 452], [2500, 556], [3500, 600],
-        [4500, 590], [5500, 538], [6500, 444], [7200, 360],
+        [800, 340], [1500, 488], [2500, 600], [3500, 648],
+        [4500, 637], [5500, 581], [6500, 480], [7200, 389],
       ],
     }),
     brakes: { maxTorque: 4000, frontBias: 0.62, handbrakeTorque: 3200, abs: 1, gripBonus: 1.62 },
@@ -178,7 +183,7 @@ export const SPECS = {
     gripBias: { front: 1.0, rear: 1.09 },
     offRoadGrip: 1.88,
     durability: 2.4,
-    topSpeedHint: 98,
+    topSpeedHint: 103,
   }),
 };
 

@@ -23,7 +23,7 @@ const _tgt = new THREE.Vector3();
 const _dir = new THREE.Vector3();
 
 /** How long the police keep hunting after losing contact, in seconds. */
-export const SEARCH_SECONDS = 30;
+export const SEARCH_SECONDS = 60;
 
 /**
  * How long the force keeps a hard fix on you after losing sight. Inside this

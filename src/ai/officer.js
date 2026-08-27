@@ -511,8 +511,14 @@ export class Officer {
     // point on the centreline. Matching it is what keeps us in front of them
     // rather than politely alongside.
     const rx = target.position.x - snap.x, rz = target.position.z - snap.z;
-    const lat = clamp(rx * dir.z - rz * dir.x, -(snap.edge.width * 0.5 - 2),
-      snap.edge.width * 0.5 - 2);
+    // Two metres of margin left the blocker's flank within touching distance
+    // of the kerb -- and its contacts are lateral, not frontal: it slides
+    // toward the edge to match the target while every forward check reports
+    // twenty-odd metres of clear road. Sitting a car's width in from the edge
+    // costs almost nothing in coverage and is most of the difference.
+    const margin = Math.min(3.4, snap.edge.width * 0.28);
+    const lat = clamp(rx * dir.z - rz * dir.x,
+      -(snap.edge.width * 0.5 - margin), snap.edge.width * 0.5 - margin);
 
     // Follow the carriageway forward rather than extrapolating a straight line
     // down the current tangent. Straight-line lead is fine on a straight and
@@ -536,7 +542,20 @@ export class Officer {
     // just under their pace, which holds the block instead of simply being
     // rammed off the road.
     const factor = lerp(0.88, 0.66, clamp01((r.long - 20) / 90));
-    const speed = clamp(Math.abs(target.forwardSpeed) * factor, 7, this._chaseSpeed());
+    let speed = clamp(Math.abs(target.forwardSpeed) * factor, 7, this._chaseSpeed());
+
+    // A blocker is the one unit that deliberately moves sideways across the
+    // carriageway at speed, and that is what puts its flank into things. It
+    // gets the stricter rule the rest do not: be slow enough to *turn* within
+    // whatever is in the way, not merely to stop before it. Applied to every
+    // unit this made the city worse -- there is a building thirty metres ahead
+    // at every junction and they all became timid -- but the blocker was, and
+    // remained, the single largest source of scenery contact on both maps.
+    const near = this.driver.wallNear;
+    if (near < 45) {
+      speed = Math.min(speed, Math.sqrt(1.25 * 9.81 * Math.max(8, near)));
+    }
+
     this.driver.setPath([]);
     return this.driver.driveTo(_aim, speed, dt, { allowHandbrake: false });
   }
