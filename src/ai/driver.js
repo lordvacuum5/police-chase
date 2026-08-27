@@ -15,7 +15,7 @@
 import * as THREE from 'three';
 import { clamp, clamp01, lerp, sign, angleDelta, curveRadius, dist2, smoothstep } from '../util/math.js';
 import { cornerSpeedLimit, TYRE_GRASS } from '../physics/tyre.js';
-import { raycast, RAY_GROUNDS } from '../physics/world.js';
+import { raycast, sweepBox, RAY_GROUNDS } from '../physics/world.js';
 
 const _p = new THREE.Vector3();
 const _origin = new THREE.Vector3();
@@ -557,6 +557,12 @@ export class Driver {
     // friction budget is being spent on that instead. Assuming three quarters
     // of the grip and keeping six metres in hand is what stops a marginal stop
     // from being a contact.
+    // Kept to close range on purpose. Extending it into a general "be slow
+    // enough to turn within whatever you can see" rule was tried and made
+    // things worse in the city, where there is a building about thirty metres
+    // ahead at every junction: units simply became timid, the nearest one sat
+    // 50 m back instead of 28, and the scenery contacts went *up* rather than
+    // down as they bunched up behind each other.
     if (this.wallNear < 34) {
       const mu = this._mu();
       const usable = Math.max(0, this.wallNear - 6);
@@ -691,18 +697,34 @@ export class Driver {
     // crawl everywhere. What they are for is the blocker sliding across the
     // carriageway to stay in front of you, which puts its flank into a wall
     // that nothing looking forward ever sees.
+    // Swept boxes, not rays. A ray is a line with no width, and a fan of them
+    // threads either side of a tree or clips the corner of a building and
+    // reports open road -- which is how a car two metres wide ends up wrapped
+    // round a lamp post that nothing ever saw. Sweeping the car's own footprint
+    // asks the question the car actually cares about: will this fit through
+    // there. The three sweeps give both the distance to slow for and a side to
+    // steer toward.
+    _origin.copy(v.position).addScaledVector(v.forward, v.spec.dims.l * 0.45);
+    _origin.y += 0.5;
     let leftClear = reach, rightClear = reach, nearest = reach;
-    for (const ang of [-1.4, -0.95, -0.55, -0.2, 0.2, 0.55, 0.95, 1.4]) {
+    for (const ang of [-0.42, 0, 0.42]) {
       const ca = Math.cos(ang), sa = Math.sin(ang);
       _probe.set(_run.x * ca - _run.z * sa, 0, _run.x * sa + _run.z * ca);
-      _origin.copy(v.position).addScaledVector(v.forward, v.spec.dims.l * 0.45);
-      _origin.y += 0.6;
-      const hit = raycast(v.world, _origin, _probe, reach, RAY_GROUNDS, v.body);
-      const toi = hit ? hit.toi : reach;
-      // Only what is more or less in the way counts as something to slow for.
-      if (Math.abs(ang) <= 0.55 && toi < nearest) nearest = toi;
+      const toi = sweepBox(v.world, _origin, _probe, reach, RAY_GROUNDS, v.body);
+      if (toi < nearest) nearest = toi;
       if (ang < 0) leftClear = Math.min(leftClear, toi);
-      else rightClear = Math.min(rightClear, toi);
+      else if (ang > 0) rightClear = Math.min(rightClear, toi);
+      else { leftClear = Math.min(leftClear, toi); rightClear = Math.min(rightClear, toi); }
+    }
+    // A hit dead ahead lands on both flanks, so the difference is zero and the
+    // tie has to be broken by looking further round.
+    if (nearest < reach * 0.7 && Math.abs(leftClear - rightClear) < 0.5) {
+      for (const ang of [-1.05, 1.05]) {
+        const ca = Math.cos(ang), sa = Math.sin(ang);
+        _probe.set(_run.x * ca - _run.z * sa, 0, _run.x * sa + _run.z * ca);
+        const toi = sweepBox(v.world, _origin, _probe, reach, RAY_GROUNDS, v.body);
+        if (ang < 0) leftClear = toi; else rightClear = toi;
+      }
     }
 
     // Urgency from how close the nearest thing is; direction from which side

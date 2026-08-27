@@ -8,6 +8,7 @@
 import { clamp, clamp01, lerp, toKmh } from '../util/math.js';
 import { ROAD_KIND } from '../world/roadgraph.js';
 import { WORLD_HALF } from '../world/common.js';
+import { TRACK_SECONDS } from '../ai/dispatcher.js';
 
 const MAP_PX = 1200;          // offscreen map resolution
 const MAP_SPAN = 470;         // metres visible on the minimap
@@ -34,6 +35,9 @@ export class Hud {
     this.bustFill = document.getElementById('bustfill');
     this.bustSecs = document.getElementById('bustsecs');
     this._bustShown = false;
+    this.trackEl = document.getElementById('track');
+    this.trackFill = document.getElementById('trackfill');
+    this._trackShown = false;
 
     this.speedo = document.getElementById('speedo');
     this.sctx = this.speedo.getContext('2d');
@@ -155,6 +159,23 @@ export class Hud {
       this.bustFill.style.width = (heat.bustProgress * 100).toFixed(1) + '%';
       this.bustSecs.textContent = heat.bustRemaining.toFixed(1);
       this.bustEl.classList.toggle('pulse', heat.bustPinned && heat.bustRemaining < 2.5);
+    }
+
+    // ---- tracking meter ----
+    // The window after you break line of sight in which they still know
+    // exactly where you are. Only worth showing while there is a pursuit and
+    // they cannot currently see you: with eyes on you it would sit full the
+    // whole time and say nothing.
+    const k = dispatcher.knowledge;
+    const tracking = heat.tier > 0 && !k.seen && k.timeSinceSeen < TRACK_SECONDS;
+    if (tracking !== this._trackShown) {
+      this._trackShown = tracking;
+      this.trackEl.classList.toggle('on', tracking);
+    }
+    if (tracking) {
+      const left = clamp01(1 - k.timeSinceSeen / TRACK_SECONDS);
+      this.trackFill.style.width = (left * 100).toFixed(1) + '%';
+      this.trackEl.classList.toggle('fading', left < 0.34);
     }
 
     this._drawSpeedo(dt, player);

@@ -69,6 +69,35 @@ export function raycast(world, origin, dir, maxToi, filterGroups = undefined, ex
   };
 }
 
+// Reused so the sweep does not allocate a shape every call; the AI runs this
+// several times a car, several times a second.
+const _sweepShape = new RAPIER.Cuboid(0.95, 0.5, 0.35);
+const _sweepRot = { x: 0, y: 0, z: 0, w: 1 };
+const _sweepPos = { x: 0, y: 0, z: 0 };
+
+/**
+ * Sweep a car-width box along `dir` and return the distance to the first thing
+ * it touches, or `maxToi` if the way is clear.
+ *
+ * A ray is a line with no width. A fan of them can thread either side of a
+ * tree or clip past the corner of a building and report open road, which is
+ * exactly how a car two metres wide ends up wrapped round a lamp post that
+ * nothing ever saw. Sweeping the actual shape asks the question the car cares
+ * about: will *this* fit through there.
+ */
+export function sweepBox(world, origin, dir, maxToi, filterGroups = undefined, excludeBody = null) {
+  _sweepPos.x = origin.x; _sweepPos.y = origin.y; _sweepPos.z = origin.z;
+  const hit = world.castShape(
+    _sweepPos, _sweepRot, dir, _sweepShape,
+    0, maxToi, true,
+    undefined, filterGroups, undefined, excludeBody || undefined,
+  );
+  if (!hit) return maxToi;
+  const toi = hit.time_of_impact !== undefined ? hit.time_of_impact
+    : (hit.timeOfImpact !== undefined ? hit.timeOfImpact : hit.toi);
+  return toi === undefined ? maxToi : toi;
+}
+
 /** True if nothing solid sits between two world points. */
 export function hasLineOfSight(world, a, b, pad = 0.0) {
   const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;

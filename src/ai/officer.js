@@ -314,10 +314,23 @@ export class Officer {
       const dx = target.position.x - v.position.x, dz = target.position.z - v.position.z;
       const len = Math.hypot(dx, dz) || 1;
       const nx = -dz / len, nz = dx / len;
+
+      // Only the near stretch has to be clear, not the whole line. Requiring a
+      // clean corridor all the way to a target three hundred metres off means
+      // it is essentially never clear in a town, and the unit takes the roads
+      // every time -- which is exactly the "they still use roads when I'm far
+      // away" complaint. Steering is continuous: a car only needs to know the
+      // next few seconds are open, and it re-asks four times a second.
+      const look = Math.min(len, 70);
+      const ux = dx / len, uz = dz / len;
       let open = true;
       for (const off of [-2.2, 0, 2.2]) {
         _eye.set(v.position.x + nx * off, v.position.y + 1.0, v.position.z + nz * off);
-        _aim2.set(target.position.x + nx * off, target.position.y + 0.8, target.position.z + nz * off);
+        _aim2.set(
+          v.position.x + nx * off + ux * look,
+          target.position.y + 0.8,
+          v.position.z + nz * off + uz * look,
+        );
         if (!hasLineOfSight(this.game.world, _eye, _aim2, 1.5)) { open = false; break; }
       }
       this._hasLos = open;

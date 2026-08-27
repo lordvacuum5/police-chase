@@ -252,6 +252,42 @@ changed:
   speed*, scaled by how far gone the car is and by whether this driver can hold
   a slide at all.
 
+### Tracking, and the three seconds after you break sight
+
+Losing line of sight does not lose you instantly. For **three seconds** the
+force keeps a hard fix on exactly where you are — radio, other units, a fair
+guess at where that road goes. A bar appears the moment they lose sight and
+drains over those three seconds, turning from orange to blue for the last
+third; regaining sight clears it and resets the clock.
+
+Ducking behind one building is not an escape. Staying out of sight is. Only
+once the bar empties do they fall back to your last known position, and only
+after that does it become the thirty-second search.
+
+### Seeing what will actually fit
+
+Every obstacle check used to be a ray, and a ray is a line with no width. A fan
+of them threads either side of a tree, or clips past the corner of a building,
+and reports open road — which is how a car two metres wide ends up wrapped
+round a lamp post that nothing ever saw.
+
+They now sweep the car's own footprint (`sweepBox`, over Rapier's `castShape`):
+three swept boxes along the line of travel and a little either side, which give
+both the distance to slow for and a side to steer toward. It asks the question
+the car actually cares about — will *this* fit through there.
+
+| scenery impacts /car-min | ray fan | swept box |
+|---|---|---|
+| Ashfield | 0.13 | **0.04** |
+| Wexbury | 0.12 | **0.04** |
+
+One thing tried and rejected: extending the close-range speed clamp into a
+general "be slow enough to turn within whatever you can see" rule. It reads as
+obviously correct and made the city *worse* — there is a building about thirty
+metres ahead at every junction, so units simply became timid, the nearest one
+sat 50 m back instead of 25, and contacts went up as they bunched behind each
+other.
+
 ### Going straight at you
 
 A unit in pursuit drives at you as the crow flies, at any range. Distance is not

@@ -26,6 +26,13 @@ const _dir = new THREE.Vector3();
 export const SEARCH_SECONDS = 30;
 
 /**
+ * How long the force keeps a hard fix on you after losing sight. Inside this
+ * window they still know exactly where you are; outside it, they only know
+ * where you were, and it becomes a search. Regaining sight resets it.
+ */
+export const TRACK_SECONDS = 3;
+
+/**
  * How long they keep driving at your last known position before admitting they
  * have lost you and starting to search properly. Much shorter than the search
  * itself -- otherwise every unit converges on a spot you left half a minute ago
@@ -143,8 +150,12 @@ export class Dispatcher {
     } else {
       k.seen = false;
       k.timeSinceSeen += dt;
-      // Dead reckoning: for a couple of seconds they can still guess well.
-      if (k.timeSinceSeen < 2.5) k.position.addScaledVector(k.velocity, dt);
+      // Breaking line of sight does not lose you instantly. For TRACK_SECONDS
+      // they still know exactly where you are -- radio, other units, a good
+      // guess at where that road goes -- and only then does it become a
+      // search. Ducking behind one building is not an escape; staying out of
+      // sight is.
+      if (k.timeSinceSeen < TRACK_SECONDS) k.position.copy(target.position);
       k.confidence = clamp01(1 - k.timeSinceSeen / SEARCH_SECONDS);
     }
   }
