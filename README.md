@@ -277,6 +277,35 @@ sooner:
 A clean run is now genuinely clean, and a wrecked car is genuinely wrecked --
 rather than every chase ending with a car that is vaguely down on power.
 
+### Pressure scales with the wanted level
+
+One star should be shakeable by driving quickly; five stars should be what it
+already was. Two things scale, and both land on exactly the old value at the
+top of the range so nothing about a five-star chase changes.
+
+**How far they can see.** The old rule gave a single first-star patrol car
+142 m of vision, which is most of a city block in every direction and far more
+than one car that has just been told to look out for you should have:
+
+| stars | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| before | 142 m | 164 m | 186 m | 208 m | 230 m |
+| after | **102 m** | 134 m | 166 m | 198 m | 230 m |
+
+**How hard they press.** `Officer.pace` caps the speed a unit will ask for as a
+fraction of what its car can do, and the rubber-band catch-up boost scales the
+same way -- giving a first-star patrol the same help as a five-star pursuit is
+what let one car hang on to a flat-out runner it had no business staying with.
+
+| stars | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| pace | 0.74 | 0.81 | 0.87 | 0.94 | 1.00 |
+| max boost | 1.25 | 1.38 | 1.50 | 1.63 | **1.75** |
+
+Measured peak speed over one fixed motorway route, so the road is not a
+variable: 151 km/h at one star rising to 163 at five, against 124 for the
+player's car on the same route.
+
 ### The detection ring
 
 A red ring on the minimap, always centred on your own marker, showing how far

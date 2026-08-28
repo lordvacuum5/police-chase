@@ -113,7 +113,12 @@ export class Dispatcher {
     // Searching units get 20% more range than a plain reacquire, and look all
     // the way round rather than through a forward cone -- a crew hunting for a
     // car is scanning every direction, not staring out of the windscreen.
-    let sightRange = hasContact ? 120 + this.tier * 22 : (55 + this.tier * 10) * 1.2;
+    // Steeper with the wanted level than it used to be. The old 120 + 22/tier
+    // gave a single first-star patrol car 142 m of vision, which is most of a
+    // city block in every direction and far too much for one car that has just
+    // been told to look out for you. Same 230 m at five stars, so the top of
+    // the range is unchanged.
+    let sightRange = hasContact ? 70 + this.tier * 32 : (55 + this.tier * 10) * 1.2;
     if (!hasContact && target.speed < 5) sightRange *= 0.6;
 
     // Published for the HUD, which draws it as the detection ring. Taken from

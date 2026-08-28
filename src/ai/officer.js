@@ -613,7 +613,11 @@ export class Officer {
     if (engaged <= 0) { a.boost = 1; a.grip = 1; a.stability = 0; a.shielded = false; return; }
 
     const far = clamp01((d - 30) / 220);               // 0 at 30 m, 1 at 250 m
-    a.boost = 1 + 0.75 * far * engaged;
+    // The rubber band tightens with the wanted level too. Giving a first-star
+    // patrol the same catch-up help as a five-star pursuit is what let a single
+    // car hang on to a flat-out runner it had no business staying with. At the
+    // top of the range this is the full 0.75 it always was.
+    a.boost = 1 + (0.25 + 0.50 * this.aggression) * far * engaged;
     a.grip = 1 + 0.35 * engaged;
     a.stability = engaged;
     // Still on the way: a crash costs this unit time, not its whole chase.
@@ -624,6 +628,17 @@ export class Officer {
   _chaseSpeed() {
     return this.vehicle.spec.topSpeedHint
       * clamp(lerp(0.86, 1.06, this.skill.aggression - 0.6), 0.8, 1.06)
+      * this.pace
       * this.vehicle.assist.boost;
+  }
+
+  /**
+   * How hard this unit is allowed to press, as a fraction of what its car can
+   * do. A single patrol car answering a first-star call should be shakeable by
+   * simply driving quickly; at five stars they are flat out and the number is
+   * 1, so the top of the range is exactly what it always was.
+   */
+  get pace() {
+    return lerp(0.74, 1.0, this.aggression);
   }
 }
