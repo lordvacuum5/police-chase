@@ -282,13 +282,17 @@ export class Vehicle {
     _v1.set(lv.x, lv.y, lv.z);
     // A large velocity change in a single substep can only be a collision.
     const dv = _v1.distanceTo(this._prevVel);
-    if (dv > 1.4) {
+    // Below this a knock is just a knock: kerbs, cones, a scrape along a wall
+    // and the ordinary bumping of a pack of cars all sit under it. Raised
+    // along with `durability` so bodywork survives a chase that involves
+    // contact, which this one always does.
+    if (dv > 2.6) {
       // Police cars are built to be shunted; `durability` divides the damage
       // so a patrol car survives several hits that would end the player's run.
       // A shielded unit -- one still making its way to the chase -- records the
       // impact for sound and camera but takes none of the damage.
       if (!this.assist.shielded) {
-        this.damage = clamp01(this.damage + ((dv - 1.4) * 0.055) / (this.spec.durability || 1));
+        this.damage = clamp01(this.damage + ((dv - 2.6) * 0.042) / (this.spec.durability || 1));
       }
       this.lastImpact = dv;
       this.lastImpactAt = performance.now();
@@ -484,8 +488,11 @@ export class Vehicle {
     }
 
     if (this.rpm > eng.redline) engineTorque = Math.min(engineTorque, -eng.brakeTorque * 0.5);
-    // A wrecked engine makes less power.
-    engineTorque *= lerp(1, 0.35, smoothstep(0.35, 0.95, this.damage));
+    // A wrecked engine makes less power -- and once it is hurt, it is *badly*
+    // hurt. Damage is much harder to pick up now, so when you do have it the
+    // car should be genuinely crippled rather than mildly down on power: a
+    // wreck at full damage keeps a tenth of its torque, not a third.
+    engineTorque *= lerp(1, 0.10, smoothstep(0.28, 1.0, this.damage));
     // The clutch kick releases a torque spike as it re-engages.
     if (this.kickTimer > 0 && this.clutch > 0.3) engineTorque *= 1.55;
     if (this.rpm > eng.redline * 1.01) engineTorque = Math.min(engineTorque, 0);

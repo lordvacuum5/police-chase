@@ -252,6 +252,54 @@ changed:
   speed*, scaled by how far gone the car is and by whether this driver can hold
   a slide at all.
 
+### Damage
+
+Hard to collect, ruinous to carry. Contact is the texture of a pursuit -- kerbs,
+cones, the pack bumping each other, a scrape along a wall -- and the runner was
+taking bodywork damage from all of it. The impact threshold is up from 1.4 to
+2.6 m/s of sudden velocity change, the rate is down, and the runner's
+`durability` went from 1.25 to 3.2:
+
+| impact | damage before | after |
+|---|---|---|
+| 3 m/s (a kerb) | 7% | **1%** |
+| 10 m/s (a solid hit) | 38% | **10%** |
+| 24 m/s (a real crash) | 99% | **28%** |
+
+The trade is that what does get through matters. Engine torque used to bottom
+out at a third; it now falls to **a tenth** at full damage, and starts falling
+sooner:
+
+| damage | 0% | 25% | 50% | 75% | 100% |
+|---|---|---|---|---|---|
+| torque | 100% | 100% | 80% | 35% | **10%** |
+
+A clean run is now genuinely clean, and a wrecked car is genuinely wrecked --
+rather than every chase ending with a car that is vaguely down on power.
+
+### The detection ring
+
+A red ring on the minimap, always centred on your own marker, showing how far
+the force can see you right now. It grows with the wanted level:
+
+| stars | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| radius | 142 m | 164 m | 186 m | 208 m | 230 m |
+
+It is a *range limit, not a guarantee*. Line of sight still has to be clear, so
+a unit inside the ring with a building between you cannot see you -- but a unit
+outside it cannot see you whatever the geometry. That asymmetry is the whole
+value of drawing it: every car outside the ring is one you do not have to think
+about.
+
+The ring vanishes the moment they lose contact, because the rule it draws is no
+longer the one in force -- searching units use a much shorter reacquire range
+and no forward cone. The last-known marker takes over instead.
+
+The radius is published by the dispatcher from the same variable the perception
+test uses, rather than recomputed for the HUD, so the circle cannot drift away
+from the rule it is claiming to show.
+
 ### Tracking, and the three seconds after you break sight
 
 Losing line of sight does not lose you instantly. For **three seconds** the

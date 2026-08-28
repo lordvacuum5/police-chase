@@ -109,7 +109,10 @@ export const SPECS = {
     // enough to gather the car up rather than simply passenger it. Still well
     // short of the fleet's 1.80, so they keep the advantage off the tarmac.
     offRoadGrip: 1.55,
-    durability: 1.25,
+    // Raised hard. Contact is the whole texture of a pursuit and the runner was
+    // collecting damage from every scrape; the trade is that what does get
+    // through hurts far more (see the torque falloff in vehicle.js).
+    durability: 3.2,
     topSpeedHint: 80,
   }),
 

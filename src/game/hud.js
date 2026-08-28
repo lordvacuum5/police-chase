@@ -286,6 +286,35 @@ export class Hud {
       return { x: W / 2 + right * k, y: W / 2 - fwd * k };
     };
 
+    // ---- detection ring ----
+    // How far the force can see you right now, centred on your own marker.
+    // Only up while they actually have contact: once they are searching, the
+    // ring would be telling you about a rule that is no longer the one in
+    // force, and the last-known marker below is the useful thing instead.
+    //
+    // It is a range limit, not a guarantee. Line of sight still has to be
+    // clear, so a unit inside the ring with a building between you cannot see
+    // you -- but a unit outside it cannot see you at all, whatever is in the
+    // way. That is the whole point of drawing it.
+    if (heat.tier > 0 && dispatcher.inContact && dispatcher.sightRange) {
+      const rad = dispatcher.sightRange * k;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(W / 2, W / 2, rad, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,59,48,0.55)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([7, 6]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // A wash inside it, so "inside the ring" reads at a glance.
+      const grd = ctx.createRadialGradient(W / 2, W / 2, rad * 0.55, W / 2, W / 2, rad);
+      grd.addColorStop(0, 'rgba(255,59,48,0)');
+      grd.addColorStop(1, 'rgba(255,59,48,0.13)');
+      ctx.fillStyle = grd;
+      ctx.fill();
+      ctx.restore();
+    }
+
     // ---- last known position, if they have lost you ----
     const kn = dispatcher.knowledge;
     if (heat.tier > 0 && !kn.seen && kn.confidence > 0) {

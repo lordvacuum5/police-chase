@@ -116,6 +116,12 @@ export class Dispatcher {
     let sightRange = hasContact ? 120 + this.tier * 22 : (55 + this.tier * 10) * 1.2;
     if (!hasContact && target.speed < 5) sightRange *= 0.6;
 
+    // Published for the HUD, which draws it as the detection ring. Taken from
+    // the same variable the perception test uses rather than recomputed, so the
+    // circle can never drift away from the rule it is drawing.
+    this.sightRange = sightRange;
+    this.inContact = hasContact;
+
     let spotter = null;
     let best = Infinity;
 
