@@ -17,6 +17,7 @@
 
 import * as THREE from 'three';
 import { ROLE } from '../ai/officer.js';
+import { addCone } from '../physics/world.js';
 import { dist2, clamp } from '../util/math.js';
 
 const MAX_BLOCKS = 2;
@@ -160,7 +161,7 @@ export class RoadblockManager {
     const heading = Math.atan2(tx, tz);
     const nx = -tz, nz = tx;                 // across the carriageway
 
-    const block = { x, z, meshes: [], units: [] };
+    const block = { x, z, meshes: [], units: [], cones: [] };
 
     // Cars angled across the road, as they are parked in reality -- side on to
     // the traffic so they present the longest possible obstacle.
@@ -206,9 +207,12 @@ export class RoadblockManager {
     if (!block.units.length) return null;
 
     // A line of cones on the approach, so the block reads before you are in it.
+    // They are real dynamic bodies: drive through them and they go over the
+    // bonnet rather than standing there like bollards.
     if (!this.coneGeo) {
-      this.coneGeo = new THREE.ConeGeometry(0.28, 0.75, 6);
-      this.coneGeo.translate(0, 0.375, 0);
+      // Centred on the body origin, since the physics body's transform is
+      // about the cone's middle rather than its base.
+      this.coneGeo = new THREE.ConeGeometry(0.30, 0.75, 7);
     }
     const coneMat = game.coneMaterial();
     for (let i = -3; i <= 3; i++) {
@@ -216,17 +220,38 @@ export class RoadblockManager {
       const cx = x + nx * t * (width * 0.5 - 0.8) - tx * 11;
       const cz = z + nz * t * (width * 0.5 - 0.8) - tz * 11;
       const cone = new THREE.Mesh(this.coneGeo, coneMat);
-      cone.position.set(cx, 0, cz);
+      cone.castShadow = true;
       game.scene.add(cone);
-      block.meshes.push(cone);
+      const body = addCone(game.world, cx, 0.02, cz, 0.30, 0.75);
+      block.cones.push({ mesh: cone, body });
     }
 
     return block;
   }
 
+  /**
+   * Follow the cones with their meshes. Called from the render step, since
+   * they are dynamic bodies now and go wherever being hit sends them.
+   */
+  syncVisuals() {
+    for (const b of this.blocks) {
+      for (const c of b.cones) {
+        const t = c.body.translation();
+        const r = c.body.rotation();
+        c.mesh.position.set(t.x, t.y, t.z);
+        c.mesh.quaternion.set(r.x, r.y, r.z, r.w);
+      }
+    }
+  }
+
   _dispose(b) {
     for (const m of b.meshes) this.game.scene.remove(m);
     b.meshes.length = 0;
+    for (const c of b.cones) {
+      this.game.scene.remove(c.mesh);
+      this.game.world.removeRigidBody(c.body);
+    }
+    b.cones.length = 0;
     // Only the cars still standing on the block. Anything that has joined the
     // chase has already been removed from this list and belongs to the
     // dispatcher.

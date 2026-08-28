@@ -8,6 +8,10 @@ export const GROUP = {
   BUILDING: 0x0002,  // static blockers
   PROP: 0x0004,      // barriers, lamp posts, trees
   VEHICLE: 0x0008,   // anything that drives
+  // Light, knock-aside clutter: traffic cones and the like. Deliberately its
+  // own group so the AI's obstacle sweeps ignore it -- a cone is something you
+  // drive through, and a police car that brakes for one is worse than useless.
+  DEBRIS: 0x0010,
 };
 
 export const groups = (membership, filter) => ((membership << 16) | filter) >>> 0;
@@ -111,6 +115,32 @@ export function hasLineOfSight(world, a, b, pad = 0.0) {
   const dir = { x: dx / len, y: dy / len, z: dz / len };
   const hit = raycast(world, a, dir, len - pad, RAY_SIGHT, null);
   return hit === null;
+}
+
+/**
+ * A traffic cone: a light, tippable dynamic body.
+ *
+ * Modelled as a cone rather than a box so it rolls and topples the way one
+ * does, and given a real (small) mass so hitting it costs the car almost
+ * nothing while the cone itself goes flying. It only collides with vehicles
+ * and the ground -- not with other cones, and not with anything the AI probes
+ * for, so a scattered cone never becomes an obstacle the police brake for.
+ */
+export function addCone(world, x, y, z, radius = 0.30, height = 0.75) {
+  const body = world.createRigidBody(
+    RAPIER.RigidBodyDesc.dynamic()
+      .setTranslation(x, y + height * 0.5, z)
+      .setLinearDamping(0.35)
+      .setAngularDamping(0.6)
+      .setCcdEnabled(true),
+  );
+  const col = RAPIER.ColliderDesc.cone(height * 0.5, radius)
+    .setDensity(38)               // ~2.5 kg for this size: it flies, you do not
+    .setFriction(0.55)
+    .setRestitution(0.12)
+    .setCollisionGroups(groups(GROUP.DEBRIS, GROUP.TERRAIN | GROUP.VEHICLE));
+  world.createCollider(col, body);
+  return body;
 }
 
 /** Static box helper -- used for buildings, barriers and bridge decks. */

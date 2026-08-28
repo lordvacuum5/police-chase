@@ -264,6 +264,35 @@ Ducking behind one building is not an escape. Staying out of sight is. Only
 once the bar empties do they fall back to your last known position, and only
 after that does it become the sixty-second search.
 
+### Braking only for what is in the way
+
+The obstacle sweep casts three swept boxes: one straight ahead and one
+twenty-four degrees either side. All three were feeding the braking distance —
+and the angled pair point at the kerb. On a fifteen-metre street they run into
+the buildings alongside at about twenty metres with the way ahead completely
+clear, so cars were hauling down to 50 km/h for a building they were never
+going to touch.
+
+Only the straight-ahead sweep sets the braking distance now. The angled pair
+exist to say which side has more room, and that is all they do:
+
+| | before | after |
+|---|---|---|
+| median pursuit speed | 49.2 km/h | **60.2 km/h** |
+| nearest unit, median | 29.6 m | **14.6 m** |
+| someone within 60 m | 69.4% | **85.4%** |
+| scenery impacts /car-min | 0.12 | 0.12 |
+
+Faster, closer, and no more likely to hit anything — the braking was pure loss.
+
+### Cones
+
+Roadblock cones are dynamic bodies of about 2.5 kg in their own collision
+group, `DEBRIS`, which the AI's obstacle sweeps ignore entirely: a cone is
+something you drive through, and a police car that brakes for one is worse than
+useless. Driving through five of them at 90 km/h scatters them 1.6–3.2 m and
+does **no damage at all**.
+
 ### Seeing what will actually fit
 
 Every obstacle check used to be a ray, and a ray is a line with no width. A fan

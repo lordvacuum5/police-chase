@@ -711,10 +711,23 @@ export class Driver {
       const ca = Math.cos(ang), sa = Math.sin(ang);
       _probe.set(_run.x * ca - _run.z * sa, 0, _run.x * sa + _run.z * ca);
       const toi = sweepBox(v.world, _origin, _probe, reach, RAY_GROUNDS, v.body);
-      if (toi < nearest) nearest = toi;
-      if (ang < 0) leftClear = Math.min(leftClear, toi);
-      else if (ang > 0) rightClear = Math.min(rightClear, toi);
-      else { leftClear = Math.min(leftClear, toi); rightClear = Math.min(rightClear, toi); }
+      // Only the straight-ahead sweep is allowed to set the braking distance.
+      //
+      // The angled pair point twenty-four degrees off, which on any ordinary
+      // street runs them into the buildings along the kerb: on a fifteen-metre
+      // road that is a hit at about twenty metres with the way ahead totally
+      // clear. Feeding that to the brake clamp had cars hauling down to 50 km/h
+      // for a building they were never going to touch. They exist to say which
+      // side has more room, and that is all they are for.
+      if (ang === 0) {
+        nearest = toi;
+        leftClear = Math.min(leftClear, toi);
+        rightClear = Math.min(rightClear, toi);
+      } else if (ang < 0) {
+        leftClear = Math.min(leftClear, toi);
+      } else {
+        rightClear = Math.min(rightClear, toi);
+      }
     }
     // A hit dead ahead lands on both flanks, so the difference is zero and the
     // tie has to be broken by looking further round.
