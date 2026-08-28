@@ -47,6 +47,8 @@ export function buildTown(sim, scene, seed = 6180339) {
   buildEstates(ctx, radials);
   buildLanes(ctx, radials);
 
+  // Round off every dead end before the network is frozen.
+  graph.addTurningHeads(15, 10, WORLD_HALF);
   graph.finalise();
   nameTownRoads(graph);
 
@@ -54,7 +56,7 @@ export function buildTown(sim, scene, seed = 6180339) {
   // Pavements hug the roads rather than filling blocks: an organic town has
   // no blocks to fill.
   for (const e of graph.edges) {
-    if (e.kind === 'country' || e.kind === 'lane') continue;
+    if (e.kind === 'country' || e.kind === 'lane' || e.turningHead) continue;
     for (const s of e.segs) {
       const steps = Math.max(1, Math.ceil(s.len / (CELL * 0.9)));
       for (let k = 0; k <= steps; k++) {
@@ -413,7 +415,10 @@ function buildPavements(ctx) {
   const { graph } = ctx;
   const b = new MeshBuilder();
   for (const e of graph.edges) {
-    if (e.kind === 'country') continue;
+    // Turning heads are left as plain tarmac. A pavement ribbon per edge round
+    // a tight ring throws out a petal at every segment and the head reads as a
+    // flower rather than a bulb.
+    if (e.kind === 'country' || e.turningHead) continue;
     const extra = e.kind === 'dual' ? 8 : e.kind === 'lane' ? 9 : 13;
     b.addRibbon(e.points, e.width + extra, 0.02, PALETTE.pavement);
   }
@@ -523,16 +528,41 @@ function buildFrontages(ctx) {
 
           const q = (bx >= 0 ? 1 : 0) + (bz >= 0 ? 2 : 0);
           const b = builders[q];
-          const rot = Math.atan2(dx, dz);
+
+          // Rotate so the house's local +Z is its *depth*, pointing away from
+          // the street, and local +X is its frontage along the street. Using
+          // the road tangent instead put +Z along the road, which turned every
+          // house through ninety degrees -- so the width that the loop spaces
+          // houses by ran across the street, and the front panel's thin axis
+          // pointed down it. That is why the doors stuck out sideways and lay
+          // flat instead of facing the road.
+          const rot = Math.atan2(nx * side, nz * side);
+          // Unit vector from the house centre toward the street.
+          const fx = -nx * side, fz = -nz * side;
 
           b.addTaperedBox(w, h, d, bx, h * 0.5, bz, colour, 1, 1, rot);
           // A pitched-looking roof cap and a darker plinth.
           b.addTaperedBox(w * 1.04, h * 0.28, d * 1.04, bx, h + h * 0.12, bz, roofDark, 0.55, 0.75, rot);
           b.addBox(w * 1.02, 0.7, d * 1.02, bx, 0.35, bz, 0x2b2724, rot);
+
+          // Front face detail, sitting just proud of the wall that faces the
+          // street. Shops in the centre get a glazed band; everything else gets
+          // a door and a pair of windows either side of it.
+          const face = d * 0.5 + 0.06;
           if (r < 150) {
-            // Shopfront glazing along the pavement edge.
-            b.addBox(w * 0.86, h * 0.30, 0.25, bx - nx * side * (d * 0.5),
-              h * 0.28, bz - nz * side * (d * 0.5), 0x121a20, rot);
+            b.addBox(w * 0.86, h * 0.30, 0.12, bx + fx * face, h * 0.28, bz + fz * face, 0x121a20, rot);
+          } else {
+            const doorW = Math.min(1.15, w * 0.18);
+            const doorH = Math.min(2.15, h * 0.34);
+            b.addBox(doorW, doorH, 0.12, bx + fx * face, doorH * 0.5, bz + fz * face, 0x2e2018, rot);
+            // Windows, offset along the frontage rather than across it.
+            const ox = Math.cos(rot), oz = -Math.sin(rot);   // local +X in world
+            const winOff = w * 0.28;
+            for (const sgn of [-1, 1]) {
+              b.addBox(w * 0.22, h * 0.18, 0.10,
+                bx + fx * face + ox * sgn * winOff, h * 0.55,
+                bz + fz * face + oz * sgn * winOff, 0x16202a, rot);
+            }
           }
 
           addStaticBox(sim.world, bx, h * 0.5, bz, w * 0.5, h * 0.5, d * 0.5, GROUP.BUILDING, rot);

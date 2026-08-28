@@ -53,10 +53,15 @@ export class ChaseCamera {
     this.heading += angleDelta(this.heading, targetHeading) * (1 - Math.exp(-turnRate * dt));
 
     if (mode === 'hood') {
+      // Eye height, not bonnet height. Sitting 0.62 m above the centre of mass
+      // and 0.45 m forward put the viewpoint down on the slam panel: the bonnet
+      // filled the lower half of the screen and you could not see the road
+      // close in front of the car. Back and up to roughly where a driver's head
+      // actually is.
       _pos.copy(v.position)
-        .addScaledVector(v.forward, 0.45)
-        .addScaledVector(v.up, 0.62);
-      _look.copy(_pos).addScaledVector(v.forward, 30).addScaledVector(v.up, -1.0);
+        .addScaledVector(v.forward, -0.15)
+        .addScaledVector(v.up, 1.02);
+      _look.copy(_pos).addScaledVector(v.forward, 30).addScaledVector(v.up, -1.6);
       this.pos.copy(_pos);
       this.look.lerp(_look, 1 - Math.exp(-18 * dt));
       this.fov = damp(this.fov, 66 + clamp(v.speed * 0.32, 0, 20), 4, dt);

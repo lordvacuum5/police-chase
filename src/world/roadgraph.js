@@ -183,6 +183,65 @@ export class RoadGraph {
     return { x: centre.x, z: centre.z, r: radius };
   }
 
+  /**
+   * Round off every dead end with a turning head.
+   *
+   * A road that simply stops is both odd to look at and a trap to drive into:
+   * you arrive at a blunt end, and the only way out is a three-point turn.
+   * Every stub gets a small circular head instead, the way an actual
+   * cul-de-sac does -- something you can go round and come back out of without
+   * stopping.
+   *
+   * Called before `finalise`, since it adds nodes and edges.
+   */
+  addTurningHeads(radius = 15, segments = 10, halfExtent = Infinity) {
+    const stubs = [];
+    for (const n of this.nodes) {
+      const live = n.edges.filter((eid) => !this.edges[eid].dead);
+      if (live.length !== 1) continue;
+      const e = this.edges[live[0]];
+      const other = this.nodes[e.a === n.id ? e.b : e.a];
+      stubs.push({ n, other });
+    }
+
+    let made = 0;
+    for (const { n, other } of stubs) {
+      // Carry on the way the road was already going.
+      let dx = n.x - other.x, dz = n.z - other.z;
+      const l = Math.hypot(dx, dz) || 1;
+      dx /= l; dz /= l;
+      const cx = n.x + dx * radius, cz = n.z + dz * radius;
+      if (Math.abs(cx) > halfExtent - radius - 8 || Math.abs(cz) > halfExtent - radius - 8) continue;
+
+      const ring = [];
+      for (let k = 0; k < segments; k++) {
+        const a = (k / segments) * Math.PI * 2 + Math.atan2(dz, dx);
+        ring.push(this.addNode(cx + Math.cos(a) * radius, cz + Math.sin(a) * radius, 'cross'));
+      }
+      const kind = this.edges[n.edges[0]].kind === 'lane' ? 'lane' : 'street';
+      // Flagged so the mesh builder leaves the kerb lines off. Drawn per edge,
+      // they cross each other all round a ring this tight and the head reads as
+      // a star rather than a bulb.
+      for (let k = 0; k < segments; k++) {
+        this.addEdge(ring[k], ring[(k + 1) % segments], kind, null,
+          { width: 9, speed: 9 }).turningHead = true;
+      }
+      // Join the stub to the two ring nodes nearest it, so the head reads as a
+      // loop off the end rather than a lollipop on a stick.
+      const sorted = ring.slice().sort((p, q) => (
+        ((p.x - n.x) ** 2 + (p.z - n.z) ** 2) - ((q.x - n.x) ** 2 + (q.z - n.z) ** 2)
+      ));
+      this.addEdge(n, sorted[0], kind, null, { width: 9, speed: 9 }).turningHead = true;
+      if (sorted[1]) {
+        this.addEdge(n, sorted[1], kind, null, { width: 9, speed: 9 }).turningHead = true;
+      }
+      made++;
+    }
+
+    if (made) this.reindexEdges();
+    return made;
+  }
+
   /** Call once the network is complete. */
   finalise() {
     for (const n of this.nodes) {

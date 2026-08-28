@@ -43,6 +43,8 @@ export function buildCity(sim, scene, seed = 20260822) {
   buildCountryRoads(ctx, ringNodes);
   const roundabout = buildRoundabout(ctx, gridNodes);
 
+  // Round off every dead end before the network is frozen.
+  graph.addTurningHeads(15, 10, WORLD_HALF);
   graph.finalise();
   nameRoads(graph);
 

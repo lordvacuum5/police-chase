@@ -53,6 +53,15 @@ export class Officer {
   get position() { return this.vehicle.position; }
   get disabled() { return this.vehicle.disabled; }
 
+  /**
+   * How willing this unit is to make contact rather than merely follow.
+   * Nothing at one star, everything at five. Drives the close-quarters aim,
+   * the closing speed and the rubber-band boost.
+   */
+  get aggression() {
+    return clamp01((this.game.heat.tier - 1) / 4);
+  }
+
   /** Distance to a world point, on the ground plane. */
   distanceTo(p) { return dist2(this.vehicle.position.x, this.vehicle.position.z, p.x, p.z); }
 
@@ -347,15 +356,31 @@ export class Officer {
     const lead = clamp(d / closing, 0, 1.15);
     _aim.copy(target.position).addScaledVector(target.linvel, lead);
 
+    // How much they want a collision rather than a follow. Nothing at one
+    // star, everything at five.
+    const agg = this.aggression;
+
     // Hang slightly off to one side once close, so a following unit is already
-    // positioned for a PIT rather than square behind the boot.
+    // positioned for a PIT rather than square behind the boot. An aggressive
+    // unit gives that up and lines the nose straight at the boot instead --
+    // being tidy is not the priority any more.
     if (d < 26) {
       const side = Math.abs(r.lat) > 0.5 ? sign(r.lat) : (this.vehicle.id % 2 ? 1 : -1);
-      _aim.addScaledVector(target.left, side * lerp(2.2, 0.4, clamp01(d / 26)));
+      const off = lerp(2.2, 0.4, clamp01(d / 26)) * lerp(1, 0.2, agg);
+      _aim.addScaledVector(target.left, side * off);
+    }
+
+    // Aim *through* them, not at them. A pursuit driver holding station a car's
+    // length back never quite makes contact; one aiming a couple of metres past
+    // the boot does, which is the difference between being followed and being
+    // rammed.
+    if (agg > 0.05 && d < 34) {
+      _aim.addScaledVector(target.forward, -lerp(0, 3.2, agg) * clamp01(1 - d / 34));
     }
 
     this.driver.setPath([]);
-    const speed = Math.abs(target.forwardSpeed) + clamp(d * 0.35, 2, 14);
+    // More closing speed the angrier they are, so contact carries some weight.
+    const speed = Math.abs(target.forwardSpeed) + clamp(d * 0.35, 2, 14 + 11 * agg);
     return this.driver.driveTo(_aim, Math.min(speed, this._chaseSpeed()), dt);
   }
 

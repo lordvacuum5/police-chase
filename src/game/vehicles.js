@@ -21,11 +21,12 @@ const baseSuspension = {
   dampRebound: 5800,   // rebound is always the stiffer direction
   bumpStop: 26000,
   maxForce: 34000,
-  // Roll stiffness split. The front bar is much stiffer than the rear, which
-  // moves lateral load onto the front axle and makes the car push wide at the
-  // limit instead of spinning. This is the main anti-oversteer lever.
-  arbFront: 17000,
-  arbRear: 8200,
+  // Softened at the front. A front bar twice the rear moves lateral load onto
+  // the front axle, and a load-sensitive tyre gives back less than
+  // proportionally -- which is understeer, felt as a heavy car that will not
+  // turn. Still front-biased, so the limit stays push rather than snap.
+  arbFront: 14200,
+  arbRear: 9000,
 };
 
 const baseEngine = {
@@ -70,11 +71,11 @@ function makeSpec(o) {
     steering: {
       maxAngle: 0.55,     // absolute lock at the road wheel
       minAngle: 0.055,    // never limited below this
-      latLimit: 12.5,     // m/s^2 the limiter sizes the lock for
+      latLimit: 14.6,     // m/s^2 the limiter sizes the lock for
       overshoot: 1.20,    // how far past that the driver may still demand
       slipAllowance: 0.065, // extra lock for front tyre slip, radians
-      rate: 1.9,          // rad/s winding lock on
-      returnRate: 3.4,    // quicker coming back to centre, as with real castor
+      rate: 2.45,         // rad/s winding lock on
+      returnRate: 3.9,    // quicker coming back to centre, as with real castor
     },
     aero: { dragArea: 0.70, downforce: 0.42 },
     // Backs the engine off when the driven wheels spin. 0 disables it.
@@ -96,12 +97,13 @@ export const SPECS = {
   /** The escapee. Quick, but now stable enough to lean on. */
   runner: makeSpec({
     name: 'Runner',
-    mass: 1480,
-    frontWeight: 0.525,
-    suspension: Object.assign({}, baseSuspension, { arbFront: 17000, arbRear: 9800 }),
+    mass: 1425,
+    frontWeight: 0.520,
+    suspension: Object.assign({}, baseSuspension, { arbFront: 12400, arbRear: 9800 }),
     brakes: { maxTorque: 2400, frontBias: 0.62, handbrakeTorque: 4400 },
     gripScale: 1.0,
-    gripBias: { front: 1.0, rear: 1.05 },
+    // A little extra at the front is the direct anti-understeer lever.
+    gripBias: { front: 1.09, rear: 1.05 },
     // Bare grass is 0.62 -- less than half the road figure -- which makes the
     // verge feel like ice the moment you clip it. This takes it to about 0.96,
     // enough to gather the car up rather than simply passenger it. Still well
@@ -119,7 +121,7 @@ export const SPECS = {
     dims: { w: 1.94, h: 1.26, l: 4.92 },
     wheelbase: 2.95,
     suspension: Object.assign({}, baseSuspension, {
-      stiffness: 40000, arbFront: 17000, arbRear: 7600, dampRebound: 6200,
+      stiffness: 40000, arbFront: 13000, arbRear: 9200, dampRebound: 6200,
     }),
     engine: Object.assign({}, baseEngine, {
       torqueCurve: [
@@ -132,7 +134,7 @@ export const SPECS = {
     brakes: { maxTorque: 3500, frontBias: 0.64, handbrakeTorque: 2800, abs: 1, gripBonus: 1.52 },
     aero: { dragArea: 0.76, downforce: 0.25 },
     gripScale: 0.97,
-    gripBias: { front: 1.0, rear: 1.06 },
+    gripBias: { front: 1.08, rear: 1.06 },
     // Fleet tyres bite on the loose. Grass mu goes 0.62 -> about 1.1, so a
     // line straight across country is a real option rather than a bog.
     offRoadGrip: 1.80,
@@ -147,7 +149,7 @@ export const SPECS = {
     frontWeight: 0.545,
     dims: { w: 1.96, h: 1.22, l: 4.90 },
     wheelbase: 2.92,
-    suspension: Object.assign({}, baseSuspension, { arbFront: 17500, arbRear: 8600 }),
+    suspension: Object.assign({}, baseSuspension, { arbFront: 13200, arbRear: 9400 }),
     // Genuinely more engine than the runner, and slipperier -- an interceptor
     // that cannot out-accelerate the car it is chasing is just scenery.
     engine: Object.assign({}, baseEngine, {
@@ -159,7 +161,7 @@ export const SPECS = {
     brakes: { maxTorque: 3800, frontBias: 0.63, handbrakeTorque: 3000, abs: 1, gripBonus: 1.58 },
     aero: { dragArea: 0.70, downforce: 0.40 },
     gripScale: 0.99,
-    gripBias: { front: 1.0, rear: 1.08 },
+    gripBias: { front: 1.09, rear: 1.05 },
     offRoadGrip: 1.85,
     durability: 2.8,
     topSpeedHint: 99,
@@ -180,7 +182,7 @@ export const SPECS = {
     brakes: { maxTorque: 4000, frontBias: 0.62, handbrakeTorque: 3200, abs: 1, gripBonus: 1.62 },
     aero: { dragArea: 0.67, downforce: 0.44 },
     gripScale: 1.0,
-    gripBias: { front: 1.0, rear: 1.09 },
+    gripBias: { front: 1.08, rear: 1.06 },
     offRoadGrip: 1.88,
     durability: 2.4,
     topSpeedHint: 103,

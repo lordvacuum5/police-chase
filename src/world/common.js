@@ -119,8 +119,10 @@ export function buildRoadMeshes(ctx) {
     road.addRibbon(e.points, e.width, 0.03, def.colour);
     // Kerb lines pick out the edge of the carriageway without needing a step
     // in the collision geometry, which would make the whole town bumpy.
-    road.addRibbon(e.points, 0.5, 0.035, PALETTE.kerb, e.width * 0.5 - 0.25);
-    road.addRibbon(e.points, 0.5, 0.035, PALETTE.kerb, -(e.width * 0.5 - 0.25));
+    if (!e.turningHead) {
+      road.addRibbon(e.points, 0.5, 0.035, PALETTE.kerb, e.width * 0.5 - 0.25);
+      road.addRibbon(e.points, 0.5, 0.035, PALETTE.kerb, -(e.width * 0.5 - 0.25));
+    }
 
     if (e.kind === 'motorway') {
       paint.addRibbon(e.points, 0.9, 0.04, PALETTE.markingWarm);
