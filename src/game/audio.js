@@ -289,6 +289,23 @@ export class GameAudio {
     this.tyreFilter.connect(this.tyreGain);
     this.tyreGain.connect(this.master);
 
+    // ---- tyre scrub ------------------------------------------------------
+    // Its own voice, because scrubbing and sliding are different sounds and
+    // happen at different times. The squeal above only starts once a wheel is
+    // properly sliding; a tyre complains long before that, as soon as it is
+    // being asked to carry a slip angle through a corner. Lower and broader
+    // than the squeal -- a growl rather than a shriek -- so the two layer
+    // rather than competing.
+    this.scrubFilter = ctx.createBiquadFilter();
+    this.scrubFilter.type = 'bandpass';
+    this.scrubFilter.frequency.value = 620;
+    this.scrubFilter.Q.value = 3.2;
+    this.scrubGain = ctx.createGain();
+    this.scrubGain.gain.value = 0;
+    makeNoise().connect(this.scrubFilter);
+    this.scrubFilter.connect(this.scrubGain);
+    this.scrubGain.connect(this.master);
+
     // ---- wind ------------------------------------------------------------
     this.windFilter = ctx.createBiquadFilter();
     this.windFilter.type = 'lowpass';
@@ -449,10 +466,27 @@ export class GameAudio {
     this.intakeGain.gain.setTargetAtTime(load * revs * 0.05, t, smooth);
 
     // ---- tyres -----------------------------------------------------------
-    const sliding = player.grounded > 0 && player.speed > 4
-      ? clamp01((player.maxSlip - 0.45) / 0.45) : 0;
+    const rolling = player.grounded > 0 && player.speed > 4;
+    const sliding = rolling ? clamp01((player.maxSlip - 0.45) / 0.45) : 0;
     this.tyreFilter.frequency.setTargetAtTime(950 + sliding * 500, t, 0.08);
     this.tyreGain.gain.setTargetAtTime(sliding * 0.075, t, 0.06);
+
+    // Scrub: the worst lateral slip angle any grounded wheel is carrying.
+    // Starts around three degrees, which is where a tyre begins to protest,
+    // and is well up before anything is sliding. Scaled by speed too -- the
+    // same slip angle at walking pace makes almost no noise.
+    let worstAngle = 0;
+    if (rolling) {
+      for (const w of player.wheels) {
+        if (!w.grounded) continue;
+        const a = Math.abs(w.slipAngle);
+        if (a > worstAngle) worstAngle = a;
+      }
+    }
+    const scrub = clamp01((worstAngle - 0.040) / 0.155)
+      * clamp01((player.speed - 4) / 9);
+    this.scrubFilter.frequency.setTargetAtTime(560 + scrub * 260, t, 0.09);
+    this.scrubGain.gain.setTargetAtTime(scrub * 0.055, t, 0.07);
 
     // ---- wind ------------------------------------------------------------
     this.windGain.gain.setTargetAtTime(clamp01(player.speed / 75) * 0.045, t, 0.12);

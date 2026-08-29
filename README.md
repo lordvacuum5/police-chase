@@ -96,6 +96,11 @@ Measured behaviour of the player car (`runner`), on a flat asphalt pad:
 | Full lock at 20 km/h, coasting | front tyres at 0.76 of the limit (no scrub) |
 | Full lock at 20 km/h, full throttle | rear slip ratio 0.62 (was 2.18 uncontrolled) |
 
+Rendering uses 4x multisampling. The world is flat-shaded faceted geometry, so
+almost all of the aliasing is on polygon edges -- exactly what MSAA fixes, and
+far cheaper than rendering at a higher pixel ratio, which is why the device
+ratio stays capped at 1.
+
 **Every police car runs this same code.** When an officer botches a PIT they spin
 out for exactly the reasons you would.
 
@@ -913,6 +918,24 @@ analysing the spectrum:
 Deep and dominated by low frequencies at idle; the centroid climbs steadily with
 revs as the filter and the waveshaper open up. Every peak lands on a real
 component of the note — the sub, the firing frequency, or its second harmonic.
+
+### Tyre scrub
+
+The squeal layer only starts once a wheel is properly sliding -- past 0.45 of
+saturation -- which is a drift or a locked brake, not a corner. A tyre
+complains long before that, as soon as it is asked to carry a slip angle, so
+scrub has its own voice: lower and broader than the squeal, a growl rather than
+a shriek, driven by the worst lateral slip angle any grounded wheel is holding
+and scaled by speed. The two layer rather than compete.
+
+Measured through a steering sweep at a steady 60 km/h:
+
+| steering | worst slip | scrub | slide |
+|---|---|---|---|
+| 0.15 | 0.8 deg | silent | silent |
+| 0.35 | 2.4 deg | just audible | silent |
+| 0.60 | 5.7 deg | rising | starting |
+| 1.00 | 15.1 deg | full | full |
 
 ### Everything else
 

@@ -125,8 +125,13 @@ class Game {
   _initRenderer() {
     const canvas = document.getElementById('view');
     this.renderer = new THREE.WebGLRenderer({
-      canvas, antialias: false, powerPreference: 'high-performance', stencil: false,
+      canvas, antialias: true, powerPreference: 'high-performance', stencil: false,
     });
+    // Multisampling rather than supersampling: the whole world is flat-shaded
+    // faceted geometry, so nearly all the aliasing is on polygon edges, which
+    // is exactly what MSAA fixes -- and it costs far less than rendering at a
+    // higher pixel ratio would. The device ratio stays capped at 1 for the
+    // same reason.
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1));
     this.renderer.setSize(window.innerWidth, window.innerHeight, false);
     this.renderer.shadowMap.enabled = true;
