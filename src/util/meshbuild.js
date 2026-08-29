@@ -192,14 +192,34 @@ export class MeshBuilder {
       const p = points[i];
       const prev = points[Math.max(0, i - 1)];
       const next = points[Math.min(points.length - 1, i + 1)];
-      let dx = next.x - prev.x, dz = next.z - prev.z;
-      const len = Math.hypot(dx, dz) || 1;
-      dx /= len; dz /= len;
-      // Left normal on the XZ plane.
-      const nx = -dz, nz = dx;
-      const cx = p.x + nx * offset, cz = p.z + nz * offset;
-      left.push({ x: cx + nx * width * 0.5, z: cz + nz * width * 0.5 });
-      right.push({ x: cx - nx * width * 0.5, z: cz - nz * width * 0.5 });
+
+      // Direction of the segment either side of this vertex.
+      let d1x = p.x - prev.x, d1z = p.z - prev.z;
+      let l1 = Math.hypot(d1x, d1z);
+      if (l1 < 1e-6) { d1x = next.x - p.x; d1z = next.z - p.z; l1 = Math.hypot(d1x, d1z) || 1; }
+      d1x /= l1; d1z /= l1;
+      let d2x = next.x - p.x, d2z = next.z - p.z;
+      let l2 = Math.hypot(d2x, d2z);
+      if (l2 < 1e-6) { d2x = d1x; d2z = d1z; l2 = 1; }
+      d2x /= l2; d2z /= l2;
+
+      // Left normals on the XZ plane, and the mitre direction between them.
+      const n1x = -d1z, n1z = d1x;
+      const n2x = -d2z, n2z = d2x;
+      let mx = n1x + n2x, mz = n1z + n2z;
+      const ml = Math.hypot(mx, mz);
+      if (ml < 1e-6) { mx = n1x; mz = n1z; } else { mx /= ml; mz /= ml; }
+
+      // A mitre has to be *longer* than the half-width to reach the corner,
+      // by 1/cos of the half-turn. Without this the ribbon pinches in at every
+      // bend and leaves a notch of bare ground showing on the outside of it --
+      // which is what made the town's roads look like they did not join up.
+      // Capped so a hairpin does not fire a spike off into the distance.
+      const scale = Math.min(2.6, 1 / Math.max(0.30, mx * n1x + mz * n1z));
+      const hw = width * 0.5 * scale;
+      const cx = p.x + mx * offset * scale, cz = p.z + mz * offset * scale;
+      left.push({ x: cx + mx * hw, z: cz + mz * hw });
+      right.push({ x: cx - mx * hw, z: cz - mz * hw });
     }
 
     for (let i = 0; i < points.length - 1; i++) {

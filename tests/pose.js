@@ -41,3 +41,20 @@ window.__pose = async function (prefix, specKey, opts, views) {
   return out.join(' ');
 };
 'pose ready';
+
+/** Dismiss the map chooser, if it is up, by picking the first map. */
+window.__start = function (which) {
+  const card = document.querySelectorAll(".mapcard")[which || 0];
+  if (card) card.click();
+  return !!card;
+};
+
+/**
+ * Skip the map chooser. main.js reads sessionStorage["pc.map"] before it
+ * decides whether to show the menu, so setting it and reloading lands
+ * straight in the world.
+ */
+window.__pickMap = function (id) {
+  sessionStorage.setItem("pc.map", id);
+  location.reload();
+};

@@ -19,6 +19,7 @@
 
 import * as THREE from 'three';
 import { RoadGraph, ROAD_KIND } from './roadgraph.js';
+import { addNodeApron } from './junctions.js';
 import { GROUP, addStaticBox } from '../physics/world.js';
 import { makeRng, rand, randInt, clamp, lerp, dist2, TAU } from '../util/math.js';
 import {
@@ -414,13 +415,24 @@ function nameTownRoads(graph) {
 function buildPavements(ctx) {
   const { graph } = ctx;
   const b = new MeshBuilder();
+  // Turning heads are left as plain tarmac. A pavement ribbon per edge round
+  // a tight ring throws out a petal at every segment and the head reads as a
+  // flower rather than a bulb.
+  const paved = (e) => e && !e.dead && e.kind !== 'country' && !e.turningHead;
+  const widthOf = (e) => e.width + (e.kind === 'dual' ? 8 : e.kind === 'lane' ? 9 : 13);
+
   for (const e of graph.edges) {
-    // Turning heads are left as plain tarmac. A pavement ribbon per edge round
-    // a tight ring throws out a petal at every segment and the head reads as a
-    // flower rather than a bulb.
-    if (e.kind === 'country' || e.turningHead) continue;
-    const extra = e.kind === 'dual' ? 8 : e.kind === 'lane' ? 9 : 13;
-    b.addRibbon(e.points, e.width + extra, 0.02, PALETTE.pavement);
+    if (!paved(e)) continue;
+    b.addRibbon(e.points, widthOf(e), 0.02, PALETTE.pavement);
+  }
+  // The ribbons end square at every node, so a bend leaves a notch of grass
+  // cut into the footway. Same fix as the carriageway gets.
+  for (const n of graph.nodes) {
+    const live = n.edges.map((id) => graph.edges[id]).filter(paved);
+    if (live.length < 2) continue;
+    let r = 0;
+    for (const e of live) r = Math.max(r, widthOf(e) * 0.5);
+    addNodeApron(b, n.x, n.z, r, 0.019, PALETTE.pavement);
   }
   const mesh = new THREE.Mesh(b.build(), vertexColorMaterial());
   mesh.name = 'pavements';

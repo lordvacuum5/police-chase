@@ -8,6 +8,9 @@
 import * as THREE from 'three';
 import { MeshBuilder, vertexColorMaterial } from '../util/meshbuild.js';
 import { ROAD_KIND } from './roadgraph.js';
+import {
+  planJunctions, buildJunctionCorners, buildStopLines, sliceLine, addNodeApron,
+} from './junctions.js';
 import { GROUP, addStaticBox } from '../physics/world.js';
 import { rand, randInt, lerp, TAU } from '../util/math.js';
 
@@ -68,6 +71,13 @@ export function rasteriseRoads(graph, surface) {
       }
     }
   }
+  // Junction corners are filled in past the ribbons, so the grip grid has to
+  // be too -- otherwise cutting a corner drops you onto grass for a moment.
+  for (const j of graph.junctionPlan || []) {
+    let r = 0;
+    for (const a of j.app) r = Math.max(r, a.half);
+    paintDisc(surface, j.node.x, j.node.z, r * 1.45, SURF_ROAD);
+  }
 }
 
 export function makeSurfaceAt(surface) {
@@ -114,29 +124,56 @@ export function buildRoadMeshes(ctx) {
   const road = new MeshBuilder();
   const paint = new MeshBuilder();
 
+  // Worked out in graph.finalise(): how far back from each node the markings
+  // have to stop, and which junctions are worth signalising.
+  const junctions = graph.junctionPlan || planJunctions(graph);
+
   for (const e of graph.edges) {
     const def = ROAD_KIND[e.kind];
+    // The carriageway itself still runs the full length: overlapping tarmac at
+    // a junction is invisible, and stopping it short would leave holes.
     road.addRibbon(e.points, e.width, 0.03, def.colour);
+
+    // Everything drawn on top of the tarmac stops at the junction mouth.
+    const inner = sliceLine(e.points, e.trimA || 0, e.length - (e.trimB || 0));
+    if (!inner) continue;
+
     // Kerb lines pick out the edge of the carriageway without needing a step
     // in the collision geometry, which would make the whole town bumpy.
     if (!e.turningHead) {
-      road.addRibbon(e.points, 0.5, 0.035, PALETTE.kerb, e.width * 0.5 - 0.25);
-      road.addRibbon(e.points, 0.5, 0.035, PALETTE.kerb, -(e.width * 0.5 - 0.25));
+      road.addRibbon(inner, 0.5, 0.035, PALETTE.kerb, e.width * 0.5 - 0.25);
+      road.addRibbon(inner, 0.5, 0.035, PALETTE.kerb, -(e.width * 0.5 - 0.25));
     }
 
     if (e.kind === 'motorway') {
-      paint.addRibbon(e.points, 0.9, 0.04, PALETTE.markingWarm);
+      paint.addRibbon(inner, 0.9, 0.04, PALETTE.markingWarm);
       for (const off of [e.width / 6, -e.width / 6]) {
-        paint.addDashedRibbon(e.points, 0.28, 0.04, PALETTE.marking, 6, 9, off);
+        paint.addDashedRibbon(inner, 0.28, 0.04, PALETTE.marking, 6, 9, off);
       }
     } else if (e.kind === 'avenue') {
-      paint.addDashedRibbon(e.points, 0.30, 0.04, PALETTE.marking, 4, 6, 0);
+      paint.addDashedRibbon(inner, 0.30, 0.04, PALETTE.marking, 4, 6, 0);
     } else if (e.kind === 'street' && e.length > 40) {
-      paint.addDashedRibbon(e.points, 0.22, 0.04, PALETTE.marking, 2.5, 5.5, 0);
+      paint.addDashedRibbon(inner, 0.22, 0.04, PALETTE.marking, 2.5, 5.5, 0);
     } else if (e.kind === 'country') {
-      paint.addDashedRibbon(e.points, 0.24, 0.04, PALETTE.marking, 3, 7, 0);
+      paint.addDashedRibbon(inner, 0.24, 0.04, PALETTE.marking, 3, 7, 0);
     }
   }
+
+  // Close the wedge two square ribbon ends leave at every bend and junction.
+  // Just under the ribbons, so it only ever shows where they do not reach.
+  for (const n of graph.nodes) {
+    const live = n.edges.map((id) => graph.edges[id]).filter((e) => e && !e.dead);
+    if (live.length < 2) continue;
+    let r = 0, widest = live[0];
+    for (const e of live) {
+      r = Math.max(r, e.width * 0.5);
+      if (e.width > widest.width) widest = e;
+    }
+    addNodeApron(road, n.x, n.z, r, 0.029, ROAD_KIND[widest.kind].colour);
+  }
+
+  buildJunctionCorners(junctions, road, 0.03, PALETTE.kerb);
+  buildStopLines(junctions, paint, 0.042, PALETTE.marking);
 
   const m1 = new THREE.Mesh(road.build(), vertexColorMaterial());
   m1.name = 'roads';

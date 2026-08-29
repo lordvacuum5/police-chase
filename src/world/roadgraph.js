@@ -8,6 +8,7 @@
 // be in the next N seconds, and an intercept test that compares the two.
 
 import { clamp, lerp, closestOnSegment, dist2 } from '../util/math.js';
+import { planJunctions } from './junctions.js';
 
 /**
  * Replace each sharp vertex with a short arc, so a routed path describes a
@@ -242,8 +243,123 @@ export class RoadGraph {
     return made;
   }
 
+  /** Recompute an edge's segment table after its polyline has changed. */
+  setEdgePoints(e, points) {
+    e.points = points;
+    e.segs = [];
+    let length = 0;
+    for (let i = 0; i < points.length - 1; i++) {
+      const l = dist2(points[i].x, points[i].z, points[i + 1].x, points[i + 1].z);
+      e.segs.push({ a: points[i], b: points[i + 1], len: l, start: length });
+      length += l;
+    }
+    e.length = length;
+    return e;
+  }
+
+  /**
+   * Replace hard bends with arcs.
+   *
+   * A node with two roads on it is not a junction, it is a corner -- and the
+   * generators leave those as sharp vertices, which is what made the town look
+   * like it was drawn with a ruler and then folded. Worse, two ribbons meeting
+   * at an angle mitre badly and leave slivers of grass showing through on the
+   * outside of the bend, which reads as roads that do not quite join up.
+   *
+   * Both problems go away if the corner becomes a short arc. The node moves to
+   * the middle of that arc, so it stays a real point on the road and routing is
+   * unaffected; how far it moves scales with how sharp the bend was, so a road
+   * that was already nearly straight does not move at all.
+   */
+  smoothBends(radius = 16, minTurn = 0.10) {
+    let made = 0;
+    for (const n of this.nodes) {
+      const live = n.edges.map((id) => this.edges[id]).filter((e) => e && !e.dead);
+      if (live.length !== 2) continue;
+      const [e1, e2] = live;
+      // Turning heads and roundabout rings are already circles; leave them.
+      if (e1.turningHead || e2.turningHead) continue;
+      if (n.type === 'roundabout') continue;
+      if (e1 === e2) continue;
+
+      const back = e1.a === n.id ? e1.points[1] : e1.points[e1.points.length - 2];
+      const fwd = e2.a === n.id ? e2.points[1] : e2.points[e2.points.length - 2];
+      if (!back || !fwd) continue;
+
+      let v1x = back.x - n.x, v1z = back.z - n.z;
+      const l1 = Math.hypot(v1x, v1z);
+      let v2x = fwd.x - n.x, v2z = fwd.z - n.z;
+      const l2 = Math.hypot(v2x, v2z);
+      if (l1 < 2 || l2 < 2) continue;
+      v1x /= l1; v1z /= l1; v2x /= l2; v2z /= l2;
+
+      // How far off straight. Two unit vectors pointing back and forward along
+      // a straight road are opposite, so their dot product is -1.
+      const dot = clamp(v1x * v2x + v1z * v2z, -1, 1);
+      const turn = Math.PI - Math.acos(dot);
+      if (turn < minTurn || turn > 2.6) continue;
+
+      // Sharper bends get a bigger arc, but never more than a third of either
+      // road: eating a whole short link would move its far junction.
+      const r = Math.min(radius * clamp(turn / 0.9, 0.5, 1.8), l1 * 0.34, l2 * 0.34);
+      if (r < 1.2) continue;
+
+      const t1 = { x: n.x + v1x * r, z: n.z + v1z * r };
+      const t2 = { x: n.x + v2x * r, z: n.z + v2z * r };
+      const bez = (t) => {
+        const u = 1 - t;
+        return {
+          x: u * u * t1.x + 2 * u * t * n.x + t * t * t2.x,
+          z: u * u * t1.z + 2 * u * t * n.z + t * t * t2.z,
+        };
+      };
+
+      const STEPS = 4;                       // per half of the arc
+      const first = [], second = [];
+      for (let k = 0; k <= STEPS; k++) first.push(bez((k / STEPS) * 0.5));
+      for (let k = 0; k <= STEPS; k++) second.push(bez(0.5 + (k / STEPS) * 0.5));
+      const mid = first[first.length - 1];
+
+      // e1 runs into the node, e2 out of it -- but either may be stored in
+      // reverse, so build each new polyline in that edge's own direction.
+      const p1 = e1.points.slice(0, -1);
+      const rebuilt1 = e1.a === n.id
+        ? first.slice().reverse().concat(e1.points.slice(1))
+        : p1.concat(first);
+      const rebuilt2 = e2.a === n.id
+        ? second.concat(e2.points.slice(1))
+        : e2.points.slice(0, -1).concat(second.slice().reverse());
+
+      this.setEdgePoints(e1, rebuilt1);
+      this.setEdgePoints(e2, rebuilt2);
+      n.x = mid.x; n.z = mid.z;
+      made++;
+    }
+    return made;
+  }
+
+  /**
+   * Round off the kinks *inside* an edge's own polyline.
+   *
+   * smoothBends deals with corners that happen to fall on a node; a generator
+   * that lays a curve out as a handful of straight hops leaves the same kind of
+   * corner between them, and those are just as visible. roundCorners already
+   * knows how to fillet a polyline, and it leaves the endpoints alone, so the
+   * edge still starts and ends exactly on its nodes.
+   */
+  smoothEdges(radius = 9) {
+    for (const e of this.edges) {
+      if (e.dead || e.turningHead || e.points.length < 3) continue;
+      const rounded = roundCorners(e.points, radius);
+      if (rounded.length !== e.points.length) this.setEdgePoints(e, rounded);
+    }
+    return this;
+  }
+
   /** Call once the network is complete. */
   finalise() {
+    this.smoothBends();
+    this.smoothEdges();
     for (const n of this.nodes) {
       this.bounds.minX = Math.min(this.bounds.minX, n.x);
       this.bounds.maxX = Math.max(this.bounds.maxX, n.x);
@@ -252,6 +368,10 @@ export class RoadGraph {
     }
     this._buildIndex();
     this._markChokepoints();
+    // Junction geometry is a property of the network, not of the renderer:
+    // the grip grid, the mesh builder and the traffic lights all want it, and
+    // they run in that order.
+    this.junctionPlan = planJunctions(this);
     // Scratch arrays for routing, allocated once.
     this._gScore = new Float64Array(this.nodes.length);
     this._fScore = new Float64Array(this.nodes.length);
