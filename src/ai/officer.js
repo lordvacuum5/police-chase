@@ -187,7 +187,26 @@ export class Officer {
       this._routeTo(to.id, 3.0);
     }
     // Patrols obey the limit; that difference in pace is how you spot them.
-    return this.driver.followPath(dt, 22);
+    // They obey the signals too, and only they do: a unit running to a shout
+    // or already in a pursuit has blue lights on and goes through.
+    return this.driver.followPath(dt, Math.min(22, this._signalCap()));
+  }
+
+  /**
+   * Speed cap that brings the car to a stand at the stop line if the signal
+   * ahead is against it, and does nothing at all otherwise.
+   */
+  _signalCap() {
+    const lights = this.game.signals;
+    if (!lights) return Infinity;
+    const v = this.vehicle;
+    const d = lights.stopDistanceAt(
+      v.position.x, v.position.z, v.forward.x, v.forward.z, v.speed,
+    );
+    if (!isFinite(d)) return Infinity;
+    // v = sqrt(2 a s), at a gentle 3.4 m/s^2 -- a patrol car easing to a halt,
+    // not one standing on the brakes.
+    return Math.sqrt(2 * 3.4 * Math.max(0, d - 1.0));
   }
 
   _search(dt) {

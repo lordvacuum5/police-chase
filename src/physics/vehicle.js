@@ -305,6 +305,28 @@ export class Vehicle {
     if (this.damage >= 0.92) this.disabled = true;
   }
 
+  /**
+   * Take a straight-line speed hit, as from clipping something the solver is
+   * not going to model properly on its own -- street furniture, mostly. Only
+   * the horizontal component is touched, so the car is slowed rather than
+   * planted into the road.
+   */
+  applySpeedLoss(dv) {
+    if (!(dv > 0)) return;
+    const lv = this.body.linvel();
+    const s = Math.hypot(lv.x, lv.z);
+    if (s < 1e-3) return;
+    const k = Math.max(0, s - dv) / s;
+    this.body.setLinvel({ x: lv.x * k, y: lv.y, z: lv.z * k }, true);
+  }
+
+  /** Add damage directly, through the same durability and shield rules. */
+  applyDamage(amount) {
+    if (!(amount > 0) || this.assist.shielded) return;
+    this.damage = clamp01(this.damage + amount / (this.spec.durability || 1));
+    if (this.damage >= 0.92) this.disabled = true;
+  }
+
   _readState() {
     const t = this.body.translation();
     const r = this.body.rotation();

@@ -17,6 +17,8 @@ import { Driver, SKILL } from './ai/driver.js';
 import { Heat } from './game/heat.js';
 import { RoadblockManager } from './game/roadblock.js';
 import { Helicopter } from './game/helicopter.js';
+import { TrafficLights } from './game/trafficlights.js';
+import { StreetProps } from './game/streetprops.js';
 import { ChaseCamera } from './game/camera.js';
 import { Hud } from './game/hud.js';
 import { Input } from './core/input.js';
@@ -98,6 +100,8 @@ class Game {
     this.dispatcher = new Dispatcher(this);
     this.roadblocks = new RoadblockManager(this);
     this.helicopter = new Helicopter(this);
+    this.signals = new TrafficLights(this);
+    this.props = new StreetProps(this);
     this.hud = new Hud(this);
     this.input = new Input();
     this.camera3 = new ChaseCamera(this.camera);
@@ -492,6 +496,8 @@ class Game {
     this.dispatcher.reset();
     this.roadblocks.reset();
     this.helicopter.reset();
+    this.signals.reset();
+    this.props.reset();
     this.player.repair();
     this.player.teleport(this.startPlace.position, this.startPlace.heading);
     this.skids.clear();
@@ -599,6 +605,8 @@ class Game {
     this.dispatcher.update(dt, player);
     this.roadblocks.update(dt, player);
     this.helicopter.update(dt, player);
+    this.signals.update(dt);
+    this.props.update(dt);
     this.heat.update(dt, player, this.dispatcher);
     this._checkProvocation(dt);
 

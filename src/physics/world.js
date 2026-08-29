@@ -12,6 +12,11 @@ export const GROUP = {
   // own group so the AI's obstacle sweeps ignore it -- a cone is something you
   // drive through, and a police car that brakes for one is worse than useless.
   DEBRIS: 0x0010,
+  // Street furniture: lamp posts, bollards, bins, signs, signal poles. Solid
+  // enough to shove a car about a bit, but invisible to every ray and sweep --
+  // an AI that brakes for a bollard, or a wheel that climbs a lamp post, is
+  // worse than furniture you can drive through.
+  STREET: 0x0020,
 };
 
 export const groups = (membership, filter) => ((membership << 16) | filter) >>> 0;
@@ -165,7 +170,10 @@ export function addCone(world, x, y, z, radius = 0.30, height = 0.75) {
 }
 
 /** Static box helper -- used for buildings, barriers and bridge decks. */
-export function addStaticBox(world, cx, cy, cz, hx, hy, hz, group = GROUP.BUILDING, rotY = 0) {
+export function addStaticBox(
+  world, cx, cy, cz, hx, hy, hz, group = GROUP.BUILDING, rotY = 0,
+  filter = group === GROUP.STREET ? (GROUP.TERRAIN | GROUP.VEHICLE) : 0xFFFF,
+) {
   const bodyDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(cx, cy, cz);
   if (rotY !== 0) {
     const h = rotY * 0.5;
@@ -175,7 +183,7 @@ export function addStaticBox(world, cx, cy, cz, hx, hy, hz, group = GROUP.BUILDI
   const col = RAPIER.ColliderDesc.cuboid(hx, hy, hz)
     .setFriction(0.9)
     .setRestitution(0.05)
-    .setCollisionGroups(groups(group, 0xFFFF));
+    .setCollisionGroups(groups(group, filter));
   world.createCollider(col, body);
   return body;
 }

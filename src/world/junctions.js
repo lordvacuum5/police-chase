@@ -188,8 +188,9 @@ export function buildJunctionCorners(junctions, road, y, kerbColour) {
 /**
  * Stop lines across every signalised approach.
  *
- * Traffic arriving at the node runs against `dir`, and on the left of its
- * carriageway, which is the -perp side.
+ * Traffic arriving at the node runs against `dir`. Left of a heading h is
+ * (h.z, -h.x), and with h = -dir that works out as +perp -- so the nearside
+ * half of the carriageway, where the stop line goes, is the +perp side.
  */
 export function buildStopLines(junctions, paint, y, colour) {
   for (const j of junctions) {
@@ -198,8 +199,8 @@ export function buildStopLines(junctions, paint, y, colour) {
       const p = { x: -a.dir.z, z: a.dir.x };
       const d = a.setback + 0.9;
       const n = j.node;
-      const p0 = { x: n.x + a.dir.x * d - p.x * a.half * 0.04, z: n.z + a.dir.z * d - p.z * a.half * 0.04 };
-      const p1 = { x: n.x + a.dir.x * d - p.x * a.half * 0.96, z: n.z + a.dir.z * d - p.z * a.half * 0.96 };
+      const p0 = { x: n.x + a.dir.x * d + p.x * a.half * 0.04, z: n.z + a.dir.z * d + p.z * a.half * 0.04 };
+      const p1 = { x: n.x + a.dir.x * d + p.x * a.half * 0.96, z: n.z + a.dir.z * d + p.z * a.half * 0.96 };
       paint.addRibbon([p0, p1], 0.55, y, colour);
       a.stopLine = { x: (p0.x + p1.x) * 0.5, z: (p0.z + p1.z) * 0.5, dist: d };
     }
