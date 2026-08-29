@@ -15,7 +15,7 @@
 import * as THREE from 'three';
 import { clamp, clamp01, lerp, sign, angleDelta, curveRadius, dist2, smoothstep } from '../util/math.js';
 import { cornerSpeedLimit, TYRE_GRASS } from '../physics/tyre.js';
-import { raycast, sweepBox, RAY_GROUNDS } from '../physics/world.js';
+import { raycast, sweepBox, RAY_GROUNDS, RAY_SOLID } from '../physics/world.js';
 
 const _p = new THREE.Vector3();
 const _origin = new THREE.Vector3();
@@ -35,6 +35,14 @@ const RUNOUT_STEP = 2.5;
  * carriageway. Sets the pace it aims to be down to by the time it gets there.
  */
 const OFF_ROAD_ARC = 45;
+
+/**
+ * Headings tried when looking for a way through, as offsets from the straight
+ * line to the goal. Straight on first so a clear line always wins ties.
+ */
+const GAP_FAN = [
+  0, -0.20, 0.20, -0.42, 0.42, -0.66, 0.66, -0.92, 0.92, -1.22, 1.22, -1.5, 1.5,
+];
 
 /** Skill presets. A rookie overdrives corners and cannot catch a slide. */
 export const SKILL = {
@@ -394,6 +402,64 @@ export class Driver {
       limit = Math.min(limit, cornerSpeedLimit(Math.max(6, aimDist / (2 * sa)), mu));
     }
     return limit;
+  }
+
+  /**
+   * Find a way through, rather than a reason to stop.
+   *
+   * Sweeps a fan of headings either side of where the car wants to go and
+   * picks the one that actually gets somewhere: mostly clear, mostly toward
+   * the goal. This is what a driver does when the direct line is blocked --
+   * look for the gap and take it -- and it is the difference between arriving
+   * and giving up.
+   *
+   * Returns { x, z } a point to aim at, and sets `gapClear` to how far that
+   * heading runs before anything is in the way. A short `gapClear` in every
+   * direction is the genuine "boxed in" case and the only one worth abandoning.
+   */
+  pickGap(wantX, wantZ, reach) {
+    const v = this.v;
+    const hw = this.halfWidth;
+
+    let dx = wantX - v.position.x, dz = wantZ - v.position.z;
+    const goalDist = Math.hypot(dx, dz) || 1;
+    dx /= goalDist; dz /= goalDist;
+    const span = Math.min(reach, goalDist);
+
+    _origin.copy(v.position).addScaledVector(v.forward, v.spec.dims.l * 0.45);
+    _origin.y += 0.5;
+
+    let bestScore = -Infinity, bestAng = 0, bestClear = 0;
+    // Widest deviation worth taking. Beyond about eighty degrees the car is no
+    // longer heading for the target at all, and would be better reversing.
+    for (const ang of GAP_FAN) {
+      const ca = Math.cos(ang), sa = Math.sin(ang);
+      _probe.set(dx * ca - dz * sa, 0, dx * sa + dz * ca);
+      const clear = sweepBox(v.world, _origin, _probe, span, RAY_GROUNDS, v.body, hw);
+
+      // Score by *progress*, not by openness. How far this heading actually
+      // carries the car toward the goal is `clear * cos(deviation)` -- so a
+      // long run that points away scores nothing, and a short run straight at
+      // the target beats a wide detour. Scoring openness alone made units
+      // wander off down whichever direction happened to be emptiest, which is
+      // how a courtyard entrance got ignored in favour of open road behind.
+      const heading = Math.atan2(v.forward.x, v.forward.z);
+      const want = Math.atan2(_probe.x, _probe.z);
+      const swing = Math.abs(angleDelta(heading, want));
+      const score = clear * Math.cos(ang) - swing * 4;
+      if (score > bestScore) {
+        bestScore = score; bestAng = ang; bestClear = clear;
+      }
+    }
+
+    this.gapClear = bestClear;
+    this.gapAngle = bestAng;
+    const ca = Math.cos(bestAng), sa = Math.sin(bestAng);
+    const gx = dx * ca - dz * sa, gz = dx * sa + dz * ca;
+    // Aim into the gap rather than at its far end, so the car keeps steering
+    // as the geometry opens up.
+    const reachTo = Math.min(bestClear * 0.85, span);
+    return { x: v.position.x + gx * reachTo, z: v.position.z + gz * reachTo };
   }
 
   /**
@@ -763,7 +829,12 @@ export class Driver {
     const bias = ((leftClear - rightClear) / reach) * urgency * urgency * 2.4;
 
     this.wallBias = lerp(this.wallBias, clamp(bias, -0.8, 0.8), 1 - Math.exp(-12 * dt));
-    this.wallNear = nearest;
+
+    // Braking distance comes from a separate sweep that ignores props. A tree
+    // is something to miss, not something to stop for, and counting them here
+    // had units crawling through anywhere wooded.
+    this._travelDir(_probe);
+    this.wallNear = sweepBox(v.world, _origin, _probe, reach, RAY_SOLID, v.body, hw);
     return this.wallBias;
   }
 

@@ -18,6 +18,16 @@ export const groups = (membership, filter) => ((membership << 16) | filter) >>> 
 
 /** What a suspension ray is allowed to see -- deliberately not other vehicles. */
 export const RAY_GROUNDS = groups(0xFFFF, GROUP.TERRAIN | GROUP.BUILDING | GROUP.PROP);
+
+/**
+ * What is worth *braking* for, as opposed to steering around.
+ *
+ * A building is a wall: arrive too fast and the chase is over. A tree or a
+ * lamp post is a thing to miss, and a driver does not slow to walking pace for
+ * one -- they go past it. Feeding props into the braking distance had units
+ * crawling through anywhere with trees, which on the town map is most of it.
+ */
+export const RAY_SOLID = groups(0xFFFF, GROUP.TERRAIN | GROUP.BUILDING);
 /** What a line-of-sight ray is allowed to see -- buildings block, vehicles do not. */
 export const RAY_SIGHT = groups(0xFFFF, GROUP.BUILDING | GROUP.PROP);
 

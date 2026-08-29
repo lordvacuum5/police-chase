@@ -8,13 +8,15 @@
 import * as THREE from 'three';
 import { Driver, SKILL } from './driver.js';
 import { pitUpdate, relativeTo, boxAim, boxSpeed } from './tactics.js';
-import { hasLineOfSight } from '../physics/world.js';
+import { hasLineOfSight, sweepBox, RAY_SOLID } from '../physics/world.js';
 import { clamp, clamp01, lerp, dist2, sign } from '../util/math.js';
 
 const _aim = new THREE.Vector3();
 const _tmp = new THREE.Vector3();
 const _eye = new THREE.Vector3();
 const _aim2 = new THREE.Vector3();
+const _dirTmp = new THREE.Vector3();
+const _origin2 = new THREE.Vector3();
 
 export const ROLE = {
   PATROL: 'patrol',
@@ -299,6 +301,103 @@ export class Officer {
     return true;
   }
 
+  /**
+   * Head for a point with no route: steer for whatever gap actually leads
+   * there, and keep re-asking as the geometry opens up.
+   *
+   * This is what reaches places the road network cannot -- a courtyard, an
+   * alley, a patch of grass behind a terrace. The router is kept only as the
+   * escape hatch for a car that is genuinely wedged, since a unit pinned in a
+   * dead end will otherwise sit there steering hopefully at a wall.
+   */
+  _driveDirect(dt, point, speed) {
+    const v = this.vehicle;
+    const d = this.driver;
+
+    if (this._roadFallback > 0) {
+      this._roadFallback -= dt;
+      return this._goTo(dt, point, 1.0);
+    }
+
+    // Boxed in: not merely blocked ahead, but no usable gap in any direction
+    // *and* not moving. Either alone is normal -- threading a tight gap is
+    // slow, and a blocked line is the case this whole method exists for.
+    if (v.speed < 3.5 && d.gapClear !== undefined && d.gapClear < 9) {
+      this._boxedIn = (this._boxedIn || 0) + dt;
+      if (this._boxedIn > 1.6) { this._roadFallback = 5; this._boxedIn = 0; }
+    } else {
+      this._boxedIn = Math.max(0, (this._boxedIn || 0) - dt * 0.6);
+    }
+
+    // Two steps, not one. A greedy fan can only answer "which way is best
+    // right now", and that is not enough to get through a doorway: threading a
+    // three-metre entrance means first driving to a spot in front of it and
+    // only then turning in. So when the direct line is blocked, look for a
+    // staging point -- somewhere that *can* see the target and that this car
+    // can get to -- and head for that instead. The gap fan then handles the
+    // approach, and the last leg is a clear straight run.
+    const goal = this._stagingPoint(dt, point) || point;
+
+    const reach = clamp(16 + v.speed * 1.9, 20, 75);
+    const aim = d.pickGap(goal.x, goal.z, reach);
+    _aim.set(aim.x, 0, aim.z);
+    d.setPath([]);
+    return d.driveTo(_aim, speed, dt, { allowHandbrake: false });
+  }
+
+  /**
+   * A place to aim for when the target itself cannot be seen from here: a
+   * point near it with a clear line to it, ideally one this car can reach.
+   * Re-solved a couple of times a second and held in between, so the unit
+   * commits to an approach rather than dithering between two doorways.
+   */
+  _stagingPoint(dt, point) {
+    this._stageTimer = (this._stageTimer || 0) - dt;
+    if (this._stageTimer > 0 && this._stage) {
+      // Drop it once we are there, or once the target has moved on.
+      const moved = dist2(this._stage.forX, this._stage.forZ, point.x, point.z);
+      if (moved < 25 && this.distanceTo(this._stage) > 6) return this._stage;
+    }
+    this._stageTimer = 0.5;
+    this._stage = null;
+
+    const v = this.vehicle;
+    let best = null, bestScore = -Infinity;
+    for (const radius of [16, 30]) {
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        const sx = point.x + Math.cos(a) * radius;
+        const sz = point.z + Math.sin(a) * radius;
+
+        // It has to be able to see the target, or it is not a way in.
+        _eye.set(sx, point.y !== undefined ? point.y + 1.0 : 1.0, sz);
+        _aim2.set(point.x, (point.y || 0) + 0.8, point.z);
+        if (!hasLineOfSight(this.game.world, _eye, _aim2, 1.0)) continue;
+
+        // Prefer somewhere close to us -- and heavily prefer somewhere we can
+        // actually get to. A point that sees the target through a doorway is
+        // useless if the wall is between us and it, and picking one of those
+        // sends the car off in the wrong direction entirely.
+        const toMe = dist2(sx, sz, v.position.x, v.position.z);
+        _dirTmp.set(sx - v.position.x, 0, sz - v.position.z);
+        const len = _dirTmp.length() || 1;
+        _dirTmp.multiplyScalar(1 / len);
+        _origin2.copy(v.position); _origin2.y += 0.6;
+        const clear = sweepBox(this.game.world, _origin2, _dirTmp, len,
+          RAY_SOLID, v.body, this.driver.halfWidth);
+        const reachable = clear >= len - 1.5;
+
+        const score = (reachable ? 400 : 0) - toMe;
+        if (score > bestScore) { bestScore = score; best = { x: sx, z: sz }; }
+      }
+      if (best) break;
+    }
+    if (!best) return null;
+    best.forX = point.x; best.forZ = point.z;
+    this._stage = best;
+    return best;
+  }
+
   _pursue(dt, target) {
     if (!target) return this._patrol(dt);
     const v = this.vehicle;
@@ -352,8 +451,16 @@ export class Officer {
     }
 
     if (!this._hasLos) {
-      // Something solid in the way. The road network is the way round it.
-      return this._goTo(dt, target.position, 1.0);
+      // Something solid in the way -- which is a reason to look for the way
+      // through, not a reason to give up and drive round by road. Falling
+      // straight back to the network was why a target sitting in a courtyard,
+      // or up an alley between two buildings, was effectively unreachable:
+      // there is no road to the place, so the router had nothing to offer and
+      // units simply stopped short.
+      //
+      // The road network is still the answer when a unit is genuinely boxed
+      // in, and `_driveDirect` keeps that as its own fallback.
+      return this._driveDirect(dt, target.position, this._chaseSpeed());
     }
 
     const r = relativeTo(target, v);
