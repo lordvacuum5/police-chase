@@ -18,6 +18,7 @@
 import * as THREE from 'three';
 import { ROLE } from '../ai/officer.js';
 import { addCone } from '../physics/world.js';
+import { SPECS } from './vehicles.js';
 import { dist2, clamp } from '../util/math.js';
 
 const MAX_BLOCKS = 2;
@@ -184,14 +185,17 @@ export class RoadblockManager {
     // which is not a roadblock, it is a chicane: work out what one angled car
     // actually spans and put down enough of them to close the carriageway.
     const ANG = Math.PI * 0.42;
-    const cover = Math.abs(4.7 * Math.sin(ANG)) + Math.abs(1.92 * Math.cos(ANG));
+    const tier = game.heat.tier;
+    // From the spec of the car actually being placed, not literals -- a wider
+    // vehicle would otherwise leave a gap in a block it believed it had closed.
+    const dims = SPECS[tier >= 4 ? 'interceptor' : 'patrol'].dims;
+    const cover = Math.abs(dims.l * Math.sin(ANG)) + Math.abs(dims.w * Math.cos(ANG));
     const spread = Math.max(0, width * 0.5 - cover * 0.5);
     // Capped: a block is not allowed to eat the whole vehicle budget and
     // leave nothing to actually chase you with.
     const count = clamp(Math.ceil((spread * 2) / cover) + 1, 2, 4);
     // Points back up the road the target arrives along.
     const approach = { x: -tx, z: -tz };
-    const tier = game.heat.tier;
 
     for (let i = 0; i < count; i++) {
       const f = count === 1 ? 0 : (i / (count - 1)) * 2 - 1;   // -1 .. 1

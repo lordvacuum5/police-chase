@@ -73,16 +73,25 @@ export function raycast(world, origin, dir, maxToi, filterGroups = undefined, ex
   };
 }
 
-// Reused so the sweep does not allocate a shape every call; the AI runs this
-// several times a car, several times a second.
-// Deliberately wider than the car. The widest police car is 1.96 m across, so
-// a 1.90 m probe has *negative* margin: a gap it reports as clear is one the
-// car does not actually fit through, and threading a tight gap ends in a
-// scrape every time. 2.36 m leaves about 20 cm each side, which is roughly
-// what a driver would want before committing to a gap at speed.
-const _sweepShape = new RAPIER.Cuboid(1.18, 0.5, 0.35);
+// Sweep shapes, cached by half-width. Callers pass the size of the car doing
+// the looking rather than a shared guess: a fixed probe is either too narrow
+// for the widest car (a gap it calls clear is one that car does not fit
+// through) or too wide for the rest, which is worse in a different way -- they
+// refuse gaps they would sail through. There are only a handful of distinct
+// widths, so the cache never grows.
+const _sweepShapes = new Map();
 const _sweepRot = { x: 0, y: 0, z: 0, w: 1 };
 const _sweepPos = { x: 0, y: 0, z: 0 };
+
+function sweepShapeFor(halfWidth) {
+  const key = Math.round(halfWidth * 100);
+  let s = _sweepShapes.get(key);
+  if (!s) {
+    s = new RAPIER.Cuboid(halfWidth, 0.5, 0.35);
+    _sweepShapes.set(key, s);
+  }
+  return s;
+}
 
 /**
  * Sweep a car-width box along `dir` and return the distance to the first thing
@@ -94,10 +103,12 @@ const _sweepPos = { x: 0, y: 0, z: 0 };
  * nothing ever saw. Sweeping the actual shape asks the question the car cares
  * about: will *this* fit through there.
  */
-export function sweepBox(world, origin, dir, maxToi, filterGroups = undefined, excludeBody = null) {
+export function sweepBox(
+  world, origin, dir, maxToi, filterGroups = undefined, excludeBody = null, halfWidth = 1.0,
+) {
   _sweepPos.x = origin.x; _sweepPos.y = origin.y; _sweepPos.z = origin.z;
   const hit = world.castShape(
-    _sweepPos, _sweepRot, dir, _sweepShape,
+    _sweepPos, _sweepRot, dir, sweepShapeFor(halfWidth),
     0, maxToi, true,
     undefined, filterGroups, undefined, excludeBody || undefined,
   );

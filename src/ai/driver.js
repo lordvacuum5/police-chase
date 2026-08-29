@@ -311,7 +311,8 @@ export class Driver {
   clearAhead(dir, maxDist = 70) {
     const v = this.v;
     let best = maxDist;
-    for (const lateral of [-1.1, 0, 1.1]) {
+    const hw = this.halfWidth;
+    for (const lateral of [-hw, 0, hw]) {
       _origin.copy(v.position)
         .addScaledVector(v.forward, v.spec.dims.l * 0.5)
         .addScaledVector(v.left, lateral);
@@ -393,6 +394,17 @@ export class Driver {
       limit = Math.min(limit, cornerSpeedLimit(Math.max(6, aimDist / (2 * sa)), mu));
     }
     return limit;
+  }
+
+  /**
+   * Half the car's width, plus the margin a driver would want before
+   * committing to a gap at speed. Every lateral check goes through this so
+   * they are all sized off the actual car -- a probe wider than the car makes
+   * it refuse gaps it would sail through, and a probe narrower than the car
+   * makes it clip the ones it takes.
+   */
+  get halfWidth() {
+    return this.v.spec.dims.w * 0.5 + 0.10;
   }
 
   /** Unit vector along the way the car is actually moving. */
@@ -706,11 +718,12 @@ export class Driver {
     // steer toward.
     _origin.copy(v.position).addScaledVector(v.forward, v.spec.dims.l * 0.45);
     _origin.y += 0.5;
+    const hw = this.halfWidth;
     let leftClear = reach, rightClear = reach, nearest = reach;
     for (const ang of [-0.42, 0, 0.42]) {
       const ca = Math.cos(ang), sa = Math.sin(ang);
       _probe.set(_run.x * ca - _run.z * sa, 0, _run.x * sa + _run.z * ca);
-      const toi = sweepBox(v.world, _origin, _probe, reach, RAY_GROUNDS, v.body);
+      const toi = sweepBox(v.world, _origin, _probe, reach, RAY_GROUNDS, v.body, hw);
       // Only the straight-ahead sweep is allowed to set the braking distance.
       //
       // The angled pair point twenty-four degrees off, which on any ordinary
@@ -735,7 +748,7 @@ export class Driver {
       for (const ang of [-1.05, 1.05]) {
         const ca = Math.cos(ang), sa = Math.sin(ang);
         _probe.set(_run.x * ca - _run.z * sa, 0, _run.x * sa + _run.z * ca);
-        const toi = sweepBox(v.world, _origin, _probe, reach, RAY_GROUNDS, v.body);
+        const toi = sweepBox(v.world, _origin, _probe, reach, RAY_GROUNDS, v.body, hw);
         if (ang < 0) leftClear = toi; else rightClear = toi;
       }
     }
@@ -766,7 +779,10 @@ export class Driver {
       const ahead = _p.dot(v.forward);
       if (ahead < 1 || ahead > range) continue;
       const side = _p.dot(v.left);
-      const clearance = 2.2 + v.speed * 0.02;
+      // Both cars' widths, not a constant: what counts as "in the way" depends
+      // on how much room the pair of them actually need.
+      const clearance = this.halfWidth + (o.spec ? o.spec.dims.w * 0.5 : 0.97) + 0.3
+        + v.speed * 0.02;
       if (Math.abs(side) > clearance) continue;
       // Closing speed matters: a car pulling away is not an obstacle.
       const closing = v.forwardSpeed - o.linvel.dot(v.forward);

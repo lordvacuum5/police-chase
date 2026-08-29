@@ -332,8 +332,14 @@ export class Officer {
       // next few seconds are open, and it re-asks four times a second.
       const look = Math.min(len, 70);
       const ux = dx / len, uz = dz / len;
+      // Corridor the width of *this* car, not a fixed 4.4 m. The old figure
+      // demanded more than twice the room a police car actually needs, so any
+      // gap between buildings narrower than that was declared blocked and the
+      // unit went round by road -- refusing openings it would have driven
+      // straight through.
+      const hw = this.driver.halfWidth;
       let open = true;
-      for (const off of [-2.2, 0, 2.2]) {
+      for (const off of [-hw, 0, hw]) {
         _eye.set(v.position.x + nx * off, v.position.y + 1.0, v.position.z + nz * off);
         _aim2.set(
           v.position.x + nx * off + ux * look,

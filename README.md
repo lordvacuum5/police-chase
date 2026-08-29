@@ -413,6 +413,39 @@ something you drive through, and a police car that brakes for one is worse than
 useless. Driving through five of them at 90 km/h scatters them 1.6–3.2 m and
 does **no damage at all**.
 
+### Knowing how big the car is
+
+Every lateral check used to be a constant. Length and wheelbase were read from
+the spec properly, but width was not: one shared 2.36 m sweep shape for every
+car, clearance rays at a fixed 1.1 m, a car-avoidance clearance of 2.2 m, and
+-- the one that actually showed -- a pursuit corridor cast at plus and minus
+2.2 m, demanding a **4.4 m** opening for a car 1.94 m wide. Gaps between
+buildings that a police car would drive straight through were declared blocked,
+and the unit went the long way round by road.
+
+All of it now comes from `spec.dims`, through one accessor (`Driver.halfWidth`)
+that adds the margin a driver would want before committing to a gap at speed.
+The sweep shape is built per width and cached, so a wider vehicle added later
+probes as its own size rather than inheriting somebody else's.
+
+Measured on a wall with a hole in it, for the 1.94 m patrol car:
+
+| gap | verdict | drives through | touches the sides |
+|---|---|---|---|
+| 1.6 m | blocked | no | yes, if forced |
+| 2.2 m | blocked | no | yes, if forced |
+| 2.6 m | **clear** | **yes** | no |
+| 3.2 m | clear | yes | no |
+| 4.4 m | clear | yes | no |
+
+The threshold is about 2.6 m -- roughly a third of a metre each side -- and
+everything from there up to the old 4.4 m limit is newly available. Below the
+car's own width it correctly refuses, and would scrape if made to try.
+
+The roadblock's coverage maths also took its car size from literals, which
+mattered more quietly: a wider vehicle would have left a gap up the middle of a
+block it believed it had closed.
+
 ### Seeing what will actually fit
 
 Every obstacle check used to be a ray, and a ray is a line with no width. A fan
