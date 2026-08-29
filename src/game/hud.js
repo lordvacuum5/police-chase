@@ -333,13 +333,21 @@ export class Hud {
     const heli = this.game.helicopter;
     if (heli && heli.active) {
       const p = toMap(heli.pos.x, heli.pos.z);
-      ctx.strokeStyle = 'rgba(255,240,180,0.5)';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([4, 5]);
+
+      // The searchlight, where it is actually pointing -- not a detection
+      // radius round the aircraft. The light is what sees you, it moves
+      // independently of the airframe, and it is something you can watch and
+      // drive out of, so it is the thing worth drawing.
+      const b = toMap(heli.beam.x, heli.beam.z);
+      ctx.fillStyle = 'rgba(255,240,180,0.20)';
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 190 * k, 0, Math.PI * 2);
+      ctx.arc(b.x, b.y, 26 * k, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,240,180,0.65)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, 26 * k, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.setLineDash([]);
 
       ctx.fillStyle = '#ffe9a3';
       ctx.beginPath();

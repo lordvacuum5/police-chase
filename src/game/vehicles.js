@@ -207,11 +207,15 @@ export const LIVERIES = {
  * Build a car body as one merged, vertex-coloured mesh.
  *
  * Local space matches the physics body: +Z is forward, +X is the car's left,
- * and the origin sits at the centre of mass (about 0.47 m off the ground).
+ * and the origin sits at the centre of mass -- which is *not* the middle of
+ * the wheelbase, so the axle positions here come from the same numbers the
+ * suspension uses rather than being guessed as a fraction of the length.
  *
- * The silhouette is deliberately low and raked -- a wide flat tub, a fastback
- * greenhouse set well back, and a ducktail -- so it reads as a modern coupe
- * rather than a box on wheels.
+ * The silhouette is a modern rear-drive saloon: a low nose with slim lamp
+ * units, a long bonnet, a cabin set well back under a tapering roof, and --
+ * the thing that most separates a current car from an eighties one -- proper
+ * wheel arch cut-outs, so the wheels stand clear of the bodywork instead of
+ * being swallowed by a slab-sided tub.
  */
 export function buildCarGeometry(spec, livery, opts = {}) {
   const b = new MeshBuilder();
@@ -219,47 +223,151 @@ export function buildCarGeometry(spec, livery, opts = {}) {
   const L = spec.dims.l;
   const W = spec.dims.w;
   const half = L * 0.5;
+  const hw = W * 0.5;
 
-  // --- underbody ------------------------------------------------------
-  // Narrower than the track and stopping above the wheel centres, so the
-  // wheels are actually visible rather than swallowed by the bodywork.
-  b.addBox(W * 0.72, 0.20, L * 0.88, 0, -0.20, 0, trim);
+  // Axles, in body space. frontWeight biases the centre of mass forwards, so
+  // the front axle is the closer of the two to the origin.
+  const zf = spec.wheelbase * (1 - spec.frontWeight);
+  const zr = -spec.wheelbase * spec.frontWeight;
+  const r = spec.wheelRadius;
 
-  // --- main tub, widest at the sills, gently tapered in at the top -----
-  b.addTaperedBox(W, 0.44, L * 0.97, 0, 0.11, 0, body, 0.97, 0.99);
-  b.addTaperedBox(W * 0.985, 0.16, L * 0.94, 0, 0.40, -0.04, body, 0.95, 0.97);
+  // Wheel centre height at rest: the chassis settles about 0.10 m into its
+  // springs, so this is where the hubs sit relative to the body origin.
+  const hub = -0.10;
+  const tyreTop = hub + r;        // nothing solid may hang below this over a wheel
+  const floor = hub - r + 0.11;   // underbody, i.e. ride height
+  const archHalf = r * 1.30;      // half the length of an arch opening
 
-  // --- long raked bonnet and a short high tail ------------------------
-  b.addTaperedBox(W * 0.93, 0.13, L * 0.34, 0, 0.50, half * 0.60, body, 0.90, 0.80, 0, 0.10);
-  b.addTaperedBox(W * 0.94, 0.15, L * 0.24, 0, 0.51, -half * 0.70, body, 0.94, 0.92);
-  // Ducktail lip.
-  b.addBox(W * 0.86, 0.06, 0.20, 0, 0.60, -half * 0.90, body);
+  const belt = 0.58;              // shoulder line: top of the flanks, base of the glass
+  const roof = 0.90;
+  const roofTop = roof + 0.035;
 
-  // --- greenhouse: fastback glass with a slim roof panel ---------------
-  b.addTaperedBox(W * 0.90, 0.34, L * 0.44, 0, 0.66, -0.22, glass, 0.80, 0.56, 0, -0.16);
-  b.addTaperedBox(W * 0.90 * 0.80, 0.07, L * 0.44 * 0.56, 0, 0.86, -0.38, body, 0.98, 0.98);
+  // Where the doors begin and end, and so where the arches are cut.
+  const fArch = zf - archHalf, rArch = zr + archHalf;
 
-  // --- character line along the flanks --------------------------------
-  b.addBox(W * 1.005, 0.045, L * 0.66, 0, 0.30, -0.05, trim);
+  // --- underbody -------------------------------------------------------
+  b.addBox(W * 0.78, 0.10, L * 0.88, 0, floor - 0.03, 0, 0x0a0c0f);
 
-  // --- wheel arches ----------------------------------------------------
-  const ax = W * 0.5 - 0.02;
-  const af = L * 0.5 * 0.615, ar = -L * 0.5 * 0.655;
-  for (const [zz, sgn] of [[af, 1], [af, -1], [ar, 1], [ar, -1]]) {
-    b.addTaperedBox(0.15, 0.21, 1.38, sgn * ax, -0.05, zz, body, 1, 0.84);
+  // --- lower body ------------------------------------------------------
+  // Only the overhangs reach down to bumper height. Between the axles there
+  // is just a rocker, inset from the flanks, and that is what leaves the
+  // wheels standing in open arches instead of buried in bodywork.
+  const noseD = half - (zf + archHalf);
+  b.addTaperedBox(W * 0.98, tyreTop - floor, noseD,
+    0, (tyreTop + floor) * 0.5, half - noseD * 0.5, body, 0.99, 1.10, 0, -0.02);
+  const tailD = (zr - archHalf) + half;
+  b.addTaperedBox(W * 0.98, tyreTop - floor, tailD,
+    0, (tyreTop + floor) * 0.5, -half + tailD * 0.5, body, 0.99, 1.06);
+
+  const rockD = fArch - rArch, rockZ = (fArch + rArch) * 0.5;
+  b.addBox(W * 0.93, (tyreTop + 0.02) - (floor + 0.06), rockD,
+    0, ((tyreTop + 0.02) + (floor + 0.06)) * 0.5, rockZ, body);
+  // Side skirt, tucked under the doors.
+  b.addTaperedBox(W * 0.96, 0.07, rockD * 0.96, 0, floor + 0.09, rockZ, trim, 0.97, 1);
+
+  // --- flanks ----------------------------------------------------------
+  // The cowl is where the windscreen meets the bonnet, and it is the point at
+  // which the bodywork stops being full shoulder height. Ahead of it the
+  // wings step down twice, which is what stops the nose reading as a brick.
+  const cowl = zf - 0.34;
+  const bonnetD = half - cowl;
+  const wingTop = belt - 0.075;
+  const noseTop = wingTop - 0.075;
+  const flankY0 = tyreTop - 0.02;
+
+  // Cabin and rear quarters: full height, from the tail up to the cowl.
+  b.addTaperedBox(W, belt - flankY0, cowl + half,
+    0, (belt + flankY0) * 0.5, (cowl - half) * 0.5, body, 0.985, 0.995);
+  // Front wings, then the nose itself, each a step lower than the last.
+  b.addTaperedBox(W * 0.995, wingTop - flankY0, bonnetD * 0.60,
+    0, (wingTop + flankY0) * 0.5, cowl + bonnetD * 0.30, body, 0.99, 0.995);
+  b.addTaperedBox(W * 0.985, noseTop - flankY0, bonnetD * 0.46,
+    0, (noseTop + flankY0) * 0.5, half - bonnetD * 0.23, body, 0.97, 0.93);
+
+  // Blistered arch lips, standing proud of the flank.
+  for (const [zz, sgn] of [[zf, 1], [zf, -1], [zr, 1], [zr, -1]]) {
+    b.addTaperedBox(0.12, 0.22, archHalf * 2.05, sgn * (hw - 0.02), 0.29, zz, body, 1, 0.86);
+  }
+  // A haunch over the rear axle: the flank swells slightly toward the back.
+  b.addTaperedBox(W * 1.012, 0.15, archHalf * 2.6, 0, 0.44, zr + 0.10, body, 0.99, 0.90);
+
+  // Door shut lines. Two doors a side, so three seams.
+  for (const dz of [fArch - 0.05, rockZ - 0.06, rArch + 0.04]) {
+    b.addBox(W * 1.006, belt - tyreTop - 0.02, 0.022, 0, (belt + tyreTop) * 0.5, dz, trim);
   }
 
-  // --- bumpers, splitter and diffuser ---------------------------------
-  b.addTaperedBox(W * 1.0, 0.20, 0.30, 0, 0.14, half * 0.975, trim, 0.94, 1);
-  b.addBox(W * 0.94, 0.05, 0.42, 0, -0.06, half * 0.96, trim);
-  b.addTaperedBox(W * 1.0, 0.20, 0.26, 0, 0.16, -half * 0.978, trim, 0.94, 1);
-  b.addBox(W * 0.80, 0.10, 0.30, 0, -0.10, -half * 0.94, trim);
+  // --- bonnet and boot lid ---------------------------------------------
+  // The bonnet caps each wing step, so it follows the same fall toward the
+  // nose. A power bulge down the middle keeps the panel from reading flat.
+  b.addTaperedBox(W * 0.90, 0.055, bonnetD * 0.58,
+    0, wingTop + 0.025, cowl + bonnetD * 0.29, body, 0.98, 0.99);
+  b.addTaperedBox(W * 0.87, 0.055, bonnetD * 0.44,
+    0, noseTop + 0.025, half - bonnetD * 0.22, body, 0.95, 0.92);
+  b.addTaperedBox(W * 0.44, 0.035, bonnetD * 0.86,
+    0, wingTop + 0.05, cowl + bonnetD * 0.46, body, 0.80, 0.98);
 
-  // --- slim LED light signatures ---------------------------------------
-  b.addBox(W * 0.34, 0.075, 0.09, +W * 0.30, 0.40, half * 0.985, 0xf3efe0);
-  b.addBox(W * 0.34, 0.075, 0.09, -W * 0.30, 0.40, half * 0.985, 0xf3efe0);
-  // Full-width rear light bar.
-  b.addBox(W * 0.90, 0.075, 0.08, 0, 0.44, -half * 0.985, 0x8e1c16);
+  const deck = zr + 0.35;
+  b.addTaperedBox(W * 0.93, 0.06, deck + half,
+    0, belt + 0.02, (deck - half) * 0.5, body, 0.97, 0.99);
+  // Ducktail lip on the trailing edge of the boot.
+  b.addBox(W * 0.88, 0.05, 0.16, 0, belt + 0.065, -half + 0.12, body);
+
+  // --- greenhouse -------------------------------------------------------
+  // Three glazed sections: a steeply raked screen, the cabin, and a fastback
+  // rear window. Tapering the top face and shifting it back or forward is
+  // what gives each of them its rake.
+  const gh = roof - (belt + 0.06), gy = belt + 0.06 + gh * 0.5;
+  const scrD = 0.62;
+  b.addTaperedBox(W * 0.86, gh, scrD, 0, gy, cowl - scrD * 0.5, glass, 0.86, 0.30, 0, -0.20);
+  const cabD = (cowl - scrD) - (deck + 0.58);
+  b.addTaperedBox(W * 0.86, gh, cabD, 0, gy, (cowl - scrD + deck + 0.58) * 0.5, glass, 0.86, 1);
+  b.addTaperedBox(W * 0.86, gh, 0.60, 0, gy, deck + 0.28, glass, 0.86, 0.42, 0, 0.17);
+
+  // Roof panel, spanning the tops of the screen and the rear window.
+  const rf0 = deck + 0.28 - 0.126 + 0.17, rf1 = cowl - scrD * 0.5 + 0.093 - 0.20;
+  b.addTaperedBox(W * 0.74, 0.07, rf1 - rf0, 0, roofTop - 0.035, (rf0 + rf1) * 0.5, body, 0.99, 0.97);
+
+  // Window graphics. Without these the glass is one undifferentiated black
+  // slab, which is most of what made the old body look like a box on wheels:
+  // a body-coloured B-pillar splits it into two windows, and a bright surround
+  // draws the line between glass and bodywork.
+  b.addBox(0.075, gh, 0.09, +W * 0.432, gy, rockZ + 0.05, body);
+  b.addBox(0.075, gh, 0.09, -W * 0.432, gy, rockZ + 0.05, body);
+  const winD = (cowl - scrD * 0.4) - (deck + 0.30);
+  const winZ = ((cowl - scrD * 0.4) + deck + 0.30) * 0.5;
+  b.addBox(W * 0.875, 0.035, winD, 0, belt + 0.075, winZ, 0xb9c1cb);
+  // Roof drip rails.
+  b.addBox(0.05, 0.05, winD * 0.86, +W * 0.375, roof - 0.015, winZ - 0.06, body);
+  b.addBox(0.05, 0.05, winD * 0.86, -W * 0.375, roof - 0.015, winZ - 0.06, body);
+
+  // Door mirrors on short stalks, capped in the livery accent.
+  for (const sgn of [1, -1]) {
+    b.addBox(0.09, 0.05, 0.05, sgn * (hw + 0.03), belt + 0.02, cowl - scrD * 0.75, body);
+    b.addTaperedBox(0.21, 0.085, 0.11, sgn * (hw + 0.13), belt + 0.055,
+      cowl - scrD * 0.80, accent, 0.85, 0.9);
+  }
+
+  // --- front end --------------------------------------------------------
+  // Slim lamp units in the corners, a dark upper grille between them, and a
+  // separate lower intake with a splitter under it.
+  // The lamps sit just under the leading edge of the bonnet, so they follow
+  // the nose down rather than floating halfway up a flat wall.
+  const lampY = noseTop - 0.13;
+  for (const sgn of [1, -1]) {
+    b.addTaperedBox(0.56, 0.16, 0.26, sgn * (hw - 0.30), lampY, half - 0.10, 0x11151b, 0.94, 0.55);
+    b.addBox(0.50, 0.075, 0.09, sgn * (hw - 0.30), lampY + 0.025, half - 0.015, 0xf4f7fc);
+    b.addBox(0.50, 0.030, 0.075, sgn * (hw - 0.30), lampY - 0.055, half - 0.02, 0x8ec8ff);
+  }
+  b.addBox(W * 0.50, 0.145, 0.09, 0, lampY, half - 0.02, 0x090c10);
+  b.addBox(W * 0.78, 0.20, 0.10, 0, lampY - 0.30, half - 0.04, 0x090c10);
+  b.addTaperedBox(W * 0.92, 0.06, 0.32, 0, floor + 0.03, half - 0.18, trim, 0.96, 1);
+
+  // --- rear end ---------------------------------------------------------
+  b.addBox(W * 0.94, 0.085, 0.07, 0, belt - 0.10, -half + 0.02, 0x7d1712);
+  for (const sgn of [1, -1]) {
+    b.addBox(0.32, 0.14, 0.08, sgn * (hw - 0.22), belt - 0.10, -half + 0.015, 0xbf2a1f);
+  }
+  b.addBox(W * 0.74, 0.13, 0.28, 0, floor + 0.05, -half + 0.15, 0x0c0f14);
 
   // --- police fit-out ---------------------------------------------------
   const decals = new MeshBuilder();
@@ -268,26 +376,27 @@ export function buildCarGeometry(spec, livery, opts = {}) {
       // Modern low-profile light bar: a slim aerodynamic spine on two feet,
       // with a row of individual lamp modules along it and clear end caps
       // where the instanced flashers sit.
-      b.addTaperedBox(1.30, 0.07, 0.22, 0, 0.945, -0.16, trim, 0.9, 0.8);
-      b.addBox(0.10, 0.05, 0.16, +0.42, 0.905, -0.16, trim);
-      b.addBox(0.10, 0.05, 0.16, -0.42, 0.905, -0.16, trim);
-      b.addBox(1.14, 0.085, 0.16, 0, 1.00, -0.16, 0x11161d);
+      const barZ = -0.14;
+      b.addBox(0.11, 0.035, 0.17, +0.44, roofTop + 0.018, barZ, trim);
+      b.addBox(0.11, 0.035, 0.17, -0.44, roofTop + 0.018, barZ, trim);
+      b.addTaperedBox(1.30, 0.05, 0.23, 0, roofTop + 0.055, barZ, trim, 0.92, 0.84);
+      b.addBox(1.16, 0.08, 0.17, 0, roofTop + 0.105, barZ, 0x11161d);
       for (let i = -2; i <= 2; i++) {
-        b.addBox(0.13, 0.05, 0.17, i * 0.21, 1.005, -0.16, i % 2 ? 0x2f7dff : 0xd8dde4);
+        b.addBox(0.13, 0.05, 0.18, i * 0.21, roofTop + 0.112, barZ, i % 2 ? 0x2f7dff : 0xd8dde4);
       }
-      b.addBox(0.08, 0.10, 0.18, +0.62, 1.00, -0.16, trim);
-      b.addBox(0.08, 0.10, 0.18, -0.62, 1.00, -0.16, trim);
+      b.addBox(0.08, 0.095, 0.19, +0.62, roofTop + 0.105, barZ, trim);
+      b.addBox(0.08, 0.095, 0.19, -0.62, roofTop + 0.105, barZ, trim);
 
       // Shark-fin aerial and a whip, as on any modern response car.
-      b.addTaperedBox(0.07, 0.11, 0.26, 0, 0.945, -0.86, body, 0.3, 0.35, 0, -0.06);
-      b.addBox(0.025, 0.30, 0.025, -0.30, 1.03, -0.70, trim);
+      b.addTaperedBox(0.07, 0.11, 0.26, 0, roofTop + 0.05, rf0 + 0.18, body, 0.3, 0.35, 0, -0.06);
+      b.addBox(0.025, 0.30, 0.025, -0.30, roofTop + 0.14, rf0 + 0.34, trim);
       // A-pillar spotlight.
-      b.addBox(0.11, 0.11, 0.17, +W * 0.40, 0.66, 0.62, 0xb9bec6);
+      b.addBox(0.11, 0.11, 0.17, +(hw - 0.06), belt + 0.055, cowl - 0.02, 0xb9bec6);
 
       // ---- decals -------------------------------------------------------
-      const sx = W * 0.5 + 0.014;
-      const fz0 = -L * 0.30, fz1 = L * 0.26;
-      const fy0 = 0.02, fy1 = 0.40;
+      const sx = hw + 0.016;
+      const fz1 = fArch - 0.02, fz0 = fz1 - 2.15;
+      const fy0 = tyreTop - 0.02, fy1 = fy0 + 0.33;
       // u runs toward the rear on the left flank and toward the nose on the
       // right, which is what makes the wordmark read forwards on both sides.
       decals.addDecalQuad([
@@ -302,41 +411,45 @@ export function buildCarGeometry(spec, livery, opts = {}) {
       // Bonnet wordmark, reversed so it reads in a wing mirror. Proportioned
       // to the texture panel -- a near-square decal stretches the letters into
       // something unreadable.
-      const by = 0.578;
+      const by = belt + 0.082;
+      const bz0 = cowl + bonnetD * 0.10, bz1 = bz0 + 0.30;
       decals.addDecalQuad([
-        { x: -0.64, y: by, z: half * 0.56 }, { x: 0.64, y: by, z: half * 0.56 },
-        { x: 0.64, y: by, z: half * 0.74 }, { x: -0.64, y: by, z: half * 0.74 },
+        { x: -0.66, y: by, z: bz0 }, { x: 0.66, y: by, z: bz0 },
+        { x: 0.66, y: by, z: bz1 }, { x: -0.66, y: by, z: bz1 },
       ], { x: 0, y: 1, z: 0 }, DECAL.bonnet);
 
       // Roof unit number, ahead of the light bar.
       decals.addDecalQuad([
-        { x: -0.46, y: 0.902, z: 0.16 }, { x: 0.46, y: 0.902, z: 0.16 },
-        { x: 0.46, y: 0.902, z: 0.42 }, { x: -0.46, y: 0.902, z: 0.42 },
+        { x: -0.46, y: roofTop + 0.002, z: barZ + 0.28 },
+        { x: 0.46, y: roofTop + 0.002, z: barZ + 0.28 },
+        { x: 0.46, y: roofTop + 0.002, z: barZ + 0.54 },
+        { x: -0.46, y: roofTop + 0.002, z: barZ + 0.54 },
       ], { x: 0, y: 1, z: 0 }, DECAL.roof);
 
-      // Rear chevrons across the tailgate.
-      const rz = -half * 0.995;
+      // Rear chevrons across the tailgate, below the light bar.
+      const rz = -half * 0.998;
       decals.addDecalQuad([
-        { x: 0.72, y: 0.10, z: rz }, { x: -0.72, y: 0.10, z: rz },
-        { x: -0.72, y: 0.46, z: rz }, { x: 0.72, y: 0.46, z: rz },
+        { x: 0.72, y: 0.04, z: rz }, { x: -0.72, y: 0.04, z: rz },
+        { x: -0.72, y: 0.40, z: rz }, { x: 0.72, y: 0.40, z: rz },
       ], { x: 0, y: 0, z: -1 }, DECAL.rear);
     } else {
       // Unmarked: no markings at all, just the hardware.
-      b.addBox(0.10, 0.05, 0.14, +0.30, 0.90, -0.10, trim);
-      b.addBox(0.025, 0.26, 0.025, -0.28, 1.00, -0.70, trim);
+      b.addBox(0.10, 0.05, 0.14, +0.30, roofTop + 0.025, -0.10, trim);
+      b.addBox(0.025, 0.26, 0.025, -0.28, roofTop + 0.13, -0.70, trim);
     }
 
-    // Push bar with vertical stays.
-    b.addBox(W * 0.90, 0.10, 0.09, 0, 0.34, half + 0.15, trim);
-    b.addBox(W * 0.90, 0.08, 0.08, 0, 0.13, half + 0.15, trim);
-    for (const px of [-0.34, -0.12, 0.12, 0.34]) {
-      b.addBox(0.07, 0.36, 0.07, px * W, 0.24, half + 0.15, trim);
+    // Push bar. Kept slim and set close in: the earlier one was a full-width
+    // slab that hid the whole front of the car behind it.
+    b.addBox(W * 0.70, 0.075, 0.07, 0, lampY + 0.01, half + 0.11, trim);
+    b.addBox(W * 0.70, 0.065, 0.07, 0, lampY - 0.24, half + 0.11, trim);
+    for (const px of [-0.30, 0.30]) {
+      b.addBox(0.06, 0.32, 0.06, px * W, lampY - 0.115, half + 0.11, trim);
     }
     // Grille and rear-screen strobes.
-    b.addBox(0.28, 0.07, 0.05, +W * 0.20, 0.26, half * 0.995, 0x2f7dff);
-    b.addBox(0.28, 0.07, 0.05, -W * 0.20, 0.26, half * 0.995, 0xff2418);
-    b.addBox(0.20, 0.06, 0.05, +0.30, 0.60, -half * 0.86, 0x2f7dff);
-    b.addBox(0.20, 0.06, 0.05, -0.30, 0.60, -half * 0.86, 0xff2418);
+    b.addBox(0.26, 0.06, 0.05, +W * 0.14, lampY - 0.115, half - 0.005, 0x2f7dff);
+    b.addBox(0.26, 0.06, 0.05, -W * 0.14, lampY - 0.115, half - 0.005, 0xff2418);
+    b.addBox(0.20, 0.06, 0.05, +0.30, gy + 0.05, deck + 0.30, 0x2f7dff);
+    b.addBox(0.20, 0.06, 0.05, -0.30, gy + 0.05, deck + 0.30, 0xff2418);
   }
 
   return buildGrouped([b, decals]);
@@ -351,10 +464,13 @@ export function carMaterials(geometry, bodyMaterial) {
   return [bodyMaterial, decal];
 }
 
-/** Where the flashing lamps sit, in body-local space. */
+/**
+ * Where the flashing lamps sit, in body-local space. Must track the light bar
+ * in buildCarGeometry: roof panel top (0.935) plus the bar's own height.
+ */
 export const LAMP_OFFSETS = [
-  new THREE.Vector3(+0.38, 1.00, -0.16),
-  new THREE.Vector3(-0.38, 1.00, -0.16),
+  new THREE.Vector3(+0.38, 1.040, -0.14),
+  new THREE.Vector3(-0.38, 1.040, -0.14),
 ];
 
 /** One wheel, oriented so its axle runs along X (the car's left/right axis). */
@@ -369,10 +485,16 @@ export function buildWheelGeometry(radius = 0.34, width = 0.26, rimColour = 0x50
     // otherwise the tyres read as white discs under a bright sun.
     const onFace = Math.abs(pos.getX(i)) > width * 0.49;
     const r = Math.hypot(pos.getY(i), pos.getZ(i));
-    // Keep the bright face small: most of what you see side-on is rubber.
-    const isHub = onFace && r < radius * 0.48;
-    if (isHub) {
-      colors[i * 3] = rim.r; colors[i * 3 + 1] = rim.g; colors[i * 3 + 2] = rim.b;
+    // Now that the arches are cut away the wheel is actually on show, so the
+    // alloy runs most of the way out to the rim rather than being a small
+    // hub cap. The outermost band stays dark: that is the tyre sidewall.
+    const isRim = onFace && r < radius * 0.80;
+    if (isRim) {
+      // A little radial shading so the face is not one flat disc -- it reads
+      // as spokes catching the light without needing any extra geometry.
+      const t = r / (radius * 0.80);
+      const k = 0.72 + 0.28 * Math.abs(Math.cos(Math.atan2(pos.getY(i), pos.getZ(i)) * 5)) * t;
+      colors[i * 3] = rim.r * k; colors[i * 3 + 1] = rim.g * k; colors[i * 3 + 2] = rim.b * k;
     } else {
       colors[i * 3] = 0.045; colors[i * 3 + 1] = 0.045; colors[i * 3 + 2] = 0.05;
     }

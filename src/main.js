@@ -126,6 +126,10 @@ class Game {
     const canvas = document.getElementById('view');
     this.renderer = new THREE.WebGLRenderer({
       canvas, antialias: true, powerPreference: 'high-performance', stencil: false,
+      // Keeps the frame readable after compositing, so the canvas can be
+      // captured. With antialias on and this off, toDataURL comes back empty:
+      // the multisampled buffer is resolved and discarded before it can be read.
+      preserveDrawingBuffer: true,
     });
     // Multisampling rather than supersampling: the whole world is flat-shaded
     // faceted geometry, so nearly all the aliasing is on polygon edges, which

@@ -482,10 +482,11 @@ export class Vehicle {
     const crawling = Math.abs(this.forwardSpeed) < 1.5;
     if (!crawling) {
       engineTorque -= (1 - accel) * eng.brakeTorque * (0.25 + 0.75 * this.rpm / eng.redline);
-    } else if (accel < 0.02 && this.brakeInput < 0.02) {
-      // Idle creep, as an automatic would.
-      engineTorque += 9 * (this.gear === -1 ? -1 : 1);
     }
+    // No idle creep. An automatic really does pull away on its own, but in a
+    // game where you spend a lot of time stationary -- lining up, waiting,
+    // watching the map -- a car that will not stay put is just a nuisance. The
+    // holding brake in _tyrePass keeps it still instead.
 
     if (this.rpm > eng.redline) engineTorque = Math.min(engineTorque, -eng.brakeTorque * 0.5);
     // A wrecked engine makes less power -- and once it is hurt, it is *badly*
@@ -621,7 +622,17 @@ export class Vehicle {
 
     // --- brake torques ---
     const bMax = s.brakes.maxTorque;
-    const braking = this.brakeInput;
+    let braking = this.brakeInput;
+
+    // Holding brake. With no pedal at all and the car essentially stopped, hold
+    // it stopped: without this the car drifts off on any camber, and a car that
+    // will not stay where you left it is a constant low-level irritation.
+    // Scaled in as it slows so it never feels like the brakes grabbing.
+    const idle = this.accelInput < 0.02 && braking < 0.02 && this.controls.handbrake < 0.02;
+    if (idle && Math.abs(this.forwardSpeed) < 1.3) {
+      braking = Math.max(braking, 0.16 * (1 - Math.abs(this.forwardSpeed) / 1.3));
+    }
+
     const frontBrake = braking * bMax * s.brakes.frontBias * 2;
     const rearBrake = braking * bMax * (1 - s.brakes.frontBias) * 2;
     const handbrake = c.handbrake * s.brakes.handbrakeTorque;

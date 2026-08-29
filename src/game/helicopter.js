@@ -14,9 +14,30 @@ import * as THREE from 'three';
 import { clamp, clamp01, lerp, damp } from '../util/math.js';
 import { MeshBuilder, vertexColorMaterial } from '../util/meshbuild.js';
 
-/** Cruise height above the ground, and how far it can see straight down. */
+/** Cruise height above the ground. */
 const ALTITUDE = 62;
-const SIGHT_RADIUS = 190;
+
+/**
+ * The searchlight, which is what actually does the spotting.
+ *
+ * The beam is aimed independently of the airframe -- a real observer swings the
+ * light around while the aircraft flies its own line -- so what matters is
+ * whether the pool of light is on you, not how close the helicopter is. That
+ * makes the light something you can watch and dodge rather than an invisible
+ * radius, and it means a crew that has lost you sweeps for you.
+ */
+const BEAM_RADIUS = 26;          // radius of the pool on the ground
+const BEAM_TRACK = 2.6;          // how fast the light follows a target it holds
+const BEAM_SWEEP = 1.1;          // how fast it hunts when it has lost you
+const BEAM_MAX_OFFSET = 210;     // how far from the aircraft the light reaches
+
+/**
+ * Endurance. It is a real aircraft with a fuel load, and going off to refuel
+ * gives you a window that is earned rather than random -- if you can survive
+ * until the tanks are low, you get a few minutes with nothing overhead.
+ */
+const ENDURANCE = 165;           // seconds on station
+const REFUEL_TIME = 70;          // seconds away
 
 /** Top speed, m/s. Faster than any car, but it still has to cover ground. */
 const TOP_SPEED = 62;
@@ -27,6 +48,15 @@ const TOP_SPEED = 62;
  * where they would lose it beneath their own floor.
  */
 const LEAD = 34;
+
+/** Nominal beam length; the cone is scaled from this to reach the ground. */
+const BEAM_LEN = 100;
+
+const _from = new THREE.Vector3();
+const _to = new THREE.Vector3();
+const _mid = new THREE.Vector3();
+const _axis = new THREE.Vector3();
+const UP = new THREE.Vector3(0, 1, 0);
 
 export class Helicopter {
   constructor(game) {
@@ -39,18 +69,34 @@ export class Helicopter {
     this.rotor = 0;
     this.spotlight = 0;
     this.mesh = null;
+
+    // Where the searchlight is pointed, on the ground. Moves independently of
+    // the aircraft.
+    this.beam = new THREE.Vector3();
+    this.beamLocked = false;
+    this.sweepPhase = 0;
+
+    this.fuel = ENDURANCE;
+    this.refuelTimer = 0;
   }
 
-  /** Five stars only. */
-  get wanted() { return this.game.heat.tier >= 5; }
+  /** Five stars only, and only when it has fuel in it. */
+  get wanted() { return this.game.heat.tier >= 5 && this.refuelTimer <= 0; }
 
   // ------------------------------------------------------------------ launch
 
   launch(target) {
     if (this.active) return;
     this.active = true;
-    if (!this.mesh) this.mesh = buildHelicopterMesh();
+    if (!this.mesh) {
+      this.mesh = buildHelicopterMesh();
+      const lit = buildBeam();
+      this.mesh.userData.beam = lit.beam;
+      this.mesh.userData.pool = lit.pool;
+    }
     this.game.scene.add(this.mesh);
+    this.game.scene.add(this.mesh.userData.beam);
+    this.game.scene.add(this.mesh.userData.pool);
 
     // Comes in from off to one side rather than appearing overhead.
     const a = this.game.rng() * Math.PI * 2;
@@ -63,19 +109,43 @@ export class Helicopter {
     this.game.radio('Air support is up — India 99 overhead', true);
   }
 
-  stand_down() {
+  stand_down(why) {
     if (!this.active) return;
     this.active = false;
-    if (this.mesh) this.game.scene.remove(this.mesh);
-    this.game.radio('India 99 returning to base');
+    if (this.mesh) {
+      this.game.scene.remove(this.mesh);
+      this.game.scene.remove(this.mesh.userData.beam);
+      this.game.scene.remove(this.mesh.userData.pool);
+    }
+    this.game.radio(why === 'refuel'
+      ? 'India 99 breaking off to refuel'
+      : 'India 99 returning to base');
   }
 
   // ------------------------------------------------------------------ update
 
   update(dt, target) {
+    if (this.refuelTimer > 0) {
+      this.refuelTimer -= dt;
+      if (this.refuelTimer <= 0) this.fuel = ENDURANCE;
+    }
     if (this.wanted && !this.active) this.launch(target);
     else if (!this.wanted && this.active) this.stand_down();
     if (!this.active) return;
+
+    // Burn fuel, and go home when it runs low. Warned on the radio first, so
+    // the window is something you can hear coming and use.
+    this.fuel -= dt;
+    if (this.fuel < 22 && !this._warned) {
+      this._warned = true;
+      this.game.radio('India 99 — getting low on fuel, will have to break off');
+    }
+    if (this.fuel <= 0) {
+      this.refuelTimer = REFUEL_TIME;
+      this._warned = false;
+      this.stand_down('refuel');
+      return;
+    }
 
     // Aim for a point ahead of the target, so it is looking down at the car
     // rather than hovering on top of it.
@@ -106,11 +176,62 @@ export class Helicopter {
     this.roll = damp(this.roll, clamp(turn * 1.6, -0.5, 0.5), 3, dt);
     this.rotor += dt * 34;
 
-    // The searchlight only comes on once it is actually over you.
-    const over = this.distanceTo(target.position) < SIGHT_RADIUS;
-    this.spotlight = damp(this.spotlight, over ? 1 : 0, 2.5, dt);
-
+    this._updateBeam(dt, target);
     this._syncMesh();
+  }
+
+  /**
+   * Swing the searchlight.
+   *
+   * The crew aim the light, not the aircraft, so this runs on its own: it
+   * chases the target while it has it, and hunts around the last known
+   * position when it does not. Because the beam lags, a hard change of
+   * direction genuinely slips out of it -- which is the whole point of making
+   * the light the thing that sees you rather than a radius round the aircraft.
+   */
+  _updateBeam(dt, target) {
+    const reach = this.distanceTo(target.position);
+    const k = this.game.dispatcher ? this.game.dispatcher.knowledge : null;
+
+    // It can only point the light where the aircraft can actually shine it.
+    const inRange = reach < BEAM_MAX_OFFSET;
+
+    let aimX, aimZ, rate;
+    if (inRange && (this.beamLocked || this._lit(target))) {
+      // Holding you: lead slightly, as an observer would.
+      aimX = target.position.x + target.linvel.x * 0.35;
+      aimZ = target.position.z + target.linvel.z * 0.35;
+      rate = BEAM_TRACK;
+    } else {
+      // Hunting: circle the last place anybody saw the car.
+      const cx = k && k.position ? k.position.x : target.position.x;
+      const cz = k && k.position ? k.position.z : target.position.z;
+      this.sweepPhase += dt * 0.9;
+      const r = 34 + Math.sin(this.sweepPhase * 0.7) * 22;
+      aimX = cx + Math.cos(this.sweepPhase) * r;
+      aimZ = cz + Math.sin(this.sweepPhase) * r;
+      rate = BEAM_SWEEP;
+    }
+
+    // Keep the light within reach of the aircraft.
+    const ox = aimX - this.pos.x, oz = aimZ - this.pos.z;
+    const off = Math.hypot(ox, oz);
+    if (off > BEAM_MAX_OFFSET) {
+      aimX = this.pos.x + (ox / off) * BEAM_MAX_OFFSET;
+      aimZ = this.pos.z + (oz / off) * BEAM_MAX_OFFSET;
+    }
+
+    this.beam.x = damp(this.beam.x, aimX, rate, dt);
+    this.beam.z = damp(this.beam.z, aimZ, rate, dt);
+
+    this.beamLocked = this._lit(target);
+    this.spotlight = damp(this.spotlight, inRange ? 1 : 0, 2.5, dt);
+  }
+
+  /** Is the target actually standing in the pool of light? */
+  _lit(target) {
+    return Math.hypot(this.beam.x - target.position.x, this.beam.z - target.position.z)
+      < BEAM_RADIUS;
   }
 
   distanceTo(p) {
@@ -118,12 +239,15 @@ export class Helicopter {
   }
 
   /**
-   * Can it see the target? No line-of-sight test on purpose -- looking down
-   * over the rooftops is the entire reason it is in the air. Range still
-   * applies, so outrunning it works even though hiding does not.
+   * Can it see the target? Only if the searchlight is actually on them.
+   *
+   * No line-of-sight test on purpose -- looking down over the rooftops is the
+   * entire reason it is up there, so hiding behind a building does not work.
+   * Getting out from under the beam does, and since the light lags the car, a
+   * hard change of direction can genuinely shake it.
    */
   canSee(target) {
-    return this.active && this.distanceTo(target.position) < SIGHT_RADIUS;
+    return this.active && this.spotlight > 0.4 && this._lit(target);
   }
 
   _syncMesh() {
@@ -135,12 +259,37 @@ export class Helicopter {
     // Nose down a little with speed, as one does.
     m.rotateX(clamp(Math.hypot(this.vel.x, this.vel.z) * 0.004, 0, 0.18));
 
-    const { main, tail, beam } = m.userData;
+    const { main, tail, beam, pool } = m.userData;
     if (main) main.rotation.z = this.rotor;
     if (tail) tail.rotation.y = this.rotor * 1.7;
+
+    // The beam is a child of the scene, not of the airframe, because it points
+    // where the crew aim it rather than where the aircraft happens to be
+    // facing. Stretch a cone from the aircraft down to wherever the light is
+    // actually landing.
     if (beam) {
-      beam.visible = this.spotlight > 0.05;
-      beam.material.opacity = this.spotlight * 0.13;
+      const on = this.spotlight > 0.05;
+      beam.visible = on;
+      if (on) {
+        _from.copy(this.pos);
+        _to.set(this.beam.x, 0.06, this.beam.z);
+        const mid = _mid.addVectors(_from, _to).multiplyScalar(0.5);
+        const len = _from.distanceTo(_to);
+        beam.position.copy(mid);
+        // The cone is built along +Y, so point it from the aircraft to the pool.
+        _axis.subVectors(_to, _from).normalize();
+        beam.quaternion.setFromUnitVectors(UP, _axis);
+        beam.scale.set(1, len / BEAM_LEN, 1);
+        beam.material.opacity = this.spotlight * 0.12;
+      }
+    }
+    if (pool) {
+      const on = this.spotlight > 0.05;
+      pool.visible = on;
+      if (on) {
+        pool.position.set(this.beam.x, 0.07, this.beam.z);
+        pool.material.opacity = this.spotlight * 0.30;
+      }
     }
   }
 
@@ -194,19 +343,37 @@ function buildHelicopterMesh() {
   tail.position.set(0.36, 1.0, -5.5);
   group.add(tail);
 
-  // Searchlight cone, pointing down. Additive so it reads as light rather than
-  // a solid object hanging under the aircraft.
-  const beamGeo = new THREE.ConeGeometry(15, ALTITUDE, 18, 1, true);
-  beamGeo.translate(0, -ALTITUDE * 0.5, 0);
-  const beam = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({
+  group.userData.main = main;
+  group.userData.tail = tail;
+  return group;
+}
+
+/**
+ * The searchlight: a cone from the aircraft plus a bright pool where it lands.
+ *
+ * Built separately from the airframe and added straight to the scene, because
+ * the crew aim the light independently -- it has to be able to point somewhere
+ * the aircraft is not.
+ */
+function buildBeam() {
+  // Built along +Y with unit length, so it can be pointed and stretched.
+  const geo = new THREE.ConeGeometry(BEAM_RADIUS, BEAM_LEN, 20, 1, true);
+  geo.translate(0, -BEAM_LEN * 0.5, 0);
+  // Cone apex is at +Y; we want the apex at the aircraft, so flip it.
+  geo.rotateX(Math.PI);
+  geo.translate(0, BEAM_LEN * 0.5, 0);
+  const beam = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
     color: 0xfff3c4, transparent: true, opacity: 0.12,
     blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
   }));
-  beam.position.set(0, -1.2, 0.6);
-  group.add(beam);
+  beam.frustumCulled = false;
 
-  group.userData.main = main;
-  group.userData.tail = tail;
-  group.userData.beam = beam;
-  return group;
+  const poolGeo = new THREE.CircleGeometry(BEAM_RADIUS, 26);
+  poolGeo.rotateX(-Math.PI / 2);
+  const pool = new THREE.Mesh(poolGeo, new THREE.MeshBasicMaterial({
+    color: 0xfff6d2, transparent: true, opacity: 0.3,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  }));
+  pool.frustumCulled = false;
+  return { beam, pool };
 }
