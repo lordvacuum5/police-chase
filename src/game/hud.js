@@ -327,6 +327,34 @@ export class Hud {
       ctx.stroke();
     }
 
+    // ---- air support ----
+    // Drawn before the cars so a unit on top of it still reads, and with its
+    // own sight circle: while you are inside that, hiding does not work.
+    const heli = this.game.helicopter;
+    if (heli && heli.active) {
+      const p = toMap(heli.pos.x, heli.pos.z);
+      ctx.strokeStyle = 'rgba(255,240,180,0.5)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 5]);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 190 * k, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = '#ffe9a3';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+      ctx.fill();
+      // Rotor tick, so it is not mistaken for another car.
+      ctx.strokeStyle = '#ffe9a3';
+      ctx.lineWidth = 2;
+      const a = performance.now() * 0.012;
+      ctx.beginPath();
+      ctx.moveTo(p.x - Math.cos(a) * 10, p.y - Math.sin(a) * 10);
+      ctx.lineTo(p.x + Math.cos(a) * 10, p.y + Math.sin(a) * 10);
+      ctx.stroke();
+    }
+
     // ---- police ----
     for (const u of dispatcher.units) {
       // A wrecked unit is out of the pursuit; leaving it on the map just

@@ -306,6 +306,49 @@ Measured peak speed over one fixed motorway route, so the road is not a
 variable: 151 km/h at one star rising to 163 at five, against 124 for the
 player's car on the same route.
 
+### Seeing behind them
+
+Perception used to apply a forward cone while in contact, blanking anything
+more than about 124 degrees off the nose -- which made a car sitting *directly
+behind* a police unit completely invisible to it. Dropping in behind them is
+the most natural thing in the world to do in a chase, and it worked far too
+well. The cone is gone: a crew has mirrors, a passenger and a radio, and the
+thing that actually stops them seeing you is a building, which the line-of-sight
+test already handles.
+
+### Roadblocks need to know where you are
+
+They were going in while the force was *searching*. Siting a block needs a
+direction of travel to put it ahead of, and a force that has lost you has no
+business setting up in front of a car it cannot see. Placement now requires
+contact.
+
+The check is deliberately split from the one governing teardown: `allowed` is
+just the heat tier, `canPlace` adds contact. Gating both on contact would
+dissolve a block already standing the moment you broke line of sight for a
+second.
+
+### Air support
+
+At five stars a helicopter comes up. It changes the shape of the chase rather
+than adding another car to it: no route to follow, nothing to shake off in a
+corner, and -- the point -- it sees over the rooftops. It is a spotter like any
+other unit but exempt from the line-of-sight test, so ducking behind a building
+stops working while it is overhead. What still works is distance: it has a
+190 m radius like everything else, drawn on the minimap as its own ring.
+
+It is deliberately not a physics body. It flies above the world, touches
+nothing, and exists to feed the dispatcher a spotter. Flight is steer-and-
+accelerate rather than a position lerp -- it has momentum, overshoots, and
+swings back, which is most of what makes it read as flying rather than sliding
+along a rail. It banks into its turns, noses down with speed, and puts a
+searchlight on you once it is actually overhead.
+
+Measured: silent below five stars; launches from about 420 m out and closes to
+106 m within seventeen seconds; and with **every police car removed from the
+map** it alone keeps the dispatcher in contact. Drop below five stars and it
+goes home.
+
 ### The detection ring
 
 A red ring on the minimap, always centred on your own marker, showing how far
@@ -954,6 +997,7 @@ src/
     livery.js          procedural police livery texture atlas
     heat.js            wanted level, cooldown, arrest
     roadblock.js       roadblock siting, construction, despawn
+    helicopter.js      air support at five stars
     audio.js           sampled + synthesised engine, tyres, siren, impacts
     camera.js  hud.js  effects.js
   core/

@@ -135,13 +135,13 @@ export class Dispatcher {
       const d = u.distanceTo(target.position);
       if (d > sightRange || d > best) continue;
 
-      // Generous field of view while in contact -- mirrors and a partner in
-      // the passenger seat mean a police car is not blind to its flanks. While
-      // searching there is no cone at all; they are looking everywhere.
-      if (hasContact) {
-        _dir.copy(target.position).sub(u.vehicle.position).normalize();
-        if (_dir.dot(u.vehicle.forward) < -0.55) continue;
-      }
+      // No field-of-view cone at all. There used to be one that blanked
+      // anything more than about 124 degrees off the nose, which meant a car
+      // sitting directly behind a police unit was completely invisible to it --
+      // and dropping in behind them is the most natural thing in the world to
+      // do in a chase. A crew has mirrors, a passenger, and a radio; the thing
+      // that actually stops them seeing you is a building, and that is the line
+      // of sight test below.
 
       _eye.copy(u.vehicle.position); _eye.y += 1.1;
       _tgt.copy(target.position); _tgt.y += 0.8;
@@ -150,6 +150,14 @@ export class Dispatcher {
       spotter = u;
       best = d;
     }
+
+    // Air support sees over the rooftops. It is a spotter like any other, but
+    // exempt from the line-of-sight test above -- looking down is the whole
+    // reason it is up there. Ducking behind a building stops working while it
+    // is overhead; outrunning it still does, because it has a range like
+    // everything else.
+    const heli = this.game.helicopter;
+    if (!spotter && heli && heli.canSee(target)) spotter = heli;
 
     if (spotter) {
       k.seen = true;

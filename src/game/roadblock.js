@@ -46,8 +46,21 @@ export class RoadblockManager {
     this.lastSite = null;
   }
 
-  /** Minimum heat before the force starts putting cars across roads. */
+  /** Minimum heat for roadblocks to be part of the response at all. */
   get allowed() { return this.game.heat.tier >= 3; }
+
+  /**
+   * Whether a *new* block may go in. They have to know where you are: siting
+   * one needs a direction of travel to put it ahead of, and a force that has
+   * lost you has no business setting up in front of a car it cannot see.
+   *
+   * Deliberately separate from `allowed`, which also governs teardown -- a
+   * block already standing should not dissolve the moment you break line of
+   * sight for a second.
+   */
+  get canPlace() {
+    return this.allowed && this.game.dispatcher.knowledge.seen;
+  }
 
   update(dt, target) {
     this.timer -= dt;
@@ -69,7 +82,7 @@ export class RoadblockManager {
       }
     }
 
-    if (!this.allowed || this.blocks.length >= MAX_BLOCKS || this.timer > 0) return;
+    if (!this.canPlace || this.blocks.length >= MAX_BLOCKS || this.timer > 0) return;
     if (this.lastSite && dist2(this.lastSite.x, this.lastSite.z,
       target.position.x, target.position.z) < MIN_TRAVEL) return;
 
