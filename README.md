@@ -418,6 +418,80 @@ something you drive through, and a police car that brakes for one is worse than
 useless. Driving through five of them at 90 km/h scatters them 1.6–3.2 m and
 does **no damage at all**.
 
+### Junctions
+
+Every road is drawn as a ribbon of its own full width, which is fine for the
+tarmac — tarmac on tarmac is invisible — but not for anything drawn on top of
+it. Kerb lines used to run straight out across the middle of a crossroads and
+lane dashes carried on through it.
+
+`src/world/junctions.js` works out, for every approach to every node, how far
+back its markings have to stop in order to clear the other roads. For two roads
+crossing at angle θ the corner where their kerb lines meet sits
+`otherHalfWidth / sin θ` along each of them, so that is the setback; it is
+floored so a shallow crossing does not run away, and capped at a third of a
+short road. Kerbs and centre lines are sliced to it, each signalised approach
+gets a stop line, and the re-entrant corner where the two ribbons meet is
+filled out to a kerb radius so the carriageways run into each other on a curve.
+
+Three separate things made roads look like they did not join up, and all three
+are fixed: `addRibbon` mitred without scaling the join, so the ribbon pinched
+in at every bend and left a wedge of bare ground on the outside; ribbons end
+square at their node, so a bend leaves a notch even with a correct mitre (a
+small apron disc at each node covers it, since both ends pass through the
+node); and corners that fell on a node stayed sharp, which `smoothBends` now
+replaces with an arc, moving the node to the middle of it so it is still a real
+point on the road.
+
+### Traffic signals
+
+Junctions with three or more street-grade approaches get signals. Two phases,
+split by bearing — on a crossroads that is exactly the two carriageways — and a
+UK sequence: green 13 s, amber 3 s, all-red 1.7 s, then red-and-amber 1.6 s on
+the other phase. Junctions are staggered by position, so they do not all change
+together.
+
+The head goes on the nearside kerb at the stop line, facing back up the
+approach. With `DRIVE_SIDE = +1` the nearside for arriving traffic works out as
+the `+perp` side, which is the same side the stop line is drawn on.
+
+**Only patrolling units obey them.** A unit running to a shout, searching, or
+already in a pursuit has blue lights on and goes through — the same rule that
+governs whether it will leave the carriageway. A patrol brakes at 3.4 m/s², so
+it eases to a halt rather than standing on the pedal.
+
+| | |
+|---|---|
+| stopped, on red | **0.8 m before the line** |
+| furthest past the line | **0.0 m** |
+| moved on in the 8 s after green | **93.3 m** |
+
+Cost is close to nothing: the poles and housings merge into one static mesh,
+and each head's three lamps sit at a fixed slot in three instanced meshes, with
+the unlit ones scaled to nothing rather than packed out of the list. A signal
+changing writes three matrices. 702 heads on the city map come to about
+0.16 ms a frame and three draw calls.
+
+### Street furniture
+
+Lamp posts, bollards, bins and signs along the kerbs — 1608 of them on the city
+map, 402 in the town. Standing, they are instanced meshes with a thin static
+collider and cost nothing per frame. Hit one and it becomes a real dynamic body
+that topples and slides, and the car takes the momentum it actually lost.
+
+| | speed | damage |
+|---|---|---|
+| lamp post (62 kg) | 21.0 → 19.8 m/s | +0.8% |
+| bollard (24 kg) | 24.9 → 24.4 m/s | +0.2% |
+| bin (26 kg) | 22.3 → 21.9 m/s | +1.8% |
+| sign (18 kg) | 25.1 → 24.7 m/s | +0.1% |
+
+A shove and a scratch, not a wall. They live in `GROUP.STREET`, which no ray or
+sweep in the game looks at — the police AI must not brake for a bollard and a
+suspension ray must not climb a lamp post — so all the interaction happens in
+`src/game/streetprops.js`, where it can be tuned. Toppled props stop being
+simulated once they settle, and only the last 26 stay live at once.
+
 ### Knowing how big the car is
 
 Every lateral check used to be a constant. Length and wheelbase were read from
@@ -1089,5 +1163,6 @@ right-hand traffic.
 
 ### Not yet implemented
 
-Spike strips, static roadblocks, helicopter support, elevated overpasses (the
-motorway is grade-level throughout), and civilian traffic.
+Spike strips, elevated overpasses (the motorway is grade-level throughout), and
+civilian traffic — which is the one that would give the traffic signals someone
+to hold up besides the police.
