@@ -455,6 +455,19 @@ The head goes on the nearside kerb at the stop line, facing back up the
 approach. With `DRIVE_SIDE = +1` the nearside for arriving traffic works out as
 the `+perp` side, which is the same side the stop line is drawn on.
 
+Both the head and the stop line follow the road's own polyline out from the
+node rather than projecting along the tangent there. That distinction is not
+academic now that bends are smoothed: an approach curves away from its
+junction, and on Wexbury the tangent put **102 of 131 heads in the
+carriageway**. There is a clearance check behind it that walks a head onto the
+footway if it still lands on tarmac, and drops the approach rather than
+planting a pole in the road.
+
+Signal posts are knockable, like everything else on the kerb. A flattened
+signal goes dark and stops being a signal — the lamps hide and `stopDistance`
+returns `Infinity`, so a patrol treats that arm as unsignalised rather than
+obeying a light lying in the gutter.
+
 **Only patrolling units obey them.** A unit running to a shout, searching, or
 already in a pursuit has blue lights on and goes through — the same rule that
 governs whether it will leave the carriageway. A patrol brakes at 3.4 m/s², so
@@ -481,16 +494,25 @@ that topples and slides, and the car takes the momentum it actually lost.
 
 | | speed | damage |
 |---|---|---|
-| lamp post (62 kg) | 21.0 → 19.8 m/s | +0.8% |
-| bollard (24 kg) | 24.9 → 24.4 m/s | +0.2% |
-| bin (26 kg) | 22.3 → 21.9 m/s | +1.8% |
-| sign (18 kg) | 25.1 → 24.7 m/s | +0.1% |
+| signal post (150 kg) | 20.5 → 17.8 m/s | +1.3% |
+| lamp post (62 kg) | 23.7 → 22.5 m/s | +1.1% |
+| bin (26 kg) | 24.7 → 23.8 m/s | +0.3% |
+| bollard (24 kg) | 21.1 → 20.6 m/s | +0.2% |
+| sign (18 kg) | 22.7 → 22.3 m/s | +1.3% |
 
 A shove and a scratch, not a wall. They live in `GROUP.STREET`, which no ray or
 sweep in the game looks at — the police AI must not brake for a bollard and a
 suspension ray must not climb a lamp post — so all the interaction happens in
 `src/game/streetprops.js`, where it can be tuned. Toppled props stop being
 simulated once they settle, and only the last 26 stay live at once.
+
+The geometry is modelled with its base at the origin while the collider is
+centred on the body, so a fallen prop's mesh sits half a height *below* its
+body — along the body's own up axis, not the world's. Getting that wrong is
+worth knowing about: subtracting on world Y is correct only while the prop is
+upright, and once a lamp post is lying flat it buries it under the road by its
+own length. Which way it fell decided how badly, which made it look like a
+problem with one side of the street.
 
 ### Knowing how big the car is
 
