@@ -524,11 +524,35 @@ Measured over 60 s of the standard pursuit harness; the player's pace is
 unchanged either way. Units well off the road dropped from 12.9% to 2.7%,
 because there is now a reason to stay in a lane.
 
-Cost is 0.40 ms a frame plus about 1.2 ms of physics for the extra bodies. Most
-of that 0.40 was originally 0.90: `translation()` and `linvel()` cross into
-wasm, and the gap check looks at every car from every car, so reading them
-inline was two thousand boundary crossings a frame. They are read once up front
-instead.
+**Turning is the part that has to be done properly.** A civilian's heading is
+written straight onto its body, so nothing in the physics stops it spinning
+through ninety degrees in a frame — and the first version did exactly that at
+every junction. Three things fix it, all the same mistake in different places:
+
+* The heading is rate limited. Yaw rate times speed is lateral acceleration, so
+  the cap is `a_lat / speed` — quick at a crawl, slow at speed. Worst
+  single-frame turn is **2.10°**, measured across every car on the map.
+* The aim point looks *through* the junction onto the road the car is about to
+  take, chosen in advance and remembered. Pinned to the end of the current
+  edge instead, a civilian drives straight at the junction and turns only once
+  it is in it.
+* It slows for the corner: `v ≤ sqrt(a_lat · look / err)`, from the same
+  relation. Without it, a rate-limited heading simply cannot turn into the new
+  road and ten of forty-eight ended up on the pavement.
+
+Position along the road is taken from where the car actually is, projected onto
+its edge — not dead-reckoned from `speed · dt`. Those agree only in a straight
+line, and every corner drifts the bookkeeping ahead of the body.
+
+Cost is 0.54 ms a frame plus about 1.2 ms of physics for the extra bodies. It
+was 0.90 before the bodies were read once up front instead of inline:
+`translation()` and `linvel()` cross into wasm, and the gap check looks at every
+car from every car, so that was two thousand boundary crossings a frame.
+
+The meshes sync in the **render** pass, not in `update`. `update` runs before
+the physics step, so syncing there draws the traffic a frame behind the player
+and the police — which does not read as one frame late, it reads as the whole
+lot floating and juddering.
 
 ### Street furniture
 
