@@ -40,12 +40,13 @@ const CAR_L = 4.5, CAR_W = 1.85, CAR_H = 1.4;
 /**
  * Where the mesh sits relative to the collider.
  *
- * buildCarGeometry puts its origin at the car's centre of mass, which is
- * wheelRadius + the suspension sag above the road -- 0.44 m. The collider is a
- * box centred on its own half height. Line those up wrong and the traffic
- * drives around buried to the sills.
+ * buildCarGeometry puts its origin at the car's centre of mass. The player's
+ * car settles with that 0.47 m above the tarmac -- measured, not derived, since
+ * it depends on how far the springs sag -- while the collider here is a plain
+ * box centred on its own half height. Line the two up wrong and the traffic
+ * either floats or drives around buried to the sills.
  */
-const MESH_LIFT = 0.44 - CAR_H * 0.5;
+const MESH_LIFT = 0.47 - CAR_H * 0.5;
 
 /** Following behaviour, in the usual units. */
 const ACCEL = 4.2;            // m/s^2 -- unhurried
@@ -60,6 +61,12 @@ const REACT = 1.1;            // seconds of headway on top of that
  */
 const CRASH_DV = 4.5;
 const CRASH_FOR = 6.0;        // seconds before it tries to pull away again
+
+/**
+ * Cornering grip, m/s^2. A car cannot yaw faster than a_lat / speed without
+ * sliding, which is what keeps a civilian from pivoting on the spot.
+ */
+const YAW_ACCEL = 5.5;
 
 const _v = new THREE.Vector3();
 const _m = new THREE.Matrix4();
@@ -225,7 +232,6 @@ export class Traffic {
     for (let i = this.cars.length - 1; i >= 0; i--) {
       if (this.cars[i].dead) this._despawn(this.cars[i]);
     }
-    this._sync();
   }
 
   _drive(car, dt) {
@@ -249,8 +255,17 @@ export class Traffic {
     }
 
     // ---- how far along the road, and what is the lane doing here ---------
-    car.along += car.speed * dt * car.dir;
-    const past = car.dir > 0 ? car.along > car.edge.length : car.along < 0;
+    //
+    // Taken from where the car actually is, not dead-reckoned from its speed.
+    // The two are the same only while it is going straight: the moment the
+    // heading lags the lane -- which is every corner, now that the heading is
+    // rate limited -- walking `along` forward by speed*dt drifts ahead of the
+    // body, and the car ends up steering at a point it has already passed.
+    // That drift is what put civilians on the pavement.
+    this._reanchor(car);
+    const past = car.dir > 0
+      ? car.along > car.edge.length - 0.35
+      : car.along < 0.35;
     if (past && !this._nextEdge(car)) { car.dead = true; return; }
 
     // Pull over for a siren. Traffic slowed the police down by a sixth when it
@@ -263,12 +278,23 @@ export class Traffic {
     const laneOff = car.lane + pull * car.edge.width * 0.20 * DRIVE_SIDE;
 
     const look = clamp(4 + car.speed * 0.55, 5, 22);
-    const aimAlong = car.along + look * car.dir;
-    const aim = this._lanePoint(car.edge, aimAlong, car.dir, laneOff);
+    const aim = this._aimAhead(car, look, laneOff);
 
     // ---- how fast is it allowed to be going ------------------------------
     let want = (car.edge.speed || 14) * car.pace;
     if (pull > 0) want = lerp(want, 2.5, pull);
+
+    // Slow for the corner. Now that the heading is rate limited, a car that
+    // arrives at a junction at road speed cannot physically turn into the new
+    // road and simply runs wide onto the pavement -- which is what real cars
+    // slowing down for corners is *for*. Turning through `err` over the
+    // lookahead needs a yaw rate of err*v/look, and yaw rate times speed is
+    // lateral acceleration, so the limit falls straight out as
+    // v <= sqrt(a_lat * look / err).
+    let err = Math.atan2(aim.x - t.x, aim.z - t.z) - car.heading;
+    while (err > Math.PI) err -= Math.PI * 2;
+    while (err < -Math.PI) err += Math.PI * 2;
+    want = Math.min(want, Math.sqrt(YAW_ACCEL * look / Math.max(Math.abs(err), 0.06)));
 
     // Traffic signals. Civilians always obey them -- they are the only road
     // users in the game that never have a reason not to.
@@ -289,11 +315,19 @@ export class Traffic {
     const rate = want > car.speed ? ACCEL : BRAKE;
     car.speed = clamp(car.speed + Math.sign(want - car.speed) * rate * dt, 0, want);
 
-    let hx = aim.x - t.x, hz = aim.z - t.z;
-    const hl = Math.hypot(hx, hz) || 1;
-    hx /= hl; hz /= hl;
-    car.heading = Math.atan2(hx, hz);
+    // ---- point it, at a rate a car could actually turn -------------------
+    //
+    // Snapping the heading straight at the aim point is what made traffic look
+    // like it teleported round corners: at a junction the aim jumps onto the
+    // next road and the car rotates the whole way in one frame. A real car is
+    // limited by grip, so the yaw rate it can hold is a_lat / speed -- fast
+    // when it is crawling, slow when it is not. Floor and ceiling only stop
+    // that going to infinity at a standstill.
+    const maxYaw = clamp(YAW_ACCEL / Math.max(car.speed, 1.5), 0.30, 2.2);
+    car.heading += clamp(err, -maxYaw * dt, maxYaw * dt);
 
+    // Travel along the nose, not at the aim point, so it never crabs.
+    const hx = Math.sin(car.heading), hz = Math.cos(car.heading);
     car.wantVel.set(hx * car.speed, 0, hz * car.speed);
     car.body.setLinvel({ x: car.wantVel.x, y: lv.y, z: car.wantVel.z }, true);
     // Face where it is going. Setting the rotation outright rather than
@@ -353,12 +387,59 @@ export class Traffic {
     return best;
   }
 
-  /** Choose an onward road at the end of the current one. */
-  _nextEdge(car) {
+  /** Arc length of the point on this car's road nearest to where it is. */
+  _reanchor(car) {
+    const e = car.edge;
+    const px = car.position.x, pz = car.position.z;
+    let best = car.along, bd = Infinity, acc = 0;
+    for (const s of e.segs) {
+      const dx = s.b.x - s.a.x, dz = s.b.z - s.a.z;
+      const l2 = dx * dx + dz * dz || 1;
+      let u = ((px - s.a.x) * dx + (pz - s.a.z) * dz) / l2;
+      u = u < 0 ? 0 : u > 1 ? 1 : u;
+      const qx = s.a.x + dx * u - px, qz = s.a.z + dz * u - pz;
+      const d = qx * qx + qz * qz;
+      if (d < bd) { bd = d; best = acc + u * s.len; }
+      acc += s.len;
+    }
+    car.along = best;
+  }
+
+  /**
+   * The point to steer at, running onto the next road if the lookahead
+   * overshoots the end of this one.
+   *
+   * Without this the aim point stays pinned to the end of the current edge
+   * right up until the car arrives, and then jumps onto the new one -- so the
+   * car drives straight at a junction and turns only once it is in it. Looking
+   * *through* the junction is what makes it take a line into the corner.
+   */
+  _aimAhead(car, dist, laneOff) {
+    let e = car.edge, dir = car.dir, s = car.along + dist * dir;
+    const over = dir > 0 ? s - e.length : -s;
+    if (over > 0) {
+      const nxt = this._peekNext(car);
+      if (nxt) {
+        e = nxt.edge; dir = nxt.dir;
+        s = dir > 0 ? Math.min(over, e.length) : Math.max(0, e.length - over);
+        laneOff = e.width * 0.25 * DRIVE_SIDE;
+      }
+    }
+    return this._lanePoint(e, s, dir, laneOff);
+  }
+
+  /**
+   * Which way this car will go at the end of its road, decided once and
+   * remembered -- so the road it aims into is the road it actually takes.
+   */
+  _peekNext(car) {
+    if (car.nextEdge && !car.nextEdge.dead) {
+      return { edge: car.nextEdge, dir: car.nextDir };
+    }
     const g = this.game.graph;
     const nodeId = car.dir > 0 ? car.edge.b : car.edge.a;
     const node = g.nodes[nodeId];
-    if (!node) return false;
+    if (!node) return null;
 
     const options = [];
     for (const eid of node.edges) {
@@ -370,14 +451,26 @@ export class Traffic {
     const e = options.length
       ? options[(this.game.rng() * options.length) | 0]
       : car.edge;
+    car.nextEdge = e;
+    car.nextDir = e === car.edge ? -car.dir : (e.a === nodeId ? 1 : -1);
+    return { edge: e, dir: car.nextDir };
+  }
 
-    const dir = e === car.edge
-      ? -car.dir
-      : (e.a === nodeId ? 1 : -1);
-    car.edge = e;
-    car.dir = dir;
-    car.along = dir > 0 ? 0.5 : e.length - 0.5;
-    car.lane = e.width * 0.25 * DRIVE_SIDE;
+  /** Take the road already chosen by _peekNext. */
+  _nextEdge(car) {
+    const nxt = this._peekNext(car);
+    if (!nxt) return false;
+    const over = car.dir > 0 ? car.along - car.edge.length : -car.along;
+    car.edge = nxt.edge;
+    car.dir = nxt.dir;
+    // Carry the overshoot through, rather than restarting at the kerb: a car
+    // doing 15 m/s covers a quarter of a metre a frame, and dropping that each
+    // time it changes road is a stutter at every junction.
+    car.along = nxt.dir > 0
+      ? clamp(over, 0, nxt.edge.length)
+      : clamp(nxt.edge.length - over, 0, nxt.edge.length);
+    car.lane = nxt.edge.width * 0.25 * DRIVE_SIDE;
+    car.nextEdge = null;
     return true;
   }
 
@@ -428,7 +521,14 @@ export class Traffic {
 
   // ---------------------------------------------------------------- visuals
 
-  _sync() {
+  /**
+   * Copy the bodies onto the instanced meshes.
+   *
+   * Called from the render pass, not from update: update runs before the
+   * physics step, so syncing there draws the traffic a frame behind the
+   * player and the police, which reads as the whole lot juddering.
+   */
+  syncVisuals() {
     const counts = new Array(this.meshes.length).fill(0);
     for (const c of this.cars) {
       const mesh = this.meshes[c.paint];

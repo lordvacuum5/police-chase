@@ -720,6 +720,7 @@ class Game {
   _render(dt) {
     // Cones are dynamic bodies, so their meshes have to follow them.
     this.roadblocks.syncVisuals();
+    this.traffic.syncVisuals();
 
     // ---- car transforms ----
     let wi = 0;

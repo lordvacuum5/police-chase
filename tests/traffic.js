@@ -51,6 +51,31 @@ window.__runTraffic = async function () {
     }
     rows.push(['pairs inside 2.5 m', String(overlaps)]);
 
+    // -------------------------------------- 1b. do they turn or teleport
+    //
+    // The heading is written straight onto the body, so nothing in the physics
+    // stops a civilian spinning through ninety degrees in one frame. Watch
+    // every car for a while and record the worst single-frame turn anybody
+    // makes: a real car at 12 m/s pulling 5.5 m/s^2 yaws at about 0.46 rad/s,
+    // which is 0.008 rad in a frame.
+    let worstYaw = 0, worstDeg = 0;
+    const prevH = new Map(t.cars.map((c) => [c, c.heading]));
+    for (let i = 0; i < 60 * 25; i++) {
+      g.stepHeadless(1 / 60, { throttle: 0, brake: 1, steer: 0, handbrake: 1 });
+      for (const c of t.cars) {
+        const was = prevH.get(c);
+        if (was === undefined || c.crashedFor > 0) { prevH.set(c, c.heading); continue; }
+        let d = c.heading - was;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        const rate = Math.abs(d) * 60;
+        if (rate > worstYaw) { worstYaw = rate; worstDeg = Math.abs(d) * 180 / Math.PI; }
+        prevH.set(c, c.heading);
+      }
+    }
+    rows.push(['worst yaw rate', `${worstYaw.toFixed(2)} rad/s`]);
+    rows.push(['worst turn in one frame', `${worstDeg.toFixed(2)} deg`]);
+
     // ------------------------------------------------- 2. what hitting one does
     //
     // Line the run up along the *civilian's* own road rather than along +Z,
