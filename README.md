@@ -485,6 +485,51 @@ the unlit ones scaled to nothing rather than packed out of the list. A signal
 changing writes three matrices. 702 heads on the city map come to about
 0.16 ms a frame and three draw calls.
 
+### Traffic
+
+48 civilian cars, streamed around the player, driving the road graph on the
+correct side, stopping at red lights and queueing behind each other. They are
+what turns a signalised junction from a decoration into something with a queue
+at it.
+
+A civilian is **not** a `Vehicle`. It has no wheels, no tyre model and no
+drivetrain — it is a box on a dynamic body whose horizontal velocity is written
+each frame to follow a lane. That costs almost nothing, and using a *dynamic*
+body rather than a kinematic one is the whole point: hit one hard enough and it
+stops being driven and simply becomes a car tumbling down the road. Detection
+compares the velocity the solver produced against the one that was asked for,
+so a shunt from any direction counts.
+
+| | speed | damage |
+|---|---|---|
+| ram one at 27 m/s | 24.9 → 13.4 m/s | +14.2% |
+
+Against a lamp post's −1.2 m/s and 1%, that is the right order of magnitude for
+hitting a car.
+
+**They part for a siren**, and that matters more than it sounds. Traffic on its
+own cost the police a sixth of their pace while leaving the player untouched —
+the police have to get through it and you do not, which quietly handed you the
+chase. Pulling over for a marked unit coming up behind fixes it where it should
+be fixed: the units get their lane back and you get nothing, because nobody
+moves over for you.
+
+| | police pace |
+|---|---|
+| no traffic | 55.2 km/h |
+| traffic | 45.7 km/h |
+| traffic that parts | **61.9 km/h** |
+
+Measured over 60 s of the standard pursuit harness; the player's pace is
+unchanged either way. Units well off the road dropped from 12.9% to 2.7%,
+because there is now a reason to stay in a lane.
+
+Cost is 0.40 ms a frame plus about 1.2 ms of physics for the extra bodies. Most
+of that 0.40 was originally 0.90: `translation()` and `linvel()` cross into
+wasm, and the gap check looks at every car from every car, so reading them
+inline was two thousand boundary crossings a frame. They are read once up front
+instead.
+
 ### Street furniture
 
 Lamp posts, bollards, bins and signs along the kerbs — 1608 of them on the city
@@ -1199,6 +1244,7 @@ src/
     roadblock.js       roadblock siting, construction, despawn
     helicopter.js      air support at five stars
     audio.js           sampled + synthesised engine, tyres, siren, impacts, radio
+    traffic.js         civilian cars: lane following, signals, parting for a siren
     camera.js  hud.js  effects.js
   core/
     menu.js            map selection at startup
@@ -1234,5 +1280,5 @@ right-hand traffic.
 ### Not yet implemented
 
 Spike strips, elevated overpasses (the motorway is grade-level throughout), and
-civilian traffic — which is the one that would give the traffic signals someone
-to hold up besides the police.
+traffic on the motorway, which needs lane changes rather than one lane per
+direction.
