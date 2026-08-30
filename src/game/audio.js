@@ -13,8 +13,79 @@
 //   wind     broad noise driven by road speed
 //   siren    a wailing two-tone that fades in with the nearest pursuing unit
 //   impacts  one-shot filtered noise bursts
+//   radio    dispatch traffic: squelch, a band-limited voice, and the crash
+//            of the key coming up
 
 import { clamp, clamp01, lerp } from '../util/math.js';
+
+// =====================================================================
+//  Police radio
+// =====================================================================
+
+/**
+ * What a transmission is band-limited to.
+ *
+ * A police radio is recognisable long before you have parsed a word of it,
+ * and almost all of that is the channel rather than the voice: 300 Hz to
+ * 3 kHz, squashed flat by the compressor at the transmitter, with the click
+ * of the PTT closing at one end and the squelch crash at the other. Get those
+ * right and a synthesised mumble reads as radio traffic; get them wrong and a
+ * perfect voice recording still does not.
+ */
+const RADIO_LO = 330, RADIO_HI = 2850;
+
+/**
+ * Formant pairs for a handful of vowels, in Hz.
+ *
+ * The "words" are nonsense -- a buzz through two resonances, moved from one
+ * vowel to the next once per syllable. That is enough for the ear to hear
+ * speech, and it means the radio never says anything that contradicts the
+ * message printed on the HUD.
+ */
+const VOWELS = [
+  [730, 1090],   // ah
+  [530, 1840],   // eh
+  [270, 2290],   // ee
+  [570, 840],    // oh
+  [440, 1020],   // aw
+  [490, 1350],   // er
+  [640, 1190],   // uh
+];
+
+/**
+ * Who is talking. Control is a base station: lower, steadier, cleaner. A unit
+ * is on a handheld in a car doing 90, so it is higher, faster and dirtier.
+ * The helicopter has the rotor sitting under everything it says.
+ */
+const VOICES = {
+  control: { pitch: 104, rate: 5.6, formant: 1.00, noise: 0.10, drive: 2.2, rumble: 0 },
+  unit:    { pitch: 128, rate: 6.6, formant: 1.09, noise: 0.20, drive: 3.4, rumble: 0 },
+  air:     { pitch: 118, rate: 6.1, formant: 1.05, noise: 0.26, drive: 3.8, rumble: 0.35 },
+};
+
+/** Cheap deterministic PRNG, so a given message always sounds the same. */
+function seededRng(text) {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return () => {
+    h ^= h << 13; h >>>= 0;
+    h ^= h >> 17;
+    h ^= h << 5; h >>>= 0;
+    return h / 4294967296;
+  };
+}
+
+/** Which of the three voices a line of dispatch is in. */
+function voiceFor(text) {
+  if (/India 99|Air support/i.test(text)) return 'air';
+  if (/^Control\b|^All units\b/i.test(text)) return 'control';
+  // "U3 responding, northbound" -- a callsign at the front means a unit.
+  if (/^[A-Z]+\d+\b/.test(text)) return 'unit';
+  return 'control';
+}
 
 /**
  * Firing frequency of a 4-stroke V8: rpm/60 * cylinders/2. The three
@@ -330,6 +401,8 @@ export class GameAudio {
     this.sirenGain.connect(this.master);
     this.sirenOsc.start();
 
+    this._buildRadio();
+
     this.ready = true;
     this._loadEngineSample();
   }
@@ -367,8 +440,233 @@ export class GameAudio {
     }
   }
 
+  // ------------------------------------------------------------- radio
+
+  /**
+   * The radio channel.
+   *
+   * Everything the radio says goes through one bus, because the bus *is* the
+   * sound: band-limited hard at both ends, a presence peak where speech
+   * intelligibility lives, and a waveshaper standing in for the compressor at
+   * the transmitter that squashes every syllable to the same level.
+   *
+   * Split out from _build so tests/radio.js can raise the same chain inside an
+   * OfflineAudioContext and look at what actually comes out of it.
+   */
+  _buildRadio() {
+    const ctx = this.ctx;
+    this.radioIn = ctx.createGain();
+    // Two highpass stages, not one. A single 12 dB/octave slope at 330 Hz
+    // still lets a third of the energy through underneath it -- the voice
+    // fundamental is around 110 Hz and its low harmonics sail past -- and
+    // that bass is exactly what stops it sounding like a radio. Cascading
+    // two takes it to 24 dB/octave, and the difference is the whole effect.
+    const hp1 = ctx.createBiquadFilter();
+    hp1.type = 'highpass'; hp1.frequency.value = RADIO_LO; hp1.Q.value = 0.7;
+    const hp2 = ctx.createBiquadFilter();
+    hp2.type = 'highpass'; hp2.frequency.value = RADIO_LO; hp2.Q.value = 0.7;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = RADIO_HI; lp.Q.value = 0.9;
+    const pk = ctx.createBiquadFilter();
+    pk.type = 'peaking'; pk.frequency.value = 1700; pk.Q.value = 1.1; pk.gain.value = 7;
+    const sh = ctx.createWaveShaper();
+    sh.curve = softClipCurve(4.5);
+    sh.oversample = '2x';
+    this.radioGain = ctx.createGain();
+    this.radioGain.gain.value = 0.70;
+    this.radioIn.connect(hp1); hp1.connect(hp2); hp2.connect(lp); lp.connect(pk);
+    pk.connect(sh); sh.connect(this.radioGain);
+    this.radioGain.connect(this.master);
+
+    this.radioQueue = [];
+    this.radioFreeAt = 0;      // ctx time the channel is clear again
+    this.lastAlertAt = -1e9;
+  }
+
+  /**
+   * Queue a dispatch transmission.
+   *
+   * Called from Game.radio, so every line that reaches the HUD is also heard.
+   * The channel is one at a time -- two units never talk over each other on a
+   * real net, and it is the queueing that makes it sound like a net rather
+   * than a soundboard.
+   */
+  radio(text, hot = false) {
+    if (!this.ready || this.muted || this.failed) return;
+    // Bracketed lines are the game talking to the player about settings, not
+    // anybody talking on the radio.
+    if (!text || text.startsWith('[')) return;
+    // A long pursuit generates more traffic than there is airtime. Keep the
+    // newest, since stale calls are the ones worth dropping.
+    if (this.radioQueue.length > 3) this.radioQueue.splice(0, this.radioQueue.length - 3);
+    this.radioQueue.push({ text, hot });
+  }
+
+  /** Start the next transmission if the channel is clear. Called per frame. */
+  _pumpRadio() {
+    if (!this.radioQueue.length) return;
+    const now = this.ctx.currentTime;
+    if (now < this.radioFreeAt) return;
+    this._transmit(this.radioQueue.shift());
+  }
+
+  /**
+   * One transmission, scheduled in full at the moment it starts.
+   *
+   * Nothing here runs per frame: the whole thing -- click, syllables, squelch
+   * tail -- is written into the AudioParam timeline up front and then left
+   * alone, which is both cheaper and immune to a dropped frame stuttering
+   * somebody's sentence.
+   */
+  _transmit(msg) {
+    const ctx = this.ctx;
+    const kind = voiceFor(msg.text);
+    const v = VOICES[kind];
+    const rnd = seededRng(msg.text);
+    let t = Math.max(ctx.currentTime + 0.03, this.radioFreeAt + 0.12);
+
+    // A priority call from Control gets the attention tone first -- but only
+    // now and then, or it stops meaning anything.
+    if (msg.hot && kind === 'control' && t - this.lastAlertAt > 24) {
+      this.lastAlertAt = t;
+      t = this._alertTone(t) + 0.14;
+    }
+
+    // ---- the key closing -------------------------------------------------
+    this._squelch(t, 0.05, 0.55, 2400);
+    t += 0.10;
+
+    // ---- the voice -------------------------------------------------------
+    // Long enough to track the length of the line on the HUD, short enough to
+    // sound like dispatch rather than a conversation. Real radio traffic is
+    // terse; a six-second mumble is neither.
+    const syl = clamp(Math.round(msg.text.length / 3.6), 3, 17);
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+
+    const f1 = ctx.createBiquadFilter();
+    f1.type = 'bandpass'; f1.Q.value = 5.5;
+    const f2 = ctx.createBiquadFilter();
+    f2.type = 'bandpass'; f2.Q.value = 8;
+    const g1 = ctx.createGain(); g1.gain.value = 1.0;
+    const g2 = ctx.createGain(); g2.gain.value = 0.55;
+
+    // Consonants: a little band-passed hiss riding the same envelope.
+    const hiss = ctx.createBufferSource();
+    hiss.buffer = this.noiseBuffer; hiss.loop = true;
+    const hf = ctx.createBiquadFilter();
+    hf.type = 'bandpass'; hf.frequency.value = 2100; hf.Q.value = 1.2;
+    const hg = ctx.createGain(); hg.gain.value = v.noise;
+
+    const env = ctx.createGain();
+    env.gain.value = 0.0001;
+
+    osc.connect(f1); f1.connect(g1); g1.connect(env);
+    osc.connect(f2); f2.connect(g2); g2.connect(env);
+    hiss.connect(hf); hf.connect(hg); hg.connect(env);
+    env.connect(this.radioIn);
+
+    const start = t;
+    for (let i = 0; i < syl; i++) {
+      const u = i / syl;
+      const len = (1 / v.rate) * (0.72 + rnd() * 0.62);
+      // A statement falls away at the end; a stressed syllable lifts.
+      const stress = rnd() < 0.28 ? 1.13 : 1.0;
+      const fall = 1 - 0.20 * u;
+      osc.frequency.setValueAtTime(v.pitch * fall * stress * (0.95 + rnd() * 0.12), t);
+
+      const vow = VOWELS[(rnd() * VOWELS.length) | 0];
+      f1.frequency.setValueAtTime(vow[0] * v.formant, t);
+      f2.frequency.setValueAtTime(vow[1] * v.formant, t);
+
+      // `drive` is how hard this voice hits the shaper on the bus, which is
+      // what makes a handheld in a moving car sound more squashed than the
+      // base station does.
+      const amp = 0.075 * v.drive * (0.75 + rnd() * 0.45);
+      env.gain.setValueAtTime(0.0001, t);
+      env.gain.exponentialRampToValueAtTime(amp, t + Math.min(0.022, len * 0.25));
+      env.gain.exponentialRampToValueAtTime(amp * 0.5, t + len * 0.6);
+      env.gain.exponentialRampToValueAtTime(0.0001, t + len * 0.94);
+      t += len;
+
+      // The odd gap, where somebody draws breath or hunts for a word.
+      if (rnd() < 0.09) t += 0.07 + rnd() * 0.10;
+    }
+
+    osc.start(start);
+    osc.stop(t + 0.05);
+    hiss.start(start);
+    hiss.stop(t + 0.05);
+
+    // Rotor noise under the whole thing, for the aircraft.
+    if (v.rumble > 0) {
+      const r = ctx.createBufferSource();
+      r.buffer = this.noiseBuffer; r.loop = true;
+      const rf = ctx.createBiquadFilter();
+      rf.type = 'bandpass'; rf.frequency.value = 700; rf.Q.value = 0.8;
+      const rg = ctx.createGain();
+      rg.gain.setValueAtTime(0.0001, start);
+      rg.gain.exponentialRampToValueAtTime(0.05 * v.rumble, start + 0.05);
+      rg.gain.setValueAtTime(0.05 * v.rumble, t - 0.05);
+      rg.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+      r.connect(rf); rf.connect(rg); rg.connect(this.radioIn);
+      r.start(start); r.stop(t + 0.1);
+    }
+
+    // ---- the key coming up -----------------------------------------------
+    // Louder and longer than the click that opened it: the receiver's squelch
+    // has a moment of open carrier before it shuts, and that crash of noise is
+    // the single most recognisable thing about the whole sound.
+    t += 0.03;
+    this._squelch(t, 0.12, 1.7, 3200);
+    this.radioFreeAt = t + 0.24;
+  }
+
+  /** A burst of band-passed noise: the PTT closing, or the squelch tail. */
+  _squelch(at, dur, level, from) {
+    const ctx = this.ctx;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    src.loop = true;
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.Q.value = 0.7;
+    f.frequency.setValueAtTime(from, at);
+    f.frequency.exponentialRampToValueAtTime(900, at + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(0.12 * level, at + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    src.connect(f); f.connect(g); g.connect(this.radioIn);
+    src.start(at);
+    src.stop(at + dur + 0.05);
+  }
+
+  /** Two-tone attention signal, ahead of a priority call from Control. */
+  _alertTone(at) {
+    const ctx = this.ctx;
+    let t = at;
+    for (const hz of [1060, 790]) {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = hz;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.085, t + 0.012);
+      g.gain.setValueAtTime(0.085, t + 0.20);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+      o.connect(g); g.connect(this.radioIn);
+      o.start(t); o.stop(t + 0.3);
+      t += 0.24;
+    }
+    return t;
+  }
+
   toggleMute() {
     this.muted = !this.muted;
+    // Drop anything still queued, or unmuting fires off a backlog of calls
+    // about a pursuit that finished a minute ago.
+    if (this.muted && this.radioQueue) this.radioQueue.length = 0;
     if (this.master) {
       this.master.gain.setTargetAtTime(this.muted ? 0 : this.masterVolume, this.ctx.currentTime, 0.05);
     }
@@ -411,6 +709,8 @@ export class GameAudio {
     if (ctx.state !== 'running') return;
     const t = ctx.currentTime;
     const smooth = 0.045;
+
+    this._pumpRadio();
 
     // ---- engine ----------------------------------------------------------
     const rpm = player.rpm;

@@ -448,6 +448,9 @@ class Game {
 
   radio(text, hot = false) {
     if (this.hud) this.hud.addMessage(text, hot);
+    // Every line that reaches the HUD is also heard on the net. One choke
+    // point for both, so the two can never drift apart.
+    if (this.audio) this.audio.radio(text, hot);
   }
 
   roadName(pos) {
