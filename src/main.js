@@ -19,6 +19,7 @@ import { RoadblockManager } from './game/roadblock.js';
 import { Helicopter } from './game/helicopter.js';
 import { TrafficLights } from './game/trafficlights.js';
 import { StreetProps } from './game/streetprops.js';
+import { Traffic } from './game/traffic.js';
 import { ChaseCamera } from './game/camera.js';
 import { Hud } from './game/hud.js';
 import { Input } from './core/input.js';
@@ -103,6 +104,8 @@ class Game {
     // Props first: the signals hand their posts to it to be knocked over.
     this.props = new StreetProps(this);
     this.signals = new TrafficLights(this);
+    this.traffic = new Traffic(this);
+    this.traffic.prewarm(this.player.position);
     this.hud = new Hud(this);
     this.input = new Input();
     this.camera3 = new ChaseCamera(this.camera);
@@ -446,6 +449,21 @@ class Game {
 
   // =================================================================== events
 
+  /**
+   * Everything a driver should steer around: the real cars, and the civilian
+   * traffic. Rebuilt once a frame rather than per unit -- eight officers each
+   * concatenating the same two lists is eight times the work for one answer.
+   */
+  _rebuildObstacles() {
+    const out = this._obstacles || (this._obstacles = []);
+    out.length = 0;
+    for (const v of this.vehicles) out.push(v);
+    if (this.traffic) for (const c of this.traffic.cars) out.push(c);
+    return out;
+  }
+
+  get obstacles() { return this._obstacles || this.vehicles; }
+
   radio(text, hot = false) {
     if (this.hud) this.hud.addMessage(text, hot);
     // Every line that reaches the HUD is also heard on the net. One choke
@@ -502,6 +520,7 @@ class Game {
     this.helicopter.reset();
     this.props.reset();
     this.signals.reset();
+    this.traffic.reset();
     this.player.repair();
     this.player.teleport(this.startPlace.position, this.startPlace.heading);
     this.skids.clear();
@@ -606,11 +625,13 @@ class Game {
     }
 
     // ---- AI, then heat ----
+    this._rebuildObstacles();
     this.dispatcher.update(dt, player);
     this.roadblocks.update(dt, player);
     this.helicopter.update(dt, player);
     this.props.update(dt);
     this.signals.update(dt);
+    this.traffic.update(dt, player);
     this.heat.update(dt, player, this.dispatcher);
     this._checkProvocation(dt);
 

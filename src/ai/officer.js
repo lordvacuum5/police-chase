@@ -115,7 +115,7 @@ export class Officer {
     }
     this.recoverTimer = 0;
 
-    this.driver.avoid(this.game.vehicles, dt);
+    this.driver.avoid(this.game.obstacles, dt);
     this.repathTimer -= dt;
     this._updateAssist(target);
 
