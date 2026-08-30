@@ -529,16 +529,51 @@ written straight onto its body, so nothing in the physics stops it spinning
 through ninety degrees in a frame — and the first version did exactly that at
 every junction. Three things fix it, all the same mistake in different places:
 
-* The heading is rate limited. Yaw rate times speed is lateral acceleration, so
-  the cap is `a_lat / speed` — quick at a crawl, slow at speed. Worst
-  single-frame turn is **2.10°**, measured across every car on the map.
+* The heading is rate limited by **both** things that limit a real car, which
+  is the part worth getting right. Yaw rate times speed is lateral
+  acceleration, so `a_lat / v` is the grip ceiling — but that goes to infinity
+  as the car slows, and clamping it at some large number is a licence to spin
+  on the spot. What stops a *slow* car turning quickly is the steering lock:
+  yaw rate is `v / R`, and `R` can never be smaller than the turning circle.
+  The limit is the lower of the two, so at a standstill it is zero and a
+  stopped car cannot rotate at all. Worst single-frame turn is **0.95°**,
+  measured across every car on the map.
 * The aim point looks *through* the junction onto the road the car is about to
   take, chosen in advance and remembered. Pinned to the end of the current
   edge instead, a civilian drives straight at the junction and turns only once
   it is in it.
 * It slows for the corner: `v ≤ sqrt(a_lat · look / err)`, from the same
   relation. Without it, a rate-limited heading simply cannot turn into the new
-  road and ten of forty-eight ended up on the pavement.
+  road and ten of forty-eight ended up on the pavement. That cap has a floor
+  under it, because the yaw limit scales with speed — let it take a car to
+  walking pace and it can no longer turn at all, and it sits in the junction
+  unable to get round.
+
+Following distance only applies to cars going **roughly the same way**. Looking
+at everything in the box ahead means everybody waiting to cross a junction
+stops for the car crossing in front of them, that car stops for them, and the
+junction locks solid — then the queues behind it lock too, which is where
+town-sized jams come from. Right of way at a junction is the signals' job. The
+player and the police are followed whichever way they point, because one of
+them stopped across the road really is in the way. Behind that is a safety
+valve: a car that has not moved for twenty seconds with a green light in front
+of it has found a deadlock nobody anticipated, so it leaves and the streaming
+replaces it somewhere useful.
+
+| after 90 s of pursuit | |
+|---|---|
+| stopped, not at a red | 3.9 on average, worst 8 of 48 |
+| still on the carriageway | 48 of 48 |
+| police hit a civilian | 0 times |
+
+That last row needed work. `Driver.avoid` only ever nudged the steering, and
+`RAY_SOLID` deliberately ignores vehicles, so a unit had no braking response to
+another car at all — fine when the only cars were the player and a handful of
+police, since contact is part of the chase, and not fine at all once there were
+forty-eight more of them. `avoid` now also reports the nearest thing genuinely
+in the path and `followCap` turns that into a speed: hard for a unit with
+nowhere to be in a hurry, which should queue like anybody else, and weak in a
+pursuit, where it only prevents a flat-out rear-end into stationary traffic.
 
 Position along the road is taken from where the car actually is, projected onto
 its edge — not dead-reckoned from `speed · dt`. Those agree only in a straight
