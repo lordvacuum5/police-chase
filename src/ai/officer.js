@@ -115,7 +115,7 @@ export class Officer {
     }
     this.recoverTimer = 0;
 
-    this.driver.avoid(this.game.obstacles, dt);
+    this.driver.avoid(this.game.vehicles, dt);
     this.repathTimer -= dt;
     this._updateAssist(target);
 
@@ -189,8 +189,7 @@ export class Officer {
     // Patrols obey the limit; that difference in pace is how you spot them.
     // They obey the signals too, and only they do: a unit running to a shout
     // or already in a pursuit has blue lights on and goes through.
-    return this.driver.followPath(dt,
-      Math.min(22, this._signalCap(), this.driver.followCap(true)));
+    return this.driver.followPath(dt, Math.min(22, this._signalCap()));
   }
 
   /**
@@ -220,7 +219,7 @@ export class Officer {
       const to = g.nearestNode(centre.x + Math.cos(a) * r, centre.z + Math.sin(a) * r);
       this._routeTo(to.id, 2.0);
     }
-    return this.driver.followPath(dt, Math.min(30, this.driver.followCap(true)));
+    return this.driver.followPath(dt, 30);
   }
 
   /** Head for a fixed world point by road, flat out. */
@@ -238,10 +237,7 @@ export class Officer {
       // Close enough to drive at it directly.
       return this.driver.driveTo(point, this._chaseSpeed() * 0.8, dt);
     }
-    // On its way to a shout rather than in the chase itself: it has the lights
-    // on, but there is nothing to be gained by driving through the traffic.
-    return this.driver.followPath(dt,
-      Math.min(this._chaseSpeed() * speedFactor, this.driver.followCap(true)));
+    return this.driver.followPath(dt, this._chaseSpeed() * speedFactor);
   }
 
   /**
@@ -762,14 +758,10 @@ export class Officer {
 
   /** Top speed this unit is willing to run at, given its car and its nerve. */
   _chaseSpeed() {
-    const top = this.vehicle.spec.topSpeedHint
+    return this.vehicle.spec.topSpeedHint
       * clamp(lerp(0.86, 1.06, this.skill.aggression - 0.6), 0.8, 1.06)
       * this.pace
       * this.vehicle.assist.boost;
-    // Deliberately the weak cap. Contact is part of a pursuit and a unit that
-    // lifts off for every car in the road never catches anybody, so this only
-    // stops a flat-out rear-end into something stationary a few metres ahead.
-    return Math.min(top, this.driver.followCap(false));
   }
 
   /**

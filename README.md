@@ -485,110 +485,6 @@ the unlit ones scaled to nothing rather than packed out of the list. A signal
 changing writes three matrices. 702 heads on the city map come to about
 0.16 ms a frame and three draw calls.
 
-### Traffic
-
-48 civilian cars, streamed around the player, driving the road graph on the
-correct side, stopping at red lights and queueing behind each other. They are
-what turns a signalised junction from a decoration into something with a queue
-at it.
-
-A civilian is **not** a `Vehicle`. It has no wheels, no tyre model and no
-drivetrain — it is a box on a dynamic body whose horizontal velocity is written
-each frame to follow a lane. That costs almost nothing, and using a *dynamic*
-body rather than a kinematic one is the whole point: hit one hard enough and it
-stops being driven and simply becomes a car tumbling down the road. Detection
-compares the velocity the solver produced against the one that was asked for,
-so a shunt from any direction counts.
-
-| | speed | damage |
-|---|---|---|
-| ram one at 27 m/s | 24.9 → 13.4 m/s | +14.2% |
-
-Against a lamp post's −1.2 m/s and 1%, that is the right order of magnitude for
-hitting a car.
-
-**They part for a siren**, and that matters more than it sounds. Traffic on its
-own cost the police a sixth of their pace while leaving the player untouched —
-the police have to get through it and you do not, which quietly handed you the
-chase. Pulling over for a marked unit coming up behind fixes it where it should
-be fixed: the units get their lane back and you get nothing, because nobody
-moves over for you.
-
-| | police pace |
-|---|---|
-| no traffic | 55.2 km/h |
-| traffic | 45.7 km/h |
-| traffic that parts | **61.9 km/h** |
-
-Measured over 60 s of the standard pursuit harness; the player's pace is
-unchanged either way. Units well off the road dropped from 12.9% to 2.7%,
-because there is now a reason to stay in a lane.
-
-**Turning is the part that has to be done properly.** A civilian's heading is
-written straight onto its body, so nothing in the physics stops it spinning
-through ninety degrees in a frame — and the first version did exactly that at
-every junction. Three things fix it, all the same mistake in different places:
-
-* The heading is rate limited by **both** things that limit a real car, which
-  is the part worth getting right. Yaw rate times speed is lateral
-  acceleration, so `a_lat / v` is the grip ceiling — but that goes to infinity
-  as the car slows, and clamping it at some large number is a licence to spin
-  on the spot. What stops a *slow* car turning quickly is the steering lock:
-  yaw rate is `v / R`, and `R` can never be smaller than the turning circle.
-  The limit is the lower of the two, so at a standstill it is zero and a
-  stopped car cannot rotate at all. Worst single-frame turn is **0.95°**,
-  measured across every car on the map.
-* The aim point looks *through* the junction onto the road the car is about to
-  take, chosen in advance and remembered. Pinned to the end of the current
-  edge instead, a civilian drives straight at the junction and turns only once
-  it is in it.
-* It slows for the corner: `v ≤ sqrt(a_lat · look / err)`, from the same
-  relation. Without it, a rate-limited heading simply cannot turn into the new
-  road and ten of forty-eight ended up on the pavement. That cap has a floor
-  under it, because the yaw limit scales with speed — let it take a car to
-  walking pace and it can no longer turn at all, and it sits in the junction
-  unable to get round.
-
-Following distance only applies to cars going **roughly the same way**. Looking
-at everything in the box ahead means everybody waiting to cross a junction
-stops for the car crossing in front of them, that car stops for them, and the
-junction locks solid — then the queues behind it lock too, which is where
-town-sized jams come from. Right of way at a junction is the signals' job. The
-player and the police are followed whichever way they point, because one of
-them stopped across the road really is in the way. Behind that is a safety
-valve: a car that has not moved for twenty seconds with a green light in front
-of it has found a deadlock nobody anticipated, so it leaves and the streaming
-replaces it somewhere useful.
-
-| after 90 s of pursuit | |
-|---|---|
-| stopped, not at a red | 3.9 on average, worst 8 of 48 |
-| still on the carriageway | 48 of 48 |
-| police hit a civilian | 0 times |
-
-That last row needed work. `Driver.avoid` only ever nudged the steering, and
-`RAY_SOLID` deliberately ignores vehicles, so a unit had no braking response to
-another car at all — fine when the only cars were the player and a handful of
-police, since contact is part of the chase, and not fine at all once there were
-forty-eight more of them. `avoid` now also reports the nearest thing genuinely
-in the path and `followCap` turns that into a speed: hard for a unit with
-nowhere to be in a hurry, which should queue like anybody else, and weak in a
-pursuit, where it only prevents a flat-out rear-end into stationary traffic.
-
-Position along the road is taken from where the car actually is, projected onto
-its edge — not dead-reckoned from `speed · dt`. Those agree only in a straight
-line, and every corner drifts the bookkeeping ahead of the body.
-
-Cost is 0.54 ms a frame plus about 1.2 ms of physics for the extra bodies. It
-was 0.90 before the bodies were read once up front instead of inline:
-`translation()` and `linvel()` cross into wasm, and the gap check looks at every
-car from every car, so that was two thousand boundary crossings a frame.
-
-The meshes sync in the **render** pass, not in `update`. `update` runs before
-the physics step, so syncing there draws the traffic a frame behind the player
-and the police — which does not read as one frame late, it reads as the whole
-lot floating and juddering.
-
 ### Street furniture
 
 Lamp posts, bollards, bins and signs along the kerbs — 1608 of them on the city
@@ -1303,7 +1199,6 @@ src/
     roadblock.js       roadblock siting, construction, despawn
     helicopter.js      air support at five stars
     audio.js           sampled + synthesised engine, tyres, siren, impacts, radio
-    traffic.js         civilian cars: lane following, signals, parting for a siren
     camera.js  hud.js  effects.js
   core/
     menu.js            map selection at startup
@@ -1339,5 +1234,5 @@ right-hand traffic.
 ### Not yet implemented
 
 Spike strips, elevated overpasses (the motorway is grade-level throughout), and
-traffic on the motorway, which needs lane changes rather than one lane per
-direction.
+civilian traffic — which is the one that would give the traffic signals someone
+to hold up besides the police.

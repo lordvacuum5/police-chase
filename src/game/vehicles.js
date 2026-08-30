@@ -10,9 +10,6 @@ import * as THREE from 'three';
 import { MeshBuilder, buildGrouped } from '../util/meshbuild.js';
 import { policeTexture, DECAL } from './livery.js';
 
-/** Scratch matrix for placing baked wheel geometry. */
-const _wm = new THREE.Matrix4();
-
 // ---------------------------------------------------------------- base spec
 
 const baseSuspension = {
@@ -293,28 +290,6 @@ export function buildCarGeometry(spec, livery, opts = {}) {
   }
   // A haunch over the rear axle: the flank swells slightly toward the back.
   b.addTaperedBox(W * 1.012, 0.15, archHalf * 2.6, 0, 0.44, zr + 0.10, body, 0.99, 0.90);
-
-  // Wheels, for callers that have no instanced set of their own.
-  //
-  // The player's and the police cars' wheels are instanced separately so they
-  // can steer and spin with the suspension. Civilian traffic has none of that
-  // machinery, and an empty arch does not read as a car with the wheels left
-  // off -- it reads as a car sunk into the road. So it can ask for a plain
-  // set baked into the body instead.
-  if (opts.wheels) {
-    const tw = spec.wheelWidth || 0.26;
-    for (const [zz, sgn] of [[zf, 1], [zf, -1], [zr, 1], [zr, -1]]) {
-      const tyre = new THREE.CylinderGeometry(r, r, tw, 10);
-      tyre.rotateZ(Math.PI / 2);
-      _wm.makeTranslation(sgn * (hw - tw * 0.5 - 0.03), hub, zz);
-      b.addGeometry(tyre, _wm, 0x0d0d10);
-      tyre.dispose();
-      const rim = new THREE.CylinderGeometry(r * 0.62, r * 0.62, tw * 1.04, 8);
-      rim.rotateZ(Math.PI / 2);
-      b.addGeometry(rim, _wm, 0x4c525a);
-      rim.dispose();
-    }
-  }
 
   // Door shut lines. Two doors a side, so three seams.
   for (const dz of [fArch - 0.05, rockZ - 0.06, rArch + 0.04]) {
