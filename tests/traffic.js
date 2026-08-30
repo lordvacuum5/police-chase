@@ -123,6 +123,51 @@ window.__runTraffic = async function () {
       : 'no clear run at one']);
     rows.push(['it stopped driving itself', hit ? (hit.knocked ? 'yes' : 'NO') : 'n/a']);
 
+    // ------------------------------ 3. jams, and the police ploughing in
+    //
+    // Run a real pursuit and watch two things: whether the traffic seizes up,
+    // and how often a police car actually hits a civilian rather than getting
+    // round it.
+    p.repair();
+    const pl = g._placeOnRoad(g.graph.nearestNode(0, -240));
+    p.teleport(pl.position, pl.heading);
+    p.setVelocity({ x: 0, y: 0, z: 0 });
+    g.heat.value = 0;
+    g.heat.bump(3, 'traffic test');
+
+    let policeHits = 0, worstJam = 0, jamSamples = 0, stoppedSum = 0;
+    const wasDown = new WeakSet();
+    for (let i = 0; i < 60 * 90; i++) {
+      g.stepHeadless(1 / 60, {
+        throttle: 1, brake: 0, steer: 0.09 * Math.sin(i / 170), handbrake: 0,
+      });
+      if (p.damage > 0.6) p.repair();
+      // A civilian that has just been knocked out of its lane, with a police
+      // car close enough to have been the one that did it.
+      for (const c of t.cars) {
+        if (c.crashedFor <= 0 || wasDown.has(c)) continue;
+        wasDown.add(c);
+        for (const u of g.dispatcher.units) {
+          if (u.distanceTo(c.position) < 7) { policeHits++; break; }
+        }
+      }
+      if (i % 30 === 0) {
+        const stopped = t.cars.filter((c) => c.speed < 0.5 && !c.atRed).length;
+        stoppedSum += stopped;
+        worstJam = Math.max(worstJam, stopped);
+        jamSamples++;
+      }
+    }
+    rows.push(['', '']);
+    rows.push(['over 90 s of pursuit', '']);
+    rows.push(['police hit a civilian', `${policeHits} times`]);
+    rows.push(['stopped, not at a red', `${(stoppedSum / jamSamples).toFixed(1)} on average, `
+      + `worst ${worstJam} of ${t.cars.length}`]);
+    rows.push(['still on the carriageway', `${t.cars.filter((c) => {
+      const tr = c.body.translation();
+      return g.graph.overlapsRoad(tr.x, tr.z, 1.6, 3.6, c.heading, 0);
+    }).length} of ${t.cars.length}`]);
+
     window.__res = rows.map((r) => `${r[0].padEnd(26)} ${r[1]}`).join('\n');
   } catch (e) {
     window.__res = 'EX ' + e.message + '\n' + String(e.stack).slice(0, 500);

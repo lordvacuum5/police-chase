@@ -64,6 +64,7 @@ export class Driver {
     this.reverseTimer = 0;
     this.reactTimer = 0;
     this._clear = 70;
+    this.aheadGap = Infinity;
     this._clearTravel = RUNOUT_PROBE;
     this._runout = RUNOUT_PROBE;
     this._clearTimer = 0;
@@ -843,6 +844,11 @@ export class Driver {
     this._avoidScenery(dt);
     let bias = 0;
     const range = clamp(9 + v.speed * 0.85, 12, 45);
+    // Nearest thing genuinely in the path, for the callers that want to slow
+    // for it rather than only steer round it. Now that the roads have traffic
+    // on them there is a great deal more to run into, and steering bias alone
+    // is not an answer to a queue of cars.
+    this.aheadGap = Infinity;
 
     for (const o of others) {
       if (o === v) continue;
@@ -850,6 +856,11 @@ export class Driver {
       const ahead = _p.dot(v.forward);
       if (ahead < 1 || ahead > range) continue;
       const side = _p.dot(v.left);
+      const oHalf = o.spec ? o.spec.dims.w * 0.5 : 0.97;
+      if (Math.abs(side) < this.halfWidth + oHalf + 0.15) {
+        const oLen = o.spec ? o.spec.dims.l * 0.5 : 2.3;
+        this.aheadGap = Math.min(this.aheadGap, ahead - oLen - this.v.spec.dims.l * 0.5);
+      }
       // Both cars' widths, not a constant: what counts as "in the way" depends
       // on how much room the pair of them actually need.
       const clearance = this.halfWidth + (o.spec ? o.spec.dims.w * 0.5 : 0.97) + 0.3
@@ -863,5 +874,25 @@ export class Driver {
     }
     this.avoidBias = lerp(this.avoidBias, clamp(bias, -0.35, 0.35), 1 - Math.exp(-8 * dt));
     return this.avoidBias;
+  }
+
+  /**
+   * Speed at which whatever is directly ahead can still be stopped short of.
+   *
+   * `hard` is for a unit with nowhere to be in a hurry -- a patrol, or one on
+   * its way to a shout -- which should sit behind traffic like anybody else.
+   * Without it, a unit only ever gets a steering nudge from `avoid`, and a
+   * steering nudge does not get you past a queue at a red light.
+   *
+   * In a pursuit it is deliberately much weaker: contact is part of the chase
+   * and a unit that lifts off for every car in the road never catches anybody.
+   * All this does there is stop a flat-out rear-end into stationary traffic.
+   */
+  followCap(hard = true) {
+    const gap = this.aheadGap;
+    if (!isFinite(gap)) return Infinity;
+    if (hard) return Math.sqrt(2 * 6.5 * Math.max(0, gap - 3.0));
+    if (gap > 11) return Infinity;
+    return Math.sqrt(2 * 9.0 * Math.max(0, gap - 1.6));
   }
 }

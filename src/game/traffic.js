@@ -63,10 +63,19 @@ const CRASH_DV = 4.5;
 const CRASH_FOR = 6.0;        // seconds before it tries to pull away again
 
 /**
- * Cornering grip, m/s^2. A car cannot yaw faster than a_lat / speed without
- * sliding, which is what keeps a civilian from pivoting on the spot.
+ * What limits how fast a car can change direction, and it is two things at
+ * once -- which is the bit the first attempt at this got wrong.
+ *
+ * At speed it is grip: yaw rate times speed is lateral acceleration, so the
+ * ceiling is a_lat / v. But at *low* speed that formula goes to infinity, and
+ * clamping it to some large number is what left civilians spinning on the spot
+ * at junctions. What actually stops a slow car turning quickly is the steering
+ * lock: yaw rate is v / R, and R can never be smaller than the car's turning
+ * circle. So the real limit is the lower of the two, and at a standstill it is
+ * zero -- a stopped car cannot rotate at all, which is the whole point.
  */
-const YAW_ACCEL = 5.5;
+const YAW_ACCEL = 5.5;        // m/s^2 of cornering grip
+const MIN_RADIUS = 5.6;       // m, kerb to kerb -- an ordinary saloon
 
 const _v = new THREE.Vector3();
 const _m = new THREE.Matrix4();
@@ -294,14 +303,19 @@ export class Traffic {
     let err = Math.atan2(aim.x - t.x, aim.z - t.z) - car.heading;
     while (err > Math.PI) err -= Math.PI * 2;
     while (err < -Math.PI) err += Math.PI * 2;
-    want = Math.min(want, Math.sqrt(YAW_ACCEL * look / Math.max(Math.abs(err), 0.06)));
+    // Floored, because the yaw limit now scales with speed: let the corner cap
+    // take a car to walking pace and it can no longer turn at all, and it sits
+    // in the junction unable to get round.
+    const corner = Math.sqrt(YAW_ACCEL * look / Math.max(Math.abs(err), 0.06));
+    want = Math.min(want, Math.max(3.4, corner));
 
     // Traffic signals. Civilians always obey them -- they are the only road
     // users in the game that never have a reason not to.
     if (g.signals) {
       const node = g.graph.nodes[car.dir > 0 ? car.edge.b : car.edge.a];
       const d = g.signals.stopDistance(car.edge, node, t.x, t.z, car.speed);
-      if (isFinite(d)) want = Math.min(want, Math.sqrt(2 * BRAKE * Math.max(0, d - 1.2)));
+      car.atRed = isFinite(d);
+      if (car.atRed) want = Math.min(want, Math.sqrt(2 * BRAKE * Math.max(0, d - 1.2)));
     }
 
     // Whatever is in front, civilian or otherwise.
@@ -315,6 +329,14 @@ export class Traffic {
     const rate = want > car.speed ? ACCEL : BRAKE;
     car.speed = clamp(car.speed + Math.sign(want - car.speed) * rate * dt, 0, want);
 
+    // Safety valve. Every jam here should clear on its own, but "should" is
+    // not a guarantee across a whole town, and a deadlock that never breaks
+    // would sit in the road for the rest of the run. A car that has not moved
+    // for twenty seconds with a green light in front of it has found one, so
+    // it leaves and the streaming puts another somewhere useful.
+    car.stuckFor = car.speed < 0.4 && !car.atRed ? (car.stuckFor || 0) + dt : 0;
+    if (car.stuckFor > 20) { car.dead = true; return; }
+
     // ---- point it, at a rate a car could actually turn -------------------
     //
     // Snapping the heading straight at the aim point is what made traffic look
@@ -323,7 +345,10 @@ export class Traffic {
     // limited by grip, so the yaw rate it can hold is a_lat / speed -- fast
     // when it is crawling, slow when it is not. Floor and ceiling only stop
     // that going to infinity at a standstill.
-    const maxYaw = clamp(YAW_ACCEL / Math.max(car.speed, 1.5), 0.30, 2.2);
+    const maxYaw = Math.min(
+      car.speed / MIN_RADIUS,                        // steering lock
+      YAW_ACCEL / Math.max(car.speed, 0.5),          // grip
+    );
     car.heading += clamp(err, -maxYaw * dt, maxYaw * dt);
 
     // Travel along the nose, not at the aim point, so it never crabs.
@@ -379,8 +404,18 @@ export class Traffic {
 
     for (const o of this.cars) {
       if (o === car) continue;
+      // Only follow somebody going roughly the same way.
+      //
+      // Without this, a car crossing a junction is briefly inside the box in
+      // front of everyone waiting to cross the other way, so they all stop for
+      // each other and the junction locks solid -- and then the queues behind
+      // them lock, which is where the town-sized jams came from. Right of way
+      // at a junction is the traffic lights' job, not the follow distance's.
+      if (Math.cos(o.heading - car.heading) < 0.45) continue;
       test(o.position.x, o.position.z, CAR_W * 0.5);
     }
+    // The player and the police are followed whichever way they are pointing:
+    // one of them stopped across the road really is in the way.
     for (const v of this.game.vehicles) {
       test(v.position.x, v.position.z, v.spec.dims.w * 0.5);
     }
