@@ -1033,6 +1033,54 @@ Measured through a steering sweep at a steady 60 km/h:
 | 0.60 | 5.7 deg | rising | starting |
 | 1.00 | 15.1 deg | full | full |
 
+### The police radio
+
+Every line that reaches the HUD also goes out over the net. `Game.radio` was
+already the single choke point for all 22 call sites, so the audio hangs off
+that and the two can never drift apart.
+
+A police radio is recognisable long before you have parsed a word of it, and
+almost all of that is the *channel* rather than the voice. So the channel is
+where the work went: 330 Hz to 2.85 kHz, a presence peak at 1.7 kHz, and a
+waveshaper standing in for the compressor at the transmitter that squashes
+every syllable to the same level. The highpass is two cascaded stages, not one
+— a single 12 dB/octave slope still lets about a third of the energy through
+underneath it, because the voice fundamental is around 110 Hz and its low
+harmonics sail past, and that bass is exactly what stops it sounding like a
+radio.
+
+The "words" are a buzz through two formant filters, moved to a different vowel
+once per syllable, gated by an envelope with a falling intonation and the odd
+gap for breath. Nonsense by design: the radio can never say something that
+contradicts the line printed on the HUD. A seeded PRNG keyed on the message
+means a given call always sounds the same.
+
+Three voices, picked off the text. Control is a base station — lower, steadier,
+cleaner. A unit is on a handheld in a car doing 90, so it is higher, faster and
+driven harder into the shaper. India 99 has the rotor underneath everything it
+says. A priority call from Control opens with a two-tone attention signal,
+rate-limited to once every 24 s so that it keeps meaning something. One
+transmission at a time, queued: two units never talk over each other on a real
+net, and it is the queueing that makes it sound like a net rather than a
+soundboard.
+
+`tests/radio.js` renders the chain inside an `OfflineAudioContext` and measures
+the samples, which is deterministic and does not care whether the tab is
+throttling its timers:
+
+| | |
+|---|---|
+| transmission length | 3.66 s for a 54-character line |
+| energy below 300 Hz | 10.7% |
+| energy 300 Hz – 3 kHz | 85.7% |
+| energy above 3 kHz | 3.6% |
+| key-up crash vs speech | 1.54× — and it is the loudest moment |
+| priority call opens louder | 4.2× |
+| voice pairs told apart | 3 of 3 |
+
+A 45-second pursuit puts four calls on the air: one from Control, three from
+units.
+
 ### Everything else
 
 Intake roar that swells with revs, narrow-band tyre squeal driven by the worst
@@ -1150,7 +1198,7 @@ src/
     heat.js            wanted level, cooldown, arrest
     roadblock.js       roadblock siting, construction, despawn
     helicopter.js      air support at five stars
-    audio.js           sampled + synthesised engine, tyres, siren, impacts
+    audio.js           sampled + synthesised engine, tyres, siren, impacts, radio
     camera.js  hud.js  effects.js
   core/
     menu.js            map selection at startup
