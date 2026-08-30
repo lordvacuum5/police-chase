@@ -196,11 +196,10 @@ export function buildStopLines(junctions, paint, y, colour) {
   for (const j of junctions) {
     if (!j.signal) continue;
     for (const a of j.app) {
-      const p = { x: -a.dir.z, z: a.dir.x };
       const d = a.setback + 0.9;
-      const n = j.node;
-      const p0 = { x: n.x + a.dir.x * d + p.x * a.half * 0.04, z: n.z + a.dir.z * d + p.z * a.half * 0.04 };
-      const p1 = { x: n.x + a.dir.x * d + p.x * a.half * 0.96, z: n.z + a.dir.z * d + p.z * a.half * 0.96 };
+      const q = alongApproach(j.node, a, d);
+      const p0 = { x: q.x + q.nx * a.half * 0.04, z: q.z + q.nz * a.half * 0.04 };
+      const p1 = { x: q.x + q.nx * a.half * 0.96, z: q.z + q.nz * a.half * 0.96 };
       paint.addRibbon([p0, p1], 0.55, y, colour);
       a.stopLine = { x: (p0.x + p1.x) * 0.5, z: (p0.z + p1.z) * 0.5, dist: d };
     }
@@ -227,6 +226,45 @@ export function addNodeApron(builder, x, z, radius, y, colour, sides = 10) {
     );
   }
 }
+
+/**
+ * A point `dist` metres from the node along an approach, following the road's
+ * actual polyline rather than shooting off along the tangent at the node.
+ *
+ * That distinction matters now that bends are smoothed: an approach curves
+ * away from its node, so projecting along the straight `dir` for eight or ten
+ * metres can miss the carriageway by a metre or two -- enough to put a stop
+ * line half off the road, or a signal head in it.
+ *
+ * `n` is the left normal in the approach's own sense, so +n is the same side
+ * as +perp at the node.
+ */
+export function alongApproach(node, app, dist) {
+  const e = app.edge;
+  const fromA = app.end === 'a';
+  const s = fromA ? dist : e.length - dist;
+  let acc = 0;
+  for (const seg of e.segs) {
+    if (s <= acc + seg.len || seg === e.segs[e.segs.length - 1]) {
+      const t = seg.len > 1e-6 ? clamp01((s - acc) / seg.len) : 0;
+      let dx = (seg.b.x - seg.a.x) / (seg.len || 1);
+      let dz = (seg.b.z - seg.a.z) / (seg.len || 1);
+      if (!fromA) { dx = -dx; dz = -dz; }
+      return {
+        x: seg.a.x + (seg.b.x - seg.a.x) * t,
+        z: seg.a.z + (seg.b.z - seg.a.z) * t,
+        dx, dz, nx: -dz, nz: dx,
+      };
+    }
+    acc += seg.len;
+  }
+  return {
+    x: node.x + app.dir.x * dist, z: node.z + app.dir.z * dist,
+    dx: app.dir.x, dz: app.dir.z, nx: -app.dir.z, nz: app.dir.x,
+  };
+}
+
+const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 /** Intersection of two lines given as (offset from origin, direction). */
 function lineCross(ox, oz, od, px, pz, pd) {

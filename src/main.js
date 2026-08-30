@@ -100,8 +100,9 @@ class Game {
     this.dispatcher = new Dispatcher(this);
     this.roadblocks = new RoadblockManager(this);
     this.helicopter = new Helicopter(this);
-    this.signals = new TrafficLights(this);
+    // Props first: the signals hand their posts to it to be knocked over.
     this.props = new StreetProps(this);
+    this.signals = new TrafficLights(this);
     this.hud = new Hud(this);
     this.input = new Input();
     this.camera3 = new ChaseCamera(this.camera);
@@ -496,8 +497,8 @@ class Game {
     this.dispatcher.reset();
     this.roadblocks.reset();
     this.helicopter.reset();
-    this.signals.reset();
     this.props.reset();
+    this.signals.reset();
     this.player.repair();
     this.player.teleport(this.startPlace.position, this.startPlace.heading);
     this.skids.clear();
@@ -605,8 +606,8 @@ class Game {
     this.dispatcher.update(dt, player);
     this.roadblocks.update(dt, player);
     this.helicopter.update(dt, player);
-    this.signals.update(dt);
     this.props.update(dt);
+    this.signals.update(dt);
     this.heat.update(dt, player, this.dispatcher);
     this._checkProvocation(dt);
 

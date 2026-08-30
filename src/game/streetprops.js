@@ -52,6 +52,7 @@ const _q = new THREE.Quaternion();
 const _pos = new THREE.Vector3();
 const _one = new THREE.Vector3(1, 1, 1);
 const _up = new THREE.Vector3(0, 1, 0);
+const _off = new THREE.Vector3();
 
 export class StreetProps {
   constructor(game) {
@@ -128,6 +129,31 @@ export class StreetProps {
     return `${Math.floor(x / this.cell)},${Math.floor(z / this.cell)}`;
   }
 
+  /**
+   * Take on furniture somebody else built.
+   *
+   * Traffic signals are placed by the junction planner, not by walking a kerb,
+   * and their lamps have to go dark when one goes over -- but everything about
+   * *toppling* one is identical to a lamp post, and there is no reason to have
+   * two copies of that. The caller supplies its own instanced mesh and its own
+   * entries, already carrying `x`, `z`, `rot`, `index` and a static `collider`,
+   * plus optional `onDown` / `onUp` hooks.
+   */
+  adopt(kind, def, mesh, list) {
+    for (const p of list) {
+      p.kind = kind;
+      p.def = def;
+      p.body = null;
+      p.down = false;
+      this.props.push(p);
+      const key = this._key(p.x, p.z);
+      let bucket = this.grid.get(key);
+      if (!bucket) { bucket = []; this.grid.set(key, bucket); }
+      bucket.push(p);
+    }
+    this.byKind.set(kind, { mesh, list });
+  }
+
   // -------------------------------------------------------------- geometry
 
   _build() {
@@ -193,6 +219,7 @@ export class StreetProps {
 
   _knock(p, v, forward) {
     p.down = true;
+    if (p.onDown) p.onDown(p);
 
     // Momentum exchange with a mostly inelastic collision. Sixty kilos into
     // fourteen hundred at 30 m/s is about a metre and a half a second off --
@@ -245,18 +272,32 @@ export class StreetProps {
   }
 
   /** Freeze a toppled prop where it lies and stop paying for it. */
-  _settle(p) {
-    if (!p.body) return;
+  /**
+   * Copy a toppled prop's body pose onto its instance.
+   *
+   * The geometry is modelled with its base at the origin but the collider is
+   * centred on the body, so the mesh sits half a height *below* the body --
+   * along the body's own up axis, not the world's. Subtracting on world Y
+   * instead is what buried a fallen lamp post in the road: once it is lying
+   * flat the correct offset is horizontal, and taking 2.3 m off its height
+   * drops it straight through the floor.
+   */
+  _writeInstance(p) {
+    const entry = this.byKind.get(p.kind);
+    if (!entry || !p.body) return;
     const t = p.body.translation();
     const r = p.body.rotation();
-    const entry = this.byKind.get(p.kind);
-    if (entry) {
-      _pos.set(t.x, t.y - p.def.height * 0.5, t.z);
-      _q.set(r.x, r.y, r.z, r.w);
-      _m.compose(_pos, _q, _one);
-      entry.mesh.setMatrixAt(p.index, _m);
-      entry.mesh.instanceMatrix.needsUpdate = true;
-    }
+    _q.set(r.x, r.y, r.z, r.w);
+    _off.set(0, -p.def.height * 0.5, 0).applyQuaternion(_q);
+    _pos.set(t.x + _off.x, t.y + _off.y, t.z + _off.z);
+    _m.compose(_pos, _q, _one);
+    entry.mesh.setMatrixAt(p.index, _m);
+    entry.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  _settle(p) {
+    if (!p.body) return;
+    this._writeInstance(p);
     this.game.world.removeRigidBody(p.body);
     p.body = null;
   }
@@ -265,16 +306,7 @@ export class StreetProps {
     for (let i = this.live.length - 1; i >= 0; i--) {
       const p = this.live[i];
       if (!p.body) { this.live.splice(i, 1); continue; }
-      const t = p.body.translation();
-      const r = p.body.rotation();
-      const entry = this.byKind.get(p.kind);
-      if (entry) {
-        _pos.set(t.x, t.y - p.def.height * 0.5, t.z);
-        _q.set(r.x, r.y, r.z, r.w);
-        _m.compose(_pos, _q, _one);
-        entry.mesh.setMatrixAt(p.index, _m);
-        entry.mesh.instanceMatrix.needsUpdate = true;
-      }
+      this._writeInstance(p);
       // Once it has stopped moving there is no reason to keep solving it.
       const lv = p.body.linvel();
       const still = Math.hypot(lv.x, lv.y, lv.z) < 0.25;
@@ -291,6 +323,7 @@ export class StreetProps {
       if (!p.down) continue;
       p.down = false;
       p.rest = 0;
+      if (p.onUp) p.onUp(p);
       p.collider = addStaticBox(
         this.game.world, p.x, p.def.height * 0.5, p.z,
         p.def.radius, p.def.height * 0.5, p.def.radius, GROUP.STREET, p.rot,

@@ -8,12 +8,14 @@
 //
 // Every head's three lamps live in three instanced meshes -- one per colour --
 // so the whole town's signals cost three draw calls no matter how many
-// junctions there are. The poles and housings never change, so they merge into
-// a single static mesh alongside.
+// junctions there are. The posts are a fourth instanced mesh, which is what
+// lets one be flattened: they are handed to StreetProps, so a signal knocked
+// over topples and goes dark like any other piece of street furniture.
 
 import * as THREE from 'three';
 import { MeshBuilder, vertexColorMaterial } from '../util/meshbuild.js';
 import { GROUP, addStaticBox } from '../physics/world.js';
+import { alongApproach } from '../world/junctions.js';
 
 // UK sequence, per phase: green, amber, then all-red while the junction
 // clears, then red-and-amber on the other phase just before it goes.
@@ -30,10 +32,20 @@ const LAMP_R = 0.135;
 const HEAD_Y = 2.62;          // centre of the three-lamp housing
 const POLE_H = 2.20;
 
+/**
+ * What a signal post is, as a knockable prop.
+ *
+ * Much heavier than a lamp post -- a signal head is a substantial thing on a
+ * substantial pole, and flattening one should be felt. At 150 kg it takes
+ * about 3 m/s off a car at 25, against the lamp post's 1.2.
+ */
+const POST = { mass: 150, radius: 0.16, height: 3.2, bite: 0.35 };
+
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
 const _pos = new THREE.Vector3();
 const _scale = new THREE.Vector3();
+const _one = new THREE.Vector3(1, 1, 1);
 const _up = new THREE.Vector3(0, 1, 0);
 const _dir = { x: 0, z: 1 };
 
@@ -48,7 +60,6 @@ export class TrafficLights {
     this.byApproach = new Map();
 
     const plan = (game.graph.junctionPlan || []).filter((j) => j.signal);
-    const build = new MeshBuilder();
 
     for (const j of plan) {
       const heads = [];
@@ -60,7 +71,7 @@ export class TrafficLights {
       for (const a of j.app) {
         let d = Math.abs(((a.ang - ref + Math.PI * 2.5) % Math.PI) - Math.PI * 0.5);
         const phase = d > Math.PI * 0.25 ? 0 : 1;
-        const head = this._makeHead(build, j.node, a, phase);
+        const head = this._makeHead(j.node, a, phase);
         if (!head) continue;
         // Fixed instance slot for life, in all three colour meshes. A lamp
         // that is off is scaled to nothing rather than being packed out of the
@@ -77,13 +88,48 @@ export class TrafficLights {
       this.junctions.push({ node: j.node, heads, offset });
     }
 
-    this.mesh = new THREE.Mesh(build.build(), vertexColorMaterial());
-    this.mesh.name = 'signals';
-    this.mesh.castShadow = true;
-    game.scene.add(this.mesh);
-
+    this._buildHeads();
     this._buildLamps();
     this.update(0);
+  }
+
+  /**
+   * The posts themselves, as one instanced mesh in local space.
+   *
+   * They used to be merged into a single static mesh, which is cheaper still
+   * but means a head can never move. Instancing them costs one more draw call
+   * and lets a signal be flattened like any other piece of street furniture --
+   * so they are handed straight to StreetProps, which already knows how to
+   * topple something and charge the car for it.
+   */
+  _buildHeads() {
+    const mesh = new THREE.InstancedMesh(
+      headGeometry(), vertexColorMaterial(), Math.max(1, this.heads.length),
+    );
+    mesh.name = 'signals';
+    mesh.castShadow = true;
+    mesh.frustumCulled = false;
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.heads.forEach((h, i) => {
+      _q.setFromAxisAngle(_up, h.rot);
+      _pos.set(h.x, 0, h.z);
+      _m.compose(_pos, _q, _one);
+      mesh.setMatrixAt(i, _m);
+      // In its own group, so the AI's obstacle sweeps and the wheel rays both
+      // ignore it: a police car that brakes for a signal post, or a wheel that
+      // climbs one, is worse than a post you can drive through.
+      h.collider = addStaticBox(
+        this.game.world, h.x, POST.height * 0.5, h.z,
+        POST.radius, POST.height * 0.5, POST.radius, GROUP.STREET, h.rot,
+      );
+      // A flattened signal goes dark, and stops being a signal.
+      h.onDown = () => { h.down = true; this.dirty = true; };
+      h.onUp = () => { h.down = false; this.dirty = true; };
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    this.game.scene.add(mesh);
+    this.mesh = mesh;
+    this.game.props.adopt('signal', POST, mesh, this.heads);
   }
 
   /**
@@ -93,27 +139,29 @@ export class TrafficLights {
    * which works out as the +perp kerb -- the same side the stop line is on.
    * The head's lamps face back up the approach, at the driver.
    */
-  _makeHead(build, node, app, phase) {
+  _makeHead(node, app, phase) {
     if (!app.setback) return null;
-    const px = -app.dir.z, pz = app.dir.x;
-    const out = app.half + 1.5;
-    const along = app.setback + 0.4;
-    const x = node.x + app.dir.x * along + px * out;
-    const z = node.z + app.dir.z * along + pz * out;
-    // Lamps on the +Z face, pointing back the way the traffic is coming from.
-    const rot = Math.atan2(app.dir.x, app.dir.z);
 
-    build.addBox(0.13, POLE_H, 0.13, x, POLE_H * 0.5, z, 0x2b2f34, rot);
-    // Backboard, then the housing in front of it.
-    build.addBox(0.52, 1.16, 0.05, x, HEAD_Y, z, 0x14181d, rot);
-    build.addTaperedBox(0.40, 1.04, 0.24, x, HEAD_Y, z + 0.0, 0x22272d, 0.95, 1, rot);
-    // Hoods over each lamp, which is what makes a signal head readable.
-    for (let k = -1; k <= 1; k++) {
-      const hy = HEAD_Y + 0.34 * -k;
-      const hz = 0.17;
-      build.addBox(0.30, 0.045, 0.16,
-        x + Math.sin(rot) * hz, hy + 0.15, z + Math.cos(rot) * hz, 0x171b20, rot);
+    // Follow the road's own curve out to the stop line rather than shooting
+    // off along the tangent at the node -- with bends smoothed, the two are
+    // not the same, and the difference was enough to leave heads standing in
+    // the carriageway.
+    const q = alongApproach(node, app, app.setback + 0.4);
+    let x = q.x + q.nx * (app.half + 1.5);
+    let z = q.z + q.nz * (app.half + 1.5);
+
+    // Belt and braces: if it still lands on tarmac -- a wide crossing road, a
+    // junction whose setback got capped -- walk it out onto the footway, and
+    // give up on this approach rather than plant a pole in the road.
+    const g = this.game.graph;
+    let tries = 0;
+    while (g.overlapsRoad(x, z, 0.5, 0.5, 0, 0.7) && tries < 7) {
+      x += q.nx; z += q.nz; tries++;
     }
+    if (tries >= 7) return null;
+
+    // Lamps on the +Z face, pointing back the way the traffic is coming from.
+    const rot = Math.atan2(q.dx, q.dz);
 
     const head = {
       phase,
@@ -124,14 +172,9 @@ export class TrafficLights {
       setback: app.setback,
       x, z, rot,
       state: SIGNAL.RED,
+      down: false,
     };
     this.byApproach.set(app.edge.id * 2 + (app.end === 'b' ? 1 : 0), head);
-
-    // Thin and in its own group, so the AI's obstacle sweeps and the wheel
-    // rays both ignore it. A police car that brakes for a signal post, or a
-    // wheel that climbs one, is worse than a post you can drive through.
-    addStaticBox(this.game.world, x, POLE_H * 0.5, z, 0.11, POLE_H * 0.5, 0.11,
-      GROUP.STREET, rot);
     return head;
   }
 
@@ -189,7 +232,8 @@ export class TrafficLights {
 
   /** Write one head's three lamps: the lit one full size, the others at nothing. */
   _writeHead(h) {
-    const s = h.state;
+    // A signal lying in the gutter shows nothing at all.
+    const s = h.down ? -1 : h.state;
     // Lamps sit slightly proud of the housing, toward the driver.
     const fx = Math.sin(h.rot) * 0.15, fz = Math.cos(h.rot) * 0.15;
     _q.setFromAxisAngle(_up, h.rot);
@@ -214,7 +258,7 @@ export class TrafficLights {
   stopDistance(edge, node, x, z, speed) {
     if (!edge || !node) return Infinity;
     const head = this.byApproach.get(edge.id * 2 + (edge.b === node.id ? 1 : 0));
-    if (!head) return Infinity;
+    if (!head || head.down) return Infinity;
     if (head.state === SIGNAL.GREEN || head.state === SIGNAL.RED_AMBER) return Infinity;
 
     // Distance to the stop line, measured along the approach.
@@ -242,7 +286,7 @@ export class TrafficLights {
   stateFor(edge, node) {
     if (!edge || !node) return SIGNAL.GREEN;
     const head = this.byApproach.get(edge.id * 2 + (edge.b === node.id ? 1 : 0));
-    return head ? head.state : SIGNAL.GREEN;
+    return head && !head.down ? head.state : SIGNAL.GREEN;
   }
 
   reset() {
@@ -250,4 +294,22 @@ export class TrafficLights {
     this.dirty = true;
     this.update(0);
   }
+}
+
+/**
+ * One signal head in local space: base at the origin, lamps facing +Z, so the
+ * instance matrix is just "stand here, look that way" -- and so a toppled one
+ * can be posed straight from its rigid body.
+ */
+function headGeometry() {
+  const b = new MeshBuilder();
+  b.addBox(0.13, POLE_H, 0.13, 0, POLE_H * 0.5, 0, 0x2b2f34);
+  // Backboard, then the housing in front of it.
+  b.addBox(0.52, 1.16, 0.05, 0, HEAD_Y, 0, 0x14181d);
+  b.addTaperedBox(0.40, 1.04, 0.24, 0, HEAD_Y, 0, 0x22272d, 0.95, 1);
+  // Hoods over each lamp, which is what makes a signal head readable.
+  for (let k = -1; k <= 1; k++) {
+    b.addBox(0.30, 0.045, 0.16, 0, HEAD_Y + 0.34 * -k + 0.15, 0.17, 0x171b20);
+  }
+  return b.build();
 }
