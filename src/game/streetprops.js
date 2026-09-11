@@ -107,14 +107,18 @@ export class StreetProps {
     // Never in the carriageway, and never inside something solid.
     if (this.game.graph.overlapsRoad(x, z, def.radius * 2, def.radius * 2, 0, 0.4)) return;
 
+    // Street furniture stands on the footway, which is a kerb height above the
+    // road. Planting it at zero buries a bollard to its knees.
+    const base = this.game.sim.heightAt ? this.game.sim.heightAt(x, z) : 0;
+
     const p = {
-      kind, def, x, z, rot,
+      kind, def, x, z, rot, base,
       index: -1,
       body: null,
       down: false,
     };
     p.collider = addStaticBox(
-      this.game.world, x, def.height * 0.5, z,
+      this.game.world, x, base + def.height * 0.5, z,
       def.radius, def.height * 0.5, def.radius, GROUP.STREET, rot,
     );
     this.props.push(p);
@@ -169,7 +173,7 @@ export class StreetProps {
       list.forEach((p, i) => {
         p.index = i;
         _q.setFromAxisAngle(_up, p.rot);
-        _pos.set(p.x, 0, p.z);
+        _pos.set(p.x, p.base || 0, p.z);
         _m.compose(_pos, _q, _one);
         mesh.setMatrixAt(i, _m);
       });
@@ -238,7 +242,7 @@ export class StreetProps {
     const def = p.def;
     const body = this.game.world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
-        .setTranslation(p.x, def.height * 0.5, p.z)
+        .setTranslation(p.x, (p.base || 0) + def.height * 0.5, p.z)
         .setRotation({ x: 0, y: Math.sin(p.rot * 0.5), z: 0, w: Math.cos(p.rot * 0.5) })
         .setLinearDamping(0.5)
         .setAngularDamping(0.7)
@@ -325,13 +329,13 @@ export class StreetProps {
       p.rest = 0;
       if (p.onUp) p.onUp(p);
       p.collider = addStaticBox(
-        this.game.world, p.x, p.def.height * 0.5, p.z,
+        this.game.world, p.x, (p.base || 0) + p.def.height * 0.5, p.z,
         p.def.radius, p.def.height * 0.5, p.def.radius, GROUP.STREET, p.rot,
       );
       const entry = this.byKind.get(p.kind);
       if (entry) {
         _q.setFromAxisAngle(_up, p.rot);
-        _pos.set(p.x, 0, p.z);
+        _pos.set(p.x, p.base || 0, p.z);
         _m.compose(_pos, _q, _one);
         entry.mesh.setMatrixAt(p.index, _m);
         entry.mesh.instanceMatrix.needsUpdate = true;

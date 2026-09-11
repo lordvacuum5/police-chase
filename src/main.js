@@ -78,7 +78,7 @@ class Game {
 
     boot.set(0.18, 'creating world…');
     this.world = createWorld();
-    this.sim = { world: this.world, surfaceAt: () => 1 };
+    this.sim = { world: this.world, surfaceAt: () => 1, heightAt: null };
 
     this._initRenderer();
 
@@ -88,6 +88,7 @@ class Game {
     const built = this.mapDef.build(this.sim, this.scene, this.mapDef.seed || 20260822);
     this.graph = built.graph;
     this.sim.surfaceAt = built.surfaceAt;
+    this.sim.heightAt = built.heightAt;
     this.world.__map = built;
 
     boot.set(0.72, 'building vehicles…');

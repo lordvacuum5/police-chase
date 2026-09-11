@@ -23,8 +23,8 @@ import { addNodeApron } from './junctions.js';
 import { GROUP, addStaticBox } from '../physics/world.js';
 import { makeRng, rand, randInt, clamp, lerp, dist2, TAU } from '../util/math.js';
 import {
-  WORLD_HALF, CELL, GRID_N, SURF_GRASS, SURF_ROAD, SURF_PAVED, PALETTE,
-  paintDisc, rasteriseRoads, makeSurfaceAt, buildGround, buildRoadMeshes,
+  WORLD_HALF, CELL, GRID_N, KERB_H, SURF_GRASS, SURF_ROAD, SURF_PAVED, PALETTE,
+  paintDisc, rasteriseRoads, makeSurfaceAt, makeHeightAt, buildGround, buildRoadMeshes,
   scatterTrees, treesAlongRoads, buildFieldPatches, addTree,
   MeshBuilder, vertexColorMaterial,
 } from './common.js';
@@ -59,7 +59,8 @@ export function buildTown(sim, scene, seed = 6180339) {
   for (const e of graph.edges) {
     if (e.kind === 'country' || e.kind === 'lane' || e.turningHead) continue;
     for (const s of e.segs) {
-      const steps = Math.max(1, Math.ceil(s.len / (CELL * 0.9)));
+      // See rasteriseRoads: stepped by the disc radius rather than the cell.
+      const steps = Math.max(1, Math.ceil(s.len / Math.max(CELL * 0.9, (e.width * 0.5 + 7) * 0.25)));
       for (let k = 0; k <= steps; k++) {
         const t = k / steps;
         paintDisc(surface, lerp(s.a.x, s.b.x, t), lerp(s.a.z, s.b.z, t),
@@ -82,6 +83,7 @@ export function buildTown(sim, scene, seed = 6180339) {
   return {
     graph,
     surfaceAt: makeSurfaceAt(surface),
+    heightAt: makeHeightAt(surface),
     meshes,
     bounds: WORLD_HALF,
     bypass,
@@ -423,10 +425,24 @@ function buildPavements(ctx) {
 
   for (const e of graph.edges) {
     if (!paved(e)) continue;
+    // Two layers, and they do different jobs.
+    //
+    // The full-width one sits *under* the carriageway and only exists to stop
+    // slivers of bare ground showing through at bends and junctions. The
+    // footway proper is a band either side, standing a kerb height up -- which
+    // has to be drawn as two bands rather than one sheet, because a raised
+    // sheet across the whole corridor would paint over the road it is meant to
+    // be beside.
     b.addRibbon(e.points, widthOf(e), 0.02, PALETTE.pavement);
+    const band = (widthOf(e) - e.width) * 0.5;
+    for (const side of [1, -1]) {
+      b.addRibbon(e.points, band, KERB_H, PALETTE.pavement,
+        (e.width * 0.5 + band * 0.5 - 0.10) * side);
+    }
   }
   // The ribbons end square at every node, so a bend leaves a notch of grass
-  // cut into the footway. Same fix as the carriageway gets.
+  // cut into the footway. Same fix as the carriageway gets -- at the lower
+  // level, since an apron is a disc and would cover the junction otherwise.
   for (const n of graph.nodes) {
     const live = n.edges.map((id) => graph.edges[id]).filter(paved);
     if (live.length < 2) continue;

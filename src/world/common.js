@@ -18,8 +18,29 @@ export const WORLD_HALF = 1000;
 
 /** Surface classification, matching SURFACE_TYRES in physics/vehicle.js. */
 export const SURF_GRASS = 0, SURF_ROAD = 1, SURF_PAVED = 2;
-export const CELL = 4;                                  // metres per surface cell
+
+/**
+ * Metres per surface cell.
+ *
+ * This used to be 4, which was ample when the grid only decided how much grip
+ * a tyre had -- being a couple of metres out about where grass becomes tarmac
+ * is not something you can feel. It now also carries the *height* of the
+ * footway, and a kerb two metres from where it is drawn is very much something
+ * you can feel, so the grid is metre-resolution. It costs about 300 ms of map
+ * build and 4 MB, both of which are worth an edge that lines up with the one
+ * you can see.
+ */
+export const CELL = 1;
 export const GRID_N = Math.ceil((WORLD_HALF * 2) / CELL);
+
+/**
+ * How far the footway stands above the carriageway.
+ *
+ * A real kerb is 125-150 mm. It matters that this is a real number rather than
+ * a token step: it is what makes clipping one at speed unsettle the car
+ * instead of being a change of colour under the wheels.
+ */
+export const KERB_H = 0.14;
 
 export const PALETTE = {
   grass: 0x3f4a35,
@@ -27,7 +48,9 @@ export const PALETTE = {
   // Pavement has to read as clearly lighter than the carriageway, or from any
   // distance the whole town is one flat grey and you cannot see the road.
   pavement: 0x53565c,
-  kerb: 0x6d7178,
+  kerb: 0x7b8087,
+  // The vertical face of the kerb, in shadow under the footway edge.
+  kerbFace: 0x3c4046,
   marking: 0xc6c9cd,
   markingWarm: 0xc8b45a,
 };
@@ -64,7 +87,11 @@ export function rasteriseRoads(graph, surface) {
   for (const e of graph.edges) {
     const half = e.width * 0.5;
     for (const s of e.segs) {
-      const steps = Math.max(1, Math.ceil(s.len / (CELL * 0.75)));
+      // Step by a quarter of the disc radius, not by the cell size. The two
+      // used to be the same thing; at metre cells, stepping every 0.75 m lays
+      // down sixteen times the discs for a scallop of six centimetres, which
+      // is a second of map build nobody can see.
+      const steps = Math.max(1, Math.ceil(s.len / Math.max(CELL * 0.75, half * 0.25)));
       for (let k = 0; k <= steps; k++) {
         const t = k / steps;
         paintDisc(surface, lerp(s.a.x, s.b.x, t), lerp(s.a.z, s.b.z, t), half, SURF_ROAD);
@@ -78,6 +105,39 @@ export function rasteriseRoads(graph, surface) {
     for (const a of j.app) r = Math.max(r, a.half);
     paintDisc(surface, j.node.x, j.node.z, r * 1.45, SURF_ROAD);
   }
+}
+
+/**
+ * Ground height at a point: the carriageway is the datum, the footway stands
+ * KERB_H above it.
+ *
+ * Sampled bilinearly rather than per cell, which turns what would be a
+ * vertical cliff into a ramp about a metre long. That is deliberate. A true
+ * step means a wheel teleports 140 mm between one substep and the next, and
+ * the suspension answers a teleport with a spike big enough to throw the car;
+ * a metre of ramp is still sharp enough to jolt at speed -- 33 ms of it at
+ * 30 m/s -- without asking the solver to do anything silly.
+ *
+ * Cheap on purpose: this is called five times per wheel per substep, which is
+ * about twelve thousand times a second with a handful of cars on the road.
+ */
+export function makeHeightAt(surface) {
+  const paved = (a, b) => (
+    a < 0 || b < 0 || a >= GRID_N || b >= GRID_N
+      ? 0
+      : (surface[b * GRID_N + a] === SURF_PAVED ? 1 : 0)
+  );
+  return (x, z) => {
+    const fx = (x + WORLD_HALF) / CELL - 0.5;
+    const fz = (z + WORLD_HALF) / CELL - 0.5;
+    const i = Math.floor(fx), j = Math.floor(fz);
+    const tx = fx - i, tz = fz - j;
+    const a = paved(i, j), b = paved(i + 1, j);
+    const c = paved(i, j + 1), d = paved(i + 1, j + 1);
+    return KERB_H * (
+      (a + (b - a) * tx) * (1 - tz) + (c + (d - c) * tx) * tz
+    );
+  };
 }
 
 export function makeSurfaceAt(surface) {
@@ -138,11 +198,16 @@ export function buildRoadMeshes(ctx) {
     const inner = sliceLine(e.points, e.trimA || 0, e.length - (e.trimB || 0));
     if (!inner) continue;
 
-    // Kerb lines pick out the edge of the carriageway without needing a step
-    // in the collision geometry, which would make the whole town bumpy.
+    // The kerb: a face standing up out of the carriageway, with the flat top
+    // of the stone along it. The footway behind is drawn at KERB_H to match,
+    // and the height field the suspension reads has its step in the same
+    // place, so what you can see and what you can feel are the same edge.
     if (!e.turningHead) {
-      road.addRibbon(inner, 0.5, 0.035, PALETTE.kerb, e.width * 0.5 - 0.25);
-      road.addRibbon(inner, 0.5, 0.035, PALETTE.kerb, -(e.width * 0.5 - 0.25));
+      for (const side of [1, -1]) {
+        const off = (e.width * 0.5 - 0.10) * side;
+        road.addWall(inner, 0.03, KERB_H, PALETTE.kerbFace, off);
+        road.addRibbon(inner, 0.45, KERB_H + 0.002, PALETTE.kerb, off + 0.22 * side);
+      }
     }
 
     if (e.kind === 'motorway') {

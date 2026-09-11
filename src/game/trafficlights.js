@@ -111,15 +111,17 @@ export class TrafficLights {
     mesh.frustumCulled = false;
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.heads.forEach((h, i) => {
+      // Signals stand on the footway too.
+      h.base = this.game.sim.heightAt ? this.game.sim.heightAt(h.x, h.z) : 0;
       _q.setFromAxisAngle(_up, h.rot);
-      _pos.set(h.x, 0, h.z);
+      _pos.set(h.x, h.base, h.z);
       _m.compose(_pos, _q, _one);
       mesh.setMatrixAt(i, _m);
       // In its own group, so the AI's obstacle sweeps and the wheel rays both
       // ignore it: a police car that brakes for a signal post, or a wheel that
       // climbs one, is worse than a post you can drive through.
       h.collider = addStaticBox(
-        this.game.world, h.x, POST.height * 0.5, h.z,
+        this.game.world, h.x, h.base + POST.height * 0.5, h.z,
         POST.radius, POST.height * 0.5, POST.radius, GROUP.STREET, h.rot,
       );
       // A flattened signal goes dark, and stops being a signal.
@@ -239,7 +241,7 @@ export class TrafficLights {
     _q.setFromAxisAngle(_up, h.rot);
     const put = (mesh, dy, lit) => {
       _scale.setScalar(lit ? 1 : 0.0001);
-      _pos.set(h.x + fx, HEAD_Y + dy, h.z + fz);
+      _pos.set(h.x + fx, (h.base || 0) + HEAD_Y + dy, h.z + fz);
       _m.compose(_pos, _q, _scale);
       mesh.setMatrixAt(h.index, _m);
     };

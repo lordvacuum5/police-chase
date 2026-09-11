@@ -13,8 +13,8 @@ import { RoadGraph, ROAD_KIND } from './roadgraph.js';
 import { GROUP, addStaticBox } from '../physics/world.js';
 import { makeRng, rand, randInt, clamp, lerp, dist2, closestOnSegment, TAU } from '../util/math.js';
 import {
-  WORLD_HALF, CELL, GRID_N, SURF_GRASS, SURF_ROAD, SURF_PAVED, PALETTE,
-  paintDisc, paintRect, makeSurfaceAt, buildGround, buildRoadMeshes,
+  WORLD_HALF, CELL, GRID_N, KERB_H, SURF_GRASS, SURF_ROAD, SURF_PAVED, PALETTE,
+  paintDisc, paintRect, makeSurfaceAt, makeHeightAt, buildGround, buildRoadMeshes,
 } from './common.js';
 
 
@@ -60,8 +60,9 @@ export function buildCity(sim, scene, seed = 20260822) {
   for (const m of meshes) if (m) scene.add(m);
 
   const surfaceAt = makeSurfaceAt(surface);
+  const heightAt = makeHeightAt(surface);
 
-  return { graph, surfaceAt, meshes, roundabout, bounds: WORLD_HALF };
+  return { graph, surfaceAt, heightAt, meshes, roundabout, bounds: WORLD_HALF };
 }
 
 // =====================================================================
@@ -594,7 +595,11 @@ function rasteriseSurfaces(ctx, park) {
   for (const e of graph.edges) {
     const half = e.width * 0.5;
     for (const s of e.segs) {
-      const steps = Math.max(1, Math.ceil(s.len / (CELL * 0.75)));
+      // Step by a quarter of the disc radius, not by the cell size. The two
+      // used to be the same thing; at metre cells, stepping every 0.75 m lays
+      // down sixteen times the discs for a scallop of six centimetres, which
+      // is a second of map build nobody can see.
+      const steps = Math.max(1, Math.ceil(s.len / Math.max(CELL * 0.75, half * 0.25)));
       for (let k = 0; k <= steps; k++) {
         const t = k / steps;
         paintDisc(surface, lerp(s.a.x, s.b.x, t), lerp(s.a.z, s.b.z, t), half, SURF_ROAD);
@@ -639,12 +644,22 @@ function buildBlocks(ctx, grid, park, roundabout) {
       const q = (cx >= 0 ? 1 : 0) + (cz >= 0 ? 2 : 0);
       const b = builders[q];
 
-      // Pavement covers the whole block right up to the block edge. The road
-      // ribbons sit slightly higher and draw over the overlap, so this simply
-      // removes the strips of bare ground that would otherwise show between
-      // the kerb and the buildings.
-      plates.addQuadY(x0, z0, x1, z0, x1, z1, x0, z1,
-        0.02, inPark ? 0x47512e : PALETTE.pavement);
+      // The footway, standing a kerb height above the carriageway.
+      //
+      // It used to run right across the block from one road centre line to the
+      // next, relying on the road ribbons being drawn fractionally higher to
+      // cover the overlap. That stops working the moment the footway is the
+      // higher of the two -- it simply paints over every road on the map. So
+      // it now stops at the kerb line instead, which is where the carriageway
+      // actually ends; the junction fillets fill the corners.
+      // Each edge stops at its own kerb: the grid lines that carry avenues are
+      // wider than the ones that carry streets, and a single inset would
+      // either cover an avenue or leave a strip of bare ground along a street.
+      const kerbOf = (v) => (AVENUES.has(v) ? 10.0 : 7.5) - 0.12;
+      const px0 = x0 + kerbOf(x0), px1 = x1 - kerbOf(x1);
+      const pz0 = z0 + kerbOf(z0), pz1 = z1 - kerbOf(z1);
+      plates.addQuadY(px0, pz0, px1, pz0, px1, pz1, px0, pz1,
+        inPark ? KERB_H - 0.02 : KERB_H, inPark ? 0x47512e : PALETTE.pavement);
 
       if (inPark) { addParkContents(ctx, b, rng, bx0, bz0, bx1, bz1); continue; }
 

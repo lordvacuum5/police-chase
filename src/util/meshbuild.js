@@ -234,6 +234,48 @@ export class MeshBuilder {
     return this;
   }
 
+  /**
+   * A vertical wall following a polyline: the face of a kerb, or anything else
+   * that is a line on the ground with a height to it.
+   *
+   * Double sided, because a kerb is seen from the road on one side and from
+   * the footway on the other and neither is worth a second call.
+   */
+  addWall(points, y0, y1, color, offset = 0) {
+    if (points.length < 2) return this;
+    _c.set(color);
+    const edge = [];
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i];
+      const prev = points[Math.max(0, i - 1)];
+      const next = points[Math.min(points.length - 1, i + 1)];
+      let dx = next.x - prev.x, dz = next.z - prev.z;
+      const l = Math.hypot(dx, dz) || 1;
+      dx /= l; dz /= l;
+      edge.push({ x: p.x - dz * offset, z: p.z + dx * offset });
+    }
+
+    for (let i = 0; i < edge.length - 1; i++) {
+      const a = edge[i], b = edge[i + 1];
+      let nx = -(b.z - a.z), nz = b.x - a.x;
+      const nl = Math.hypot(nx, nz) || 1;
+      nx /= nl; nz /= nl;
+      const quad = [
+        [a.x, y0, a.z], [b.x, y0, b.z], [b.x, y1, b.z],
+        [a.x, y0, a.z], [b.x, y1, b.z], [a.x, y1, a.z],
+      ];
+      for (const side of [1, -1]) {
+        const order = side > 0 ? quad : [quad[0], quad[2], quad[1], quad[3], quad[5], quad[4]];
+        for (const v of order) {
+          this.pos.push(v[0], v[1], v[2]);
+          this.norm.push(nx * side, 0, nz * side);
+          this.col.push(_c.r, _c.g, _c.b);
+        }
+      }
+    }
+    return this;
+  }
+
   /** Dashed version of addRibbon, for centre lines. */
   addDashedRibbon(points, width, y, color, dash = 3, gap = 5, offset = 0) {
     let carry = 0;

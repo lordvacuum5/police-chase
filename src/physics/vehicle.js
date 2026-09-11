@@ -22,6 +22,26 @@ import { clamp, clamp01, lerp, damp, sign, moveTowards, smoothstep, TAU } from '
 /** Indices match the surface grid built in world/citygen.js. */
 const SURFACE_TYRES = [TYRE_GRASS, TYRE_ROAD, TYRE_PAVED];
 
+/**
+ * How far the ground may stand above the flat collision plate.
+ *
+ * Ground height comes from `sim.heightAt` rather than from geometry: the world
+ * has one flat plate under it, and the field says how high the surface really
+ * is at a given point. That is what puts the kerbs in -- and it is deliberately
+ * the same mechanism terrain would use. Give `heightAt` a hill and cars drive
+ * over it, pitching and rolling on its gradient, without another line changing
+ * here, because the suspension already lifts the contact and tilts the normal
+ * by whatever the field says.
+ *
+ * The one thing that has to keep up is this number: the suspension ray must
+ * still reach the plate from a wheel standing on top of whatever the field
+ * returns, so it has to cover the field's full relief. A metre is ample for
+ * kerbs; hills would set it to however much they rise. (The visible ground
+ * plane would have to follow the field as well, which it does not yet -- it is
+ * flat, and at kerb scale nobody can tell.)
+ */
+const GROUND_RELIEF = 1.0;
+
 // Scratch vectors. Allocating inside the substep loop would thrash the GC at
 // 120 Hz across twenty cars, which shows up immediately as frame stutter.
 const _v1 = new THREE.Vector3();
@@ -596,16 +616,59 @@ export class Vehicle {
       w.worldPos.copy(w.pos).applyQuaternion(this.quaternion).add(this.position);
       _v1.copy(this.up).multiplyScalar(-1);
 
-      const hit = raycast(this.world, w.worldPos, _v1, maxToi, RAY_GROUNDS, this.body);
+      // Cast past the suspension's own reach by the relief of the height
+      // field. The ray is against flat collision geometry and the height field
+      // lifts the answer afterwards, so the ray still has to *reach* the plate
+      // even when the ground under the wheel stands well above it. A kerb
+      // needs 140 mm of slack; terrain would need its full relief, and this is
+      // the one number that has to grow for hills.
+      const hit = raycast(
+        this.world, w.worldPos, _v1, maxToi + GROUND_RELIEF, RAY_GROUNDS, this.body,
+      );
 
       if (hit) {
+        const px = hit.point.x, pz = hit.point.z;
+        let toi = hit.toi, py = hit.point.y;
+        let nx = hit.normal.x, ny = hit.normal.y, nz = hit.normal.z;
+
+        // The world's colliders are one flat plate; the kerbs live in a height
+        // field on top of it. Lifting the contact here rather than building
+        // geometry for every footway in the town means the whole thing costs
+        // four lookups a wheel -- and, because it comes back through the
+        // suspension ray, a wheel that climbs one gets the bump, the weight
+        // transfer and the tyre's answer to both for free.
+        const H = this.sim.heightAt;
+        if (H) {
+          const h = H(px, pz);
+          toi -= h;
+          py += h;
+          // Tilt the contact by the slope of the kerb. Without this a wheel
+          // riding up one is pushed straight up and nothing else happens;
+          // with it, the climb costs grip and shoves the car sideways, which
+          // is what clipping a kerb actually does to a car.
+          const e = 0.55;
+          const gx = (H(px + e, pz) - H(px - e, pz)) / (2 * e);
+          const gz = (H(px, pz + e) - H(px, pz - e)) / (2 * e);
+          if (gx !== 0 || gz !== 0) {
+            const l = Math.hypot(gx, 1, gz);
+            nx = -gx / l; ny = 1 / l; nz = -gz / l;
+          }
+        }
+
+        if (toi > maxToi) {
+          w.grounded = false;
+          w.compression = 0;
+          w.normal.set(0, 1, 0);
+          w.arb = 0;
+          continue;
+        }
         w.grounded = true;
         this.grounded++;
-        w.compression = clamp(maxToi - hit.toi, 0, sus.travel);
-        w.contact.set(hit.point.x, hit.point.y, hit.point.z);
-        w.normal.set(hit.normal.x, hit.normal.y, hit.normal.z);
+        w.compression = clamp(maxToi - toi, 0, sus.travel);
+        w.contact.set(px, py, pz);
+        w.normal.set(nx, ny, nz);
         if (w.normal.y < 0) w.normal.multiplyScalar(-1);
-        w.surface = this.sim.surfaceAt ? this.sim.surfaceAt(hit.point.x, hit.point.z) : 1;
+        w.surface = this.sim.surfaceAt ? this.sim.surfaceAt(px, pz) : 1;
       } else {
         w.grounded = false;
         w.compression = 0;
