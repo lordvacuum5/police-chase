@@ -443,6 +443,56 @@ node); and corners that fell on a node stayed sharp, which `smoothBends` now
 replaces with an arc, moving the node to the middle of it so it is still a real
 point on the road.
 
+### Kerbs
+
+The footway stands **140 mm** above the carriageway, and you can feel it. It
+used to be a colour stripe — pavements were drawn *below* the road, and the
+world's only collision geometry is one flat plate, so there was nothing to
+drive over.
+
+It is done with a **height field**, not geometry. `sim.heightAt(x, z)` says how
+high the surface is; the suspension ray lifts its contact by that and tilts the
+normal by the local gradient. Colliders for every footway in two towns would
+have been thousands of static boxes, and would have dragged the AI's obstacle
+sweeps and the wheel rays into caring about them. This costs four lookups a
+wheel — and because the answer arrives *through the suspension*, the car gets
+the bump, the weight transfer and the tyre's reply to all of it for free.
+
+| mounting it at | suspension (87 mm at rest) | body lift |
+|---|---|---|
+| 4 m/s | — | — |
+| 10 m/s | 90 mm | — |
+| 18 m/s | 178 mm | — |
+| 26 m/s | 185 mm, near the bump stop | 34 mm |
+
+No speed lost and no damage from the kerb itself: it unsettles you, it does not
+stop you. Driving along the road is unaffected — 3 mm of body movement down the
+middle, 7 mm hard in the gutter.
+
+The surface grid went from 4 m cells to 1 m, because it now carries height as
+well as grip and a kerb two metres from where it is drawn is very much
+something you can feel. Measured: the ground rises at 7.10 m against a drawn
+half width of 7.50. That is *cheaper* than before, not dearer — disc painting
+used to step by the cell size, so metre cells laid down sixteen times the discs
+for a scallop of six centimetres. Stepping by a quarter of the disc radius took
+the map build to 2.5 s, against 3.0 s before any of this.
+
+Both maps drew their pavement across the whole road corridor and relied on the
+road being drawn fractionally higher to cover the overlap — which stops working
+the instant the footway is the higher of the two, and paints over every road on
+the map. The city block plate now stops at each edge's own kerb line (avenues
+are wider than streets, so a single inset would either cover an avenue or leave
+bare ground along a street); the town keeps its full-width ribbon as a low
+gap-filler and draws the footway as two raised bands beside it.
+
+**This is the mechanism terrain would use.** Give `heightAt` a hill and cars
+drive over it, pitching and rolling on the gradient, with nothing else
+changing. The one number that has to keep up is `GROUND_RELIEF` in
+`physics/vehicle.js` — how far the ground may stand above the flat plate, and
+therefore how far the suspension ray has to reach. It is 1.0 m for kerbs and
+would be the terrain's relief for hills. The visible ground plane would have to
+follow the field as well, which it does not yet.
+
 ### Traffic signals
 
 Junctions with three or more street-grade approaches get signals. Two phases,
