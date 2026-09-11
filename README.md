@@ -468,7 +468,7 @@ the bump, the weight transfer and the tyre's reply to all of it for free.
 
 No speed lost and no damage from the kerb itself: it unsettles you, it does not
 stop you. Driving along the road is unaffected — 3 mm of body movement down the
-middle, 7 mm hard in the gutter.
+middle, and 3 mm hard in the gutter.
 
 The surface grid went from 4 m cells to 1 m, because it now carries height as
 well as grip and a kerb two metres from where it is drawn is very much
@@ -478,13 +478,26 @@ used to step by the cell size, so metre cells laid down sixteen times the discs
 for a scallop of six centimetres. Stepping by a quarter of the disc radius took
 the map build to 2.5 s, against 3.0 s before any of this.
 
-Both maps drew their pavement across the whole road corridor and relied on the
-road being drawn fractionally higher to cover the overlap — which stops working
-the instant the footway is the higher of the two, and paints over every road on
-the map. The city block plate now stops at each edge's own kerb line (avenues
-are wider than streets, so a single inset would either cover an avenue or leave
-bare ground along a street); the town keeps its full-width ribbon as a low
-gap-filler and draws the footway as two raised bands beside it.
+**Raising it breaks the road, and it is worth understanding why.** A footway
+band runs *alongside* its own road, so it also runs straight across every road
+that crosses it. Harmless while the footway is the lower of the two and the
+carriageway draws over the overlap — invert that and every band paints over the
+junction it passes through, turning a town of crossing roads into a patchwork
+of grey slabs. Three things fix it:
+
+* The town's bands are **trimmed at the junction mouths**, using the same
+  `trimA`/`trimB` setbacks the kerb lines and lane markings already use, so the
+  junction stays tarmac.
+* That leaves the corners bare — which is exactly where a pedestrian stands —
+  so `buildCornerFootways` fills each sector *between* two approaches with a
+  raised ring segment. Its inner radius is the same disc `rasteriseRoads`
+  paints into the grip grid, so what is drawn raised is also what the height
+  field calls raised.
+* The city's block plates stop at each edge's own kerb line (avenues are wider
+  than streets, so a single inset would either cover an avenue or leave bare
+  ground along a street), with corners **curved** to follow the junction's
+  tarmac fillet. Curve, not chamfer: a straight cut across the corner takes
+  more out than the tarmac puts back, and leaves a wedge of grass showing.
 
 **This is the mechanism terrain would use.** Give `heightAt` a hill and cars
 drive over it, pitching and rolling on the gradient, with nothing else
