@@ -207,6 +207,54 @@ export function buildStopLines(junctions, paint, y, colour) {
 }
 
 /**
+ * Raised footway in the corners of a junction.
+ *
+ * A footway band runs alongside its own road, so it has to stop at the
+ * junction mouth or it runs straight across every road that crosses it. That
+ * leaves the corners bare, and the corners are exactly where a pedestrian
+ * would be standing. This fills them: a ring segment in each sector *between*
+ * two approaches, from the edge of the junction outwards.
+ *
+ * `r0` matches the disc rasteriseRoads paints into the grip grid, so what is
+ * drawn raised here is also what the height field calls raised -- which is the
+ * whole point, since a step you can see but not feel is worse than neither.
+ */
+export function buildCornerFootways(junctions, builder, y, colour, width) {
+  for (const { node, app } of junctions) {
+    let r0 = 0;
+    for (const a of app) r0 = Math.max(r0, a.half);
+    r0 *= 1.45;
+    const r1 = r0 + width;
+
+    for (let i = 0; i < app.length; i++) {
+      const a = app[i], b = app[(i + 1) % app.length];
+      // Each carriageway takes an angular bite out of the ring at this radius;
+      // what is left between two of them is footway.
+      const from = a.ang + Math.asin(Math.min(0.99, a.half / r0));
+      let to = b.ang - Math.asin(Math.min(0.99, b.half / r0));
+      while (to < from) to += Math.PI * 2;
+      const span = to - from;
+      if (span < 0.06 || span > Math.PI * 1.9) continue;
+
+      const steps = Math.max(1, Math.ceil(span / 0.30));
+      for (let k = 0; k < steps; k++) {
+        const t0 = from + (span * k) / steps;
+        const t1 = from + (span * (k + 1)) / steps;
+        const c0 = Math.cos(t0), s0 = Math.sin(t0);
+        const c1 = Math.cos(t1), s1 = Math.sin(t1);
+        builder.addQuadY(
+          node.x + c0 * r0, node.z + s0 * r0,
+          node.x + c1 * r0, node.z + s1 * r0,
+          node.x + c1 * r1, node.z + s1 * r1,
+          node.x + c0 * r1, node.z + s0 * r1,
+          y, colour,
+        );
+      }
+    }
+  }
+}
+
+/**
  * A small disc of surface centred on a node.
  *
  * Every ribbon ends square at its node, so where two roads meet at anything

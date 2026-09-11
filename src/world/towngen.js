@@ -19,7 +19,7 @@
 
 import * as THREE from 'three';
 import { RoadGraph, ROAD_KIND } from './roadgraph.js';
-import { addNodeApron } from './junctions.js';
+import { addNodeApron, sliceLine, buildCornerFootways } from './junctions.js';
 import { GROUP, addStaticBox } from '../physics/world.js';
 import { makeRng, rand, randInt, clamp, lerp, dist2, TAU } from '../util/math.js';
 import {
@@ -434,9 +434,18 @@ function buildPavements(ctx) {
     // sheet across the whole corridor would paint over the road it is meant to
     // be beside.
     b.addRibbon(e.points, widthOf(e), 0.02, PALETTE.pavement);
+
+    // And the raised band stops at the junction mouth, for the same reason the
+    // kerbs and the lane markings do. A footway band runs *alongside* its own
+    // road, which means it runs straight across every road that crosses it --
+    // and now that it is the higher of the two, it paints over them. Trimmed
+    // back, the junction stays tarmac and the corners are picked up by the
+    // footways built round the node below.
+    const inner = sliceLine(e.points, e.trimA || 0, e.length - (e.trimB || 0));
+    if (!inner) continue;
     const band = (widthOf(e) - e.width) * 0.5;
     for (const side of [1, -1]) {
-      b.addRibbon(e.points, band, KERB_H, PALETTE.pavement,
+      b.addRibbon(inner, band, KERB_H, PALETTE.pavement,
         (e.width * 0.5 + band * 0.5 - 0.10) * side);
     }
   }
@@ -450,6 +459,11 @@ function buildPavements(ctx) {
     for (const e of live) r = Math.max(r, widthOf(e) * 0.5);
     addNodeApron(b, n.x, n.z, r, 0.019, PALETTE.pavement);
   }
+  // The raised footway round the corners of every signalised junction, which
+  // the trimmed bands above deliberately leave bare.
+  buildCornerFootways(
+    graph.junctionPlan || [], b, KERB_H, PALETTE.pavement, 7,
+  );
   const mesh = new THREE.Mesh(b.build(), vertexColorMaterial());
   mesh.name = 'pavements';
   mesh.receiveShadow = true;

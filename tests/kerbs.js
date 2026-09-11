@@ -102,7 +102,11 @@ window.__runKerbs = async function () {
       p.repair();
       const start = gr.pointAt(edge, 6);
       const h = Math.atan2(start.tx, start.tz);
-      p.teleport({ x: start.x + nx * offset, y: 0.95, z: start.z + nz * offset }, h);
+      // The normal *here*, not the one at the middle of the road. On a town
+      // road that curves, offsetting by the midpoint's normal walks the car
+      // across its own kerb and the run measures that instead.
+      const snx = -start.tz, snz = start.tx;
+      p.teleport({ x: start.x + snx * offset, y: 0.95, z: start.z + snz * offset }, h);
       p.setVelocity({ x: 0, y: 0, z: 0 });
       for (let i = 0; i < 90; i++) {
         g.stepHeadless(1 / 60, { throttle: 0, brake: 1, steer: 0, handbrake: 1 });
@@ -110,14 +114,17 @@ window.__runKerbs = async function () {
       p.setVelocity({ x: start.tx * 22, y: 0, z: start.tz * 22 });
       let swing = 0;
       const y0 = p.position.y;
-      for (let i = 0; i < 60 * 2.0; i++) {
+      // Short, because the car is steered dead straight and the town's roads
+      // curve: held for two seconds it drives over its own kerb, which is true
+      // but is not what this is asking.
+      for (let i = 0; i < 60 * 0.7; i++) {
         g.stepHeadless(1 / 60, { throttle: 0.3, brake: 0, steer: 0, handbrake: 0 });
         swing = Math.max(swing, Math.abs(p.position.y - y0));
       }
       return swing * 1000;
     };
-    rows.push(['down the middle, body moves', `${along(0).toFixed(0)} mm`]);
-    rows.push(['in the gutter, body moves', `${along(edge.width * 0.5 - 1.6).toFixed(0)} mm`]);
+    rows.push(['down the middle, 15 m', `body moves ${along(0).toFixed(0)} mm`]);
+    rows.push(['hard in the gutter, 15 m', `body moves ${along(edge.width * 0.5 - 1.6).toFixed(0)} mm`]);
 
     // --------------------------------------------------------- 4. what it cost
     rows.push(['', '']);

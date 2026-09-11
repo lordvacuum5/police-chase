@@ -658,8 +658,40 @@ function buildBlocks(ctx, grid, park, roundabout) {
       const kerbOf = (v) => (AVENUES.has(v) ? 10.0 : 7.5) - 0.12;
       const px0 = x0 + kerbOf(x0), px1 = x1 - kerbOf(x1);
       const pz0 = z0 + kerbOf(z0), pz1 = z1 - kerbOf(z1);
-      plates.addQuadY(px0, pz0, px1, pz0, px1, pz1, px0, pz1,
-        inPark ? KERB_H - 0.02 : KERB_H, inPark ? 0x47512e : PALETTE.pavement);
+
+      // Corners curved to the kerb radius, not left square. The junction
+      // builder rounds every corner off with a tarmac fillet, and a square
+      // footway corner -- now that the footway is the higher of the two --
+      // sits on top of it and hides the radius. The curve has to follow that
+      // fillet rather than just chamfering across it: a straight cut takes
+      // more out of the corner than the tarmac puts back, and the difference
+      // shows as a wedge of bare grass.
+      const c = 4.2;
+      const ring = [];
+      const arcTo = (ax, az, ox, oz, bx, bz) => {
+        for (let s = 1; s < 3; s++) {
+          const t = s / 3, u = 1 - t;
+          ring.push([
+            u * u * ax + 2 * u * t * ox + t * t * bx,
+            u * u * az + 2 * u * t * oz + t * t * bz,
+          ]);
+        }
+      };
+      ring.push([px0 + c, pz0], [px1 - c, pz0]);
+      arcTo(px1 - c, pz0, px1, pz0, px1, pz0 + c);
+      ring.push([px1, pz0 + c], [px1, pz1 - c]);
+      arcTo(px1, pz1 - c, px1, pz1, px1 - c, pz1);
+      ring.push([px1 - c, pz1], [px0 + c, pz1]);
+      arcTo(px0 + c, pz1, px0, pz1, px0, pz1 - c);
+      ring.push([px0, pz1 - c], [px0, pz0 + c]);
+      arcTo(px0, pz0 + c, px0, pz0, px0 + c, pz0);
+
+      const y = inPark ? KERB_H - 0.02 : KERB_H;
+      const col = inPark ? 0x47512e : PALETTE.pavement;
+      for (let k = 0; k < ring.length; k++) {
+        const a = ring[k], bb = ring[(k + 1) % ring.length];
+        plates.addQuadY(cx, cz, a[0], a[1], bb[0], bb[1], cx, cz, y, col);
+      }
 
       if (inPark) { addParkContents(ctx, b, rng, bx0, bz0, bx1, bz1); continue; }
 
