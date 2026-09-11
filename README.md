@@ -82,7 +82,8 @@ four raycast wheels:
   catchable. The rack also takes real time to move, because slamming to full
   lock in three frames just scrubs the front tyres.
 * **Surfaces** — road (μ 1.42), pavement and city blocks (μ 1.12), grass
-  (μ 0.62). Clipping a kerb costs you time, not the back of the car.
+  (μ 0.62). The footway also stands 140 mm above the carriageway, so clipping a
+  kerb costs grip *and* unsettles the car — see **Kerbs**.
 
 Measured behaviour of the player car (`runner`), on a flat asphalt pad:
 
