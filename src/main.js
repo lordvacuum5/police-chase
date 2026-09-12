@@ -484,14 +484,30 @@ class Game {
     this.radio('Suspect in custody. Stand down.', true);
   }
 
+  /**
+   * You got away. Which is not the end of anything.
+   *
+   * This used to drop the same full-screen curtain as being arrested, with
+   * "press R to run again" on it -- so the reward for a good escape was having
+   * the game taken away from you. Getting away means the heat is clear and you
+   * are still sitting in a car in the middle of a town: the run carries on,
+   * the banner says so for a few seconds, and the force goes back to what it
+   * was doing before you turned up. Being arrested is still an ending, because
+   * that one genuinely is.
+   */
   onEscaped() {
     if (this.outcome) return;
-    this.outcome = 'escaped';
-    this.hud.showOverlay('ESCAPED', [
-      `Evaded for <b>${this.heat.elapsed.toFixed(1)}s</b>`,
+    // heat.elapsed reads zero the moment the value hits zero, which is exactly
+    // when this is called, so take the time from the start of the chase.
+    const held = (performance.now() - this.heat.chaseStarted) / 1000;
+    this.hud.flash('ESCAPED', [
+      `Evaded for <b>${held.toFixed(1)}s</b>`,
       `Peak heat <b>${this.heat.peak.toFixed(1)}</b>`,
+      'They have lost you',
     ].join(' &nbsp;·&nbsp; '));
-    this.radio('Lost them. Resume patrol.');
+    this.radio('Control — no further contact. All units, resume patrol.', true);
+    this.dispatcher.standDown();
+    this.heat.reset();
   }
 
   restart() {

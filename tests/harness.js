@@ -74,10 +74,49 @@ window.__runHarness = async function (seconds = 90) {
       return r;
     };
 
+    // ---- manoeuvres ----
+    // Whether the tactics actually happen, which is a different question from
+    // whether the units drive well. A box that is never called and a PIT that
+    // never reaches the strike both look like a tidy pursuit in every other
+    // number here.
+    let pits = 0, strikes = 0, spinTicks = 0, boxes = 0, boxTicks = 0;
+    let formedTicks = 0, pinTicks = 0, wayTicks = 0;
+    let lastPit = null, lastBox = null;
+    const struck = new Set();
+
     const steps = Math.round(seconds / 0.1);
     for (let i = 0; i < steps; i++) {
       g.stepHeadless(0.1);
       pspd.push(p.speed * 3.6);
+
+      const ap = g.dispatcher.activePit;
+      if (ap && ap !== lastPit) { lastPit = ap; pits++; }
+      if (!ap) lastPit = null;
+      if (ap) {
+        if (ap.pitState && ap.pitState.phase === 'strike' && !struck.has(ap)) {
+          struck.add(ap); strikes++;
+        }
+        if (Math.abs(p.yawRate) > 1.7) spinTicks++;
+      }
+
+      const ba = g.dispatcher.boxAssignment;
+      if (ba && ba !== lastBox) { lastBox = ba; boxes++; }
+      if (!ba) lastBox = null;
+      if (ba) {
+        boxTicks++;
+        let inPlace = 0;
+        for (const [u, slot] of ba) {
+          const rx = u.position.x - p.position.x, rz = u.position.z - p.position.z;
+          const lo = rx * p.forward.x + rz * p.forward.z;
+          const la = rx * p.left.x + rz * p.left.z;
+          if (Math.hypot(la - slot.x, lo - slot.z) < 4) inPlace++;
+        }
+        if (inPlace >= 3) formedTicks++;
+      }
+      if (g.heat.bustPinned) pinTicks++;
+      for (const u of g.dispatcher.units) {
+        if (u.driver && u.driver.wayCap < Infinity) { wayTicks++; break; }
+      }
       maxB = Math.max(maxB, g.roadblocks.blocks.length);
       for (const u of g.dispatcher.units) {
         if (u.role === 'block') {
@@ -119,6 +158,16 @@ window.__runHarness = async function (seconds = 90) {
       byRoleWellOffRoadPct: roles,
       wreckedPct: +(100 * wreck / Math.max(1, t)).toFixed(1),
       roadblockMaxAlive: maxB,
+      manoeuvres: {
+        pitsAuthorised: pits,
+        reachedStrike: strikes,
+        secondsTargetSpun: +(spinTicks * 0.1).toFixed(1),
+        boxesCalled: boxes,
+        secondsBoxRunning: +(boxTicks * 0.1).toFixed(1),
+        secondsThreeInPlace: +(formedTicks * 0.1).toFixed(1),
+        secondsPinned: +(pinTicks * 0.1).toFixed(1),
+        secondsSomebodyGivingWay: +(wayTicks * 0.1).toFixed(1),
+      },
       blocker: {
         spawned: ok.length, failed: ev.length - ok.length,
         aheadPct: ok.length ? Math.round(100 * ok.filter((e) => e.spawn > 0).length / ok.length) : null,

@@ -82,6 +82,24 @@
     background: rgba(4, 6, 9, .82); text-align: center;
   }
   #overlay.show { display: flex; }
+
+  /* ---- transient banner ---- */
+  /* Says something big without taking the game away: no curtain, no key to
+     press, and it fades out on its own. Used when you escape. */
+  #banner {
+    position: absolute; left: 0; right: 0; top: 22%;
+    text-align: center; pointer-events: none;
+    opacity: 0; transition: opacity .5s ease;
+  }
+  #banner.show { opacity: 1; }
+  #btitle {
+    font-size: 46px; letter-spacing: 8px; margin: 0; color: var(--ink);
+    text-shadow: 0 2px 18px rgba(4, 6, 9, .95), 0 0 3px rgba(4, 6, 9, .9);
+  }
+  #bsub {
+    color: var(--dim); margin-top: 10px; font-size: 12px; letter-spacing: 1px;
+    text-shadow: 0 1px 10px rgba(4, 6, 9, .95);
+  }
   #otitle { font-size: 54px; letter-spacing: 8px; margin: 0; }
   #osub { color: var(--dim); margin-top: 12px; font-size: 13px; letter-spacing: 1px; }
   #ohint { color: var(--dim); margin-top: 30px; font-size: 12px; }
@@ -252,6 +270,11 @@
   </div>
 
   <div id="hint">H — controls</div>
+
+  <div id="banner">
+    <h1 id="btitle"></h1>
+    <div id="bsub"></div>
+  </div>
 
   <div id="overlay">
     <h1 id="otitle">BUSTED</h1>

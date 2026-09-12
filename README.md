@@ -882,6 +882,91 @@ A PIT and a rolling box are mutually exclusive across the whole pursuit. Boxing
 units hold station relative to the target; a PIT car arriving across their line
 wrecks both manoeuvres.
 
+### Give way to the manoeuvre
+
+A PIT or a box only works if the car running it can get to where it needs to
+be, and in a pursuit of seven cars the main thing in its way is the pursuit.
+Nothing used to say so: every unit treated every other unit as scenery to nudge
+around, so a car authorised to strike had to thread the pack at whatever speed
+the pack was doing.
+
+A unit running a manoeuvre now carries right of way. Anyone who is not moves
+off its line and eases back to let it through — short range, and only for a car
+coming through from behind, because a unit two hundred metres back is not being
+held up by anybody.
+
+Mostly this is done with the throttle rather than the wheel, and that was
+measured rather than assumed. A firm sideways push does let the manoeuvre car
+past, at the cost of putting the rest of the pursuit on the verge: on the town
+map the units well off the carriageway went from 5% of the chase to 15%. On a
+street with a house either side there is nowhere to move *to*, and easing off
+works there as well as it does on a dual carriageway.
+
+### Closing a box
+
+A box is called on units up to 55 m out and then has to form up, and for a long
+time it could not: every unit was told to hold the target's speed plus 0.8 m/s,
+which closes forty metres in fifty seconds — by which time the box has been
+dropped for falling apart. So a crawling target simply collected two police
+cars that sat beside it doing nothing. Three things were wrong, and the third
+is the interesting one:
+
+* **The speed.** A boxing unit now gets closing speed proportional to how far
+  short of its slot it is, on a braking profile — fast from thirty metres, a
+  walk over the last two, so it arrives rather than overshoots.
+* **The aim.** Beyond 18 m from its slot it stops being a manoeuvre and goes
+  back to being a chase, using the ordinary pursuit logic. That logic checks
+  whether the line to the target is actually open and takes to the roads when
+  it is not; driving straight at a point beside a car forty metres away was
+  sending boxing units across gardens.
+* **The direction.** Closing speed from the *distance* to the slot drives a car
+  that has overshot faster and faster away from it, because going forward makes
+  the distance bigger and the distance is all it is reading — a formed box came
+  apart in three seconds with every unit flat out in the wrong direction. What
+  speed can fix is the error *along the road*, measured in the target's frame,
+  which is also heading-independent: a car knocked sideways in the scrum still
+  knows which way its slot lies. Sideways error is the steering's job.
+
+The pack also takes two cars off intercept duty when a box is genuinely on —
+two units already in touch and the target down to walking pace. Without that
+the third car was always away claiming a junction, and the box was never called
+at all: there is nothing to get in front of at walking pace anyway.
+
+Measured, 90 s at four stars: boxes called 0 → 3–4 a chase, and on a crawling
+target the player is pinned and arrested. Three cars standing in their slots to
+the centimetre stays rare, and that is fine — the box is for stopping you, not
+for the formation.
+
+### Why a PIT used to bounce off
+
+The setup phase closes the gap and the strike phase turns in. Both were too
+polite, in different ways.
+
+The setup was allowed a flat 2 m/s of overspeed with a taper that had not begun
+yet, so a car authorised from thirty metres back spent most of its twelve
+second window barely gaining and timed out before it reached the strike window.
+It now closes at a rate proportional to the gap, the way an ordinary pursuit
+always has.
+
+The strike was worse, and the cause is worth recording. It aims *through* the
+target's far rear corner — a point three or four metres away and forty degrees
+off the nose — and the driver's pure-pursuit grip limit reads that as a
+four-metre-radius corner. So a 29 m/s strike was clamped to about 9 and the car
+braked: measured, the unit arriving on the rear quarter exactly on the money,
+then shedding half its speed and dropping sixteen metres back, every single
+time. The strike is the one piece of driving that is *meant* to end in a
+collision, so it now ignores the cornering limit for the second or so it lasts.
+The last-resort clamp on anything solid straight ahead still applies — and the
+ray it uses cannot see cars anyway.
+
+| holding 22 m/s on a long straight | before | after |
+|---|---|---|
+| PITs authorised | 5 | 5 |
+| reached the strike | 3 | 3 |
+| speed held through the strike | 24 → 12 m/s | **24 m/s** |
+
+Reaching the strike was never the problem. Carrying it through was.
+
 ### Roadblocks
 
 From three stars, control starts putting cars across roads. Sites are not
@@ -986,6 +1071,31 @@ Drop below 3 km/h with a police car within 3 m of your bodywork and a five
 second countdown starts, shown as a bar across the screen. Break contact or get
 moving and it drains back at roughly twice the rate it filled, so shoving free
 genuinely buys time rather than just pausing the clock.
+
+### Getting away
+
+Getting arrested is an ending. Getting away is not, and it used to be: escaping
+dropped the same full-screen curtain with *press R to run again* on it, so the
+reward for a good escape was having the game taken away from you.
+
+Now the heat clears, a banner says so for a few seconds and fades, and you are
+still sitting in a car in the middle of a town. The force stands down: every
+tactic is cancelled, every unit goes back on its beat at the posted limit, and
+the shared model of where you are is thrown out — so a patrol that drives past
+you a minute later has to notice you again from scratch, exactly as it would
+have before any of it started. Drive badly in front of one and it will.
+
+The roster comes back down with it. A five-star response is nine cars and an
+ambient patrol is three, and nothing used to reduce that except the rule that
+retires a unit 900 m away, so the town stayed full of police long after they
+had stopped looking for you. Surplus units are now retired furthest-first, one
+every couple of seconds, and only once a car is 260 m away or 110 m away and
+out of sight — the force thins out over the next half minute rather than
+blinking out in front of you.
+
+Measured: five units at three stars, heat clear 68 s after they lose contact,
+every remaining unit on patrol, and the roster back to the ambient count within
+50 s — with the car still under your control throughout.
 
 ### Gearbox
 
@@ -1185,7 +1295,7 @@ means a given call always sounds the same.
 Three voices, picked off the text. Control is a base station — lower, steadier,
 cleaner. A unit is on a handheld in a car doing 90, so it is higher, faster and
 driven harder into the shaper. India 99 has the rotor underneath everything it
-says. A priority call from Control opens with a two-tone attention signal,
+says. A priority call from Control opens with a short attention beep,
 rate-limited to once every 24 s so that it keeps meaning something. One
 transmission at a time, queued: two units never talk over each other on a real
 net, and it is the queueing that makes it sound like a net rather than a
@@ -1197,25 +1307,66 @@ throttling its timers:
 
 | | |
 |---|---|
-| transmission length | 3.66 s for a 54-character line |
-| energy below 300 Hz | 10.7% |
-| energy 300 Hz – 3 kHz | 85.7% |
-| energy above 3 kHz | 3.6% |
-| key-up crash vs speech | 1.54× — and it is the loudest moment |
-| priority call opens louder | 4.2× |
+| transmission length | 3.29 s for a 54-character line |
+| energy below 300 Hz | 0.4% |
+| energy 300 Hz – 3 kHz | 99.5% |
+| energy above 3 kHz | 0.1% |
+| key-up crash vs speech | 1.63× — and it is the loudest moment |
+| priority call opens louder | 3.5× |
 | voice pairs told apart | 3 of 3 |
 
 A 45-second pursuit puts four calls on the air: one from Control, three from
 units.
 
+### The siren
+
+It has to be recognisable as a siren, and the first one was not. A square wave
+swept slowly over a narrow interval, muffled by a fixed lowpass well below its
+own harmonics, played quietly behind an engine: the report from the other side
+of the screen was *"a weird sound, almost music, I don't know what it is"* —
+which is exactly what it was.
+
+What makes the real thing identifiable is a bright, harmonically rich tone
+through a resonant horn sweeping a wide interval, and a *pattern* that carries
+meaning. So: sawtooth for the harmonics, a second voice a fifth above and three
+cents out so the pair beats the way two real horns do, and a bandpass riding an
+octave above the fundamental — which stops the sweep sounding like a filter
+opening and starts it sounding like a horn. Then **wail** while they are working
+their way towards you, 640–1540 Hz over three seconds; **yelp** inside 55 m,
+the same interval in a third of a second. The switch is information: the pattern
+changing is how you know the car behind has closed without taking your eyes off
+the road.
+
+`tests/siren.js` records what the oscillators are *asked* for, rather than
+reading the nodes back — `setTargetAtTime` is an exponential approach on the
+audio clock, which does not advance between synchronous calls, so sampling the
+node reports a sweep that never leaves its starting note:
+
+| | |
+|---|---|
+| wail | 640–1540 Hz, 3.00 s cycle |
+| yelp, inside 55 m | 640–1540 Hz, 0.33 s cycle |
+| second voice | 1.502 × the fundamental |
+| horn | 1.90 × the fundamental |
+| level at 20 / 60 / 120 m | 0.060 / 0.035 / 0.010 |
+| beyond 190 m | silent |
+
+The radio's attention signal got the same treatment for the same reason. Two
+sine notes a fifth apart, a fifth of a second each, is a real paging convention
+and at game volume it reads as a little tune playing every time the net opens.
+One short square beep through the channel's own band limiting belongs to a
+radio instead. And the synthetic speech now *slides* between syllables: a 13%
+stress on top of a 12% spread is three semitones held flat, and discrete
+intervals held steady is the definition of a melody, which is why the radio
+sounded like it was singing.
+
 ### Everything else
 
 Intake roar that swells with revs, narrow-band tyre squeal driven by the worst
-wheel's slip, wind noise from road speed, one-shot impact thuds, and a wailing
-siren that fades up as the nearest marked unit closes. A gentle limiter sits on
-the output: engine at full chat, siren alongside and a collision thud all land
-together often enough that without one the mix clips exactly when it matters.
-Worst case measured at 0.53 peak — no clipping.
+wheel's slip, wind noise from road speed, and one-shot impact thuds. A gentle
+limiter sits on the output: engine at full chat, siren alongside and a collision
+thud all land together often enough that without one the mix clips exactly when
+it matters. Worst case measured at 0.53 peak — no clipping.
 
 ## The maps
 

@@ -388,18 +388,49 @@ export class GameAudio {
     this.windGain.connect(this.master);
 
     // ---- siren -----------------------------------------------------------
+    //
+    // It has to be recognisable as a siren, and the first version was not: a
+    // square wave swept slowly over a narrow range, muffled by a fixed lowpass
+    // well below its own harmonics. Played quietly behind an engine that reads
+    // as a wobbling synth note -- "almost music", which is exactly what it
+    // sounded like and nothing like a police car.
+    //
+    // What makes the real thing identifiable is a bright, harmonically rich
+    // tone through a resonant horn, sweeping a wide interval; and the *pattern*
+    // carries the meaning. So: sawtooth for the harmonics, a bandpass riding
+    // an octave above the fundamental for the horn, and a wail that becomes a
+    // yelp when they are on top of you -- which tells you how close they are
+    // without looking.
     this.sirenOsc = ctx.createOscillator();
-    this.sirenOsc.type = 'square';
-    this.sirenOsc.frequency.value = 700;
-    this.sirenShape = ctx.createBiquadFilter();
-    this.sirenShape.type = 'lowpass';
-    this.sirenShape.frequency.value = 1800;
+    this.sirenOsc.type = 'sawtooth';
+    this.sirenOsc.frequency.value = 760;
+    // Second voice a fifth up, slightly detuned. Real sirens are a pair of
+    // horns and never quite in tune with each other; one oscillator on its own
+    // is a test tone however it is filtered.
+    this.sirenOsc2 = ctx.createOscillator();
+    this.sirenOsc2.type = 'square';
+    this.sirenOsc2.frequency.value = 1140;
+    this.sirenOsc2Gain = ctx.createGain();
+    this.sirenOsc2Gain.gain.value = 0.34;
+
+    this.sirenHorn = ctx.createBiquadFilter();
+    this.sirenHorn.type = 'bandpass';
+    this.sirenHorn.frequency.value = 1500;
+    this.sirenHorn.Q.value = 3.2;
+    this.sirenBody = ctx.createBiquadFilter();
+    this.sirenBody.type = 'highpass';
+    this.sirenBody.frequency.value = 420;
+
     this.sirenGain = ctx.createGain();
     this.sirenGain.gain.value = 0;
-    this.sirenOsc.connect(this.sirenShape);
-    this.sirenShape.connect(this.sirenGain);
+    this.sirenOsc.connect(this.sirenHorn);
+    this.sirenOsc2.connect(this.sirenOsc2Gain);
+    this.sirenOsc2Gain.connect(this.sirenHorn);
+    this.sirenHorn.connect(this.sirenBody);
+    this.sirenBody.connect(this.sirenGain);
     this.sirenGain.connect(this.master);
     this.sirenOsc.start();
+    this.sirenOsc2.start();
 
     this._buildRadio();
 
@@ -571,9 +602,18 @@ export class GameAudio {
       const u = i / syl;
       const len = (1 / v.rate) * (0.72 + rnd() * 0.62);
       // A statement falls away at the end; a stressed syllable lifts.
-      const stress = rnd() < 0.28 ? 1.13 : 1.0;
+      //
+      // Both of those used to be steps, and they were big ones: a 13% stress
+      // on top of a 12% spread is three semitones between one syllable and the
+      // next, held flat for the length of the syllable. Discrete intervals
+      // held steady is the definition of a melody, which is why the radio
+      // sounded like it was singing at you. Speech slides, so this slides --
+      // and the intervals are a fraction of what they were.
+      const stress = rnd() < 0.28 ? 1.05 : 1.0;
       const fall = 1 - 0.20 * u;
-      osc.frequency.setValueAtTime(v.pitch * fall * stress * (0.95 + rnd() * 0.12), t);
+      const hz = v.pitch * fall * stress * (0.975 + rnd() * 0.05);
+      osc.frequency.setValueAtTime(hz, t);
+      osc.frequency.linearRampToValueAtTime(hz * (0.955 + rnd() * 0.06), t + len * 0.92);
 
       const vow = VOWELS[(rnd() * VOWELS.length) | 0];
       f1.frequency.setValueAtTime(vow[0] * v.formant, t);
@@ -642,24 +682,28 @@ export class GameAudio {
     src.stop(at + dur + 0.05);
   }
 
-  /** Two-tone attention signal, ahead of a priority call from Control. */
+  /**
+   * Attention signal ahead of a priority call from Control.
+   *
+   * It was two sine notes of a fifth apart, a fifth of a second each -- which
+   * is a real paging convention and, at game volume behind an engine, reads as
+   * a little tune playing every time the radio goes. One note, short, square
+   * through the channel's own band limiting: a beep that belongs to a radio
+   * rather than an interval that belongs to music.
+   */
   _alertTone(at) {
     const ctx = this.ctx;
-    let t = at;
-    for (const hz of [1060, 790]) {
-      const o = ctx.createOscillator();
-      o.type = 'sine';
-      o.frequency.value = hz;
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.085, t + 0.012);
-      g.gain.setValueAtTime(0.085, t + 0.20);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
-      o.connect(g); g.connect(this.radioIn);
-      o.start(t); o.stop(t + 0.3);
-      t += 0.24;
-    }
-    return t;
+    const o = ctx.createOscillator();
+    o.type = 'square';
+    o.frequency.value = 1180;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(0.055, at + 0.006);
+    g.gain.setValueAtTime(0.055, at + 0.11);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + 0.15);
+    o.connect(g); g.connect(this.radioIn);
+    o.start(at); o.stop(at + 0.2);
+    return at + 0.19;
   }
 
   toggleMute() {
@@ -801,13 +845,30 @@ export class GameAudio {
         if (d < nearest) nearest = d;
       }
     }
-    if (nearest < 170) {
+    if (nearest < 190) {
       this.sirenPhase += dt;
-      // A wail: a slow sweep rather than a two-tone honk.
-      const sweep = 0.5 - 0.5 * Math.cos((this.sirenPhase / 1.5) * Math.PI * 2);
-      this.sirenOsc.frequency.setTargetAtTime(620 + sweep * 480, t, 0.03);
-      const prox = 1 - clamp01(nearest / 170);
-      this.sirenGain.gain.setTargetAtTime(prox * prox * 0.055, t, 0.12);
+
+      // Wail while they are working their way towards you; yelp once they are
+      // on you. Same two modes a real crew switches between, and the switch
+      // itself is information: the pattern changing is how you know the car
+      // behind has closed without taking your eyes off the road.
+      const yelp = nearest < 55;
+      const period = yelp ? 0.32 : 3.1;
+      const ph = (this.sirenPhase % period) / period;
+      // The yelp is a sawtooth in frequency -- fast up, snap back. The wail is
+      // the same interval taken smoothly, up and down.
+      const sweep = yelp ? ph : 0.5 - 0.5 * Math.cos(ph * Math.PI * 2);
+      const hz = 640 + sweep * 900;
+      const glide = yelp ? 0.006 : 0.03;
+      this.sirenOsc.frequency.setTargetAtTime(hz, t, glide);
+      // A fifth above, three cents out, so the pair beats against each other.
+      this.sirenOsc2.frequency.setTargetAtTime(hz * 1.502, t, glide);
+      // The horn rides with the note rather than sitting still below it, which
+      // is what stops the sweep sounding like a filter opening.
+      this.sirenHorn.frequency.setTargetAtTime(hz * 1.9, t, glide);
+
+      const prox = 1 - clamp01(nearest / 190);
+      this.sirenGain.gain.setTargetAtTime(prox * prox * 0.075, t, 0.12);
     } else {
       this.sirenGain.gain.setTargetAtTime(0, t, 0.25);
     }

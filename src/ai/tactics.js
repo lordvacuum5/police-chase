@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import { clamp, clamp01, lerp, sign } from '../util/math.js';
 
 const _rel = new THREE.Vector3();
+const _slot = new THREE.Vector3();
 
 /**
  * Where a chasing unit sits relative to its target, in the target's own frame.
@@ -112,9 +113,17 @@ export function pitUpdate(state, unit, target, dt) {
     // Closing speed tapers as the gap shuts, so we arrive alongside rather
     // than punting them from straight behind -- but the approach has to be
     // decisive, or the unit converges asymptotically and never gets there.
-    const closeIn = clamp(-r.long - 2.2, 0, 12) / 12;
+    //
+    // It was decisive only over the last few metres: a flat 2 m/s of overspeed
+    // plus a taper that had not started yet meant a car authorised from thirty
+    // metres back spent most of its twelve-second window barely gaining, and
+    // the attempt timed out before it ever reached the strike window. The
+    // closing rate is now proportional to the gap, the way an ordinary pursuit
+    // has always done it -- flat out from a long way back, a nudge from close.
+    const gap = Math.max(0, -r.long - 2.2);
+    const closeIn = clamp(gap * 0.55, 2.0, 15);
     return {
-      aim, speed: targetSpeed + 2.0 + closeIn * 5.0, side, phase: 'setup', done: false,
+      aim, speed: targetSpeed + closeIn, side, phase: 'setup', done: false,
       allowHandbrake: false,
     };
   }
@@ -202,12 +211,61 @@ export function boxAim(target, slot, tightness, out = new THREE.Vector3()) {
     .addScaledVector(target.forward, slot.z * lead);
 }
 
-/** Speed a boxing unit should hold: match the target, biased by its slot. */
-export function boxSpeed(target, slot, tightness) {
+/**
+ * Speed a boxing unit should hold: match the target, biased by its slot --
+ * plus whatever it takes to actually *get* to the slot.
+ *
+ * Matching the target's speed is right once you are in position and useless
+ * before that. A box is called on units up to forty metres out, and a car
+ * asked for the target's speed plus 0.8 m/s closes forty metres in fifty
+ * seconds, by which time the box has been dropped for falling apart. So the
+ * gap to the slot is worth real closing speed, and it fades to nothing as the
+ * car arrives -- which is also what stops the formation pumping back and
+ * forth once it is closed.
+ */
+export function boxSpeed(target, slot, tightness, unit = null) {
   const base = Math.abs(target.forwardSpeed);
-  if (slot.name === 'lead') return Math.max(0, base * lerp(1.0, 0.80, tightness) - 0.5);
-  if (slot.name === 'trail') return base + 1.5;
-  return base + 0.8;
+  let want = slot.name === 'lead' ? Math.max(0, base * lerp(1.0, 0.80, tightness) - 0.5)
+    : slot.name === 'trail' ? base + 1.5
+      : base + 0.8;
+
+  if (!unit) return want;
+
+  // The error that speed can actually fix: how much further up the road the
+  // slot is than we are. Measured along the *target's* heading, because that
+  // is the direction the whole formation is travelling; the sideways part of
+  // the gap is the steering's job, not the throttle's.
+  //
+  // Using the plain distance to the slot instead drives a car that has
+  // *overshot* -- the lead car past a target that has stopped -- faster and
+  // faster away from it, since going forward makes the distance bigger and
+  // the distance was all it was reading. Using the unit's own heading to tell
+  // which way the slot lies is no better: a car knocked sideways in the scrum
+  // then reads a slot right in front of it as behind, and sits there.
+  boxAim(target, slot, tightness, _slot);
+  const dx = _slot.x - unit.position.x, dz = _slot.z - unit.position.z;
+  const along = dx * target.forward.x + dz * target.forward.z;
+
+  if (along > 1.2) {
+    // An approach profile, not a dash: proportional to the error, and capped
+    // by the speed the car could still lose over what is left of it. Without
+    // the cap a unit six metres short of its slot behind a target that has
+    // stopped is told to do nine metres a second, sails past, gives up, comes
+    // back and does it again -- three cars circling a stationary player.
+    const closing = Math.min(clamp((along - 1.2) * 0.9, 0, 16),
+      Math.sqrt(2 * 3.2 * (along - 1.2)));
+    want += closing;
+    // A target that has stopped is not going anywhere, so the last few metres
+    // are taken at a walk. Closing hard on a stationary car means arriving in
+    // its wing, being steered away by collision avoidance, and going round for
+    // another go: three police cars circling a parked player.
+    if (base < 2.0 && along < 12) want = Math.min(want, 3.0);
+  } else if (along < -1.2) {
+    // Past it. Ease off and let the target come back to us, which is what a
+    // real crew does rather than driving round the block.
+    want = Math.max(0, Math.min(want, base - clamp(-along * 0.5, 0.5, 6)));
+  }
+  return want;
 }
 
 /** True once the box is closed enough that the target is genuinely trapped. */

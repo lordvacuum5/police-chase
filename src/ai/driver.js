@@ -78,6 +78,9 @@ export class Driver {
     // is along the line of travel.
     this.wallBias = 0;
     this.wallNear = 999;
+    // Speed ceiling while making way for a unit running a manoeuvre. Infinity
+    // when nobody needs to come past.
+    this.wayCap = Infinity;
 
     // How much of the available grip this driver currently believes it can
     // use. Starts optimistic and is knocked down by evidence -- see
@@ -647,6 +650,13 @@ export class Driver {
       speed = Math.min(speed, Math.sqrt(2 * mu * 9.81 * 0.75 * usable));
     }
 
+    // Making way for a unit running a manoeuvre -- see avoid(). Moving over is
+    // half of it; the other half is not staying in front of them at the same
+    // speed all the way to the junction.
+    if (this.wayCap < Infinity && opts.holdStill !== true) {
+      speed = Math.min(speed, this.wayCap);
+    }
+
     speed = Math.min(speed, this.slideLift());
     this.speedTarget = speed;
 
@@ -843,6 +853,49 @@ export class Driver {
     this._avoidScenery(dt);
     let bias = 0;
     const range = clamp(9 + v.speed * 0.85, 12, 45);
+
+    // ---- give way to a manoeuvre ----
+    //
+    // A PIT or a box only works if the car running it can get where it needs
+    // to be, and in a pursuit of seven cars the main thing in its way is the
+    // pursuit. Nothing used to say this: every unit treated every other unit
+    // as scenery to nudge around, so a car authorised to strike had to thread
+    // its way through the pack at whatever speed the pack was doing.
+    //
+    // Anyone not running a manoeuvre themselves moves off the line of one that
+    // is coming through, and gives up enough speed to let it past. Deliberately
+    // short-range and only for the car behind: a unit two hundred metres back
+    // is not being held up by anybody.
+    this.wayCap = Infinity;
+    if (!v.priority) {
+      for (const o of others) {
+        if (o === v || !o.priority || o.disabled) continue;
+        _p.copy(o.position).sub(v.position);
+        const behind = -_p.dot(v.forward);          // + when they are behind us
+        if (behind < -4 || behind > 32) continue;
+        const side = _p.dot(v.left);
+        if (Math.abs(side) > 6) continue;
+        // Only for someone actually coming through. A car sitting at the same
+        // speed two lengths back is just part of the pack.
+        const closing = o.linvel.dot(v.forward) - v.forwardSpeed;
+        if (closing < 1.0 && behind > 7) continue;
+        const urgency = clamp01(1 - behind / 32);
+        // Move off their line. Dead astern there is no side to move to, so
+        // take whichever way the scenery leaves room.
+        //
+        // Most of the giving way is done with the throttle, not the wheel. A
+        // firm lateral push was tried first and it does let the manoeuvre car
+        // through -- at the cost of putting the rest of the pursuit on the
+        // verge: on the town map the units well off the carriageway went from
+        // 5% of the chase to 15%. On a street with a house either side there
+        // is nowhere to move *to*, and easing off works there as well as it
+        // does on a dual carriageway.
+        const away = Math.abs(side) > 0.8 ? (side >= 0 ? -1 : 1)
+          : (this.wallBias >= 0 ? 1 : -1);
+        bias += away * urgency * 0.16;
+        this.wayCap = Math.min(this.wayCap, Math.max(8, o.speed - 4));
+      }
+    }
 
     for (const o of others) {
       if (o === v) continue;

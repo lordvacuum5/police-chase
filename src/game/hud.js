@@ -26,6 +26,10 @@ export class Hud {
     this.otitle = document.getElementById('otitle');
     this.osub = document.getElementById('osub');
     this.helpEl = document.getElementById('help');
+    this.banner = document.getElementById('banner');
+    this.btitle = document.getElementById('btitle');
+    this.bsub = document.getElementById('bsub');
+    this._bannerTimer = null;
     this.tyreEls = [0, 1, 2, 3].map((i) => document.getElementById('t' + i));
     this.dmgFill = document.getElementById('dmgfill');
     this.dmgPct = document.getElementById('dmgpct');
@@ -104,6 +108,7 @@ export class Hud {
   clearMessages() {
     this.messages.length = 0;
     this.radioEl.innerHTML = '';
+    if (this.banner) this.banner.classList.remove('show');
   }
 
   // ----------------------------------------------------------------- update
@@ -427,6 +432,24 @@ export class Hud {
   }
 
   hideOverlay() { this.overlay.classList.remove('show'); }
+
+  /**
+   * A big line across the middle of the screen that goes away by itself.
+   *
+   * For the things that are worth announcing but are not the end of the run --
+   * escaping, most obviously. Nothing is paused and nothing wants a keypress.
+   */
+  flash(title, sub, seconds = 4.5) {
+    if (!this.banner) return;
+    this.btitle.textContent = title;
+    this.bsub.innerHTML = sub || '';
+    this.banner.classList.add('show');
+    if (this._bannerTimer) clearTimeout(this._bannerTimer);
+    this._bannerTimer = setTimeout(() => {
+      this.banner.classList.remove('show');
+      this._bannerTimer = null;
+    }, seconds * 1000);
+  }
   toggleHelp() { this.helpEl.classList.toggle('show'); }
 }
 

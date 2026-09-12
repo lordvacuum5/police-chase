@@ -68,12 +68,15 @@ export class Dispatcher {
     this.roleTimer = 0;
     this.interceptTimer = 0;
     this.spawnTimer = 0;
+    this.trimTimer = 0;
     this.pitCooldown = 0;
     this.blockCooldown = 0;
     this.blockUnit = null;
     this.activePit = null;
     this.boxAssignment = null;
     this.boxTightness = 0;
+    this.boxTimer = 0;
+    this.boxCooldown = 0;
     this.claimedNodes = new Set();
     this.lastReport = '';
   }
@@ -183,6 +186,7 @@ export class Dispatcher {
 
   _manageRoster(dt, target) {
     this.spawnTimer -= dt;
+    this.trimTimer -= dt;
     const want = this.rules.units;
     // Cars manning a roadblock do not count against the pursuit's budget, and
     // are not the roster's to retire. They are standing in a road on purpose;
@@ -220,11 +224,41 @@ export class Dispatcher {
       const wrecked = u.vehicle.damage >= 0.55 && d > 200;
       const stranded = u.strandedFor > 14 && d > 200;
 
-      if (far || wrecked || stranded) {
-        this.game.despawnPolice(u);
-        this.units.splice(i, 1);
+      // Through retire(), not by splicing the array here: a unit can also be
+      // the one the dispatcher is holding as its blocker or its authorised
+      // PIT, and dropping it from the roster without clearing those leaves the
+      // dispatcher steering a car that no longer exists.
+      if (far || wrecked || stranded) this.retire(u);
+    }
+
+    // Over budget, which is what a chase *ending* looks like: nine cars on the
+    // board and an ambient patrol of three. Nothing used to bring that number
+    // back down except the 900 m rule, so the town stayed full of police long
+    // after they had stopped looking for you.
+    //
+    // They are not deleted where you can see them. One at a time, furthest
+    // first, and only once it is far enough away or out of sight -- so the
+    // force thins out over the next half minute instead of blinking out.
+    const live = this.units.filter((u) => !u.vehicle.disabled && u.role !== ROLE.HOLD);
+    if (live.length > want && this.trimTimer <= 0) {
+      let pick = null, pickD = 0;
+      for (const u of live) {
+        const d = u.distanceTo(target.position);
+        if (d <= pickD) continue;
+        pick = u; pickD = d;
+      }
+      if (pick && (pickD > 260 || (pickD > 110 && !this._visibleTo(pick, target)))) {
+        this.trimTimer = 2.2;
+        this.retire(pick);
       }
     }
+  }
+
+  /** Rough "could the player see this car" test, for tidying up off screen. */
+  _visibleTo(unit, target) {
+    _eye.copy(target.position); _eye.y += 1.1;
+    _tgt.copy(unit.position); _tgt.y += 0.8;
+    return hasLineOfSight(this.game.world, _eye, _tgt, 1.2);
   }
 
   // ------------------------------------------------------------ role assignment
@@ -280,10 +314,27 @@ export class Dispatcher {
     }
 
     // ---- 3. direct pursuit ----
+    //
+    // A box needs three cars in the same place, and the pursuit budget alone
+    // never put them there: two units would sit on a crawling target while
+    // everybody else was away claiming junctions, and the box was simply never
+    // called. So when the target is slow enough to be boxed and the force is
+    // allowed to try, the pack takes two extra cars off intercept duty. There
+    // is nothing to get in front of at walking pace anyway.
+    // Only when a box is genuinely on, though: two units already in touch, a
+    // target down to walking-to-jogging pace, and the tier that allows it. A
+    // looser test turns the whole pursuit into a pack every time you slow for
+    // a junction, and a pack drives across gardens -- measured, the units well
+    // off the carriageway in the town went from 5% of the chase to 15%.
+    const boxable = rules.box && !this.boxAssignment && this.boxCooldown <= 0
+      && Math.abs(target.forwardSpeed) < 13
+      && available.filter((u) => u.distanceTo(target.position) < 70).length >= 2;
+    const pursueWant = rules.pursue + (boxable ? 2 : 0);
+
     const pursuers = [];
     for (const u of available) {
       if (assigned.has(u)) continue;
-      if (pursuers.length >= rules.pursue) break;
+      if (pursuers.length >= pursueWant) break;
       const d = u.distanceTo(k.position);
       if (d > 420) continue;
       pursuers.push(u);
@@ -310,12 +361,18 @@ export class Dispatcher {
     }
 
     // ---- 5. box-in ----
-    if (rules.box && !this.boxAssignment && k.seen) {
-      const close = available.filter((u) => !u.vehicle.disabled && u.distanceTo(target.position) < 42);
+    if (rules.box && !this.boxAssignment && k.seen && this.boxCooldown <= 0) {
+      // 55 m, not 42. A box takes a few seconds to form up and the units have
+      // to be allowed to arrive: measured on a crawling target, the third car
+      // was typically 45 to 55 m back at the moment the decision was made, so
+      // the old radius turned down nearly every box that was on.
+      const close = available.filter((u) => !u.vehicle.disabled
+        && u.distanceTo(target.position) < 55);
       const slow = Math.abs(target.forwardSpeed) < 24;
       if (close.length >= 3 && slow && !this.activePit) {
         this.boxAssignment = assignBoxSlots(target, close.slice(0, 4));
         this.boxTightness = 0;
+        this.boxTimer = 0;
         for (const [unit, slot] of this.boxAssignment) {
           unit.setRole(ROLE.BOX, { slot, tightness: 0 });
           assigned.add(unit);
@@ -457,7 +514,23 @@ export class Dispatcher {
   // --------------------------------------------------------------- box logic
 
   _updateBox(dt, target) {
+    this.boxCooldown -= dt;
     if (!this.boxAssignment) return;
+    this.boxTimer += dt;
+
+    // A box that is not going to form should be given up on. One unit wedged
+    // against a wall forty metres away counts as live, holds three slots open
+    // and never arrives, so without this the pursuit can spend the rest of the
+    // chase in a formation of two.
+    if (this.boxTimer > 15 && !boxClosed(target, this.boxAssignment)) {
+      for (const [unit] of this.boxAssignment) {
+        if (unit.role === ROLE.BOX) unit.setRole(ROLE.PURSUE);
+      }
+      this.boxAssignment = null;
+      this.boxCooldown = 7;
+      this.game.radio('Box not forming — stay with them');
+      return;
+    }
 
     // Drop the box if it has fallen apart or the target has got away.
     let live = 0;
@@ -501,7 +574,46 @@ export class Dispatcher {
     if (i >= 0) this.units.splice(i, 1);
     if (this.blockUnit === unit) this.blockUnit = null;
     if (this.activePit === unit) this.activePit = null;
+    // A boxing unit is held by the assignment as well. Leaving it there means
+    // _updateBox keeps reading the position of a car that has been removed
+    // from the world, and a box of three that has lost one of its three can
+    // never close either -- so the whole box goes.
+    if (this.boxAssignment && this.boxAssignment.has(unit)) {
+      for (const [u] of this.boxAssignment) {
+        if (u !== unit && u.role === ROLE.BOX) u.setRole(ROLE.PURSUE);
+      }
+      this.boxAssignment = null;
+    }
     this.game.despawnPolice(unit);
+  }
+
+  /**
+   * The chase is over and nobody is in custody: put everything away.
+   *
+   * Every tactic is cancelled, every unit goes back on its beat, and the
+   * shared model of where you are is thrown out -- so a car that happens to
+   * drive past you thirty seconds later has to notice you again from scratch,
+   * the same as it would have before any of this started. The roster trims
+   * itself back to the ambient patrol from here; see _manageRoster.
+   */
+  standDown() {
+    this.activePit = null;
+    this.boxAssignment = null;
+    this.blockUnit = null;
+    this.claimedNodes.clear();
+    this.pitCooldown = 0;
+    this.blockCooldown = 0;
+    this.knowledge.seen = false;
+    this.knowledge.spotter = null;
+    this.knowledge.confidence = 0;
+    this.knowledge.timeSinceSeen = 999;
+    for (const u of this.units) {
+      if (u.role === ROLE.HOLD) continue;
+      u.setRole(ROLE.PATROL);
+    }
+    // Let the first car go without the usual wait, so the thinning out starts
+    // while you are still driving away from it.
+    this.trimTimer = 1.0;
   }
 
   /** A blocker that has been passed, or has lost the target, goes back in the pack. */

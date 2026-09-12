@@ -98,6 +98,14 @@ export class Officer {
   update(dt, target) {
     const v = this.vehicle;
 
+    // A unit running a manoeuvre has right of way over the rest of the pack.
+    // The flag lives on the vehicle because that is all the Driver can see of
+    // the other cars, and giving way is the Driver's job. Set before the
+    // recovery check below, so a car that ends up on its roof mid-PIT stops
+    // having everyone else defer to it.
+    v.priority = !v.disabled
+      && (this.role === ROLE.PIT || this.role === ROLE.BOX || this.role === ROLE.BLOCK);
+
     // A car on its roof, or wrecked, is out of the pursuit until it recovers.
     if (v.disabled || v.flippedFor > 2.2) {
       this.recoverTimer += dt;
@@ -554,6 +562,19 @@ export class Officer {
     this.driver.setPath([]);
     return this.driver.driveTo(res.aim, res.speed, dt, {
       allowHandbrake: res.allowHandbrake !== false,
+      // The strike is the one piece of driving that is *meant* to end in a
+      // collision, and the ordinary speed limiter will not allow it.
+      //
+      // It aims through the target's far rear corner -- a point three or four
+      // metres away and forty degrees off the nose -- and the pure-pursuit
+      // grip limit reads that as a four-metre-radius corner, so it clamped a
+      // 29 m/s strike to about 9 and braked. Measured: the unit arriving at
+      // the rear quarter on the money, then shedding half its speed and
+      // dropping sixteen metres back, every single time. `commit` is only set
+      // for the strike itself, which lasts under two seconds; the last-resort
+      // clamp on anything solid straight ahead still applies, and the ray it
+      // uses cannot see cars anyway.
+      ignoreSurroundings: res.commit === true,
     });
   }
 
@@ -720,8 +741,30 @@ export class Officer {
   _box(dt, target) {
     if (!target || !this.orders.slot) return this._pursue(dt, target);
     const t = this.orders.tightness || 0;
-    boxAim(target, this.orders.slot, t, _aim);
-    const speed = boxSpeed(target, this.orders.slot, t);
+    const slot = this.orders.slot;
+    boxAim(target, slot, t, _aim);
+    // While the car is still a long way from its slot, aiming at the slot
+    // itself is a point a few metres to one side of a car it is thirty metres
+    // behind -- a hard turn away from the only direction that closes the gap.
+    // Approach the target, take up the slot at the end.
+    const r = relativeTo(target, this.vehicle);
+    const gap = Math.hypot(r.lat - slot.x, r.long - slot.z);
+
+    // A long way from the slot, this is not a manoeuvre yet -- it is a chase,
+    // and the chase already knows how to get to a car: it checks whether the
+    // line is actually open and takes to the roads when it is not. Driving
+    // straight at a slot forty metres away is how boxing units ended up
+    // crossing gardens to reach a point beside a car they could not see.
+    if (gap > 18) return this._pursue(dt, target);
+
+    if (gap > 9) {
+      // Closer in, aim between the target and the slot: pure pursuit onto a
+      // point a couple of metres off the side of a car twenty metres away is a
+      // hard turn away from the direction that closes the gap.
+      const blend = clamp01((gap - 9) / 9);
+      _aim.lerp(target.position, blend * 0.6);
+    }
+    const speed = boxSpeed(target, slot, t, this.vehicle);
     this.driver.setPath([]);
     return this.driver.driveTo(_aim, speed, dt, { allowHandbrake: false });
   }

@@ -986,7 +986,20 @@ export class Vehicle {
     for (const w of this.wheels) w.condition = 1;
   }
 
+  /**
+   * Give the body back to the physics world.
+   *
+   * Idempotent on purpose. Rapier's `removeRigidBody` on a handle it has
+   * already freed does not throw a JavaScript error -- it traps inside the
+   * WASM module, which takes the whole frame down with an "unreachable" and no
+   * usable stack. There are several paths that retire a car (the roster, the
+   * roadblock manager, a wreck being cleared, a map change) and they are not
+   * all aware of each other, so the guard belongs here rather than in each of
+   * them.
+   */
   destroy() {
+    if (this.destroyed) return;
+    this.destroyed = true;
     this.world.removeRigidBody(this.body);
   }
 }
