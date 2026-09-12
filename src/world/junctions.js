@@ -219,7 +219,7 @@ export function buildStopLines(junctions, paint, y, colour) {
  * drawn raised here is also what the height field calls raised -- which is the
  * whole point, since a step you can see but not feel is worse than neither.
  */
-export function buildCornerFootways(junctions, builder, y, colour, width) {
+export function buildCornerFootways(junctions, builder, y, colour, width, paved = null) {
   for (const { node, app } of junctions) {
     let r0 = 0;
     for (const a of app) r0 = Math.max(r0, a.half);
@@ -228,20 +228,41 @@ export function buildCornerFootways(junctions, builder, y, colour, width) {
 
     for (let i = 0; i < app.length; i++) {
       const a = app[i], b = app[(i + 1) % app.length];
-      // Each carriageway takes an angular bite out of the ring at this radius;
-      // what is left between two of them is footway.
-      const from = a.ang + Math.asin(Math.min(0.99, a.half / r0));
-      let to = b.ang - Math.asin(Math.min(0.99, b.half / r0));
-      while (to < from) to += Math.PI * 2;
-      const span = to - from;
-      if (span < 0.06 || span > Math.PI * 1.9) continue;
 
-      const steps = Math.max(1, Math.ceil(span / 0.30));
+      // The angle from one approach to the next, the short way round. Taking
+      // the difference of the two bearings directly does not work for the last
+      // pair, which wraps.
+      let gap = b.ang - a.ang;
+      while (gap <= 0) gap += Math.PI * 2;
+
+      // Each carriageway takes an angular bite out of the ring at this radius;
+      // footway is whatever is left between two of them. On a fork the two
+      // bites can be wider than the gap, in which case there is no footway
+      // between them at all -- and it must be *skipped*, not wrapped round the
+      // other way. Wrapping turns a negative sector into a ring segment of
+      // almost 360 degrees, which then paints over every road at the junction:
+      // that one line cost 14% of the town's carriageway.
+      const from = Math.asin(Math.min(0.99, a.half / r0));
+      const to = gap - Math.asin(Math.min(0.99, b.half / r0));
+      const span = to - from;
+      if (span < 0.06 || span > Math.PI) continue;
+
+      // Finer pieces when there is a clip to apply: each one is kept or
+      // dropped whole, so a long arc would take a road with it either way.
+      const steps = Math.max(1, Math.ceil(span / (paved ? 0.16 : 0.30)));
       for (let k = 0; k < steps; k++) {
-        const t0 = from + (span * k) / steps;
-        const t1 = from + (span * (k + 1)) / steps;
+        const t0 = a.ang + from + (span * k) / steps;
+        const t1 = a.ang + from + (span * (k + 1)) / steps;
         const c0 = Math.cos(t0), s0 = Math.sin(t0);
         const c1 = Math.cos(t1), s1 = Math.sin(t1);
+        // The sector arithmetic above only knows about the approaches at this
+        // junction. A road that merely passes close by can still run under
+        // this quad, and the ring is wide enough for that to happen often.
+        // The surface grid knows where footway really is, so ask it.
+        if (paved) {
+          const tm = (t0 + t1) * 0.5, rm = (r0 + r1) * 0.5;
+          if (!paved(node.x + Math.cos(tm) * rm, node.z + Math.sin(tm) * rm)) continue;
+        }
         builder.addQuadY(
           node.x + c0 * r0, node.z + s0 * r0,
           node.x + c1 * r0, node.z + s1 * r0,

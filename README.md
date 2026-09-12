@@ -444,6 +444,36 @@ node); and corners that fell on a node stayed sharp, which `smoothBends` now
 replaces with an arc, moving the node to the middle of it so it is still a real
 point on the road.
 
+### Crossings the graph did not know about
+
+A junction only exists if two edges share a **node**. Two roads can cross on
+screen and share nothing at all, and then the police cannot turn between them:
+the route search is never offered the turn, so a unit drives over a crossroads
+it cannot see and carries straight on. On the city that was 18 crossings,
+including country roads over the ring motorway — which is why a unit would sail
+past a way onto the motorway it could plainly have taken.
+
+`RoadGraph.stitchCrossings` finds them. Every segment goes into a 60 m bucket
+grid; each pair from neighbouring buckets that intersects in both interiors and
+shares no node is a junction the graph is missing. If one of the four end nodes
+is already within 7 m, the roads meet there in all but name and it is left
+alone; otherwise a node is created at the crossing and both edges are rebuilt
+as a chain through it, so the turn then exists for routing, for `planJunctions`
+and for the signal heads alike.
+
+It runs **twice**, before and after `smoothBends`/`smoothEdges`, because moving
+geometry to round off a bend creates crossings that were not there when the
+first pass looked.
+
+| on the city | |
+|---|---|
+| crossings with no junction | 18 → 2 (after smoothing) → **0** |
+| motorway nodes joined to an ordinary road | 12 → **17** |
+| random cross-map routes that use the motorway | **18 of 39** |
+
+Wexbury reports one, and it is a false positive: two roads that meet 5 m apart
+through a short link edge, which routing uses like any other.
+
 ### Kerbs
 
 The footway stands **140 mm** above the carriageway, and you can feel it. It
@@ -483,21 +513,54 @@ band runs *alongside* its own road, so it also runs straight across every road
 that crosses it. Harmless while the footway is the lower of the two and the
 carriageway draws over the overlap — invert that and every band paints over the
 junction it passes through, turning a town of crossing roads into a patchwork
-of grey slabs. Three things fix it:
+of grey slabs. **14.5% of the town's carriageway ended up under pavement.**
 
-* The town's bands are **trimmed at the junction mouths**, using the same
-  `trimA`/`trimB` setbacks the kerb lines and lane markings already use, so the
-  junction stays tarmac.
-* That leaves the corners bare — which is exactly where a pedestrian stands —
-  so `buildCornerFootways` fills each sector *between* two approaches with a
-  raised ring segment. Its inner radius is the same disc `rasteriseRoads`
-  paints into the grip grid, so what is drawn raised is also what the height
-  field calls raised.
+Trimming the bands back at the junction mouths is the obvious fix and it is not
+enough: it only helps where two roads actually meet, and does nothing for a
+bend, for two estate roads that run close by without ever crossing, or for a
+roundabout sitting across the corner of a city block. Twice I looked at
+screenshots and called it fixed. What settled it was measuring —
+`tests/surfaces.js` fires 4,000 rays straight down onto the carriageway and
+asks which surface is nearest the sky.
+
+So nothing raised reasons about which road might be near which any more. It is
+all **clipped against the surface grid**, which had the carriageways burned
+into it after the pavement and therefore already knows exactly where footway
+is:
+
+* The town's bands are walked in 2.2 m pieces, and each piece is *fitted* to
+  the grid rather than kept or dropped whole: it becomes the widest run across
+  the band that the grid calls footway. A piece beside a side turning narrows
+  instead of vanishing, which reads as a footway pinching in rather than as a
+  row of teeth.
+* `buildCornerFootways` fills the sector between two approaches — which is
+  exactly where a pedestrian stands — in pieces short enough to clip the same
+  way. Its sector arithmetic also had a wraparound bug worth naming: on a fork,
+  where two approaches sit closer together than their angular bites, the span
+  comes out negative, and wrapping it the other way turned a corner that should
+  have been skipped into a 328° ring that painted over the entire junction.
+  That one line was 14% of the town's tarmac.
 * The city's block plates stop at each edge's own kerb line (avenues are wider
   than streets, so a single inset would either cover an avenue or leave bare
   ground along a street), with corners **curved** to follow the junction's
   tarmac fillet. Curve, not chamfer: a straight cut across the corner takes
   more out than the tarmac puts back, and leaves a wedge of grass showing.
+* That clears the roads that run *along* the grid lines. A road through the
+  *middle* of a block — a suburban lane, a country road, the roundabout that
+  sits across the corner of two avenues — is not on a grid line and was still
+  covered, the roundabout alone being three fifths of what was left. Those
+  blocks get their plate subdivided against the grid instead, quartering down
+  to a metre only where it meets tarmac, so a block interior still costs a
+  handful of quads.
+
+| carriageway drawn over | before | after |
+|---|---|---|
+| Wexbury | 14.5% | **0.00%** |
+| the city | 1.45% | **0.13%** |
+
+The city's residue is the deliberate 12 cm seam where the plate meets the kerb.
+And because the drawing and the height field are now reading the same array,
+they cannot disagree about where the kerb is.
 
 **This is the mechanism terrain would use.** Give `heightAt` a hill and cars
 drive over it, pitching and rolling on the gradient, with nothing else
@@ -1205,10 +1268,13 @@ silently breaks a chase:
   outright if the resulting road would turn more than about 72 degrees
   anywhere -- so a node too close to the anchor is passed over for one that
   leaves room.
-* **Nothing crosses the motorway.** Slip roads merge at about 23 degrees after
-  running alongside the carriageway for 125 m, each junction claims its own
-  stretch of ring, and a candidate junction is rejected outright if the ramp's
-  approach would cut across the traffic to reach it.
+* **No slip road cuts across the traffic.** They merge at about 23 degrees
+  after running alongside the carriageway for 125 m, each junction claims its
+  own stretch of ring, and a candidate junction is rejected outright if the
+  ramp's approach would cut across the traffic to reach it. Country roads, laid
+  out afterwards, *do* cross the ring, and those crossings are now real
+  junctions rather than paint — see **Crossings the graph did not know
+  about** — which is how a unit joins the motorway anywhere but a slip road.
 
 Every road is registered in a graph with widths, speeds and junction types, which
 is what the AI routes over. The minimap is heading-up: the map turns under a

@@ -618,8 +618,54 @@ function rasteriseSurfaces(ctx, park) {
  * towers downtown, warehouses in the industrial quadrant, houses in the
  * suburbs. Each gets a static box collider.
  */
+/** A block plate as a fan of triangles from the block centre. */
+function emitPlateFan(builder, cx, cz, ring, y, col) {
+  for (let k = 0; k < ring.length; k++) {
+    const a = ring[k], b = ring[(k + 1) % ring.length];
+    builder.addQuadY(cx, cz, a[0], a[1], b[0], b[1], cx, cz, y, col);
+  }
+}
+
+/** Inside the plate rectangle, with the corners rounded off to radius c. */
+function inRing(x, z, x0, z0, x1, z1, c) {
+  if (x < x0 || x > x1 || z < z0 || z > z1) return false;
+  const dx = x < x0 + c ? x0 + c - x : x > x1 - c ? x - (x1 - c) : 0;
+  const dz = z < z0 + c ? z0 + c - z : z > z1 - c ? z - (z1 - c) : 0;
+  return dx * dx + dz * dz <= c * c;
+}
+
+/**
+ * The same plate, clipped to a predicate by subdivision.
+ *
+ * A quad that passes at all five sample points is emitted whole, one that
+ * fails at all of them is dropped, and anything in between is split into
+ * four and tried again. The grid underneath is a metre across so there is
+ * nothing to learn below that, and the recursion stops there -- which means
+ * the interior of a block costs a handful of large quads and only the edge
+ * along a carriageway costs any real triangles.
+ */
+function emitPlateClipped(builder, x0, z0, x1, z1, y, col, keep, depth = 0) {
+  const mx = (x0 + x1) * 0.5, mz = (z0 + z1) * 0.5;
+  const inM = keep(mx, mz);
+  const n = (keep(x0, z0) ? 1 : 0) + (keep(x1, z0) ? 1 : 0)
+    + (keep(x1, z1) ? 1 : 0) + (keep(x0, z1) ? 1 : 0) + (inM ? 1 : 0);
+  const small = x1 - x0 <= 1.05 && z1 - z0 <= 1.05;
+  if (n === 5 || (small && inM)) {
+    builder.addQuadY(x0, z0, x1, z0, x1, z1, x0, z1, y, col);
+    return;
+  }
+  if (n === 0 || small || depth >= 8) return;
+  emitPlateClipped(builder, x0, z0, mx, mz, y, col, keep, depth + 1);
+  emitPlateClipped(builder, mx, z0, x1, mz, y, col, keep, depth + 1);
+  emitPlateClipped(builder, x0, mz, mx, z1, y, col, keep, depth + 1);
+  emitPlateClipped(builder, mx, mz, x1, z1, y, col, keep, depth + 1);
+}
+
 function buildBlocks(ctx, grid, park, roundabout) {
   const { rng, sim } = ctx;
+  // The grid is finished by the time the visuals are built, so it is the
+  // authority on where carriageway is; see the plate clip below.
+  const at = makeSurfaceAt(ctx.surface);
   const N = GRID.length;
   const builders = [new MeshBuilder(), new MeshBuilder(), new MeshBuilder(), new MeshBuilder()];
   const plates = new MeshBuilder();
@@ -688,9 +734,38 @@ function buildBlocks(ctx, grid, park, roundabout) {
 
       const y = inPark ? KERB_H - 0.02 : KERB_H;
       const col = inPark ? 0x47512e : PALETTE.pavement;
-      for (let k = 0; k < ring.length; k++) {
-        const a = ring[k], bb = ring[(k + 1) % ring.length];
-        plates.addQuadY(cx, cz, a[0], a[1], bb[0], bb[1], cx, cz, y, col);
+
+      // Insetting to the grid lines only clears the roads that run *along*
+      // them. Anything crossing the middle of a block -- a suburban lane, a
+      // country road, the roundabout that sits across the corner of two
+      // avenues -- is still underneath the plate, and now that the plate is
+      // the higher of the two it hides the carriageway completely. The
+      // roundabout alone was three fifths of all the tarmac still covered.
+      //
+      // The surface grid already knows where every carriageway is, so when
+      // one is inside the block the plate is cut against the grid instead of
+      // trusted to the rectangle. That also makes what is drawn raised and
+      // what the height field calls raised the same thing, since both are
+      // then reading the same array.
+      const crossed = (() => {
+        for (let sx = px0 + 1.5; sx < px1; sx += 3) {
+          for (let sz = pz0 + 1.5; sz < pz1; sz += 3) {
+            if (at(sx, sz) === SURF_ROAD) return true;
+          }
+        }
+        return false;
+      })();
+
+      if (crossed) {
+        const keep = (x, z) => at(x, z) !== SURF_ROAD && inRing(x, z, px0, pz0, px1, pz1, c);
+        // Pavement colour at the low level first: the clip works in whole
+        // pieces, so it leaves a step of a few tens of centimetres along the
+        // kerb that would otherwise show as bare grass. The carriageway is
+        // drawn at 0.03, above this and below the plate.
+        emitPlateFan(plates, cx, cz, ring, 0.02, col);
+        emitPlateClipped(plates, px0, pz0, px1, pz1, y, col, keep);
+      } else {
+        emitPlateFan(plates, cx, cz, ring, y, col);
       }
 
       if (inPark) { addParkContents(ctx, b, rng, bx0, bz0, bx1, bz1); continue; }

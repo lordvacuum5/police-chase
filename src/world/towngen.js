@@ -19,12 +19,13 @@
 
 import * as THREE from 'three';
 import { RoadGraph, ROAD_KIND } from './roadgraph.js';
-import { addNodeApron, sliceLine, buildCornerFootways } from './junctions.js';
+import { addNodeApron, buildCornerFootways } from './junctions.js';
 import { GROUP, addStaticBox } from '../physics/world.js';
 import { makeRng, rand, randInt, clamp, lerp, dist2, TAU } from '../util/math.js';
 import {
   WORLD_HALF, CELL, GRID_N, KERB_H, SURF_GRASS, SURF_ROAD, SURF_PAVED, PALETTE,
-  paintDisc, rasteriseRoads, makeSurfaceAt, makeHeightAt, buildGround, buildRoadMeshes,
+  paintDisc, rasteriseRoads, makeSurfaceAt, makeHeightAt, addPavedRibbon,
+  buildGround, buildRoadMeshes,
   scatterTrees, treesAlongRoads, buildFieldPatches, addTree,
   MeshBuilder, vertexColorMaterial,
 } from './common.js';
@@ -415,8 +416,15 @@ function nameTownRoads(graph) {
  * houses appear to stand in a field.
  */
 function buildPavements(ctx) {
-  const { graph } = ctx;
+  const { graph, surface } = ctx;
   const b = new MeshBuilder();
+  // The grid is final by the time the visuals are built -- the carriageways
+  // were burned into it first -- so it is the authority on where footway is,
+  // and everything raised here is clipped against it. That way what is drawn
+  // raised and what the height field calls raised cannot disagree: they are
+  // reading the same array.
+  const at = makeSurfaceAt(surface);
+  const isPaved = (x, z) => at(x, z) === SURF_PAVED;
   // Turning heads are left as plain tarmac. A pavement ribbon per edge round
   // a tight ring throws out a petal at every segment and the head reads as a
   // flower rather than a bulb.
@@ -435,18 +443,16 @@ function buildPavements(ctx) {
     // be beside.
     b.addRibbon(e.points, widthOf(e), 0.02, PALETTE.pavement);
 
-    // And the raised band stops at the junction mouth, for the same reason the
-    // kerbs and the lane markings do. A footway band runs *alongside* its own
-    // road, which means it runs straight across every road that crosses it --
-    // and now that it is the higher of the two, it paints over them. Trimmed
-    // back, the junction stays tarmac and the corners are picked up by the
-    // footways built round the node below.
-    const inner = sliceLine(e.points, e.trimA || 0, e.length - (e.trimB || 0));
-    if (!inner) continue;
+    // The raised band is clipped against the surface grid, not trimmed at
+    // junction nodes. A band reaches six metres past its own kerb, so it lies
+    // over any carriageway within that distance -- and trimming at nodes only
+    // helps where the two roads actually meet. It does nothing for a bend, or
+    // for two estate roads that run close by without ever crossing, and
+    // between them those were hiding a seventh of the town's tarmac.
     const band = (widthOf(e) - e.width) * 0.5;
     for (const side of [1, -1]) {
-      b.addRibbon(inner, band, KERB_H, PALETTE.pavement,
-        (e.width * 0.5 + band * 0.5 - 0.10) * side);
+      addPavedRibbon(b, e.points, band, KERB_H, PALETTE.pavement,
+        (e.width * 0.5 + band * 0.5 - 0.10) * side, isPaved);
     }
   }
   // The ribbons end square at every node, so a bend leaves a notch of grass
@@ -459,10 +465,10 @@ function buildPavements(ctx) {
     for (const e of live) r = Math.max(r, widthOf(e) * 0.5);
     addNodeApron(b, n.x, n.z, r, 0.019, PALETTE.pavement);
   }
-  // The raised footway round the corners of every signalised junction, which
-  // the trimmed bands above deliberately leave bare.
+  // The raised footway round the corners of a junction, where the bands
+  // beside two different roads leave a gap. Clipped against the same grid.
   buildCornerFootways(
-    graph.junctionPlan || [], b, KERB_H, PALETTE.pavement, 7,
+    graph.junctionPlan || [], b, KERB_H, PALETTE.pavement, 7, isPaved,
   );
   const mesh = new THREE.Mesh(b.build(), vertexColorMaterial());
   mesh.name = 'pavements';

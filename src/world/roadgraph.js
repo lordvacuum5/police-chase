@@ -8,7 +8,7 @@
 // be in the next N seconds, and an intercept test that compares the two.
 
 import { clamp, lerp, closestOnSegment, dist2 } from '../util/math.js';
-import { planJunctions } from './junctions.js';
+import { planJunctions, sliceLine } from './junctions.js';
 
 /**
  * Replace each sharp vertex with a short arc, so a routed path describes a
@@ -65,6 +65,22 @@ function resample(pts, maxSeg) {
   }
   out.push(pts[pts.length - 1]);
   return out;
+}
+
+/**
+ * Where two segments cross, or null. Strictly interior to both: a shared
+ * endpoint is not a crossing, it is already a junction.
+ */
+function segmentCross(p, q) {
+  const d1x = p.b.x - p.a.x, d1z = p.b.z - p.a.z;
+  const d2x = q.b.x - q.a.x, d2z = q.b.z - q.a.z;
+  const den = d1x * d2z - d1z * d2x;
+  if (Math.abs(den) < 1e-9) return null;
+  const rx = q.a.x - p.a.x, rz = q.a.z - p.a.z;
+  const t = (rx * d2z - rz * d2x) / den;
+  const u = (rx * d1z - rz * d1x) / den;
+  if (t <= 0.001 || t >= 0.999 || u <= 0.001 || u >= 0.999) return null;
+  return { x: p.a.x + d1x * t, z: p.a.z + d1z * t };
 }
 
 /** Which side of the road traffic drives on. -1 = right-hand, +1 = left-hand. */
@@ -357,9 +373,138 @@ export class RoadGraph {
   }
 
   /** Call once the network is complete. */
+  /**
+   * Put a junction wherever two roads cross without one.
+   *
+   * The generators lay roads out independently -- a grid, a ring motorway,
+   * slip roads, country roads striking out across all of it -- and nothing
+   * made them agree about where they met. So a country road could cross the
+   * motorway with no node in common, and since routing can only ever turn
+   * between edges that share a node, the police *could not see the turn*. They
+   * would drive over a crossroads that, as far as they were concerned, was not
+   * there. On the city map eighteen crossings were like that, six of them onto
+   * the motorway.
+   *
+   * Each crossing splits both edges and hands them a shared node. Where the
+   * crossing lands near an end of one of them, that end's existing node is
+   * reused instead of making a new one two metres away from it. `bridge` edges
+   * are skipped: a crossing there is a grade separation, and the whole point of
+   * one is that you cannot turn.
+   *
+   * Runs before the smoothing passes, so the new nodes get bends rounded off
+   * like any other.
+   */
+  stitchCrossings(snap = 7) {
+    const items = [];
+    for (const e of this.edges) {
+      if (e.dead) continue;
+      for (const s of e.segs) items.push({ e, s });
+    }
+
+    // Buckets, because this is otherwise forty thousand segments squared.
+    const CELL = 60;
+    const buckets = new Map();
+    const keyOf = (s) => `${Math.floor(Math.min(s.a.x, s.b.x) / CELL)},`
+      + `${Math.floor(Math.min(s.a.z, s.b.z) / CELL)}`;
+    items.forEach((it, i) => {
+      const k = keyOf(it.s);
+      let b = buckets.get(k);
+      if (!b) { b = []; buckets.set(k, b); }
+      b.push(i);
+    });
+
+    const cuts = new Map();
+    const addCut = (e, along, node) => {
+      let list = cuts.get(e);
+      if (!list) { list = []; cuts.set(e, list); }
+      list.push({ along, node });
+    };
+
+    const done = new Set();
+    for (let i = 0; i < items.length; i++) {
+      const A = items[i];
+      if (A.e.bridge) continue;
+      const cx = Math.floor(Math.min(A.s.a.x, A.s.b.x) / CELL);
+      const cz = Math.floor(Math.min(A.s.a.z, A.s.b.z) / CELL);
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dz = -1; dz <= 1; dz++) {
+          const b = buckets.get(`${cx + dx},${cz + dz}`);
+          if (!b) continue;
+          for (const j of b) {
+            if (j <= i) continue;
+            const B = items[j];
+            if (A.e === B.e || B.e.bridge) continue;
+            if (A.e.a === B.e.a || A.e.a === B.e.b
+              || A.e.b === B.e.a || A.e.b === B.e.b) continue;
+            const key = A.e.id < B.e.id
+              ? `${A.e.id}-${B.e.id}` : `${B.e.id}-${A.e.id}`;
+            if (done.has(key)) continue;
+
+            const hit = segmentCross(A.s, B.s);
+            if (!hit) continue;
+            done.add(key);
+
+            const alongA = A.s.start + dist2(A.s.a.x, A.s.a.z, hit.x, hit.z);
+            const alongB = B.s.start + dist2(B.s.a.x, B.s.a.z, hit.x, hit.z);
+
+            // Reuse an existing end node if the crossing is near one, rather
+            // than planting a second node a metre from it and leaving a stub.
+            let node = null;
+            if (alongA < snap) node = this.nodes[A.e.a];
+            else if (A.e.length - alongA < snap) node = this.nodes[A.e.b];
+            else if (alongB < snap) node = this.nodes[B.e.a];
+            else if (B.e.length - alongB < snap) node = this.nodes[B.e.b];
+            if (!node) node = this.addNode(hit.x, hit.z, 'cross');
+
+            if (node !== this.nodes[A.e.a] && node !== this.nodes[A.e.b]) {
+              addCut(A.e, alongA, node);
+            }
+            if (node !== this.nodes[B.e.a] && node !== this.nodes[B.e.b]) {
+              addCut(B.e, alongB, node);
+            }
+          }
+        }
+      }
+    }
+
+    let made = 0;
+    for (const [e, list] of cuts) {
+      list.sort((p, q) => p.along - q.along);
+      const opts = {
+        width: e.width, lanes: e.lanes, speed: e.speed, bridge: e.bridge, y: e.y,
+      };
+      let prev = 0;
+      let fromNode = this.nodes[e.a];
+      const piece = (toNode, to) => {
+        const pts = sliceLine(e.points, prev, to);
+        const mid = pts && pts.length > 2 ? pts.slice(1, -1) : null;
+        const ne = this.addEdge(fromNode, toNode, e.kind, mid, opts);
+        if (e.turningHead) ne.turningHead = true;
+        made++;
+      };
+      for (const c of list) {
+        if (c.along - prev < 3 || e.length - c.along < 3) continue;
+        piece(c.node, c.along);
+        prev = c.along;
+        fromNode = c.node;
+      }
+      if (prev === 0) continue;            // every cut was rejected as too short
+      piece(this.nodes[e.b], e.length);
+      e.dead = true;
+    }
+
+    if (made) this.reindexEdges();
+    return done.size;
+  }
+
   finalise() {
+    this.stitchCrossings();
     this.smoothBends();
     this.smoothEdges();
+    // Again, because the smoothing moves geometry: a node shifted onto the
+    // middle of an arc, or a polyline rounded off, can put two roads across
+    // each other that were not crossing before it ran.
+    this.stitchCrossings();
     for (const n of this.nodes) {
       this.bounds.minX = Math.min(this.bounds.minX, n.x);
       this.bounds.maxX = Math.max(this.bounds.maxX, n.x);

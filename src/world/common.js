@@ -140,6 +140,82 @@ export function makeHeightAt(surface) {
   };
 }
 
+/**
+ * A ribbon that only appears where the ground is actually paved.
+ *
+ * Drawing a footway as a plain ribbon beside its own road is wrong in a way
+ * that is hard to see and easy to get wrong repeatedly. The band reaches six
+ * or seven metres past its kerb, so it lies across any other carriageway that
+ * passes within that distance -- and since the footway now stands *above* the
+ * road, it hides it. Trimming at junction nodes only fixes the cases where the
+ * two roads actually meet; it does nothing for a bend, or for two estate roads
+ * that run close by each other without ever crossing.
+ *
+ * The surface grid already knows exactly where pavement is, because the
+ * carriageways were burned into it afterwards. So rather than reasoning about
+ * which roads might be near which, the ribbon is walked in short pieces and
+ * each piece is fitted to the grid: the widest run across the band that the
+ * grid calls footway. A piece next to a crossing road narrows rather than
+ * disappearing, which reads as a footway pinching in past a side turning
+ * instead of the row of teeth that dropping whole pieces leaves. The kerb
+ * stays a smooth curve along its length, and what is drawn raised is what the
+ * height field calls raised -- the two cannot disagree, because they are
+ * reading the same array.
+ */
+export function addPavedRibbon(builder, points, width, y, colour, offset, paved, step = 2.2) {
+  if (points.length < 2) return builder;
+  const LAT = 4;                       // lateral samples across the band
+  const slab = width / LAT;
+  let carry = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i], b = points[i + 1];
+    const segLen = Math.hypot(b.x - a.x, b.z - a.z);
+    if (segLen < 1e-6) continue;
+    const dx = (b.x - a.x) / segLen, dz = (b.z - a.z) / segLen;
+    const nx = -dz, nz = dx;
+    let t = 0;
+    while (t < segLen) {
+      const piece = Math.min(step - carry, segLen - t);
+      const t0 = t, t1 = t + piece;
+      t = t1;
+      carry += piece;
+      if (carry >= step - 1e-6) carry = 0;
+      if (piece <= 0.12) continue;
+
+      const mid = (t0 + t1) * 0.5;
+      const bx = a.x + dx * mid, bz = a.z + dz * mid;
+
+      // The longest unbroken run of footway across the band. Sampling the
+      // middle alone would throw the whole piece away for a road that only
+      // clips the inner edge of it.
+      let bestFrom = -1, bestTo = -1, from = -1;
+      for (let k = 0; k <= LAT; k++) {
+        const u = offset - width * 0.5 + slab * k;
+        const ok = paved(bx + nx * u, bz + nz * u);
+        if (ok && from < 0) from = k;
+        if (!ok || k === LAT) {
+          const to = ok ? k : k - 1;
+          if (from >= 0 && to - from > bestTo - bestFrom) { bestFrom = from; bestTo = to; }
+          if (!ok) from = -1;
+        }
+      }
+      if (bestFrom < 0) continue;
+
+      // Half a slab of slack each end, so neighbouring pieces still meet.
+      const lo = Math.max(offset - width * 0.5,
+        offset - width * 0.5 + slab * (bestFrom - 0.5));
+      const hi = Math.min(offset + width * 0.5,
+        offset - width * 0.5 + slab * (bestTo + 0.5));
+      if (hi - lo < 0.35) continue;
+      builder.addRibbon(
+        [{ x: a.x + dx * t0, z: a.z + dz * t0 }, { x: a.x + dx * t1, z: a.z + dz * t1 }],
+        hi - lo, y, colour, (lo + hi) * 0.5,
+      );
+    }
+  }
+  return builder;
+}
+
 export function makeSurfaceAt(surface) {
   return (x, z) => {
     const cx = ((x + WORLD_HALF) / CELL) | 0;
