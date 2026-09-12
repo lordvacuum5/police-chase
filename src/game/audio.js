@@ -118,6 +118,33 @@ const PITCH_EXP = 0.62;
 const LOOP_FROM = 2.0, LOOP_TO = 15.0, LOOP_FADE = 0.2;
 
 /**
+ * Recorded police net chatter, played underneath a pursuit.
+ *
+ * The synthesised voice is good at *structure* -- it says something whenever
+ * the game says something, and it can never contradict the line on the HUD --
+ * and it will never be mistaken for a real person. Recorded traffic is the
+ * other way round, so the two are used for what each is good at: the synth
+ * carries the calls that mean something, and a recording fills the gaps with
+ * the sound of a busy net.
+ *
+ * Every path here is optional and tried in order. Drop a clip into
+ * `resources/sounds/` under one of these names and it is picked up on the next
+ * load; with none of them present nothing happens at all and the radio behaves
+ * exactly as it did before. Same fire-and-forget contract as the engine
+ * sample: a missing or undecodable file must never break the game's audio.
+ */
+const CHATTER_SAMPLES = [
+  '/resources/sounds/police-radio-chatter.mp3',
+  '/resources/sounds/police-scanner.mp3',
+  '/resources/sounds/freesound_community-police-radio-chatter.mp3',
+  '/resources/sounds/freesound_community-police-scanner.mp3',
+];
+
+/** Seconds between bursts of background chatter, and how long one runs for. */
+const CHATTER_GAP = [7.0, 17.0];
+const CHATTER_LEN = [1.6, 4.2];
+
+/**
  * Fold a region of a recording into a seamless mono loop by crossfading the
  * material just past the loop end back over its beginning. Looping a raw
  * region clicks at the seam every pass, which at idle is several times a second.
@@ -512,6 +539,78 @@ export class GameAudio {
     this.radioQueue = [];
     this.radioFreeAt = 0;      // ctx time the channel is clear again
     this.lastAlertAt = -1e9;
+
+    this.chatter = [];         // decoded recordings, if any were found
+    this.chatterTimer = 4;
+    this._loadChatter();
+  }
+
+  /**
+   * Fetch and decode whatever police net recordings are present.
+   *
+   * Deliberately silent about failure, like the engine sample: with no files
+   * in place `this.chatter` stays empty and `_pumpChatter` does nothing.
+   */
+  async _loadChatter() {
+    for (const url of CHATTER_SAMPLES) {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        const buf = await this.ctx.decodeAudioData(await res.arrayBuffer());
+        if (buf.duration > 1.0) this.chatter.push(buf);
+      } catch (e) {
+        // Missing, wrong format, or a decoder that does not like it. Fine.
+      }
+    }
+  }
+
+  /**
+   * Background traffic on the net while a pursuit is running.
+   *
+   * A burst is a window cut out of the middle of a recording with a squelch
+   * click either end, played through the same channel as everything else, so
+   * it is the same radio rather than a second one. It never speaks over a
+   * dispatch call -- `radioFreeAt` is the channel, and the queue owns it --
+   * and it holds the channel itself for the length of the burst, so a call
+   * that arrives mid-burst waits its turn the way a real transmission would.
+   */
+  _pumpChatter(dt, heat) {
+    if (!this.chatter.length || this.muted) return;
+    const tier = heat ? heat.tier : 0;
+    if (tier <= 0) { this.chatterTimer = CHATTER_GAP[0]; return; }
+
+    this.chatterTimer -= dt;
+    if (this.chatterTimer > 0) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    if (now < this.radioFreeAt || this.radioQueue.length) return;
+
+    const buf = this.chatter[(Math.random() * this.chatter.length) | 0];
+    const len = Math.min(buf.duration - 0.2,
+      CHATTER_LEN[0] + Math.random() * (CHATTER_LEN[1] - CHATTER_LEN[0]));
+    const from = Math.random() * Math.max(0, buf.duration - len - 0.1);
+
+    const at = now + 0.05;
+    this._squelch(at, 0.05, 0.8, 2600);
+
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const g = ctx.createGain();
+    // Under the calls that matter, and busier the higher the response. This is
+    // the room tone of a pursuit, not something to listen to.
+    const level = 0.22 + 0.06 * Math.min(5, tier);
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(level, at + 0.05);
+    g.gain.setValueAtTime(level, at + len - 0.12);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + len);
+    src.connect(g); g.connect(this.radioIn);
+    src.start(at + 0.04, from, len);
+    src.stop(at + len + 0.05);
+
+    this._squelch(at + len, 0.10, 1.2, 3000);
+    this.radioFreeAt = at + len + 0.2;
+    this.chatterTimer = CHATTER_GAP[0]
+      + Math.random() * (CHATTER_GAP[1] - CHATTER_GAP[0]);
   }
 
   /**
@@ -755,6 +854,7 @@ export class GameAudio {
     const smooth = 0.045;
 
     this._pumpRadio();
+    this._pumpChatter(dt, heat);
 
     // ---- engine ----------------------------------------------------------
     const rpm = player.rpm;
