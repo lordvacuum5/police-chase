@@ -134,10 +134,23 @@ const LOOP_FROM = 2.0, LOOP_TO = 15.0, LOOP_FADE = 0.2;
  * sample: a missing or undecodable file must never break the game's audio.
  */
 const CHATTER_SAMPLES = [
+  // Both from the same Pixabay uploader as the engine recording, and named
+  // the same way: uploader, subject, Pixabay id. The scanner one is a 60 s
+  // excerpt cut out of a four-minute recording -- 254 s of 24 kHz stereo is
+  // 49 MB once decoded, which is a lot of memory to hold for room tone.
+  '/resources/sounds/freesound_community-police-radio-chatter-30048.mp3',
+  '/resources/sounds/freesound_community-police-scanner-14646.mp3',
+];
+
+/**
+ * Your own recordings, under either of these names. Only looked for if fewer
+ * than two of the shipped clips loaded -- so replacing or deleting one picks
+ * yours up, and a default install does not put a pair of 404s in the console
+ * every boot looking for files that were never meant to be there.
+ */
+const CHATTER_EXTRA = [
   '/resources/sounds/police-radio-chatter.mp3',
   '/resources/sounds/police-scanner.mp3',
-  '/resources/sounds/freesound_community-police-radio-chatter.mp3',
-  '/resources/sounds/freesound_community-police-scanner.mp3',
 ];
 
 /** Seconds between bursts of background chatter, and how long one runs for. */
@@ -542,6 +555,7 @@ export class GameAudio {
 
     this.chatter = [];         // decoded recordings, if any were found
     this.chatterTimer = 4;
+    this.chatterLevel = 0.03;  // see _pumpChatter; set by measurement
     this._loadChatter();
   }
 
@@ -552,15 +566,19 @@ export class GameAudio {
    * in place `this.chatter` stays empty and `_pumpChatter` does nothing.
    */
   async _loadChatter() {
-    for (const url of CHATTER_SAMPLES) {
+    const tryLoad = async (url) => {
       try {
         const res = await fetch(url);
-        if (!res.ok) continue;
+        if (!res.ok) return;
         const buf = await this.ctx.decodeAudioData(await res.arrayBuffer());
         if (buf.duration > 1.0) this.chatter.push(buf);
       } catch (e) {
         // Missing, wrong format, or a decoder that does not like it. Fine.
       }
+    };
+    for (const url of CHATTER_SAMPLES) await tryLoad(url);
+    if (this.chatter.length < 2) {
+      for (const url of CHATTER_EXTRA) await tryLoad(url);
     }
   }
 
@@ -590,15 +608,28 @@ export class GameAudio {
       CHATTER_LEN[0] + Math.random() * (CHATTER_LEN[1] - CHATTER_LEN[0]));
     const from = Math.random() * Math.max(0, buf.duration - len - 0.1);
 
+    // Quieter clicks than a real transmission gets. The key-up crash is
+    // deliberately the loudest thing on the net -- it is the local set keying
+    // up -- and borrowing that level for background traffic made the clicks,
+    // not the voices, the loudest moment of a chase: 0.39 at the master bus
+    // against 0.29 for the call it was sitting under.
     const at = now + 0.05;
-    this._squelch(at, 0.05, 0.8, 2600);
+    this._squelch(at, 0.05, 0.30, 2600);
 
     const src = ctx.createBufferSource();
     src.buffer = buf;
     const g = ctx.createGain();
-    // Under the calls that matter, and busier the higher the response. This is
-    // the room tone of a pursuit, not something to listen to.
-    const level = 0.22 + 0.06 * Math.min(5, tier);
+    // Under the calls that matter, and a little busier the higher the
+    // response.
+    //
+    // The number is small, and it has to be. A recording is mastered dense and
+    // full-band; the synthesised voice is sparse and generated at an amplitude
+    // of 0.075, and both then go through the channel's saturating waveshaper.
+    // So the recording arrives with far more energy at the same nominal gain.
+    // Peaks at the master bus, against 0.287 for a dispatch call: gain 0.03
+    // gives 0.135, 0.08 gives 0.317, 0.15 gives 0.454. Anything above about
+    // 0.05 and the background is the loudest thing on the net.
+    const level = this.chatterLevel * (0.8 + 0.06 * Math.min(5, tier));
     g.gain.setValueAtTime(0.0001, at);
     g.gain.exponentialRampToValueAtTime(level, at + 0.05);
     g.gain.setValueAtTime(level, at + len - 0.12);
@@ -607,7 +638,7 @@ export class GameAudio {
     src.start(at + 0.04, from, len);
     src.stop(at + len + 0.05);
 
-    this._squelch(at + len, 0.10, 1.2, 3000);
+    this._squelch(at + len, 0.10, 0.45, 3000);
     this.radioFreeAt = at + len + 0.2;
     this.chatterTimer = CHATTER_GAP[0]
       + Math.random() * (CHATTER_GAP[1] - CHATTER_GAP[0]);

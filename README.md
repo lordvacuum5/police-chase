@@ -1326,12 +1326,36 @@ will never be mistaken for a real person. A recording is the other way round.
 So both are used for what each is good at: the synth carries the calls that
 mean something, and a recording fills the gaps with the sound of a busy net.
 
-Drop a clip into `resources/sounds/` as `police-radio-chatter.mp3` (or
-`police-scanner.mp3`) and it is picked up on the next load. Bursts of 1.6–4.2 s
-are cut out of the middle of it with a squelch click either end and played
-through the same channel as everything else, so it is the same radio rather
-than a second one — and it books the channel like a real transmission, so a
-dispatch call arriving mid-burst waits its turn.
+Two clips ship with the game, from the same Pixabay uploader as the engine
+recording and named the same way — 24 s of dense radio chatter, and a 60 s
+excerpt of a Los Angeles police and fire scanner. (An excerpt because the
+original is four minutes, and 254 s of stereo is 49 MB once decoded, which is a
+lot of memory to hold for room tone.) Anything you drop in yourself as
+`police-radio-chatter.mp3` or `police-scanner.mp3` is picked up too.
+
+Bursts of 1.6–4.2 s are cut out of the middle of a clip with a squelch click
+either end and played through the same channel as everything else, so it is the
+same radio rather than a second one — and a burst books the channel like a real
+transmission, so a dispatch call arriving mid-burst waits its turn.
+
+Getting the level right needed measuring rather than judgement, twice over. A
+recording is mastered dense and full-band while the synthesised voice is sparse
+and generated at an amplitude of 0.075, and both then pass through the
+channel's saturating waveshaper — so the recording arrives with far more energy
+at the same nominal gain. Peaks at the master bus, against **0.287** for a
+dispatch call:
+
+| burst gain | peak | RMS |
+|---|---|---|
+| 0.03 — what it ships at | 0.135 | 0.019 |
+| 0.08 | 0.317 | 0.049 |
+| 0.15 | 0.454 | 0.087 |
+| 0.30 | 0.520 | 0.143 |
+
+The squelch clicks needed the same treatment. A real transmission's key-up
+crash is deliberately the loudest thing on the net — it is the local set keying
+up — and borrowing that level for background traffic made the clicks, not the
+voices, the loudest moment of a chase.
 
 Every path is optional and failure is silent, the same contract the engine
 sample has: with no file present nothing happens and the radio behaves exactly
@@ -1341,7 +1365,7 @@ behaviour rather than the sound:
 | | |
 |---|---|
 | bursts a minute, no chase | 0 |
-| bursts a minute, 2 stars / 5 stars | 5 / 6 |
+| bursts a minute, in a chase | 6 |
 | talked over a dispatch call | no |
 | jumped a queued call | no |
 | bursts while muted | 0 |

@@ -91,3 +91,41 @@ window.__runChatter = async function () {
     window.__res = 'EX ' + e.message + '\n' + String(e.stack).slice(0, 400);
   }
 };
+
+// What is actually in the recordings on disk: how long, how loud, and how much
+// of it is speech rather than dead air. A clip that is mostly silence makes a
+// burst that sounds like nothing at all.
+window.__runChatterFiles = async function () {
+  try {
+    for (let i = 0; i < 300 && !(window.__game && window.__game.player); i++) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    const a = window.__game.audio;
+    if (!a || !a.ready) { window.__res = 'AUDIO NOT READY'; return; }
+    const rows = [];
+    for (const buf of a.chatter) {
+      const d = buf.getChannelData(0);
+      const n = d.length;
+      // RMS overall, and the fraction of half-second windows with something in
+      // them -- which is the useful measure for room tone.
+      let sum = 0;
+      for (let i = 0; i < n; i++) sum += d[i] * d[i];
+      const rms = Math.sqrt(sum / n);
+      const win = Math.floor(buf.sampleRate * 0.5);
+      let live = 0, windows = 0;
+      for (let s = 0; s + win < n; s += win) {
+        let w = 0;
+        for (let i = s; i < s + win; i++) w += d[i] * d[i];
+        windows++;
+        if (Math.sqrt(w / win) > rms * 0.45) live++;
+      }
+      rows.push([`${buf.duration.toFixed(1)} s, ${buf.numberOfChannels} ch,`
+        + ` ${(buf.sampleRate / 1000).toFixed(0)} kHz`,
+      `rms ${rms.toFixed(4)}, ${Math.round(100 * live / windows)}% of it has traffic on it`]);
+    }
+    if (!rows.length) rows.push(['no recordings loaded', 'synth only']);
+    window.__res = rows.map((r) => `${r[0].padEnd(30)} ${r[1]}`).join('\n');
+  } catch (e) {
+    window.__res = 'EX ' + e.message + '\n' + String(e.stack).slice(0, 400);
+  }
+};
