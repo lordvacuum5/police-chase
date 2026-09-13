@@ -144,6 +144,19 @@ const ENGINE_VOLUME = 0.5;
 /** How far the mix drops under a call from a speaker with no duck of its own. */
 const RADIO_DUCK = 0.55;
 
+/**
+ * How long a call may wait for the channel before it is dropped, in seconds.
+ * Calls are about things happening now; one read out late describes a PIT that
+ * has already happened or a junction the car went through. About one line's
+ * worth: a call may wait for the one on the air to finish, not for two more
+ * behind it. Priority calls get slightly longer, since losing one loses more.
+ */
+const HOT_TTL = 4.5;
+const CALL_TTL = 3;
+
+/** Seconds of silence a routine line needs before it may go out at all. */
+const LOW_QUIET = 2;
+
 /** The recorded engine loop, and what it is doing. */
 const ENGINE_SAMPLE = '/resources/sounds/freesound_community-engine-61234.mp3';
 
@@ -603,6 +616,8 @@ export class GameAudio {
     this.lastAlertAt = -1e9;
     this.transmitSerial = 0;
     this.currentUtterance = null;
+    this.currentMsg = null;    // the transmission on the air, if any
+    this._endCurrent = null;   // cuts it short, when it can be cut
 
     // The speech engine and its voices. Voices arrive asynchronously in most
     // browsers -- the list is empty on the first call and filled in by a
@@ -723,15 +738,49 @@ export class GameAudio {
     // Bracketed lines are the game talking to the player about settings, not
     // anybody talking on the radio.
     if (!text || text.startsWith('[')) return;
-    // Running commentary is the first thing to give way when the net is busy.
-    // It is still on the HUD; it just does not get read out behind two calls
-    // that matter more.
-    if (opts.low && this.radioQueue.length >= 1) return;
+    // Routine lines -- commentary, units saying they are on their way -- only
+    // go out into a gap. Never queued: by the time the channel came free they
+    // would be describing a road the car has already left.
+    if (opts.low && !this.roomForRoutine) return;
+
+    const now = this.ctx.currentTime;
+    // A newer call of the same kind replaces one still waiting. Two "PIT
+    // authorised" calls queued back to back are one call that is late.
+    if (opts.key) {
+      this.radioQueue = this.radioQueue.filter((m) => m.key !== opts.key);
+    }
     // A long pursuit generates more traffic than there is airtime. Keep the
     // newest, since stale calls are the ones worth dropping.
-    if (this.radioQueue.length > 3) this.radioQueue.splice(0, this.radioQueue.length - 3);
-    this.radioQueue.push({ text, hot, at: performance.now() });
+    if (this.radioQueue.length > 2) this.radioQueue.splice(0, this.radioQueue.length - 2);
+    this.radioQueue.push({
+      text, hot, low: !!opts.low, final: !!opts.final, key: opts.key || null,
+      at: now, ttl: opts.final ? 30 : hot ? HOT_TTL : CALL_TTL,
+    });
+
+    // Something is happening now and routine chatter is on the air: cut the
+    // chatter off so the call goes out while it is still true. A PIT that was
+    // authorised four seconds after it happened is worse than no call at all.
+    if (hot && this.currentMsg && this.currentMsg.low && this._endCurrent) this._endCurrent();
   }
+
+  /**
+   * Whether anything is on the net or waiting for it. Commentary checks this
+   * so a line waits for space instead of being thrown away at the queue.
+   */
+  get busy() {
+    if (!this.ready || this.muted || this.failed) return false;
+    return this.radioQueue.length > 0 || this.ctx.currentTime < this.radioFreeAt;
+  }
+
+  /** Seconds the channel has been clear. Infinite when there is no radio to hear. */
+  get quietFor() {
+    if (!this.ready || this.muted || this.failed) return Infinity;
+    if (this.busy) return 0;
+    return this.ctx.currentTime - this.radioFreeAt;
+  }
+
+  /** Whether a routine line may go out now. */
+  get roomForRoutine() { return this.quietFor >= LOW_QUIET; }
 
   /** Start the next transmission if the channel is clear. Called per frame. */
   _pumpRadio() {
@@ -739,13 +788,21 @@ export class GameAudio {
     const now = this.ctx.currentTime;
     if (now < this.radioFreeAt) return;
     // Spoken lines take real time to say, so a busy chase can back up behind
-    // one. A call that has waited more than ten seconds is about something
-    // that is no longer happening -- "PIT authorised" after the PIT -- and is
-    // dropped rather than read out late.
-    while (this.radioQueue.length && performance.now() - (this.radioQueue[0].at || 0) > 10000) {
-      this.radioQueue.shift();
+    // one. A call that could not get on the air within a few seconds is about
+    // something that has already happened -- "PIT authorised" after the PIT --
+    // and is dropped rather than read out late.
+    this.radioQueue = this.radioQueue.filter((m) => now - m.at <= m.ttl);
+    if (!this.radioQueue.length) return;
+    // The most important call waiting goes first, oldest first among equals:
+    // the arrest before a priority call, a priority call before routine
+    // traffic. With calls only allowed a few seconds' wait, strict order meant
+    // "they've pushed free" expiring behind "India 99, airborne".
+    let best = 0;
+    const rank = (m) => (m.final ? 2 : m.hot ? 1 : 0);
+    for (let i = 1; i < this.radioQueue.length; i++) {
+      if (rank(this.radioQueue[i]) > rank(this.radioQueue[best])) best = i;
     }
-    if (this.radioQueue.length) this._transmit(this.radioQueue.shift());
+    this._transmit(this.radioQueue.splice(best, 1)[0]);
   }
 
   /**
@@ -792,12 +849,18 @@ export class GameAudio {
     this.callDuck = style.duck;
     this.radioFreeAt = Infinity;
     const serial = ++this.transmitSerial;
+    this.currentMsg = msg;
+    this._endCurrent = null;
 
     let finished = false;
     const finish = () => {
       if (finished) return;
       finished = true;
-      if (this.transmitSerial === serial) this.currentUtterance = null;
+      if (this.transmitSerial === serial) {
+        this.currentUtterance = null;
+        this.currentMsg = null;
+        this._endCurrent = null;
+      }
       // ---- the key coming up -----------------------------------------------
       // Louder and longer than the click that opened it: the receiver's
       // squelch has a moment of open carrier before it shuts, and that crash
@@ -829,6 +892,13 @@ export class GameAudio {
       u.onend = finish;
       u.onerror = finish;
       this.currentUtterance = u;
+      // Cancelling fires onerror as well, which finish() ignores the second
+      // time; calling it here directly covers a line still waiting on its
+      // opening clicks, which the engine has not been given yet.
+      this._endCurrent = () => {
+        finish();
+        if (this.speech.speaking || this.speech.pending) this.speech.cancel();
+      };
       setTimeout(() => {
         if (finished || this.muted) { finish(); return; }
         this.speech.speak(u);

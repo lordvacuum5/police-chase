@@ -40,10 +40,9 @@ export class Heat {
       this.value = 1.0;
       this.chaseStarted = performance.now();
       this.game.say('chase-start', [
-        (v) => `Control, all units, reports of a vehicle ${v.reason}. Respond please.`,
-        (v) => `Control to all units, we have a vehicle ${v.reason}. Make your way.`,
-        (v) => `Control, any units, vehicle ${v.reason}. Units to attend.`,
-        (v) => `Control, all units, report of a vehicle ${v.reason}. All units respond.`,
+        (v) => `Control, all units, vehicle ${v.reason}. Respond.`,
+        (v) => `Control, any units, a vehicle ${v.reason}.`,
+        (v) => `Control, all units, report of a vehicle ${v.reason}.`,
       ], { reason }, true);
     } else {
       this.value = clamp(this.value + amount, 0, MAX);

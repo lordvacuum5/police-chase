@@ -97,8 +97,8 @@ export class RoadblockManager {
     this.lastSite = { x: site.x, z: site.z };
     this.game.say('roadblock', [
       (v) => `Control, roadblock going in on ${v.site}.`,
-      (v) => `Control, units setting up a block on ${v.site}.`,
-      (v) => `Control, all units, road closed at ${v.site}.`,
+      (v) => `Control, block going in on ${v.site}.`,
+      (v) => `Control, road closed, ${v.site}.`,
     ], { site: site.name }, true);
   }
 
@@ -108,9 +108,9 @@ export class RoadblockManager {
     if (why === 'past' && !this._reported) {
       this._reported = true;
       this.game.say('block-beaten', [
-        (v) => `${v.cs}, they're through the block, all units!`,
-        (v) => `${v.cs}, they've gone round the roadblock!`,
-        (v) => `${v.cs}, block's failed, they're past us!`,
+        (v) => `${v.cs}, they're through the block!`,
+        (v) => `${v.cs}, they've gone round the block!`,
+        (v) => `${v.cs}, block failed, they're past!`,
       ], { cs: unit.callsign }, true);
       setTimeout(() => { this._reported = false; }, 4000);
     }
@@ -146,35 +146,48 @@ export class RoadblockManager {
 
     // Soonest first: the block the target reaches next is the one worth having.
     candidates.sort((a, b) => a.eta - b.eta);
-    const pick = candidates[0];
 
-    // Put it on the road the target will arrive along, set back from the
-    // junction so it blocks the approach rather than sitting in the middle of
-    // a crossroads where it can be driven round.
-    let edge = null;
-    if (pick.rec.viaNode >= 0) edge = g.edgeBetween(pick.rec.viaNode, pick.id);
-    if (!edge) {
-      const eid = pick.node.edges[0];
-      edge = eid === undefined ? null : g.edges[eid];
+    // But never one the player can see going in. Four cars and a line of cones
+    // appearing a hundred and fifty metres up a straight road was the most
+    // visible spawn in the game. The soonest hidden site wins; if every site
+    // is in view, there is no block this time and the timer tries again.
+    for (const pick of candidates) {
+      // Put it on the road the target will arrive along, set back from the
+      // junction so it blocks the approach rather than sitting in the middle
+      // of a crossroads where it can be driven round.
+      let edge = null;
+      if (pick.rec.viaNode >= 0) edge = g.edgeBetween(pick.rec.viaNode, pick.id);
+      if (!edge) {
+        const eid = pick.node.edges[0];
+        edge = eid === undefined ? null : g.edges[eid];
+      }
+      if (!edge || edge.width < 7) continue;
+
+      // 28 m back from the junction along that edge.
+      const towardNode = edge.a === pick.id;
+      const along = towardNode ? 28 : Math.max(0, edge.length - 28);
+      const p = g.pointAt(edge, along);
+
+      // The block spans the carriageway, so check both ends of it as well as
+      // the middle: a block half in shot is a block you watched appear.
+      const nx = -p.tz * edge.width * 0.45, nz = p.tx * edge.width * 0.45;
+      if (this.game.inView({ x: p.x, z: p.z })
+        || this.game.inView({ x: p.x + nx, z: p.z + nz })
+        || this.game.inView({ x: p.x - nx, z: p.z - nz })) continue;
+
+      // The tangent points along increasing `along`, which runs from the edge's
+      // a end to its b end. A target arriving *at* the a end is therefore
+      // travelling against it. Getting this backwards points the cars the
+      // wrong way down the road and makes the block read every approaching car
+      // as one that has already gone through.
+      const sgn = towardNode ? -1 : 1;
+
+      return {
+        x: p.x, z: p.z, tx: p.tx * sgn, tz: p.tz * sgn,
+        width: edge.width, name: edge.name || 'the road ahead',
+      };
     }
-    if (!edge || edge.width < 7) return null;
-
-    // 28 m back from the junction along that edge.
-    const towardNode = edge.a === pick.id;
-    const along = towardNode ? 28 : Math.max(0, edge.length - 28);
-    const p = g.pointAt(edge, along);
-
-    // The tangent points along increasing `along`, which runs from the edge's
-    // a end to its b end. A target arriving *at* the a end is therefore
-    // travelling against it. Getting this backwards points the cars the wrong
-    // way down the road and makes the block read every approaching car as one
-    // that has already gone through.
-    const sgn = towardNode ? -1 : 1;
-
-    return {
-      x: p.x, z: p.z, tx: p.tx * sgn, tz: p.tz * sgn,
-      width: edge.width, name: edge.name || 'the road ahead',
-    };
+    return null;
   }
 
   _build(site) {

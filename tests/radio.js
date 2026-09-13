@@ -11,7 +11,8 @@
 //   3. every line the game says is rewritten into something readable aloud;
 //   4. voices are picked sensibly from the machine's list, and from a few
 //      lists this machine does not have;
-//   5. live: a queue of calls goes out one at a time, and muting stops it.
+//   5. live: calls go out one at a time, one that would wait too long is
+//      dropped, an urgent call cuts routine commentary off, and muting stops it.
 window.__runRadio = async function () {
   try {
     for (let i = 0; i < 200 && !(window.__game && window.__game.player); i++) {
@@ -154,19 +155,56 @@ window.__runRadio = async function () {
       }
       a.radioQueue.length = 0;
       // The game loop does not tick in a background tab, so pump by hand.
+      // Straight to the audio side, not through Game.radio, whose clock does
+      // not run here either and would drop a repeat of the same sentence.
       const pump = setInterval(() => a._pumpRadio(), 50);
-      let started = 0, overlap = 0;
+      const spoken = [];
+      let overlap = 0;
       const real = speechSynthesis.speak.bind(speechSynthesis);
-      speechSynthesis.speak = (u) => { started++; u.volume = 0.05; real(u); };
-      g.radio('Control, all units, radio check.', true);
-      g.radio('U1, received.', false);
-      g.radio('U2, received.', false);
-      for (let i = 0; i < 60 && started < 3; i++) {
+      speechSynthesis.speak = (u) => {
+        const rec = { text: u.text, at: performance.now(), end: null, how: null };
+        spoken.push(rec);
+        const done = (how) => () => { if (!rec.end) { rec.end = performance.now(); rec.how = how; } };
+        u.addEventListener('end', done('end'));
+        u.addEventListener('error', done('cut'));
+        u.volume = 0.02;
+        real(u);
+      };
+      const idle = async () => {
+        for (let i = 0; i < 80 && (a.busy || speechSynthesis.speaking); i++) {
+          await new Promise((r) => setTimeout(r, 100));
+        }
+      };
+      const sec = (ms) => (ms / 1000).toFixed(1);
+
+      // Three priority calls at once. The second waits for the first; the third
+      // would have to wait for both, which is longer than any call may wait.
+      a.radio('Control, all units, radio check.', true);
+      a.radio('U1, received.', true);
+      a.radio('U2, received.', true);
+      for (let i = 0; i < 100; i++) {
         if (speechSynthesis.speaking && speechSynthesis.pending) overlap++;
-        await new Promise((r) => setTimeout(r, 250));
+        await new Promise((r) => setTimeout(r, 100));
+        if (!a.busy && !speechSynthesis.speaking && spoken.length) break;
       }
-      rows.push(['calls spoken', `${started} of 3`]);
+      rows.push(['three calls at once', `${spoken.length} spoken: ${spoken.map((s) => `"${s.text}"`).join(', ')}`]);
+      if (spoken[1]) rows.push(['  second call went out', `${sec(spoken[1].at - spoken[0].at)} s after the first`]);
       rows.push(['ticks with two calls live at once', String(overlap)]);
+
+      // A routine line, then something urgent while it is still being read.
+      await idle();
+      await new Promise((r) => setTimeout(r, 2200));   // routine needs a gap
+      spoken.length = 0;
+      a.radio('U3, still with them, northbound on Sixth Street, speeds forty, no change.', false, { low: true });
+      for (let i = 0; i < 40 && !(spoken[0] && speechSynthesis.speaking); i++) await new Promise((r) => setTimeout(r, 100));
+      await new Promise((r) => setTimeout(r, 700));
+      const urgentAt = performance.now();
+      a.radio('Control, all units, they have rammed a unit.', true);
+      await idle();
+      const routine = spoken[0], urgent = spoken[1];
+      rows.push(['routine line on the air', routine ? `ended by ${routine.how}, ${sec(routine.end - routine.at)} s in` : 'never started']);
+      rows.push(['urgent call went out', urgent ? `${sec(urgent.at - urgentAt)} s after it was made` : 'never']);
+
       a.toggleMute();
       await new Promise((r) => setTimeout(r, 300));
       rows.push(['still speaking after mute', String(speechSynthesis.speaking)]);

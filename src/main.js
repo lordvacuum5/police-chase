@@ -33,6 +33,9 @@ const FIXED = 1 / 120;         // physics substep
 const MAX_SUBSTEPS = 5;
 const MAX_VEHICLES = 18;
 
+/** Seconds between any two routine radio lines -- commentary, units en route. */
+const ROUTINE_GAP = 12;
+
 const AXIS_X = new THREE.Vector3(1, 0, 0);
 const AXIS_Y = new THREE.Vector3(0, 1, 0);
 
@@ -43,6 +46,11 @@ const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _m = new THREE.Matrix4();
 const _scale = new THREE.Vector3(1, 1, 1);
+const _frustum = new THREE.Frustum();
+const _viewMat = new THREE.Matrix4();
+const _sphere = new THREE.Sphere();
+const _eyeV = new THREE.Vector3();
+const _atV = new THREE.Vector3();
 
 const boot = {
   bar: document.getElementById('bootfill'),
@@ -131,8 +139,8 @@ class Game {
 
     this.say('routine', [
       'Control, all units, routine patrol.',
-      'Control, all units, quiet at the moment. Routine patrol.',
-      'Control, all units, normal patrol, nothing outstanding.',
+      'Control, all quiet. Routine patrol.',
+      'Control, nothing outstanding.',
     ]);
     this.last = performance.now();
     requestAnimationFrame(this._loop);
@@ -307,6 +315,36 @@ class Game {
 
   // ---------------------------------------------------------------- police
 
+  /**
+   * Could the player see something appear at this spot right now?
+   *
+   * Used by every path that creates a police car, because nothing used to
+   * check: a rolling block went in about 150 m up the road, a roadblock at
+   * about 155 m, and on a straight street both are in plain view -- the fog
+   * does not even start until 200 m. Measured over two minutes of a chase,
+   * seven of twenty police cars appeared on screen.
+   *
+   * "Seen" means inside the camera's view, not hidden behind a building, and
+   * within 700 m (past that the fog has it). The view test is deliberately
+   * generous at the edges -- a car sliding into shot as you turn is still a
+   * car you watched appear -- by testing a sphere that grows with distance.
+   */
+  inView(pos) {
+    const cam = this.camera;
+    if (!cam) return false;
+    cam.updateMatrixWorld(true);
+    _atV.set(pos.x, 1.2, pos.z);
+    const d = cam.position.distanceTo(_atV);
+    if (d > 700) return false;
+    _viewMat.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+    _frustum.setFromProjectionMatrix(_viewMat);
+    _sphere.center.copy(_atV);
+    _sphere.radius = 4 + d * 0.2;
+    if (!_frustum.intersectsSphere(_sphere)) return false;
+    _eyeV.copy(cam.position);
+    return hasLineOfSight(this.world, _eyeV, _atV, 0.3);
+  }
+
   spawnPoliceNear(target, tier) {
     if (this.vehicles.length >= MAX_VEHICLES) return null;
     const g = this.graph;
@@ -321,6 +359,9 @@ class Game {
       // Prefer somewhere with room to get moving.
       if (n.edges.length < 2 && i < 50) continue;
       place = this._placeOnRoad(n);
+      // Never where you are looking: a car that has to drive in from out of
+      // sight is a car arriving, not one appearing.
+      if (place && this.inView(place.position)) place = null;
       if (place) break;
     }
     if (!place) return null;
@@ -386,7 +427,10 @@ class Game {
     for (const [id, rec] of reach) {
       const n = g.nodes[id];
       const d = dist2(n.x, n.z, target.position.x, target.position.z);
-      if (d < 90 || d > 240) continue;
+      // Out to 340 m, not 240: the nearest sites ahead are usually in plain
+      // view down the street, and the hidden ones -- round a corner, behind a
+      // block -- are further on.
+      if (d < 90 || d > 340) continue;
       // Reachable-going-forwards is not the same as in front: a loop back
       // round the block reaches nodes behind the target quite legitimately,
       // and a car put down there is not a block, it is a tail. Insist the site
@@ -410,7 +454,7 @@ class Game {
     // us the block.
     candidates.sort((a, b) => a.score - b.score);
 
-    for (const best of candidates.slice(0, 6)) {
+    for (const best of candidates.slice(0, 12)) {
       // Face the way the target will be travelling when they reach us.
       let edge = best.via >= 0 ? g.edgeBetween(best.via, best.node.id) : null;
       if (!edge) { const eid = best.node.edges[0]; edge = eid === undefined ? null : g.edges[eid]; }
@@ -429,6 +473,11 @@ class Game {
         z: p.z + p.tx * sign * lane * DRIVE_SIDE,
       };
       if (this.sim.surfaceAt(pos.x, pos.z) !== 1) continue;
+      // In view means no block this time. A car materialising a hundred and
+      // fifty metres up the road is worse than no rolling block; the
+      // dispatcher tries again after its cooldown, by which time the road
+      // ahead has usually turned a corner.
+      if (this.inView(pos)) continue;
       let occupied = false;
       for (const v of this.vehicles) {
         if (dist2(v.position.x, v.position.z, pos.x, pos.z) < 8) { occupied = true; break; }
@@ -491,8 +540,23 @@ class Game {
    * key. See game/phrases.js. Returns the text that went out.
    */
   say(key, variants, vars = {}, hot = false, opts = {}) {
+    // `every`: at most one line of this kind that often, whoever says it. Five
+    // cars coming on duty in a minute is one "on duty" worth hearing.
+    if (!this.lastSaid) this.lastSaid = {};
+    if (opts.every && this.clock - (this.lastSaid[key] ?? -1e9) < opts.every) return null;
+    // A routine line with no room for it is not picked at all, so it neither
+    // uses up a wording nor blocks the same sentence for later. Routine lines
+    // also share one gap between them, whoever says them: four units each
+    // announcing their own intercept ten seconds apart was, to the player, the
+    // net never shutting up.
+    if (opts.low) {
+      if (this.audio && !this.audio.roomForRoutine) return null;
+      if (this.clock - (this.lastRoutineAt ?? -1e9) < ROUTINE_GAP) return null;
+      this.lastRoutineAt = this.clock;
+    }
     const text = this.phrases.pick(key, variants, vars);
-    this.radio(text, hot, opts);
+    this.lastSaid[key] = this.clock;
+    this.radio(text, hot, { key, ...opts });
     return text;
   }
 
@@ -513,9 +577,9 @@ class Game {
     if (this._lastBoxCall && now - this._lastBoxCall < 12000) return;
     this._lastBoxCall = now;
     this.say('boxed', [
-      'Control, they are boxed in. Move in.',
-      'Control, target is boxed, all units close in.',
-      'Control, they are contained, move in now.',
+      'Control, they\'re boxed. Move in.',
+      'Control, target boxed, close in.',
+      'Control, contained, move in now.',
     ], {}, true);
   }
 
@@ -528,7 +592,7 @@ class Game {
       `Damage <b>${(this.player.damage * 100).toFixed(0)}%</b>`,
     ].join(' &nbsp;·&nbsp; '));
     this.commentary.onBusted();
-    this.radio('Control, received. Suspect in custody. All units, stand down.', true, { final: true });
+    this.radio('Control, received. All units, stand down.', true, { final: true });
   }
 
   /**
@@ -553,9 +617,9 @@ class Game {
       'They have lost you',
     ].join(' &nbsp;·&nbsp; '));
     this.say('escaped', [
-      'Control, no further contact. All units, resume patrol.',
-      'Control, we have lost them. Units stand down and resume patrol.',
-      'Control, nothing further on that vehicle. Back to normal patrol.',
+      'Control, no further contact. Resume patrol.',
+      'Control, we\'ve lost them. Units stand down.',
+      'Control, nothing further. Back to patrol.',
     ], {}, true);
     this.dispatcher.standDown();
     this.heat.reset();
@@ -578,8 +642,8 @@ class Game {
     this.camera3.snapTo(this.player);
     this.say('routine', [
       'Control, all units, routine patrol.',
-      'Control, all units, quiet at the moment. Routine patrol.',
-      'Control, all units, normal patrol, nothing outstanding.',
+      'Control, all quiet. Routine patrol.',
+      'Control, nothing outstanding.',
     ]);
   }
 

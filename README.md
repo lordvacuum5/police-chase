@@ -975,9 +975,13 @@ graph the dispatcher uses to solve intercepts, so a block only ever goes in
 somewhere you are actually heading, and driving unpredictably is a real defence
 against them.
 
-They go in about 200 m ahead — beyond the point you could see one appear, close
-enough that you have little time to re-plan — and are taken away once you are
-200 m past.
+They go in 170–260 m ahead, close enough that you have little time to re-plan,
+and are taken away once you are 200 m past. Distance alone did not keep them
+out of sight — on a straight road 160 m is plainly visible, and four cars and a
+line of cones appearing there was the most obvious spawn in the game — so a
+site is only used if the camera cannot see the middle of the block or either
+end of it (see [Nobody appears in view](#nobody-appears-in-view)). The soonest
+hidden site wins; if every site is in view, there is no block this time.
 
 **The cars are real police units, not scenery.** They are parked across the
 carriageway with the handbrake on, they take damage, they can be shunted, and
@@ -1166,8 +1170,26 @@ Once a unit is genuinely damaged it drops off the minimap, and it is removed fro
 the world as soon as it is more than 200 m away — far enough that you never see
 one vanish.
 
-Dispatch chatter in the bottom-right names real streets, so you can hear the plan
-forming: *"U26 — cut them off at Fifteenth Street / Meridian Avenue, 3s"*.
+Radio traffic names real streets, so you can hear the plan forming: *"U6,
+cutting them off at Fifteenth Street and Meridian Avenue."*
+
+### Nobody appears in view
+
+Every police car the game creates — joining the roster, put in front of you as a
+rolling block, parked across a road as a roadblock — is placed only where the
+camera cannot see it. `Game.inView` asks three things of a spot: is it inside
+the camera's view (with a margin that grows with distance, since half a car
+coming into shot is still a car appearing), is it within 700 m (beyond that it
+is lost in the fog), and is there a clear line from the camera to it (a building
+in the way hides it). A spot that passes all three is rejected and the next
+candidate tried.
+
+Before this, rolling blocks and roadblocks relied on distance alone and popped
+into existence 140–160 m up the road. `tests/popin.js` drives a two-minute
+four-star chase through the city and checks every police car at the moment it is
+created: before, 7 of 20 were created in plain view; after, 0 of 16. Rolling
+blocks still get placed — a failed attempt now looks again after 3 s rather
+than waiting out the 14 s cooldown, since the next corner usually hides one.
 
 ## The cars you can run in
 
@@ -1458,21 +1480,21 @@ does — it never decides anything:
 
 | When | Who | Says, for example |
 |---|---|---|
-| a unit takes the lead | the unit | *"Unit 2, I'm primary, in pursuit of a red sports car, southbound on Fifth Street."* |
-| a second unit is on you | the unit | *"Unit 1, I'm secondary, right behind Unit 2."* |
-| every 11–15 s while they can see you | primary | *"Unit 1, northbound, approaching Eighth Street and Ashcroft Road, speeds 80."* — or *on the motorway now*, *they've slowed right down*, *I'm struggling to keep up* |
-| through a red light, mid-chase | whoever saw it | *"…they've gone straight through a red at Sixth Street and Bright Lane."* |
-| through a red light **in front of a patrol car**, no chase | the patrol car | *"U1, an orange saloon just went straight through a red at Market Place and The Shambles. I'm going after it."* — and that starts the chase |
-| off the road | primary | *"…they've left the road, going across open ground."* |
-| you hit something, or ram a unit | primary, or the unit | *"…they've hit something, still mobile."* / *"…they've rammed us! Still in pursuit."* |
-| a police car is wrecked | the unit | *"…we're out of it, vehicle's disabled."* |
+| a unit takes the lead | the unit | *"Unit 2, primary, behind a red sports car, southbound."* |
+| a second unit is on you | the unit | *"Unit 1, backing up Unit 2."* |
+| every 22–30 s while they can see you | primary | *"Unit 1, coming up to Eighth Street and Ashcroft Road, 80."* — or *motorway, northbound*, *they're slowing*, *losing ground* |
+| through a red light, mid-chase | whoever saw it | *"…through a red at Sixth Street and Bright Lane."* |
+| through a red light **in front of a patrol car**, no chase | the patrol car | *"U1, an orange saloon just ran the red at Market Place and The Shambles. Going after it."* — and that starts the chase |
+| off the road | primary | *"…they've left the road."* |
+| you hit something, or ram a unit | primary, or the unit | *"…they've hit something, still mobile."* / *"…they've rammed us!"* |
+| a police car is wrecked | the unit | *"…we're out, car's disabled."* |
 | the wanted level rises | Control | pursuit authorised → tactical contact → authorised to box → critical incident |
-| they lose sight | last primary, then Control | *"…lost visual. Last seen eastbound on Sixth Street."* / *"all units, suspect last seen on Carrick Road. Search the area and report."* |
+| they lose sight | last primary, then Control | *"…lost visual, last seen eastbound on Sixth Street."* / *"all units, last seen on Carrick Road. Search the area."* |
 | still searching | Control | *"any units, anything on that vehicle?"* |
-| they find you again | the spotter | *"…eyes on! They're northbound on Faraday Road."* |
-| air support has you in the light | India 99 | *"we have them… I'll commentate"*, then its own running commentary |
-| you are pinned | nearest unit | *"suspect vehicle's stopped! Moving in."* → *"we've got them blocked in. Going to the driver."* — or *"they've pushed free! Still going."* |
-| arrested | the unit, then Control | *"one detained"* → *"received. Suspect in custody. All units, stand down."* |
+| they find you again | the spotter | *"…eyes on! northbound on Faraday Road."* |
+| air support has you in the light | India 99 | *"we have them, northbound. I'll commentate"*, then its own running commentary |
+| you are pinned | nearest unit | *"they're stopped! Moving in."* → *"blocked in, going to the driver."* — or *"they've pushed free!"* |
+| arrested | the unit, then Control | *"one detained"* → *"received. All units, stand down."* |
 
 **Running a red light starts a chase** if a police car saw it. `Game._checkRedLight`
 counts a red as run when the car is within nine metres of a signalised junction,
@@ -1495,22 +1517,68 @@ Patrol cars coming on duty say so — *"U2, show me on duty"* — rather than th
 they are responding to a chase that does not exist; only once there is a chase
 does a new car say it is on its way.
 
-It is rate-limited twice: at least 4.5 s between any two lines, and a cooldown
-per kind of line. Primary has hysteresis, so two cars trading places a length
-apart do not hand it back and forth. Routine commentary is marked low priority
-and is not read out if anything is already waiting — it still appears on the
-HUD. And once you are arrested nothing else gets on the net: before, units kept
-announcing intercepts after Control had stood everybody down.
+Primary has hysteresis, so two cars trading places a length apart do not hand
+it back and forth. And once you are arrested nothing else gets on the net:
+before, units kept announcing intercepts after Control had stood everybody down.
 
-`tests/commentary.js` runs a scripted chase through every phase with the audio
-muted and prints the transcript. Before the intercept fix that was 157 lines in
-two minutes; after it, 82, of which 51 are low priority.
+**Less of it, and never late.** The net used to be talking almost all the time,
+and a call could reach the speaker ten or fifteen seconds after the thing it
+described — "PIT authorised" read out after the car had already spun. Nothing
+could be dropped once queued, and every line took five seconds to say. Now:
+
+* **Lines are short.** Radio traffic is clipped: *"U2, PIT authorised."*, not
+  *"U2, tactical contact authorised, go when ready."* Nearly every wording was
+  cut, most by half. Timed on this machine's voices, a line costs about 1.6 s
+  of clicks and chirps plus one second per 16–19 characters, so length is
+  airtime.
+* **Routine lines only go out into a gap.** Commentary, units en route, units
+  going for an intercept need two seconds of silence on the net, and at least
+  12 s since the last routine line from anyone. With no gap they are not queued
+  — they wait, unsaid and unspent, for the next one. The primary's running
+  commentary is every 22–30 s rather than 11–15; secondary, off-road, crashes,
+  air support and the search all have longer cooldowns; box calls, PIT calls
+  and rolling blocks are each limited to one every 20–40 s whoever makes them.
+* **A call that waits too long is dropped.** 4.5 s for a priority call, 3 s for
+  anything else — about one line's worth. A newer call of the same kind replaces
+  a waiting one, and the most important waiting call goes first (the arrest,
+  then priority calls, then the rest).
+* **Urgent calls cut routine ones off.** A priority call arriving while
+  commentary is being read out stops it mid-sentence (key-up crash and all) and
+  goes straight out.
+* **The helicopter no longer flaps.** It launches at five stars but only goes
+  home below four: heat hovering at five had it launch, stand down and launch
+  again inside twenty seconds, with a call each time.
+
+`tests/commentary.js` measures this on what would actually be *heard*: it runs
+the game's real radio queue on a simulated clock, holding each line on the air
+for as long as the voice takes to say it. `__runCommentary('scripted')` packs
+every phase of a chase into two minutes; `__runCommentary('natural', 180)`
+leaves the police to find and chase the car on their own. The same test on the
+previous commit and on this one:
+
+| | lines aired | channel busy | wait for the channel (median / worst) |
+|---|---|---|---|
+| scripted 130 s, before | 27 (12.8 a minute) | 97% | 7.9 s / 19.2 s |
+| scripted 130 s, after | 26 (11.8 a minute) | 77% | 0.0 s / 5.9 s |
+| natural 180 s, before | 33 (11.0 a minute) | 85% | 4.4 s / 14.2 s |
+| natural 180 s, after | 25 (8.3 a minute) | 52% | 0.0 s / 3.6 s |
+
+The scripted run's worst case is the closing "all units, stand down" after an
+arrest, which is allowed to wait; nothing else in it waited more than 3.8 s.
+The scripted run barely airs fewer lines because it is built to be saturated —
+four escalations in seventy seconds — and shorter lines mean more of them fit;
+what changes is that they go out when they are true. Before, the game tried to
+say 73 lines in it and 118 in the natural run, and the queue read out whatever
+it could hold however late it was; now it tries 33 in each and drops the ones
+that miss their moment.
 
 `tests/radio.js` measures what can be measured: the channel (white noise in,
 0.1% below 300 Hz, 88% between 300 Hz and 3 kHz), the key-up crash against the
 opening click (3.1×), what every line becomes when read aloud, the voice choice
-on this machine and on lists it does not have, and — live — three queued calls
-spoken one at a time with none overlapping, and silence on mute.
+on this machine and on lists it does not have, and — live, through the real
+speech engine — three priority calls made at once (the first two spoken one at
+a time, the third dropped for waiting too long), a routine line cut off by an
+urgent one, and silence on mute.
 
 ### The signalling
 

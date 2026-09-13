@@ -80,8 +80,15 @@ export class Helicopter {
     this.refuelTimer = 0;
   }
 
-  /** Five stars only, and only when it has fuel in it. */
-  get wanted() { return this.game.heat.tier >= 5 && this.refuelTimer <= 0; }
+  /**
+   * Called up at five stars, and only when it has fuel in it. Once up, it stays
+   * until the heat is below four: with a single threshold, heat hovering around
+   * five launched it, sent it home and launched it again inside twenty seconds,
+   * with a radio call each way.
+   */
+  get wanted() {
+    return this.game.heat.tier >= (this.active ? 4 : 5) && this.refuelTimer <= 0;
+  }
 
   // ------------------------------------------------------------------ launch
 
@@ -107,9 +114,9 @@ export class Helicopter {
     );
     this.vel.set(0, 0, 0);
     this.game.say('heli-up', [
-      'India 99, airborne and making our way to you.',
-      'Air support is up, India 99 overhead shortly.',
-      'India 99, lifted, en route to the pursuit.',
+      'India 99, airborne, en route.',
+      'Air support is up.',
+      'India 99, lifted, on our way.',
     ], {}, true);
   }
 
@@ -124,14 +131,14 @@ export class Helicopter {
     if (why === 'refuel') {
       this.game.say('heli-refuel', [
         'India 99, breaking off to refuel.',
-        'India 99, fuel state, we have to leave you.',
-        'India 99, off task, heading back to refuel.',
+        'India 99, fuel state, leaving you.',
+        'India 99, off to refuel.',
       ]);
     } else {
       this.game.say('heli-rtb', [
         'India 99, released, returning to base.',
-        'India 99, no longer required, heading home.',
-        'India 99, off task, back to base.',
+        'India 99, heading home.',
+        'India 99, back to base.',
       ]);
     }
   }
@@ -153,9 +160,9 @@ export class Helicopter {
     if (this.fuel < 22 && !this._warned) {
       this._warned = true;
       this.game.say('heli-lowfuel', [
-        'India 99, getting low on fuel, we will have to break off soon.',
-        'India 99, fuel is low, a couple of minutes left with you.',
-        'India 99, low fuel, not long left overhead.',
+        'India 99, low fuel, breaking off soon.',
+        'India 99, a couple of minutes fuel left.',
+        'India 99, low fuel, not long left.',
       ]);
     }
     if (this.fuel <= 0) {

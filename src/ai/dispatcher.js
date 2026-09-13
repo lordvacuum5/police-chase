@@ -208,19 +208,19 @@ export class Dispatcher {
         if (this.tier === 0) {
           this.game.say('onduty', [
             (v) => `${v.cs}, show me on duty.`,
-            (v) => `${v.cs}, on patrol, heading ${v.dir}bound.`,
-            (v) => `${v.cs}, starting my patrol.`,
-            (v) => `${v.cs}, on duty and available.`,
-            (v) => `${v.cs}, back out on patrol.`,
-          ], vars, false, { low: true });
+            (v) => `${v.cs}, on patrol.`,
+            (v) => `${v.cs}, starting patrol.`,
+            (v) => `${v.cs}, on duty, available.`,
+            (v) => `${v.cs}, back on patrol.`,
+          ], vars, false, { low: true, every: 40 });
         } else {
           this.game.say('responding', [
-            (v) => `${v.cs} responding, ${v.dir}bound.`,
-            (v) => `${v.cs}, on my way, ${v.dir}bound.`,
+            (v) => `${v.cs}, responding.`,
+            (v) => `${v.cs}, on my way.`,
             (v) => `${v.cs}, show me attending.`,
-            (v) => `${v.cs}, en route to assist.`,
+            (v) => `${v.cs}, en route.`,
             (v) => `${v.cs}, making my way, ${v.dir}bound.`,
-          ], vars, false, { low: true });
+          ], vars, false, { low: true, every: 20 });
         }
       }
     }
@@ -365,11 +365,11 @@ export class Dispatcher {
         u.setRole(ROLE.PURSUE);
         if (d < 120) {
           this.game.say('visual', [
-            (v) => `${v.cs} has visual, in pursuit ${v.road}.`,
-            (v) => `${v.cs}, I've got eyes on them ${v.road}.`,
-            (v) => `${v.cs}, visual on the vehicle ${v.road}.`,
-            (v) => `${v.cs}, got them ${v.road}, joining in.`,
-          ], { cs: u.callsign, road: this.game.roadName(k.position) }, false, { low: true });
+            (v) => `${v.cs}, visual, joining.`,
+            (v) => `${v.cs}, visual ${v.road}.`,
+            (v) => `${v.cs}, I've got them ${v.road}.`,
+            (v) => `${v.cs}, visual on the vehicle.`,
+          ], { cs: u.callsign, road: this.game.roadName(k.position) }, false, { low: true, every: 25 });
         }
       }
     }
@@ -384,11 +384,11 @@ export class Dispatcher {
           this.activePit = u;
           u.setRole(ROLE.PIT);
           this.game.say('pit', [
-            (v) => `${v.cs} — PIT authorised.`,
-            (v) => `${v.cs}, you're clear to PIT.`,
-            (v) => `${v.cs}, tactical contact authorised, go when ready.`,
-            (v) => `${v.cs}, PIT them when you can.`,
-          ], { cs: u.callsign }, true);
+            (v) => `${v.cs}, PIT authorised.`,
+            (v) => `${v.cs}, clear to PIT.`,
+            (v) => `${v.cs}, PIT when ready.`,
+            (v) => `${v.cs}, go for the PIT.`,
+          ], { cs: u.callsign }, true, { every: 20 });
           break;
         }
       }
@@ -412,11 +412,11 @@ export class Dispatcher {
           assigned.add(unit);
         }
         this.game.say('box', [
-          'All units — box formation, close it up.',
-          'Control, all units, box them in.',
-          'All units, get round them, form the box.',
-          'Control, close them down, box formation.',
-        ], {}, true);
+          'All units, box them in.',
+          'Control, all units, box formation.',
+          'All units, form the box.',
+          'Control, close them down. Box.',
+        ], {}, true, { every: 40 });
       }
     }
 
@@ -427,6 +427,10 @@ export class Dispatcher {
         && Math.abs(target.forwardSpeed) > 12) {
       this.blockCooldown = 14;
       const u = this.game.spawnPoliceAhead(target, this.tier);
+      // No hidden spot ahead right now -- a straight road in open view. Look
+      // again in a few seconds rather than waiting out the whole cooldown; the
+      // next corner usually has one.
+      if (!u) this.blockCooldown = 3;
       if (u) {
         this.units.push(u);
         // Also into `available`, which was snapshotted before this unit
@@ -437,11 +441,11 @@ export class Dispatcher {
         this.blockUnit = u;
         assigned.add(u);
         this.game.say('block', [
-          (v) => `${v.cs}, I'm ahead of them, slowing them down.`,
-          (v) => `${v.cs}, getting in front of them now.`,
-          (v) => `${v.cs}, I'm up front, bringing the speed down.`,
-          (v) => `${v.cs}, in front of the vehicle, holding them up.`,
-        ], { cs: u.callsign }, true);
+          (v) => `${v.cs}, I'm ahead, slowing them.`,
+          (v) => `${v.cs}, getting in front.`,
+          (v) => `${v.cs}, up front, bringing them down.`,
+          (v) => `${v.cs}, in front of them.`,
+        ], { cs: u.callsign }, true, { every: 30 });
       }
     }
     // ---- 6. intercepts ----
@@ -550,16 +554,16 @@ export class Dispatcher {
         // roundabout, 4s" calls a minute on the net once the radio actually
         // spoke -- more than half of everything said. A unit says it is going
         // to cut them off when it first takes the job, and again only if it is
-        // still at it twenty seconds later.
+        // still at it forty-five seconds later.
         const quietFor = this.clock - (u.lastInterceptCall || -1e9);
-        if (changed && quietFor > 20) {
-          u.lastInterceptCall = this.clock;
-          this.game.say('intercept', [
-            (v) => `${v.cs}, I'll cut them off at ${v.node}.`,
-            (v) => `${v.cs}, heading for ${v.node} to head them off.`,
-            (v) => `${v.cs}, I'll try and get ahead of them at ${v.node}.`,
+        if (changed && quietFor > 45) {
+          const said = this.game.say('intercept', [
+            (v) => `${v.cs}, cutting them off at ${v.node}.`,
+            (v) => `${v.cs}, heading for ${v.node}.`,
+            (v) => `${v.cs}, I'll head them off at ${v.node}.`,
             (v) => `${v.cs}, going round to ${v.node}.`,
-          ], { cs: u.callsign, node: this.game.nodeName(best.c.id) }, false, { low: true });
+          ], { cs: u.callsign, node: this.game.nodeName(best.c.id) }, false, { low: true, every: 45 });
+          if (said) u.lastInterceptCall = this.clock;
         }
       } else {
         u.setRole(ROLE.RESPOND, { point: k.position.clone() });
@@ -585,10 +589,10 @@ export class Dispatcher {
       this.boxAssignment = null;
       this.boxCooldown = 7;
       this.game.say('boxfail', [
-        'Control, box is not forming. Just stay with them.',
-        'Control, forget the box, keep them in sight.',
+        'Control, box isn\'t forming. Stay with them.',
+        'Control, forget the box.',
         'Control, abandon the box, stay on them.',
-      ]);
+      ], {}, false, { every: 40 });
       return;
     }
 
@@ -603,10 +607,10 @@ export class Dispatcher {
       }
       this.boxAssignment = null;
       this.game.say('boxbroken', [
-        'Control, box is broken. Resume pursuit.',
-        'Control, they are out of the box, stay with them.',
-        'Control, box has failed, back to the pursuit.',
-      ]);
+        'Control, box broken. Resume pursuit.',
+        'Control, they\'re out of the box.',
+        'Control, box failed, stay with them.',
+      ], {}, false, { every: 40 });
       return;
     }
 
@@ -696,10 +700,10 @@ export class Dispatcher {
     if (unit.role === ROLE.PIT) unit.setRole(ROLE.PURSUE);
     if (result.reason === 'spun') {
       this.game.say('spun', [
-        (v) => `${v.cs}, contact made, they've spun!`,
-        (v) => `${v.cs}, PIT successful, they're facing the wrong way!`,
+        (v) => `${v.cs}, contact, they've spun!`,
+        (v) => `${v.cs}, PIT successful!`,
         (v) => `${v.cs}, got them, they've gone round!`,
-        (v) => `${v.cs}, contact, target's spun out.`,
+        (v) => `${v.cs}, target's spun out.`,
       ], { cs: unit.callsign }, true);
     }
   }
