@@ -1164,6 +1164,13 @@ where you are, and hands each unit a job:
   tier is a real escalation — new car types, new tactics unlocked — and at the
   earlier rate you reached the top in half a minute and never played the middle
   of the range at all.
+* **Contact counts once.** Hitting a police car starts a chase (heat 1) or adds
+  0.28 to one already running, and nudges the dispatcher's PIT cooldown. An
+  impact stays "recent" for 60 ms, and `Game._checkProvocation` used to count
+  it on every frame inside that window: three or four times at 60 fps, and
+  hundreds of times in headless tests, where `performance.now()` barely moves.
+  One touch took heat from 1 to 5 and read out every escalation at once. It now
+  remembers the last impact it handled, as the impact sound already did.
 
 Police cars are **2.4–2.8× tougher** than yours, so they survive being shunted.
 Once a unit is genuinely damaged it drops off the minimap, and it is removed from

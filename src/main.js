@@ -847,8 +847,13 @@ class Game {
       }
     }
 
-    // Contact with a police car is always worth a look.
-    if (p.lastImpactAt && performance.now() - p.lastImpactAt < 60) {
+    // Contact with a police car is always worth a look -- once. The impact
+    // stays inside the 60 ms window for several frames (and for hundreds of
+    // headless steps, where performance.now() barely moves), so remember which
+    // one was handled rather than counting it again on every frame.
+    if (p.lastImpactAt && p.lastImpactAt !== this._lastRamImpact
+        && performance.now() - p.lastImpactAt < 60) {
+      this._lastRamImpact = p.lastImpactAt;
       for (const u of this.dispatcher.units) {
         if (u.distanceTo(p.position) < 6.5) {
           if (this.heat.value <= 0) this.heat.bump(1, 'ramming a patrol car');
