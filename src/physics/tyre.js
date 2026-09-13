@@ -112,11 +112,15 @@ const ZERO = { Fx: 0, Fy: 0, load: 0, saturation: 0, stiffness: 0 };
  * @param slipAngle lateral slip in radians, atan2(v_lat, |v_long|)
  * @param condition 0..1 multiplier for tyre health
  * @param gripScale global multiplier, used to trim individual cars and axles
+ * @param latStiffness multiplier on lateral stiffness: 2 means the tyre
+ *          reaches its peak cornering force at half the slip angle, so a car
+ *          at the limit sits half as far sideways. Grip is unchanged by it.
  * @returns { Fx, Fy, load, saturation, stiffness }. Fx is positive forwards,
  *          Fy positive to the wheel's left. `saturation` is normalised slip:
  *          1.0 is exactly at the limit.
  */
-export function tyreForces(tyre, Fz, slipRatio, slipAngle, condition = 1, gripScale = 1) {
+export function tyreForces(tyre, Fz, slipRatio, slipAngle, condition = 1, gripScale = 1,
+  latStiffness = 1) {
   if (Fz <= 1) return ZERO;
 
   if (!tyre._cc) tyre._cc = combinedCoefficients(tyre.slidingFriction);
@@ -127,7 +131,7 @@ export function tyreForces(tyre, Fz, slipRatio, slipAngle, condition = 1, gripSc
 
   // Normalised slip in each direction, then combined into one vector.
   const sx = slipRatio / tyre.peakSlipRatio;
-  const sy = Math.tan(slipAngle) / tyre.peakSlipAngle;
+  const sy = (Math.tan(slipAngle) * latStiffness) / tyre.peakSlipAngle;
   const s = Math.hypot(sx, sy);
 
   if (s < 1e-5) {

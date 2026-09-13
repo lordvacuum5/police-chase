@@ -84,6 +84,26 @@ window.__runRadio = async function () {
     const open = peak(0.08, 0.30), crash = peak(0.58, 0.90);
     rows.push(['key-up crash vs opening click', `${(crash / Math.max(open, 1e-6)).toFixed(2)}x`]);
 
+    // The signalling around a call: each rendered on its own, measured against
+    // the key-up crash. They should all be clearly there and none of them
+    // should be the loudest thing in a transmission.
+    const alone = async (fn) => {
+      const pcm = await raise((a) => fn(a), 0.8);
+      let p = 0, e = 0, n = 0;
+      for (let i = 0; i < pcm.length; i++) { p = Math.max(p, Math.abs(pcm[i])); e += pcm[i] * pcm[i]; if (Math.abs(pcm[i]) > 0.002) n++; }
+      return { peak: p, audible: n / SR };
+    };
+    for (const [label, fn] of [
+      ['data burst (Control)', (a) => a._dataBurst(0.1, 0.16)],
+      ['talk permit chirps (unit)', (a) => a._talkPermit(0.1)],
+      ['roger beep (unit)', (a) => a._rogerBeep(0.1)],
+      ['attention beep (Control)', (a) => a._alertTone(0.1)],
+      ['static crackle', (a) => a._crackle(0.1, 0.5, 3)],
+    ]) {
+      const r = await alone(fn);
+      rows.push([label, `peak ${(r.peak / Math.max(crash, 1e-6)).toFixed(2)}x the crash, ${(r.audible * 1000).toFixed(0)} ms audible`]);
+    }
+
     // --------------------------------------------- 3: readable aloud
     rows.push(['', '']);
     for (const line of [

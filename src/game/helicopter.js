@@ -106,7 +106,11 @@ export class Helicopter {
       target.position.z + Math.sin(a) * 420,
     );
     this.vel.set(0, 0, 0);
-    this.game.radio('Air support is up — India 99 overhead', true);
+    this.game.say('heli-up', [
+      'India 99, airborne and making our way to you.',
+      'Air support is up, India 99 overhead shortly.',
+      'India 99, lifted, en route to the pursuit.',
+    ], {}, true);
   }
 
   stand_down(why) {
@@ -117,9 +121,19 @@ export class Helicopter {
       this.game.scene.remove(this.mesh.userData.beam);
       this.game.scene.remove(this.mesh.userData.pool);
     }
-    this.game.radio(why === 'refuel'
-      ? 'India 99 breaking off to refuel'
-      : 'India 99 returning to base');
+    if (why === 'refuel') {
+      this.game.say('heli-refuel', [
+        'India 99, breaking off to refuel.',
+        'India 99, fuel state, we have to leave you.',
+        'India 99, off task, heading back to refuel.',
+      ]);
+    } else {
+      this.game.say('heli-rtb', [
+        'India 99, released, returning to base.',
+        'India 99, no longer required, heading home.',
+        'India 99, off task, back to base.',
+      ]);
+    }
   }
 
   // ------------------------------------------------------------------ update
@@ -138,7 +152,11 @@ export class Helicopter {
     this.fuel -= dt;
     if (this.fuel < 22 && !this._warned) {
       this._warned = true;
-      this.game.radio('India 99 — getting low on fuel, will have to break off');
+      this.game.say('heli-lowfuel', [
+        'India 99, getting low on fuel, we will have to break off soon.',
+        'India 99, fuel is low, a couple of minutes left with you.',
+        'India 99, low fuel, not long left overhead.',
+      ]);
     }
     if (this.fuel <= 0) {
       this.refuelTimer = REFUEL_TIME;

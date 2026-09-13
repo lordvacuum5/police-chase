@@ -1232,6 +1232,37 @@ the body ends up from the direction of travel. At half lock and 90 km/h, with
 throttle holding the speed, the Runner spins and the Stiletto holds 1.3° of
 body slip at 1.34 g.
 
+### Grip at speed
+
+Both cars slid too much at speed, and the cause was not what it looked like.
+More downforce — two and a half times as much — barely changed anything. The
+road tyre only reaches its peak cornering force at **8.6° of slip**, so a car
+cornering hard at 140 km/h sits nine or ten degrees sideways even while it is
+gripping perfectly well, and that reads as a slide.
+
+So both player cars carry a `highSpeedTyre` in their spec: from 72 km/h, fully
+by 150, the lateral curve stiffens (the limit arrives at a smaller slip angle,
+so the car points where it is going) and grip rises a little. Below 72 km/h
+nothing changes, so a handbrake turn is still yours. It had to be weighted to
+the rear — on the Stiletto, with 58% of its weight at the back, stiffening or
+adding grip evenly made the nose bite harder than the tail could follow, and it
+spun at 140 km/h in every even configuration tried.
+
+Full lock held for two seconds, throttle holding the speed — body slip, mean and
+worst:
+
+| | before | after |
+|---|---|---|
+| Runner, 140 km/h | 11.2° / 17.4° | **1.6° / 3.3°** |
+| Runner, 180 km/h | 10.5° / 15.5° | **1.0° / 2.2°** |
+| Stiletto, 140 km/h | 7.4° / 12.6° | **1.7° / 6.0°** |
+| Stiletto, 180 km/h | 9.1° / 17.1° | **1.1° / 3.6°** |
+
+Peak steady cornering grip (`tests/gripsweep.js`): the Runner is unchanged at
+60 km/h (1.28 g) and goes from 1.29 g to 1.40 g at 120 and 1.50 g at 170; the
+Stiletto is unchanged at 60 km/h (1.51 g) and goes from 1.58 g to 1.89 g at 120
+and 1.62 g to 2.02 g at 170. The police cars do not have it.
+
 ### The bodywork
 
 The saloons are mostly flat panels, which tapered boxes suit. This car is all
@@ -1430,7 +1461,8 @@ does — it never decides anything:
 | a unit takes the lead | the unit | *"Unit 2, I'm primary, in pursuit of a red sports car, southbound on Fifth Street."* |
 | a second unit is on you | the unit | *"Unit 1, I'm secondary, right behind Unit 2."* |
 | every 11–15 s while they can see you | primary | *"Unit 1, northbound, approaching Eighth Street and Ashcroft Road, speeds 80."* — or *on the motorway now*, *they've slowed right down*, *I'm struggling to keep up* |
-| through a red light | whoever saw it | *"…they've gone straight through a red at Sixth Street and Bright Lane."* |
+| through a red light, mid-chase | whoever saw it | *"…they've gone straight through a red at Sixth Street and Bright Lane."* |
+| through a red light **in front of a patrol car**, no chase | the patrol car | *"U1, an orange saloon just went straight through a red at Market Place and The Shambles. I'm going after it."* — and that starts the chase |
 | off the road | primary | *"…they've left the road, going across open ground."* |
 | you hit something, or ram a unit | primary, or the unit | *"…they've hit something, still mobile."* / *"…they've rammed us! Still in pursuit."* |
 | a police car is wrecked | the unit | *"…we're out of it, vehicle's disabled."* |
@@ -1441,6 +1473,27 @@ does — it never decides anything:
 | air support has you in the light | India 99 | *"we have them… I'll commentate"*, then its own running commentary |
 | you are pinned | nearest unit | *"suspect vehicle's stopped! Moving in."* → *"we've got them blocked in. Going to the driver."* — or *"they've pushed free! Still going."* |
 | arrested | the unit, then Control | *"one detained"* → *"received. Suspect in custody. All units, stand down."* |
+
+**Running a red light starts a chase** if a police car saw it. `Game._checkRedLight`
+counts a red as run when the car is within nine metres of a signalised junction,
+still above 30 km/h, with its own approach on red; the witness is the nearest
+working police car within 120 m that has a line of sight — not the dispatcher's
+shared knowledge, which at zero heat only reaches about 70 m, far less than a
+patrol car sitting at a junction can see across. `tests/redlight.js` pins a
+light on red and drives through it three ways: watched with no chase (heat 0 →
+1, the witness line, then Control), unwatched (nothing), and mid-chase (the
+primary reports it).
+
+**Nothing says the same thing twice.** Every line on the net — commentary,
+dispatcher, roadblocks, air support — comes from a set of wordings
+(`game/phrases.js`), and a set will not reuse a wording until most of the
+others have had a turn. On top of that `Game.radio` drops any sentence that went
+out word for word in the last 45 seconds of game time. A search used to say
+"still no further sighting, keep looking" three times in a row; the scripted
+two-minute chase in `tests/commentary.js` now has no exact repeats at all.
+Patrol cars coming on duty say so — *"U2, show me on duty"* — rather than that
+they are responding to a chase that does not exist; only once there is a chase
+does a new car say it is on its way.
 
 It is rate-limited twice: at least 4.5 s between any two lines, and a cooldown
 per kind of line. Primary has hysteresis, so two cars trading places a length
@@ -1458,6 +1511,26 @@ two minutes; after it, 82, of which 51 are low priority.
 opening click (3.1×), what every line becomes when read aloud, the voice choice
 on this machine and on lists it does not have, and — live — three queued calls
 spoken one at a time with none overlapping, and silence on mute.
+
+### The signalling
+
+A real digital net wraps every call in machine noise, and it is a lot of the
+character. Around each transmission:
+
+* **Control** opens with a short data burst — frequency-shift keying between
+  1200 and 1800 Hz a few milliseconds a bit, with runs of the same bit rather
+  than a steady alternation, which is what makes it a "brrrp" rather than a
+  beep — and sends another as it lets go. Priority calls get the attention beep
+  first, now as often as every nine seconds rather than twenty-four.
+* **A unit** gets three quick talk-permit chirps before it can speak, a couple
+  of pops of static while it does, and a rising roger beep as it lets go.
+* **Between calls** the channel is not silent: every 14 to 32 seconds, if it is
+  clear, somebody keys up and says nothing, a terminal sends a status burst, or
+  a stray roger beep comes through.
+
+All of it goes through the radio channel. Measured against the key-up crash,
+which stays the loudest moment of a call: data burst 0.52×, talk-permit chirps
+0.42×, roger beep 0.48×, attention beep 0.83×, crackle 0.30×.
 
 ### Recorded chatter underneath it
 

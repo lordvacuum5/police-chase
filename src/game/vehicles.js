@@ -114,6 +114,16 @@ export const SPECS = {
     // through hurts far more (see the torque falloff in vehicle.js).
     durability: 3.2,
     topSpeedHint: 80,
+    // Grip at speed (see physics/vehicle.js). Ramps in from 72 km/h, full by
+    // 150. Measured at full lock: 140 km/h went from 11 degrees of body slip
+    // on average (17 at worst) to under 2 (3), and steady cornering grip at
+    // 140 km/h from 1.29 g to 1.45. Stiffer and grippier at the rear than the
+    // front, so the extra bite never outruns the tail.
+    highSpeedTyre: {
+      from: 20, to: 42,
+      stiffness: { front: 2.2, rear: 2.8 },
+      grip: { front: 1.15, rear: 1.25 },
+    },
   }),
 
   /**
@@ -221,6 +231,17 @@ export const SPECS = {
     // ones and it is already down on the car it was.
     durability: 1.40,
     topSpeedHint: 92,
+    // Grip at speed, as on the Runner but weighted harder to the rear. With
+    // 58% of the weight at the back, stiffening the fronts as much as the
+    // rears -- or adding grip evenly -- made the nose bite harder than the tail
+    // could follow, and it spun at 140 km/h. Measured at full lock: 180 km/h
+    // went from 9 degrees of body slip (17 at worst) to 1 (4); steady grip at
+    // 120 km/h from 1.58 g to 1.89, and at 170 from 1.62 to 2.02.
+    highSpeedTyre: {
+      from: 20, to: 42,
+      stiffness: { front: 1.4, rear: 2.4 },
+      grip: { front: 1.16, rear: 1.40 },
+    },
   }),
 
   /** Bread-and-butter patrol car. Heavy, soft, tough, and slower. */

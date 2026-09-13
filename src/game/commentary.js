@@ -12,8 +12,11 @@
 // lines, and a cooldown per kind of line -- and routine commentary is marked
 // low priority, so the audio side drops it rather than reading it out late
 // behind a call that matters.
-
-import { SIGNAL } from './trafficlights.js';
+//
+// Every kind of line has several wordings, drawn through the game's phrasebook
+// so the same one does not come round again until the others have had a turn
+// (see game/phrases.js). A search used to produce "Control, still no further
+// sighting, keep looking" three times in a row.
 
 /** How a unit describes the car it is chasing. */
 const DESCRIBE = {
@@ -23,6 +26,9 @@ const DESCRIBE = {
 
 /** Minimum seconds between any two lines of commentary. */
 const GAP = 4.5;
+
+/** " on Eighth Street", or nothing. */
+const on = (road) => (road ? ' ' + road : '');
 
 export class Commentary {
   constructor(game) {
@@ -46,7 +52,6 @@ export class Commentary {
     this.pinnedFor = 0;
     this.pinStage = 0;
     this.offRoadFor = 0;
-    this.redNodes = new Set();
     this.disabled = new Set();
     this.heliLocked = false;
     this.heliTimer = 0;
@@ -63,13 +68,17 @@ export class Commentary {
 
   /**
    * Put a line on the net, if the net is free enough for it.
-   * `cooldown` is per kind; `force` ignores the gap (not the cooldown), for
-   * the lines that must not be lost -- an arrest, an escalation.
+   *
+   * `variants` are wordings for this kind of line (strings, or functions of
+   * `vars`); one is only chosen once the line is actually going out, so a line
+   * the gap blocked does not use up a wording. `cooldown` is per kind; `force`
+   * ignores the gap (not the cooldown), for the lines that must not be lost --
+   * an arrest, an escalation.
    */
-  _say(kind, text, { hot = false, cooldown = 10, force = false, low = !hot } = {}) {
+  _say(kind, variants, vars = {}, { hot = false, cooldown = 10, force = false, low = !hot } = {}) {
     if (!force && this.gap > 0) return false;
     if ((this.cool[kind] || 0) > 0) return false;
-    this.game.radio(text, hot, { low });
+    this.game.say(kind.replace(/-U\d+$/, ''), variants, vars, hot, { low });
     this.gap = GAP;
     this.cool[kind] = cooldown;
     return true;
@@ -99,9 +108,9 @@ export class Commentary {
 
   /**
    * The junction the car is heading into, if it is close and has a name.
-   * Returns { node, name, dist } or null.
+   * Returns { node, name, dist, edge } or null.
    */
-  _junctionAhead(v) {
+  junctionAhead(v) {
     const g = this.game.graph;
     const snap = g.nearestEdge(v.position.x, v.position.z, 30);
     if (!snap) return null;
@@ -150,8 +159,7 @@ export class Commentary {
       this.lostCalled = false;
       this.controlLostCalled = false;
       this.searchTimer = 0;
-      this._running(dt, p, k);
-      this._redLights(p);
+      this._running(dt, p);
       this._offRoad(dt, p);
       this._crashes(p);
       this._helicopter(dt, p);
@@ -171,12 +179,24 @@ export class Commentary {
     const tier = heat.tier;
     if (tier > this.lastTier) {
       const lines = {
-        2: 'Control, all units, pursuit is authorised. Primary unit, keep the commentary coming.',
-        3: 'Control, tactical contact is authorised. Roadblocks going in ahead of them.',
-        4: 'Control, all units, you are authorised to box. Interceptors are joining.',
-        5: 'Control, all available units. This is now a critical incident.',
+        2: [
+          'Control, all units, pursuit is authorised. Primary unit, keep the commentary coming.',
+          'Control, pursuit authorised. Keep me updated on direction and speed.',
+        ],
+        3: [
+          'Control, tactical contact is authorised. Roadblocks going in ahead of them.',
+          'Control, all units, you may use tactical contact. Setting up roadblocks.',
+        ],
+        4: [
+          'Control, all units, you are authorised to box. Interceptors are joining.',
+          'Control, interceptors deploying. Box them in if you get the chance.',
+        ],
+        5: [
+          'Control, all available units. This is now a critical incident.',
+          'Control, all units, this is now a critical incident. Every available car to assist.',
+        ],
       };
-      if (lines[tier]) this._say(`tier${tier}`, lines[tier], { hot: true, force: true, cooldown: 60 });
+      if (lines[tier]) this._say(`tier${tier}`, lines[tier], {}, { hot: true, force: true, cooldown: 60 });
     }
     this.lastTier = tier;
   }
@@ -208,74 +228,126 @@ export class Commentary {
     if (first) this.lastPrimary = first;
     if (first && first !== this.calledPrimary && (this.cool.primary || 0) <= 0) {
       const opening = !this.announced;
-      const road = this._road(p.position);
-      const text = opening
-        ? `${first.callsign}, I'm primary, in pursuit of ${this._describe()}, `
-          + `${this._heading(p.linvel, p.forward)}${road ? ' ' + road : ''}.`
-        : `${first.callsign}, I've got them, taking over as primary.`;
-      if (this._say('primary', text, { hot: opening, force: opening, cooldown: 14 })) {
+      const vars = {
+        cs: first.callsign, car: this._describe(),
+        dir: this._heading(p.linvel, p.forward), road: this._road(p.position),
+      };
+      const said = opening
+        ? this._say('primary-open', [
+          (v) => `${v.cs}, I'm primary, in pursuit of ${v.car}, ${v.dir}${on(v.road)}.`,
+          (v) => `${v.cs}, show me primary. Following ${v.car}, ${v.dir}${on(v.road)}.`,
+          (v) => `${v.cs}, primary unit, behind ${v.car} ${v.dir}${on(v.road)}.`,
+        ], vars, { hot: true, force: true, cooldown: 14 })
+        : this._say('primary', [
+          (v) => `${v.cs}, I've got them, taking over as primary.`,
+          (v) => `${v.cs}, I'm primary now.`,
+          (v) => `${v.cs}, taking the lead on this one.`,
+          (v) => `${v.cs}, I'm closest, I'll take primary.`,
+        ], vars, { cooldown: 14 });
+      if (said) {
+        this.cool.primary = 14;
         this.calledPrimary = first;
         this.announced = true;
         this.runTimer = 11;
       }
     }
     if (second && second !== this.secondary && this.calledPrimary === first) {
-      if (this._say('secondary', `${second.callsign}, I'm secondary, right behind ${first.callsign}.`,
-        { cooldown: 20 })) {
+      if (this._say('secondary', [
+        (v) => `${v.cs}, I'm secondary, right behind ${v.p}.`,
+        (v) => `${v.cs}, show me secondary.`,
+        (v) => `${v.cs}, backing up ${v.p}, I'm secondary.`,
+      ], { cs: second.callsign, p: first.callsign }, { cooldown: 20 })) {
         this.secondary = second;
       }
     }
   }
 
   /** The primary's running commentary: which way, where, how fast. */
-  _running(dt, p, k) {
+  _running(dt, p) {
     this.runTimer -= dt;
     if (this.runTimer > 0) return;
     // Only once somebody has actually called primary: the commentary is theirs
     // to give, and a unit narrating before anyone has said they are chasing
     // reads as the net talking to itself.
     if (!this.primary || this.primary.vehicle.disabled || this.calledPrimary !== this.primary) return;
-    const who = this.primary.callsign;
 
     const kph = Math.abs(p.forwardSpeed) * 3.6;
-    const dir = this._heading(p.linvel, p.forward);
-    const road = this._road(p.position);
     const snap = this.game.graph.nearestEdge(p.position.x, p.position.z, 20);
-    const onMotorway = snap && snap.edge.kind === 'motorway';
-    const ahead = this._junctionAhead(p);
+    const ahead = this.junctionAhead(p);
+    const v = {
+      cs: this.primary.callsign, dir: this._heading(p.linvel, p.forward),
+      road: this._road(p.position), speed: this._speed(p), junction: ahead && ahead.name,
+    };
 
-    let text;
+    let kind, lines;
     if (kph < 12) {
-      text = `${who}, they've slowed right down${road ? ' ' + road : ''}. Stand by.`;
-    } else if (onMotorway) {
-      text = `${who}, on the motorway now, ${dir}, speeds ${this._speed(p)}.`;
+      kind = 'run-slow';
+      lines = [
+        (x) => `${x.cs}, they've slowed right down${on(x.road)}. Stand by.`,
+        (x) => `${x.cs}, vehicle's almost stopped${on(x.road)}, stand by.`,
+        (x) => `${x.cs}, they're crawling now${on(x.road)}. Could be about to bail.`,
+      ];
+    } else if (snap && snap.edge.kind === 'motorway') {
+      kind = 'run-motorway';
+      lines = [
+        (x) => `${x.cs}, on the motorway now, ${x.dir}, speeds ${x.speed}.`,
+        (x) => `${x.cs}, motorway, ${x.dir}, doing ${x.speed}.`,
+        (x) => `${x.cs}, still on the motorway, ${x.speed}, all lanes.`,
+      ];
     } else if (ahead && ahead.dist < 90 && kph > 20) {
-      text = `${who}, ${dir}, approaching ${ahead.name}, speeds ${this._speed(p)}.`;
+      kind = 'run-junction';
+      lines = [
+        (x) => `${x.cs}, ${x.dir}, approaching ${x.junction}, speeds ${x.speed}.`,
+        (x) => `${x.cs}, coming up to ${x.junction}, ${x.speed}.`,
+        (x) => `${x.cs}, heading for ${x.junction}, ${x.dir}.`,
+      ];
     } else if (kph > 150) {
-      text = `${who}, speeds ${this._speed(p)}, ${dir}${road ? ' ' + road : ''}. I'm struggling to keep up.`;
+      kind = 'run-fast';
+      lines = [
+        (x) => `${x.cs}, speeds ${x.speed}, ${x.dir}${on(x.road)}. I'm struggling to keep up.`,
+        (x) => `${x.cs}, they're really moving, ${x.speed} plus, ${x.dir}.`,
+        (x) => `${x.cs}, speed ${x.speed}${on(x.road)}, extremely dangerous driving.`,
+      ];
     } else {
-      text = `${who}, still with them, ${dir}${road ? ' ' + road : ''}, speeds ${this._speed(p)}.`;
+      kind = 'run';
+      lines = [
+        (x) => `${x.cs}, still with them, ${x.dir}${on(x.road)}, speeds ${x.speed}.`,
+        (x) => `${x.cs}, ${x.dir}${on(x.road)}, ${x.speed}.`,
+        (x) => `${x.cs}, vehicle continuing ${x.dir}${on(x.road)}.`,
+        (x) => `${x.cs}, speed ${x.speed}, direction ${x.dir}.`,
+        (x) => `${x.cs}, no change, still ${x.dir}${on(x.road)}.`,
+      ];
     }
-    if (this._say('running', text, { cooldown: 9 })) {
+    if (this._say(kind, lines, v, { cooldown: 9 })) {
       this.runTimer = 11 + Math.random() * 4;
     }
   }
 
-  /** Through a red light at a signalised junction. */
-  _redLights(p) {
-    const signals = this.game.signals;
-    if (!signals || Math.abs(p.forwardSpeed) < 8) return;
-    const ahead = this._junctionAhead(p);
-    if (!ahead || ahead.dist > 9 || this.redNodes.has(ahead.node.id)) return;
-    if (signals.stateFor(ahead.edge, ahead.node) !== SIGNAL.RED) return;
-    this.redNodes.add(ahead.node.id);
-    // Somebody has to have seen it. Control is at a desk.
+  /**
+   * Through a red light. Called by the game, which does the detecting --
+   * running a red in front of a patrol car is also what can start a chase.
+   * `witness` is the unit that saw it, or null.
+   */
+  onRanRed(junction, witness, startsChase) {
     const k = this.game.dispatcher.knowledge;
-    const who = this.primary ? this.primary.callsign
-      : (k.spotter && k.spotter.callsign) || null;
+    const who = witness || this.primary || (k.spotter && k.spotter.callsign ? k.spotter : null);
     if (!who) return;
-    this._say('red', `${who}, they've gone straight through a red at ${ahead.name}.`,
-      { cooldown: 18, force: true });
+    const v = { cs: who.callsign, junction, car: this._describe() };
+    if (startsChase) {
+      // Not rate-limited against anything: this is how the chase begins.
+      this.game.say('red-start', [
+        (x) => `${x.cs}, ${x.car} just went straight through a red at ${x.junction}. I'm going after it.`,
+        (x) => `${x.cs}, vehicle's run the red at ${x.junction}, right in front of me. Lights on, following.`,
+        (x) => `${x.cs}, did you see that? Red light at ${x.junction}. I'm stopping that car.`,
+      ], v, true);
+      this.gap = GAP;
+      return;
+    }
+    this._say('red', [
+      (x) => `${x.cs}, they've gone straight through a red at ${x.junction}.`,
+      (x) => `${x.cs}, through the red at ${x.junction}, nearly took someone out.`,
+      (x) => `${x.cs}, red light at ${x.junction}, they didn't even brake.`,
+    ], v, { cooldown: 18, force: true });
   }
 
   /** Off the carriageway, across whatever is there. */
@@ -285,8 +357,11 @@ export class Commentary {
       && Math.abs(p.forwardSpeed) > 6;
     this.offRoadFor = off ? this.offRoadFor + dt : 0;
     if (this.offRoadFor > 1.2 && this.primary) {
-      this._say('offroad', `${this.primary.callsign}, they've left the road, going across open ground.`,
-        { cooldown: 25 });
+      this._say('offroad', [
+        (x) => `${x.cs}, they've left the road, going across open ground.`,
+        (x) => `${x.cs}, off-road now, across the grass.`,
+        (x) => `${x.cs}, they've gone off the road. I'll follow if I can.`,
+      ], { cs: this.primary.callsign }, { cooldown: 25 });
     }
   }
 
@@ -300,17 +375,33 @@ export class Commentary {
     const d = this.game.dispatcher;
     const rammed = d.units.find((u) => u.distanceTo(p.position) < 6.5);
     if (rammed) {
-      const text = rammed.vehicle.damage > 0.5
-        ? `${rammed.callsign}, they've rammed us. Vehicle's badly damaged.`
-        : `${rammed.callsign}, they've rammed us! Still in pursuit.`;
-      this._say('rammed', text, { hot: true, cooldown: 12 });
+      if (rammed.vehicle.damage > 0.5) {
+        this._say('rammed-bad', [
+          (x) => `${x.cs}, they've rammed us. Vehicle's badly damaged.`,
+          (x) => `${x.cs}, taken a big hit, car's in a bad way.`,
+        ], { cs: rammed.callsign }, { hot: true, cooldown: 12 });
+      } else {
+        this._say('rammed', [
+          (x) => `${x.cs}, they've rammed us! Still in pursuit.`,
+          (x) => `${x.cs}, contact! They've gone into the side of me.`,
+          (x) => `${x.cs}, they've hit my car, deliberate, still with them.`,
+        ], { cs: rammed.callsign }, { hot: true, cooldown: 12 });
+      }
       return;
     }
     if (!this.primary) return;
-    const text = p.damage > 0.6
-      ? `${this.primary.callsign}, they've crashed again, car's in a bad way, they're slowing.`
-      : `${this.primary.callsign}, they've hit something, still mobile.`;
-    this._say('crash', text, { cooldown: 15 });
+    if (p.damage > 0.6) {
+      this._say('crash-bad', [
+        (x) => `${x.cs}, they've crashed again, car's in a bad way, they're slowing.`,
+        (x) => `${x.cs}, vehicle is heavily damaged now. Won't be long.`,
+      ], { cs: this.primary.callsign }, { cooldown: 15 });
+    } else {
+      this._say('crash', [
+        (x) => `${x.cs}, they've hit something, still mobile.`,
+        (x) => `${x.cs}, collision, but they're carrying on.`,
+        (x) => `${x.cs}, they've clipped something, still going.`,
+      ], { cs: this.primary.callsign }, { cooldown: 15 });
+    }
   }
 
   /** A police car taken out of the chase. */
@@ -318,8 +409,11 @@ export class Commentary {
     for (const u of d.units) {
       if (!u.vehicle.disabled || this.disabled.has(u)) continue;
       this.disabled.add(u);
-      this._say(`down-${u.callsign}`, `${u.callsign}, we're out of it, vehicle's disabled.`,
-        { hot: true, cooldown: 60 });
+      this._say(`down-${u.callsign}`, [
+        (x) => `${x.cs}, we're out of it, vehicle's disabled.`,
+        (x) => `${x.cs}, car's done, we're out.`,
+        (x) => `${x.cs}, I'm immobile, someone else take over.`,
+      ], { cs: u.callsign }, { hot: true, cooldown: 60 });
       if (this.primary === u) this.primary = null;
       if (this.secondary === u) this.secondary = null;
     }
@@ -331,18 +425,25 @@ export class Commentary {
     if (this.lostFor > 2.5 && !this.lostCalled) {
       // Whoever was primary when they got away -- this.primary is cleared the
       // moment contact goes, so it cannot be used here.
-      const who = this.lastPrimary ? this.lastPrimary.callsign : 'Control';
-      const road = this._road(k.position);
-      const dir = this._heading(k.velocity);
-      if (this._say('lost', `${who}, lost visual. Last seen ${dir}${road ? ' ' + road : ''}.`,
-        { hot: true, force: true, cooldown: 10 })) {
+      const v = {
+        cs: this.lastPrimary ? this.lastPrimary.callsign : 'Control',
+        dir: this._heading(k.velocity), road: this._road(k.position),
+      };
+      if (this._say('lost', [
+        (x) => `${x.cs}, lost visual. Last seen ${x.dir}${on(x.road)}.`,
+        (x) => `${x.cs}, I've lost them. They were ${x.dir}${on(x.road)}.`,
+        (x) => `${x.cs}, no longer in sight, last direction ${x.dir}.`,
+      ], v, { hot: true, force: true, cooldown: 10 })) {
         this.lostCalled = true;
       }
     }
     if (this.lostFor > 8 && !this.controlLostCalled) {
       const road = this._road(k.position);
-      if (this._say('search', `Control, all units, suspect last seen${road ? ' ' + road : ' in your area'}. Search the area and report.`,
-        { hot: true, cooldown: 15 })) {
+      if (this._say('search', [
+        (x) => `Control, all units, suspect last seen${x.road ? ' ' + x.road : ' in your area'}. Search the area and report.`,
+        (x) => `Control, all units, make your way to${x.road ? ' ' + x.road.replace(/^on /, '') : ' the last location'} and start searching.`,
+        () => 'Control, all units, set up a search. Check the side streets.',
+      ], { road }, { hot: true, cooldown: 15 })) {
         this.controlLostCalled = true;
         this.searchTimer = 0;
       }
@@ -351,12 +452,14 @@ export class Commentary {
       this.searchTimer += dt;
       if (this.searchTimer > 20) {
         this.searchTimer = 0;
-        const lines = [
+        this._say('searching', [
           'Control, any units, anything on that vehicle?',
           'Control, still no further sighting. Keep looking.',
           'Control, units widen the search. They cannot have gone far.',
-        ];
-        this._say('searching', lines[(Math.random() * lines.length) | 0], { cooldown: 18 });
+          'Control, check car parks and alleys, they may have gone to ground.',
+          'Control, all units, update on the search please.',
+          'Control, nothing on cameras either. Keep at it.',
+        ], {}, { cooldown: 18 });
       }
     }
     this.primary = null;
@@ -366,11 +469,14 @@ export class Commentary {
   /** Seeing them again after losing them. */
   _regained(k, p) {
     if (this.seenBefore && this.lostFor > 5) {
-      const who = k.spotter && k.spotter.callsign ? k.spotter.callsign
+      const cs = k.spotter && k.spotter.callsign ? k.spotter.callsign
         : (k.spotter === this.game.helicopter ? 'India 99' : 'Control');
-      const road = this._road(p.position);
-      this._say('regained', `${who}, eyes on! They're ${this._heading(p.linvel, p.forward)}${road ? ' ' + road : ''}.`,
-        { hot: true, force: true, cooldown: 10 });
+      this._say('regained', [
+        (x) => `${x.cs}, eyes on! They're ${x.dir}${on(x.road)}.`,
+        (x) => `${x.cs}, got them again, ${x.dir}${on(x.road)}!`,
+        (x) => `${x.cs}, found them! They are ${x.dir}${on(x.road)}.`,
+      ], { cs, dir: this._heading(p.linvel, p.forward), road: this._road(p.position) },
+      { hot: true, force: true, cooldown: 10 });
     }
     this.seenBefore = true;
   }
@@ -379,12 +485,14 @@ export class Commentary {
   _helicopter(dt, p) {
     const h = this.game.helicopter;
     if (!h || !h.active) { this.heliLocked = false; return; }
-    const road = this._road(p.position);
-    const dir = this._heading(p.linvel, p.forward);
+    const v = { dir: this._heading(p.linvel, p.forward), road: this._road(p.position), speed: this._speed(p) };
     if (h.beamLocked && !this.heliLocked) {
       this.heliLocked = true;
-      this._say('heli-lock', `India 99, we have them. ${dir}${road ? ' ' + road : ''}. I'll commentate.`,
-        { hot: true, cooldown: 30 });
+      this._say('heli-lock', [
+        (x) => `India 99, we have them. ${x.dir}${on(x.road)}. I'll commentate.`,
+        (x) => `India 99, eyes on from above, ${x.dir}${on(x.road)}.`,
+        (x) => `India 99, got the vehicle in the light, ${x.dir}.`,
+      ], v, { hot: true, cooldown: 30 });
       this.heliTimer = 0;
       return;
     }
@@ -392,8 +500,11 @@ export class Commentary {
     this.heliTimer += dt;
     if (this.heliTimer > 14) {
       this.heliTimer = 0;
-      this._say('heli-run', `India 99, still with them, ${dir}${road ? ' ' + road : ''}, speeds ${this._speed(p)}.`,
-        { cooldown: 12 });
+      this._say('heli-run', [
+        (x) => `India 99, still with them, ${x.dir}${on(x.road)}, speeds ${x.speed}.`,
+        (x) => `India 99, vehicle continuing ${x.dir}, ground units are behind.`,
+        (x) => `India 99, ${x.speed}, ${x.dir}${on(x.road)}. We'll stay with it.`,
+      ], v, { cooldown: 12 });
     }
   }
 
@@ -405,20 +516,31 @@ export class Commentary {
         .filter((u) => !u.vehicle.disabled)
         .sort((a, b) => a.distanceTo(p.position) - b.distanceTo(p.position))[0];
       if (near) this.pinUnit = near;
-      const who = near ? near.callsign : 'Control';
+      const cs = near ? near.callsign : 'Control';
       if (this.pinStage === 0 && this.pinnedFor > 0.8) {
         this.pinStage = 1;
-        this._say('pin1', `${who}, suspect vehicle's stopped! Moving in.`, { hot: true, force: true, cooldown: 8 });
+        this._say('pin1', [
+          (x) => `${x.cs}, suspect vehicle's stopped! Moving in.`,
+          (x) => `${x.cs}, they're stopped, going in now!`,
+          (x) => `${x.cs}, vehicle's pinned, out and on them!`,
+        ], { cs }, { hot: true, force: true, cooldown: 8 });
       } else if (this.pinStage === 1 && heat.bustProgress > 0.55) {
         this.pinStage = 2;
-        this._say('pin2', `${who}, we've got them blocked in. Going to the driver.`, { hot: true, force: true, cooldown: 8 });
+        this._say('pin2', [
+          (x) => `${x.cs}, we've got them blocked in. Going to the driver.`,
+          (x) => `${x.cs}, they're not going anywhere. At the driver's door.`,
+          (x) => `${x.cs}, boxed in, getting the driver out.`,
+        ], { cs }, { hot: true, force: true, cooldown: 8 });
       }
     } else {
       if (this.pinStage > 0 && heat.bustTimer <= 0.05) {
         // The unit that had them pinned is the one that saw them get away.
-        const who = this.pinUnit ? this.pinUnit.callsign : 'Control';
-        this._say('pushed', `${who}, they've pushed free! Still going.`,
-          { hot: true, force: true, cooldown: 10 });
+        this._say('pushed', [
+          (x) => `${x.cs}, they've pushed free! Still going.`,
+          (x) => `${x.cs}, they've forced their way out!`,
+          (x) => `${x.cs}, lost them, they've shoved past us!`,
+        ], { cs: this.pinUnit ? this.pinUnit.callsign : 'Control' },
+        { hot: true, force: true, cooldown: 10 });
         this.pinStage = 0;
       }
       if (heat.bustTimer <= 0.05) this.pinnedFor = 0;
@@ -431,6 +553,11 @@ export class Commentary {
     const near = g.dispatcher.units
       .filter((u) => !u.vehicle.disabled)
       .sort((a, b) => a.distanceTo(p.position) - b.distanceTo(p.position))[0];
-    g.radio(`${near ? near.callsign : 'Unit 1'}, one detained. Driver's out of the vehicle.`, true, { final: true });
+    const text = g.phrases.pick('detained', [
+      (x) => `${x.cs}, one detained. Driver's out of the vehicle.`,
+      (x) => `${x.cs}, driver's in custody, one detained.`,
+      (x) => `${x.cs}, got them. One in cuffs.`,
+    ], { cs: near ? near.callsign : 'Unit 1' });
+    g.radio(text, true, { final: true });
   }
 }

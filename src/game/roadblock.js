@@ -95,7 +95,11 @@ export class RoadblockManager {
     if (!block) return;
     this.blocks.push(block);
     this.lastSite = { x: site.x, z: site.z };
-    this.game.radio(`Roadblock going in on ${site.name}`, true);
+    this.game.say('roadblock', [
+      (v) => `Control, roadblock going in on ${v.site}.`,
+      (v) => `Control, units setting up a block on ${v.site}.`,
+      (v) => `Control, all units, road closed at ${v.site}.`,
+    ], { site: site.name }, true);
   }
 
   /** A unit has left its post. Slow the next block down a little. */
@@ -103,7 +107,11 @@ export class RoadblockManager {
     this.timer = Math.max(this.timer, AFTER_BEATEN);
     if (why === 'past' && !this._reported) {
       this._reported = true;
-      this.game.radio(`${unit.callsign} — they're through the block, all units`, true);
+      this.game.say('block-beaten', [
+        (v) => `${v.cs}, they're through the block, all units!`,
+        (v) => `${v.cs}, they've gone round the roadblock!`,
+        (v) => `${v.cs}, block's failed, they're past us!`,
+      ], { cs: unit.callsign }, true);
       setTimeout(() => { this._reported = false; }, 4000);
     }
   }

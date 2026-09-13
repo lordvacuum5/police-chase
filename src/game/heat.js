@@ -39,7 +39,12 @@ export class Heat {
     if (this.value <= 0 && amount > 0) {
       this.value = 1.0;
       this.chaseStarted = performance.now();
-      this.game.radio(`Control — reports of a vehicle ${reason}. All units respond.`, true);
+      this.game.say('chase-start', [
+        (v) => `Control, all units, reports of a vehicle ${v.reason}. Respond please.`,
+        (v) => `Control to all units, we have a vehicle ${v.reason}. Make your way.`,
+        (v) => `Control, any units, vehicle ${v.reason}. Units to attend.`,
+        (v) => `Control, all units, report of a vehicle ${v.reason}. All units respond.`,
+      ], { reason }, true);
     } else {
       this.value = clamp(this.value + amount, 0, MAX);
     }

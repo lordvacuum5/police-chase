@@ -768,9 +768,10 @@ export class GameAudio {
     const style = SPEAKERS[kind];
     let t = Math.max(ctx.currentTime + 0.03, this.radioFreeAt + 0.12);
 
-    // A priority call from Control gets the attention tone first -- but only
-    // now and then, or it stops meaning anything.
-    if (msg.hot && kind === 'control' && t - this.lastAlertAt > 24) {
+    // A priority call from Control gets the attention tone first -- not every
+    // time, or it stops meaning anything, but often enough to be part of the
+    // sound of a busy net.
+    if (msg.hot && kind === 'control' && t - this.lastAlertAt > 9) {
       this.lastAlertAt = t;
       t = this._alertTone(t) + 0.14;
     }
@@ -779,7 +780,15 @@ export class GameAudio {
     this._squelch(t, 0.05, 0.55, 2400);
     t += 0.10;
 
+    // The signalling a real digital net wraps around every transmission. A
+    // base station sends a short data burst identifying itself as the key goes
+    // down -- the "brrrp" -- and a handheld on a trunked system gets a talk
+    // permit chirp before it can speak.
+    if (kind === 'control') t = this._dataBurst(t, 0.16) + 0.05;
+    else if (kind === 'unit') t = this._talkPermit(t) + 0.04;
+
     const carrier = this._openCarrier(t, style.rumble);
+    if (kind !== 'control') this._crackle(t + 0.4, 2.5, style.rumble > 0 ? 2 : 3);
     this.callDuck = style.duck;
     this.radioFreeAt = Infinity;
     const serial = ++this.transmitSerial;
@@ -793,7 +802,11 @@ export class GameAudio {
       // Louder and longer than the click that opened it: the receiver's
       // squelch has a moment of open carrier before it shuts, and that crash
       // of noise is the single most recognisable thing about the whole sound.
-      const end = Math.max(ctx.currentTime + 0.02, t + 0.2);
+      let end = Math.max(ctx.currentTime + 0.02, t + 0.2);
+      // Units sign off with a roger beep as the key comes up; the base station
+      // sends its data burst again.
+      if (kind === 'unit') end = this._rogerBeep(end + 0.02);
+      else if (kind === 'control') end = this._dataBurst(end + 0.03, 0.12);
       carrier(end);
       this._squelch(end + 0.03, 0.12, 1.7, 3200);
       this.radioFreeAt = end + 0.27;
@@ -939,6 +952,119 @@ export class GameAudio {
     return at + 0.19;
   }
 
+  /** One short tone into the radio channel. Returns when it ends. */
+  _blip(at, hz, dur, level = 0.05, type = 'square') {
+    const ctx = this.ctx;
+    const o = ctx.createOscillator();
+    o.type = type;
+    o.frequency.value = hz;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(level, at + 0.004);
+    g.gain.setValueAtTime(level, at + Math.max(0.005, dur - 0.012));
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    o.connect(g); g.connect(this.radioIn);
+    o.start(at); o.stop(at + dur + 0.02);
+    return at + dur;
+  }
+
+  /**
+   * A digital ID burst: the rapid two-tone warble a base station or a car's
+   * data terminal sends as the key goes down. Frequency-shift keying between
+   * two tones a few milliseconds at a time, which is what gives it the
+   * zipping "brrrp" rather than a beep.
+   */
+  _dataBurst(at, dur = 0.16) {
+    const ctx = this.ctx;
+    const o = ctx.createOscillator();
+    o.type = 'square';
+    const bit = 0.0085;
+    let t = at, hi = false;
+    while (t < at + dur) {
+      // Not a steady alternation: real data has runs of the same bit.
+      if (Math.random() < 0.62) hi = !hi;
+      o.frequency.setValueAtTime(hi ? 1800 : 1200, t);
+      t += bit;
+    }
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(0.026, at + 0.006);
+    g.gain.setValueAtTime(0.026, at + dur - 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    o.connect(g); g.connect(this.radioIn);
+    o.start(at); o.stop(at + dur + 0.02);
+    return at + dur;
+  }
+
+  /** Talk permit: three quick chirps before a handheld is allowed to speak. */
+  _talkPermit(at) {
+    let t = at;
+    for (let i = 0; i < 3; i++) t = this._blip(t, 1320, 0.035, 0.024) + 0.028;
+    return t;
+  }
+
+  /** Roger beep: a short rising two-note blip as a unit lets go of the key. */
+  _rogerBeep(at) {
+    const t = this._blip(at, 1050, 0.055, 0.024);
+    return this._blip(t + 0.01, 1580, 0.07, 0.024);
+  }
+
+  /**
+   * Static crackle under a transmission from a moving car: a few short pops
+   * of noise at random moments. Scheduled up front like everything else;
+   * the ones that land after the speech ends just fall inside the tail.
+   */
+  _crackle(at, span, count) {
+    const ctx = this.ctx;
+    for (let i = 0; i < count; i++) {
+      const t = at + Math.random() * span;
+      const dur = 0.02 + Math.random() * 0.05;
+      const src = ctx.createBufferSource();
+      src.buffer = this.noiseBuffer;
+      src.loop = true;
+      const f = ctx.createBiquadFilter();
+      f.type = 'bandpass'; f.frequency.value = 1500 + Math.random() * 1400; f.Q.value = 0.9;
+      const g = ctx.createGain();
+      const level = 0.03 + Math.random() * 0.04;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(level, t + 0.003);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      src.connect(f); f.connect(g); g.connect(this.radioIn);
+      src.start(t, Math.random()); src.stop(t + dur + 0.02);
+    }
+  }
+
+  /**
+   * The net between calls. Nobody is talking to you, but the channel is not
+   * silent: somebody keys up and thinks better of it, a terminal sends a
+   * status burst, a distant unit's roger beep comes through on its own. Every
+   * 14 to 32 seconds, only when the channel is clear, quieter than a call.
+   */
+  _pumpNetNoise(dt) {
+    if (this.muted) return;
+    this.netTimer = (this.netTimer === undefined ? 10 : this.netTimer) - dt;
+    if (this.netTimer > 0) return;
+    this.netTimer = 14 + Math.random() * 18;
+    const now = this.ctx.currentTime;
+    if (now < this.radioFreeAt || this.radioQueue.length) return;
+    const at = now + 0.05;
+    const r = Math.random();
+    let end;
+    if (r < 0.4) {
+      // A kerchunk: key down, nothing said, key up.
+      this._squelch(at, 0.04, 0.35, 2400);
+      end = at + 0.22;
+      this._squelch(end, 0.09, 0.9, 3000);
+    } else if (r < 0.75) {
+      end = this._dataBurst(at, 0.1 + Math.random() * 0.1);
+      this._squelch(end + 0.02, 0.07, 0.6, 3000);
+    } else {
+      end = this._rogerBeep(at);
+      this._squelch(end + 0.02, 0.08, 0.7, 3000);
+    }
+    this.radioFreeAt = end + 0.3;
+  }
+
   toggleMute() {
     this.muted = !this.muted;
     // Drop anything still queued, or unmuting fires off a backlog of calls
@@ -993,6 +1119,7 @@ export class GameAudio {
 
     this._pumpRadio();
     this._pumpChatter(dt, heat);
+    this._pumpNetNoise(dt);
 
     // ---- engine ----------------------------------------------------------
     const rpm = player.rpm;

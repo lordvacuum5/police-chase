@@ -201,7 +201,27 @@ export class Dispatcher {
       const u = this.game.spawnPoliceNear(target.position, this.tier);
       if (u) {
         this.units.push(u);
-        this.game.radio(`${u.callsign} responding, ${this._bearingWord(u.position, target.position)}bound`, false, { low: true });
+        // A car joining the ambient patrol is not responding to anything --
+        // there is nothing to respond to -- so it just comes on duty. Only once
+        // there is a chase does a new car say it is on its way.
+        const vars = { cs: u.callsign, dir: this._bearingWord(u.position, target.position) };
+        if (this.tier === 0) {
+          this.game.say('onduty', [
+            (v) => `${v.cs}, show me on duty.`,
+            (v) => `${v.cs}, on patrol, heading ${v.dir}bound.`,
+            (v) => `${v.cs}, starting my patrol.`,
+            (v) => `${v.cs}, on duty and available.`,
+            (v) => `${v.cs}, back out on patrol.`,
+          ], vars, false, { low: true });
+        } else {
+          this.game.say('responding', [
+            (v) => `${v.cs} responding, ${v.dir}bound.`,
+            (v) => `${v.cs}, on my way, ${v.dir}bound.`,
+            (v) => `${v.cs}, show me attending.`,
+            (v) => `${v.cs}, en route to assist.`,
+            (v) => `${v.cs}, making my way, ${v.dir}bound.`,
+          ], vars, false, { low: true });
+        }
       }
     }
 
@@ -343,7 +363,14 @@ export class Dispatcher {
       assigned.add(u);
       if (u.role !== ROLE.PURSUE) {
         u.setRole(ROLE.PURSUE);
-        if (d < 120) this.game.radio(`${u.callsign} has visual, in pursuit ${this.game.roadName(k.position)}`, false, { low: true });
+        if (d < 120) {
+          this.game.say('visual', [
+            (v) => `${v.cs} has visual, in pursuit ${v.road}.`,
+            (v) => `${v.cs}, I've got eyes on them ${v.road}.`,
+            (v) => `${v.cs}, visual on the vehicle ${v.road}.`,
+            (v) => `${v.cs}, got them ${v.road}, joining in.`,
+          ], { cs: u.callsign, road: this.game.roadName(k.position) }, false, { low: true });
+        }
       }
     }
 
@@ -356,7 +383,12 @@ export class Dispatcher {
         if (pitViable(u.vehicle, target)) {
           this.activePit = u;
           u.setRole(ROLE.PIT);
-          this.game.radio(`${u.callsign} — PIT authorised`, true);
+          this.game.say('pit', [
+            (v) => `${v.cs} — PIT authorised.`,
+            (v) => `${v.cs}, you're clear to PIT.`,
+            (v) => `${v.cs}, tactical contact authorised, go when ready.`,
+            (v) => `${v.cs}, PIT them when you can.`,
+          ], { cs: u.callsign }, true);
           break;
         }
       }
@@ -379,7 +411,12 @@ export class Dispatcher {
           unit.setRole(ROLE.BOX, { slot, tightness: 0 });
           assigned.add(unit);
         }
-        this.game.radio('All units — box formation, close it up', true);
+        this.game.say('box', [
+          'All units — box formation, close it up.',
+          'Control, all units, box them in.',
+          'All units, get round them, form the box.',
+          'Control, close them down, box formation.',
+        ], {}, true);
       }
     }
 
@@ -399,7 +436,12 @@ export class Dispatcher {
         u.setRole(ROLE.BLOCK);
         this.blockUnit = u;
         assigned.add(u);
-        this.game.radio(`${u.callsign} ahead of them — slow them down`, true);
+        this.game.say('block', [
+          (v) => `${v.cs}, I'm ahead of them, slowing them down.`,
+          (v) => `${v.cs}, getting in front of them now.`,
+          (v) => `${v.cs}, I'm up front, bringing the speed down.`,
+          (v) => `${v.cs}, in front of the vehicle, holding them up.`,
+        ], { cs: u.callsign }, true);
       }
     }
     // ---- 6. intercepts ----
@@ -512,10 +554,12 @@ export class Dispatcher {
         const quietFor = this.clock - (u.lastInterceptCall || -1e9);
         if (changed && quietFor > 20) {
           u.lastInterceptCall = this.clock;
-          this.game.radio(
-            `${u.callsign}, I'll cut them off at ${this.game.nodeName(best.c.id)}.`,
-            false, { low: true },
-          );
+          this.game.say('intercept', [
+            (v) => `${v.cs}, I'll cut them off at ${v.node}.`,
+            (v) => `${v.cs}, heading for ${v.node} to head them off.`,
+            (v) => `${v.cs}, I'll try and get ahead of them at ${v.node}.`,
+            (v) => `${v.cs}, going round to ${v.node}.`,
+          ], { cs: u.callsign, node: this.game.nodeName(best.c.id) }, false, { low: true });
         }
       } else {
         u.setRole(ROLE.RESPOND, { point: k.position.clone() });
@@ -540,7 +584,11 @@ export class Dispatcher {
       }
       this.boxAssignment = null;
       this.boxCooldown = 7;
-      this.game.radio('Box not forming — stay with them');
+      this.game.say('boxfail', [
+        'Control, box is not forming. Just stay with them.',
+        'Control, forget the box, keep them in sight.',
+        'Control, abandon the box, stay on them.',
+      ]);
       return;
     }
 
@@ -554,7 +602,11 @@ export class Dispatcher {
         if (unit.role === ROLE.BOX) unit.setRole(ROLE.PURSUE);
       }
       this.boxAssignment = null;
-      this.game.radio('Box broken — resume pursuit');
+      this.game.say('boxbroken', [
+        'Control, box is broken. Resume pursuit.',
+        'Control, they are out of the box, stay with them.',
+        'Control, box has failed, back to the pursuit.',
+      ]);
       return;
     }
 
@@ -637,7 +689,19 @@ export class Dispatcher {
   onPitFinished(unit, result) {
     if (this.activePit === unit) this.activePit = null;
     this.pitCooldown = result.reason === 'spun' ? 5.0 : 3.0;
-    if (result.reason === 'spun') this.game.radio(`${unit.callsign} — contact, target spun`, true);
+    // Out of the PIT role now, not at the next role tick. Left in it, the unit
+    // started a fresh attempt on the very next frame, found the target still
+    // spinning from the first one, and reported a second successful PIT a
+    // tenth of a second after the first.
+    if (unit.role === ROLE.PIT) unit.setRole(ROLE.PURSUE);
+    if (result.reason === 'spun') {
+      this.game.say('spun', [
+        (v) => `${v.cs}, contact made, they've spun!`,
+        (v) => `${v.cs}, PIT successful, they're facing the wrong way!`,
+        (v) => `${v.cs}, got them, they've gone round!`,
+        (v) => `${v.cs}, contact, target's spun out.`,
+      ], { cs: unit.callsign }, true);
+    }
   }
 
   /** Called by the game when the player rams a unit. */

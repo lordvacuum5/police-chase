@@ -1,7 +1,7 @@
 // Entry point: builds the world, owns the loop, wires everything together.
 
 import * as THREE from 'three';
-import { initPhysics, createWorld } from './physics/world.js';
+import { initPhysics, createWorld, hasLineOfSight } from './physics/world.js';
 import { Vehicle } from './physics/vehicle.js';
 import {
   SPECS, LIVERIES, buildCarGeometry, buildWheelGeometry, LAMP_OFFSETS,
@@ -17,7 +17,7 @@ import { Driver, SKILL } from './ai/driver.js';
 import { Heat } from './game/heat.js';
 import { RoadblockManager } from './game/roadblock.js';
 import { Helicopter } from './game/helicopter.js';
-import { TrafficLights } from './game/trafficlights.js';
+import { TrafficLights, SIGNAL } from './game/trafficlights.js';
 import { StreetProps } from './game/streetprops.js';
 import { ChaseCamera } from './game/camera.js';
 import { Hud } from './game/hud.js';
@@ -25,6 +25,7 @@ import { Input } from './core/input.js';
 import { SkidMarks, LightBars } from './game/effects.js';
 import { GameAudio } from './game/audio.js';
 import { Commentary } from './game/commentary.js';
+import { Phrasebook } from './game/phrases.js';
 import { vertexColorMaterial, shinyVertexMaterial } from './util/meshbuild.js';
 import { makeRng, clamp, clamp01, dist2, lerp } from './util/math.js';
 
@@ -69,6 +70,8 @@ class Game {
     this.quality = 2;          // 2 = shadows on, 1 = no shadows, 0 = reduced resolution
     this.geometryCache = new Map();
     this.outcome = null;
+    this.clock = 0;            // game seconds, for anything timed on the radio
+    this.phrases = new Phrasebook();
   }
 
   // =================================================================== setup
@@ -126,7 +129,11 @@ class Game {
     await frame();
     boot.hide();
 
-    this.radio('Control — all units, routine patrol.');
+    this.say('routine', [
+      'Control, all units, routine patrol.',
+      'Control, all units, quiet at the moment. Routine patrol.',
+      'Control, all units, normal patrol, nothing outstanding.',
+    ]);
     this.last = performance.now();
     requestAnimationFrame(this._loop);
   }
@@ -459,11 +466,34 @@ class Game {
     // Control had stood everybody down. Only the lines that close the run out
     // get through.
     if (this.outcome && !opts.final) return;
+    // Word for word the same line again within 45 seconds of game time is
+    // dropped. The phrasebook stops a *kind* of line repeating; this stops the
+    // exact sentence, which a callsign and a road name can still produce.
+    if (!text.startsWith('[') && !opts.final) {
+      const now = this.clock || 0;
+      if (!this.recentLines) this.recentLines = new Map();
+      const last = this.recentLines.get(text);
+      if (last !== undefined && now - last < 45) return;
+      this.recentLines.set(text, now);
+      if (this.recentLines.size > 80) {
+        for (const [t, at] of this.recentLines) if (now - at > 45) this.recentLines.delete(t);
+      }
+    }
     if (this.hud) this.hud.addMessage(text, hot);
     // Every line that reaches the HUD is also heard on the net. One choke
     // point for both, so the two can never drift apart. `opts.low` marks
     // running commentary, which the audio side may skip when the net is busy.
     if (this.audio) this.audio.radio(text, hot, opts);
+  }
+
+  /**
+   * A line from a set of wordings, avoiding the ones used lately for the same
+   * key. See game/phrases.js. Returns the text that went out.
+   */
+  say(key, variants, vars = {}, hot = false, opts = {}) {
+    const text = this.phrases.pick(key, variants, vars);
+    this.radio(text, hot, opts);
+    return text;
   }
 
   roadName(pos) {
@@ -482,7 +512,11 @@ class Game {
     const now = performance.now();
     if (this._lastBoxCall && now - this._lastBoxCall < 12000) return;
     this._lastBoxCall = now;
-    this.radio('Target boxed — move in', true);
+    this.say('boxed', [
+      'Control, they are boxed in. Move in.',
+      'Control, target is boxed, all units close in.',
+      'Control, they are contained, move in now.',
+    ], {}, true);
   }
 
   onBusted() {
@@ -518,7 +552,11 @@ class Game {
       `Peak heat <b>${this.heat.peak.toFixed(1)}</b>`,
       'They have lost you',
     ].join(' &nbsp;·&nbsp; '));
-    this.radio('Control — no further contact. All units, resume patrol.', true);
+    this.say('escaped', [
+      'Control, no further contact. All units, resume patrol.',
+      'Control, we have lost them. Units stand down and resume patrol.',
+      'Control, nothing further on that vehicle. Back to normal patrol.',
+    ], {}, true);
     this.dispatcher.standDown();
     this.heat.reset();
   }
@@ -538,7 +576,11 @@ class Game {
     this.skids.clear();
     this.hud.clearMessages();
     this.camera3.snapTo(this.player);
-    this.radio('Control — all units, routine patrol.');
+    this.say('routine', [
+      'Control, all units, routine patrol.',
+      'Control, all units, quiet at the moment. Routine patrol.',
+      'Control, all units, normal patrol, nothing outstanding.',
+    ]);
   }
 
   // =================================================================== loop
@@ -624,6 +666,7 @@ class Game {
   }
 
   _update(dt) {
+    this.clock += dt;
     const player = this.player;
 
     // ---- player input ----
@@ -645,6 +688,7 @@ class Game {
     this.heat.update(dt, player, this.dispatcher);
     this.commentary.update(dt);
     this._checkProvocation(dt);
+    this._checkRedLight();
 
     // ---- physics ----
     this.accumulator += dt;
@@ -681,6 +725,51 @@ class Game {
    * What actually starts a chase: being seen driving badly, or hitting a
    * police car. Both need a witness -- speeding down an empty lane is free.
    */
+  /**
+   * Running a red light.
+   *
+   * Detected here rather than in the commentary because it is not only
+   * something to talk about: running one in front of a patrol car is a reason
+   * to be pulled over, and so it can start a chase on its own. The car counts
+   * as having run it when it is within nine metres of a signalised junction,
+   * still doing more than 30 km/h, with its own approach showing red.
+   */
+  _checkRedLight() {
+    const p = this.player;
+    if (!this.signals || !this.commentary || this.outcome) return;
+    if (Math.abs(p.forwardSpeed) < 8.3) return;
+    const ahead = this.commentary.junctionAhead(p);
+    if (!ahead || ahead.dist > 9) return;
+    // One call per junction per pass.
+    if (this._lastRed && this._lastRed.id === ahead.node.id && this.clock - this._lastRed.at < 8) return;
+    const state = this.signals.stateFor(ahead.edge, ahead.node);
+    if (state !== SIGNAL.RED && state !== SIGNAL.RED_AMBER) return;
+    this._lastRed = { id: ahead.node.id, at: this.clock };
+
+    // Who saw it: the nearest working police car within 120 m that has an
+    // actual line of sight to the car. Not the dispatcher's shared knowledge,
+    // which at zero heat only reaches about 70 m -- a patrol car sitting at a
+    // junction can see a red light across the whole of it.
+    let witness = null, best = 120;
+    for (const u of this.dispatcher.units) {
+      if (u.vehicle.disabled) continue;
+      const d = u.distanceTo(p.position);
+      if (d >= best) continue;
+      _v.copy(u.vehicle.position); _v.y += 1.1;
+      _v2.copy(p.position); _v2.y += 0.8;
+      if (!hasLineOfSight(this.world, _v, _v2, 1.5)) continue;
+      witness = u; best = d;
+    }
+
+    if (this.heat.value <= 0) {
+      if (!witness) return;
+      this.commentary.onRanRed(ahead.name, witness, true);
+      this.heat.bump(1, 'running a red light');
+    } else {
+      this.commentary.onRanRed(ahead.name, witness, false);
+    }
+  }
+
   _checkProvocation(dt) {
     const k = this.dispatcher.knowledge;
     const p = this.player;

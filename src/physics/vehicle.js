@@ -842,8 +842,26 @@ export class Vehicle {
       // ground, and being allowed to do it is not much use on a surface that
       // gives up less than half the grip of the road.
       const loose = w.surface === 0 ? (s.offRoadGrip || 1) : 1;
+      // High-speed tyre behaviour, for the cars that ask for it. The road tyre
+      // only reaches peak cornering force at 8.6 degrees of slip, so any car
+      // cornering hard at speed sits nine or ten degrees sideways -- which on a
+      // motorway reads as sliding, not gripping. Past `from` m/s it ramps to a
+      // stiffer lateral curve (the limit arrives at a smaller slip angle, so
+      // the car points where it is going) and a little more grip. Hard surfaces
+      // only: grass stays grass.
+      let latStiff = 1, hsGrip = 1;
+      const hs = s.highSpeedTyre;
+      if (hs && w.surface !== 0) {
+        const u = clamp01((this.speed - hs.from) / (hs.to - hs.from));
+        // Per axle, where a car needs it. Stiffening the fronts as much as the
+        // rears on a car with 58% of its weight at the back makes the nose bite
+        // harder than the tail can follow, and it spins.
+        const axle = (x) => (typeof x === 'number' ? x : (w.front ? x.front : x.rear));
+        latStiff = 1 + (axle(hs.stiffness) - 1) * u;
+        hsGrip = 1 + (axle(hs.grip) - 1) * u;
+      }
       const f = tyreForces(tyre, Fs, w.slipRatio, w.slipAngle, w.condition,
-        s.gripScale * bias * this.assist.grip * loose);
+        s.gripScale * bias * this.assist.grip * loose * hsGrip, latStiff);
       // Fleet braking rubber. Applied to the longitudinal force only, and only
       // while the pedal is down and the force is opposing motion, so it buys
       // stopping distance and nothing else -- a police car does not corner or
