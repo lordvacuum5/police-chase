@@ -205,7 +205,9 @@ export class Vehicle {
 
     const colDesc = RAPIER.ColliderDesc
       .cuboid(w * 0.5, h * 0.5, l * 0.5)
-      .setTranslation(0, s.colliderY === undefined ? 0.1 : s.colliderY, 0)
+      // colliderZ is for a body that is not centred on its centre of mass --
+      // a mid-engined car carries more of its length ahead of the CoM.
+      .setTranslation(0, s.colliderY === undefined ? 0.1 : s.colliderY, s.colliderZ || 0)
       .setDensity(0)                 // mass comes from setAdditionalMassProperties
       .setFriction(0.35)
       .setRestitution(0.12)
@@ -502,6 +504,16 @@ export class Vehicle {
       for (const i of this.drivenWheels) wheelOmega += this.wheels[i].omega;
       wheelOmega /= this.drivenWheels.length;
       targetRpm = Math.abs(wheelOmega * ratio) * (60 / TAU);
+      // Launch control, for a car that has it: pulling away in first on a
+      // big throttle, the clutch slips and holds the engine up at its launch
+      // speed instead of dragging it down to the wheels'. Without it the
+      // engine is locked to a stationary car at idle and makes idle torque for
+      // the first second of every standing start -- measured, the Stiletto
+      // spent its first 9 km/h at 1 000 rpm and 0.6 g, on tyres that had
+      // twice that to give.
+      if (eng.launchRpm && this.gear === 1 && this.accelInput > 0.5) {
+        targetRpm = Math.max(targetRpm, eng.launchRpm * this.accelInput);
+      }
     } else {
       // Free revving: the engine answers the throttle directly.
       targetRpm = lerp(eng.idleRpm, eng.redline * 0.97, c.throttle);

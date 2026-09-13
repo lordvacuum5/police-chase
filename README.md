@@ -1169,6 +1169,100 @@ one vanish.
 Dispatch chatter in the bottom-right names real streets, so you can hear the plan
 forming: *"U26 — cut them off at Fifteenth Street / Meridian Avenue, 3s"*.
 
+## The cars you can run in
+
+Picked on the menu, above the maps, and remembered between visits. Pressing
+**M** in game goes back to change it.
+
+**The Runner** is the car the whole game was tuned around: a quick rear-drive
+saloon that is tough enough to lean on the police with. **The Stiletto** is
+the other way to run — a mid-engined V12 supercar, and the trade is meant to be
+real: much faster, much stickier, and the car you had better not let them touch.
+
+`tests/supercar.js` measures both on flat tarmac out past the edge of the map,
+with the surface forced to road, so neither is measured against a bend, a tree
+or a verge — only against the other car. These are the figures on the menu:
+
+| | Runner | Stiletto |
+|---|---|---|
+| 0–100 km/h | 7.37 s | **3.67 s** |
+| 0–160 km/h | 15.2 s | **6.73 s** |
+| 0–200 km/h | 27.9 s | **9.72 s** |
+| top speed | 215 km/h, on the limiter in 6th | **303 km/h**, on the limiter in 7th |
+| peak steady grip, 60 km/h | 1.28 g | **1.51 g** |
+| peak steady grip, 120 km/h | 1.25 g | **1.58 g** |
+| peak steady grip, 170 km/h | cannot hold the speed | **1.62 g** |
+| braking from 100 km/h | 31.8 m | **26.1 m** |
+| damage from one 50 km/h shunt | 9.3% | **22%** |
+| shunts until the engine starts to fade | 4 | **2** |
+| shunts to a wreck | 10 | **5** |
+
+Grip rises with speed on the Stiletto and not on the Runner: that is 0.95 m²
+of downforce against 0.42. And every police car still out-brakes both, because
+they keep the anti-lock system neither player car has.
+
+**How it gets there.** A V12 that revs to 8 800 on seven close ratios and a
+twin-clutch box that changes in 0.06 s; 58% of the weight over the rear wheels
+and less yaw inertia than a saloon, which is what makes it turn in; wider
+tyres, more grip at both ends, and short, stiff suspension. The fragility is
+one number — `durability` 1.4 against 3.2 — which also means the torque falloff
+past 28% damage arrives after two hits instead of four.
+
+**Launch control, and why it was needed.** The first build only did 0–100 in
+4.3 s, and the rear tyres were never the limit — slip ratio never passed 0.06.
+The engine model locks rpm to the driven wheels whenever the clutch is in, so
+from a standstill it sat at 1 000 rpm making idle torque for the first second
+of every start, at 0.6 g, on tyres with twice that to give. An optional
+`engine.launchRpm` now lets the clutch slip and hold the engine up in first on
+a big throttle, the way a twin-clutch launch does. Only the Stiletto has it:
+the Runner's 0–100 is unchanged.
+
+**It hates kerbs, and does not get hurt by them.** With 160 mm of travel, a
+kerb at 26 m/s takes the suspension to the bump stop and throws the body up
+71 mm (the Runner: 185 mm of its 200, and 34 mm). Still no damage and no speed
+lost from the kerb itself — a bump stop is a vertical spike, and the collision
+damage rule only reads a large velocity change, so it was worth measuring.
+
+**Staying on its line.** `tests/handling.js` reads balance from yaw rate times
+speed, which is the right number while a car is on its line and the wrong one
+once the tail starts to come round — it reports the rotation as grip, and on
+this car it produced lateral figures of over 2 g. `tests/stability.js` asks the
+plainer question instead: hold a speed and a steering input, and see how far
+the body ends up from the direction of travel. At half lock and 90 km/h, with
+throttle holding the speed, the Runner spins and the Stiletto holds 1.3° of
+body slip at 1.34 g.
+
+### The bodywork
+
+The saloons are mostly flat panels, which tapered boxes suit. This car is all
+curves along its length — a nose that rises into the wings, a roof that falls
+away into the engine cover, haunches that swell over the rear wheels — and
+stacking boxes to fake that gives a car made of steps. So it is lofted:
+`MeshBuilder.addLoft` skins a series of cross-sections, mirrored about the
+centreline, with a colour per edge and per run so one loft carries screen,
+roof, buttresses and engine cover.
+
+Two things were wrong in the first version and are worth recording:
+
+* **Arches cut as notches.** Two sections a millimetre apart make a vertical
+  step, which is a fine way to open an arch and a bad one to shape it: a square
+  cut-out the length of the opening read as a black box round every wheel. The
+  underside now follows a circle about the hub, 60 mm clear of the tyre.
+* **One dark core the length of the car**, to stop you seeing through the
+  arches, stood up through the bonnet near the nose where the bodywork is
+  lower. One per arch, no taller than the underside over the wheel.
+
+Winding comes from construction rather than from guessing which way is out: a
+heuristic about the loft's axis gets the steeply raked faces of a nose wrong,
+and a wrongly wound face on a single-sided material is simply a hole.
+
+The body is placed on the axles, not centred on the centre of mass — with 58%
+of the weight at the back, a body centred on it would have had a stubby nose
+and a tail a metre and a half long — so the collider takes a matching
+`colliderZ`. Wheels are instanced from one tyre and scaled per car, with wider
+rears on this one. The engine note fires six times a revolution rather than
+four, and the recording underneath it is pitched to match.
+
 ## Police livery
 
 Marked cars carry a full modern British livery, and like everything else in the

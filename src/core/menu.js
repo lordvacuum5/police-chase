@@ -7,11 +7,64 @@
 import { MAPS } from '../world/maps.js';
 import { makeRng, TAU } from '../util/math.js';
 
+/**
+ * The cars you can run in.
+ *
+ * Every figure is measured by tests/supercar.js, not estimated: top speed and
+ * 0-100 on flat tarmac past the map edge, grip as the peak steady lateral
+ * acceleration at 120 km/h, and toughness as how many 50 km/h shunts into a
+ * parked patrol car it takes to wreck the car. Each bar is scaled to the
+ * better of the two, so the pair reads as a trade rather than a rating.
+ * Re-run the test and update these if a spec changes.
+ */
+export const CARS = [
+  {
+    id: 'runner',
+    name: 'Runner',
+    tag: 'TOUGH',
+    colour: '#d94f16',
+    shape: 'saloon',
+    stats: [
+      ['Top speed', 215, 'km/h'],
+      ['0-100', 7.4, 's', true],
+      ['Grip', 1.25, 'g'],
+      ['Toughness', 10, 'hits'],
+    ],
+  },
+  {
+    id: 'supercar',
+    name: 'Stiletto',
+    tag: 'FAST, FRAGILE',
+    colour: '#b3101e',
+    shape: 'wedge',
+    stats: [
+      ['Top speed', 303, 'km/h'],
+      ['0-100', 3.7, 's', true],
+      ['Grip', 1.58, 'g'],
+      ['Toughness', 5, 'hits'],
+    ],
+  },
+];
+
+const CAR_KEY = 'pc.car';
+
+/** The car picked on the menu, remembered between visits. */
+export function chosenCar() {
+  let id = null;
+  try { id = localStorage.getItem(CAR_KEY); } catch (e) { /* storage blocked */ }
+  return CARS.some((c) => c.id === id) ? id : CARS[0].id;
+}
+
+function rememberCar(id) {
+  try { localStorage.setItem(CAR_KEY, id); } catch (e) { /* storage blocked */ }
+}
+
 export function showMenu(onPick) {
   const menu = document.getElementById('menu');
   const holder = document.getElementById('maps');
   holder.innerHTML = '';
   menu.classList.remove('gone');
+  buildCarCards();
 
   for (const m of MAPS) {
     const card = document.createElement('div');
@@ -48,6 +101,152 @@ export function showMenu(onPick) {
 
 export function hideMenu() {
   document.getElementById('menu').classList.add('gone');
+}
+
+/**
+ * Car cards. Picking one only selects it -- picking a map is what starts the
+ * game -- so the choice is shown as a highlighted card rather than acted on.
+ */
+function buildCarCards() {
+  const holder = document.getElementById('cars');
+  if (!holder) return;
+  holder.innerHTML = '';
+  let current = chosenCar();
+
+  const best = CARS[0].stats.map((_, i) => {
+    const vals = CARS.map((c) => c.stats[i][1]);
+    return CARS[0].stats[i][3] ? Math.min(...vals) : Math.max(...vals);
+  });
+
+  const cards = [];
+  for (const car of CARS) {
+    const card = document.createElement('div');
+    card.className = 'carcard';
+    card.tabIndex = 0;
+    card.setAttribute('role', 'radio');
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 620; canvas.height = 168;
+    card.appendChild(canvas);
+    drawCarProfile(canvas, car);
+
+    const title = document.createElement('h2');
+    title.innerHTML = `<span>${car.name}</span><small>${car.tag}</small>`;
+    card.appendChild(title);
+
+    const stats = document.createElement('div');
+    stats.className = 'stats';
+    car.stats.forEach(([label, value, unit, lowerIsBetter], i) => {
+      // Lower-is-better figures (a 0-100 time) fill by how close they are to
+      // the best time rather than by their size.
+      const frac = lowerIsBetter ? best[i] / value : value / best[i];
+      const shown = unit === 's' ? `${value.toFixed(1)} s`
+        : unit === 'g' ? `${value.toFixed(2)} g` : `${value} ${unit}`;
+      stats.insertAdjacentHTML('beforeend',
+        `<span>${label}</span><span class="bar"><i style="width:${Math.round(frac * 100)}%"></i></span>`
+        + `<span class="v">${shown}</span>`);
+    });
+    card.appendChild(stats);
+
+    const select = () => {
+      current = car.id;
+      rememberCar(car.id);
+      for (const c of cards) {
+        const on = c.dataset.id === current;
+        c.classList.toggle('chosen', on);
+        c.setAttribute('aria-checked', on ? 'true' : 'false');
+      }
+    };
+    card.dataset.id = car.id;
+    card.addEventListener('click', select);
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(); }
+    });
+    cards.push(card);
+    holder.appendChild(card);
+  }
+  for (const c of cards) {
+    const on = c.dataset.id === current;
+    c.classList.toggle('chosen', on);
+    c.setAttribute('aria-checked', on ? 'true' : 'false');
+  }
+}
+
+/**
+ * A side view of the car, drawn in the same flat schematic style as the map
+ * thumbnails. Profiles are polylines in a 0..1 box (x forward, y up) so the
+ * two shapes are easy to compare by eye.
+ */
+function drawCarProfile(canvas, car) {
+  const ctx = base(canvas);
+  const W = canvas.width, H = canvas.height;
+  const ground = H - 26;
+  const len = W * 0.74, x0 = (W - len) * 0.5;
+  const px = (u) => x0 + u * len;
+  const py = (v, tall) => ground - v * tall;
+
+  // [u, v] outline from the rear bumper, over the roof, to the nose and back
+  // along the sills. `glass` is the side window run.
+  const shapes = {
+    saloon: {
+      tall: 118,
+      body: [[0.00, 0.20], [0.00, 0.50], [0.04, 0.58], [0.22, 0.60], [0.34, 0.92],
+        [0.40, 1.00], [0.62, 1.00], [0.72, 0.66], [0.96, 0.56], [1.00, 0.44],
+        [1.00, 0.20], [0.86, 0.14], [0.14, 0.14]],
+      glass: [[0.27, 0.64], [0.36, 0.90], [0.41, 0.95], [0.61, 0.95], [0.69, 0.65]],
+      wheels: [0.20, 0.79], r: 0.19,
+    },
+    // Not a flat-decked eighties wedge: the roof is the high point, the
+    // engine cover falls away behind it to a raised tail, and the nose is the
+    // lowest part of the car.
+    wedge: {
+      tall: 96,
+      body: [[0.00, 0.30], [0.00, 0.62], [0.05, 0.66], [0.30, 0.78], [0.42, 0.97],
+        [0.47, 1.00], [0.60, 1.00], [0.73, 0.76], [0.90, 0.58], [0.985, 0.46],
+        [1.00, 0.34], [1.00, 0.18], [0.86, 0.12], [0.14, 0.12]],
+      glass: [[0.40, 0.80], [0.46, 0.95], [0.60, 0.95], [0.70, 0.76]],
+      intake: [[0.29, 0.52], [0.37, 0.64], [0.37, 0.40], [0.31, 0.36]],
+      wheels: [0.21, 0.80], r: 0.22,
+    },
+  };
+  const s = shapes[car.shape];
+
+  // Ground shadow.
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.beginPath();
+  ctx.ellipse(W * 0.5, ground + 4, len * 0.52, 7, 0, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = car.colour;
+  ctx.beginPath();
+  s.body.forEach(([u, v], i) => (i ? ctx.lineTo(px(u), py(v, s.tall)) : ctx.moveTo(px(u), py(v, s.tall))));
+  ctx.closePath();
+  ctx.fill();
+
+  // A highlight along the shoulder, so the shape reads as a body and not a
+  // cut-out.
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  s.body.slice(1, 4).forEach(([u, v], i) => (i ? ctx.lineTo(px(u), py(v, s.tall) + 3) : ctx.moveTo(px(u), py(v, s.tall) + 3)));
+  ctx.stroke();
+
+  ctx.fillStyle = '#0c1118';
+  for (const poly of [s.glass, s.intake]) {
+    if (!poly) continue;
+    ctx.beginPath();
+    poly.forEach(([u, v], i) => (i ? ctx.lineTo(px(u), py(v, s.tall)) : ctx.moveTo(px(u), py(v, s.tall))));
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  for (const u of s.wheels) {
+    const r = s.r * s.tall;
+    ctx.fillStyle = '#07090c';
+    ctx.beginPath(); ctx.arc(px(u), ground - r + 2, r + 5, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#5c646e';
+    ctx.beginPath(); ctx.arc(px(u), ground - r + 2, r * 0.58, 0, TAU); ctx.fill();
+  }
 }
 
 function base(canvas) {

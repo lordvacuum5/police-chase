@@ -891,7 +891,10 @@ export class GameAudio {
     const rpm = player.rpm;
     const revs = clamp01(rpm / player.spec.engine.redline);
     const load = player.controls.throttle;
-    const f0 = clamp((rpm / 60) * ENGINE_ORDER, 20, 700);
+    // Firing frequency: a V8 fires four times a revolution, a V12 six, and
+    // the order is most of the difference between a burble and a shriek.
+    const order = player.spec.engine.order || ENGINE_ORDER;
+    const f0 = clamp((rpm / 60) * order, 20, 950);
 
     // Every oscillator is locked to the firing frequency, so the whole note
     // moves as one rather than sliding apart.
@@ -904,7 +907,11 @@ export class GameAudio {
     // The exponent compresses an 8:1 rev range into about two octaves, which
     // keeps the top end from turning into a mosquito.
     if (this.sampleSource) {
-      const rate = clamp(Math.pow(rpm / SAMPLE_RPM, PITCH_EXP), 0.55, 4.4);
+      // The recording is a V8. A twelve fires half as often again at the same
+      // revs, so it is pitched as though the engine were turning that much
+      // faster -- the note, not the tacho, is what the ear follows.
+      const pulses = rpm * (order / ENGINE_ORDER);
+      const rate = clamp(Math.pow(pulses / SAMPLE_RPM, PITCH_EXP), 0.55, 4.6);
       this.sampleSource.playbackRate.setTargetAtTime(rate, t, smooth);
     }
     // Bring the sub in as the sample climbs and thins out.

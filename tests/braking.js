@@ -35,11 +35,11 @@ window.__runBraking = async function (fromKph = 100) {
     };
 
     const rows = [];
-    for (const kind of ['runner', 'patrol', 'interceptor', 'unmarked']) {
+    for (const kind of ['runner', 'supercar', 'patrol', 'interceptor', 'unmarked']) {
       const start = gr.pointAt(best, 12);
       const heading = Math.atan2(start.tx, start.tz);
       const v = g.createVehicle(kind, kind, { x: start.x, y: 0.95, z: start.z }, heading,
-        { police: kind !== 'runner' });
+        { police: kind !== 'runner' && kind !== 'supercar' });
       subject = v;
 
       // Settle onto its suspension.

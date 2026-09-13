@@ -116,6 +116,113 @@ export const SPECS = {
     topSpeedHint: 80,
   }),
 
+  /**
+   * The Stiletto: a mid-engined supercar, and the other way to run.
+   *
+   * Everything the Runner is not. A V12 that revs to 8 800 on a seven-speed
+   * gearbox, so it is geared for something like 300 km/h where every other car
+   * in the game runs into its limiter at about 220; wide, sticky tyres and
+   * real downforce, so it corners harder the faster it goes; low, stiff and
+   * short of travel, so it hates kerbs and grass. And it is fragile: carbon
+   * and aluminium rather than a saloon's steel, so the contact the Runner
+   * shrugs off ends this one's run in a handful of hits.
+   *
+   * The trade is meant to be real. The Runner is the car you can lean on the
+   * police with; this is the car you had better not let them touch.
+   */
+  supercar: makeSpec({
+    name: 'Stiletto',
+    body: 'supercar',
+    dims: { w: 2.00, h: 0.98, l: 4.58 },
+    // Collider bottom 0.20 m off the ground and top at the roof, 1.18 m, same
+    // clearance as the saloons. Shifted forward because the body is placed on
+    // the axles rather than centred on a centre of mass this far back.
+    colliderY: 0.195,
+    colliderZ: 0.214,
+    mass: 1390,
+    // Mid-engined: the weight sits behind the driver.
+    frontWeight: 0.42,
+    wheelbase: 2.68,
+    trackFront: 1.70,
+    trackRear: 1.66,
+    wheelRadius: 0.35,
+    wheelWidth: 0.30,
+    // Visual only: the rears are visibly wider, as on anything mid-engined.
+    // The physics runs one tyre width; the difference is carried in gripBias.
+    wheelWidthRear: 0.35,
+    wheelMass: 20,
+    // Less yaw inertia than a front-engined saloon of the same mass, because
+    // the heavy parts are near the middle. That is what makes it turn in.
+    inertiaScale: { yaw: 0.92, roll: 1.05, pitch: 0.90 },
+    suspension: Object.assign({}, baseSuspension, {
+      mountY: 0.08,
+      rest: 0.28,
+      // Short and stiff. A 140 mm kerb takes most of the travel, and you feel
+      // it -- that is part of the car's character, not an accident.
+      travel: 0.16,
+      stiffness: 62000,
+      dampCompress: 5600,
+      dampRebound: 7600,
+      bumpStop: 34000,
+      maxForce: 38000,
+      arbFront: 15500,
+      arbRear: 12500,
+    }),
+    engine: Object.assign({}, baseEngine, {
+      idleRpm: 1000,
+      redline: 8800,
+      brakeTorque: 64,
+      inertia: 0.21,
+      // Twelve cylinders fire six times a revolution; see audio.js.
+      order: 6,
+      // Launch control: see physics/vehicle.js. Near the top of the torque
+      // curve without being at the part of it that just lights up the rears.
+      launchRpm: 4800,
+      torqueCurve: [
+        [900, 390], [2000, 520], [3000, 612], [4000, 672],
+        [5000, 705], [6000, 716], [7000, 694], [8000, 640], [9000, 568],
+      ],
+    }),
+    // Seven ratios. Changes at roughly 78 / 112 / 148 / 185 / 227 / 266 km/h,
+    // and seventh runs into the limiter at about 305.
+    gears: [0, 3.15, 2.18, 1.66, 1.32, 1.08, 0.92, 0.80],
+    reverseGear: 3.10,
+    finalDrive: 4.74,
+    shiftUpRpm: 8400,
+    shiftDownRpm: 4300,
+    // A twin-clutch box: the torque interruption is a fraction of the Runner's.
+    shiftTime: 0.06,
+    brakes: { maxTorque: 3100, frontBias: 0.60, handbrakeTorque: 3600 },
+    steering: {
+      maxAngle: 0.52,
+      minAngle: 0.055,
+      // Sized for the grip it actually has, so the limiter does not hold it
+      // back to what a saloon could do.
+      latLimit: 17.5,
+      overshoot: 1.18,
+      slipAllowance: 0.06,
+      rate: 2.95,
+      returnRate: 4.4,
+    },
+    // Slipperier than the saloons, with more than twice the Runner's downforce:
+    // 0.95 m^2 is about 3 kN of extra load at 200 km/h.
+    aero: { dragArea: 0.62, downforce: 0.95 },
+    tractionControl: 0.90,
+    tcSlipThreshold: 0.13,
+    gripScale: 1.18,
+    // Wider rears carry the traction; the fronts are trimmed to match, so the
+    // extra grip does not simply turn into extra understeer.
+    gripBias: { front: 1.10, rear: 1.13 },
+    // Low, on wide summer tyres: the verge is genuinely bad news. Grass mu
+    // 0.62 comes up to only about 0.74, against the Runner's 0.96.
+    offRoadGrip: 1.20,
+    // A little under half the Runner's 3.2. Every hit costs about 2.3 times as
+    // much, and because engine power falls away past 28% damage, two solid
+    // ones and it is already down on the car it was.
+    durability: 1.40,
+    topSpeedHint: 92,
+  }),
+
   /** Bread-and-butter patrol car. Heavy, soft, tough, and slower. */
   patrol: makeSpec({
     name: 'Patrol',
@@ -196,6 +303,7 @@ export const SPECS = {
 
 export const LIVERIES = {
   runner:      { body: 0xd94f16, accent: 0x1a1614, glass: 0x0e1319, trim: 0x131619 },
+  supercar:    { body: 0xb3101e, accent: 0x141416, glass: 0x0b0f14, trim: 0x101113 },
   patrol:      { body: 0xeef2f6, accent: 0x13233f, glass: 0x0e1319, trim: 0x14171b },
   interceptor: { body: 0x0f1626, accent: 0xe8edf4, glass: 0x0d1218, trim: 0x14171b },
   unmarked:    { body: 0x23272e, accent: 0x1a1e24, glass: 0x0c1015, trim: 0x15181c },
@@ -218,6 +326,7 @@ export const LIVERIES = {
  * being swallowed by a slab-sided tub.
  */
 export function buildCarGeometry(spec, livery, opts = {}) {
+  if (spec.body === 'supercar') return buildSupercarGeometry(spec, livery);
   const b = new MeshBuilder();
   const { body, accent, glass, trim } = livery;
   const L = spec.dims.l;
@@ -453,6 +562,203 @@ export function buildCarGeometry(spec, livery, opts = {}) {
   }
 
   return buildGrouped([b, decals]);
+}
+
+/**
+ * The Stiletto's bodywork: a low mid-engined wedge, lofted rather than boxed.
+ *
+ * Every other car in the game is a saloon, which is mostly flat panels and
+ * suits tapered boxes. This one is all curves along its length -- a nose that
+ * rises into the wings, a short cabin pushed forward, a roof that falls away
+ * into a long engine cover, and haunches that swell over the rear wheels --
+ * so it is built from lofted cross-sections (MeshBuilder.addLoft).
+ *
+ * Heights are worked out above the ground and converted, because that is how
+ * a car's proportions are actually described. The body is also not centred on
+ * the centre of mass: with 58% of the weight at the back, a body centred on
+ * the CoM would have a stubby nose and a tail a metre and a half long. It is
+ * placed on the axles instead, with the collider shifted to match
+ * (`colliderZ` in the spec).
+ */
+function buildSupercarGeometry(spec, livery) {
+  const b = new MeshBuilder();
+  const { body, accent, glass, trim } = livery;
+  const sus = spec.suspension;
+
+  // Where the ground is, in body space, with the car settled on its springs.
+  const sag = (spec.mass * 9.81 * 0.25) / sus.stiffness;
+  const hub = sus.mountY - (sus.rest - sag);
+  const G = -(hub - spec.wheelRadius);      // add to a height above ground
+  const y = (h) => h - G;
+
+  const zf = spec.wheelbase * (1 - spec.frontWeight);
+  const zr = -spec.wheelbase * spec.frontWeight;
+  const nose = zf + 0.95, tail = zr - 0.95;
+  const eps = 0.002;
+
+  // --- body -----------------------------------------------------------
+  // Six-point half profile: underside, lower chamfer, flank, shoulder, and a
+  // deck running in to the centreline. `ys` is the underside, which is what
+  // jumps up over each wheel to open the arch.
+  const bodySec = (z, h) => ({
+    z,
+    pts: [
+      [0, y(h.ys)],
+      [h.xs - 0.05, y(h.ys)],
+      [h.xs, y(h.sill)],
+      [h.xs, y(h.sh)],
+      [h.xd, y(h.dk)],
+      [0, y(h.dk + (h.crown || 0.02))],
+    ],
+  });
+  // The shape at a handful of stations, without the arches. Everything in
+  // between is interpolated, which is what lets the arches be cut as real
+  // curves below rather than as notches.
+  const R = spec.wheelRadius + 0.06;         // arch radius, about the hub
+  const keys = [
+    // A low, wide nose that rises into the wings.
+    { z: nose,          ys: 0.15, sill: 0.20, xs: 0.80, sh: 0.44, xd: 0.70, dk: 0.49, crown: 0 },
+    { z: nose - 0.12,   ys: 0.13, sill: 0.22, xs: 0.93, sh: 0.58, xd: 0.76, dk: 0.60, crown: 0.01 },
+    { z: nose - 0.32,   ys: 0.13, sill: 0.24, xs: 0.98, sh: 0.69, xd: 0.79, dk: 0.68, crown: 0.02 },
+    { z: zf + R + 0.02, ys: 0.13, sill: 0.25, xs: 1.0,  sh: 0.76, xd: 0.80, dk: 0.74, crown: 0.02 },
+    { z: zf,            ys: 0.13, sill: 0.25, xs: 1.0,  sh: 0.84, xd: 0.78, dk: 0.83, crown: 0.02 },
+    // Doors. Waisted in, so the haunches read as haunches.
+    { z: zf - R - 0.02, ys: 0.14, sill: 0.21, xs: 0.97, sh: 0.84, xd: 0.76, dk: 0.87, crown: 0.02 },
+    { z: 0.55,          ys: 0.15, sill: 0.22, xs: 0.935, sh: 0.82, xd: 0.74, dk: 0.90, crown: 0.02 },
+    { z: -0.25,         ys: 0.15, sill: 0.24, xs: 0.915, sh: 0.84, xd: 0.72, dk: 0.92, crown: 0.02 },
+    // The widest part of the car is over the rear wheels.
+    { z: zr + R + 0.02, ys: 0.15, sill: 0.27, xs: 0.99, sh: 0.88, xd: 0.74, dk: 0.93, crown: 0.02 },
+    { z: zr,            ys: 0.15, sill: 0.27, xs: 1.025, sh: 0.92, xd: 0.72, dk: 0.93, crown: 0.02 },
+    // Tail, cut off square the way they all are now.
+    { z: zr - R - 0.02, ys: 0.20, sill: 0.29, xs: 1.0,  sh: 0.88, xd: 0.72, dk: 0.91, crown: 0.02 },
+    { z: tail + 0.14,   ys: 0.22, sill: 0.33, xs: 0.97, sh: 0.87, xd: 0.74, dk: 0.90, crown: 0.02 },
+    { z: tail,          ys: 0.25, sill: 0.35, xs: 0.93, sh: 0.85, xd: 0.78, dk: 0.87, crown: 0 },
+  ].sort((p, q) => p.z - q.z);
+
+  const at = (z) => {
+    let i = 0;
+    while (i < keys.length - 2 && keys[i + 1].z < z) i++;
+    const k0 = keys[i], k1 = keys[i + 1];
+    const u = Math.min(1, Math.max(0, (z - k0.z) / (k1.z - k0.z)));
+    const o = {};
+    for (const f of ['ys', 'sill', 'xs', 'sh', 'xd', 'dk', 'crown']) o[f] = k0[f] + (k1[f] - k0[f]) * u;
+    return o;
+  };
+
+  // Round arches. The underside follows a circle about the hub, stepping
+  // straight down to the sill at each end -- a square notch the length of the
+  // opening, which is what this was at first, reads as a black box around
+  // every wheel.
+  const hubH = spec.wheelRadius;             // hub height above the ground
+  const archDz = [-1, -0.92, -0.75, -0.45, 0, 0.45, 0.75, 0.92, 1];
+  const sections = [];
+  const inArch = (z) => Math.abs(z - zf) < R + 0.01 || Math.abs(z - zr) < R + 0.01;
+  for (const k of keys) if (!inArch(k.z)) sections.push(bodySec(k.z, k));
+  for (const zc of [zf, zr]) {
+    sections.push(bodySec(zc - R - eps, at(zc - R - eps)));
+    sections.push(bodySec(zc + R + eps, at(zc + R + eps)));
+    for (const f of archDz) {
+      const dz = f * R, z = zc + dz;
+      const h = at(z);
+      h.ys = Math.max(h.ys, hubH + Math.sqrt(Math.max(0, R * R - dz * dz)));
+      h.sill = Math.max(h.sill, h.ys + 0.01);
+      h.sh = Math.max(h.sh, h.sill + 0.03);
+      sections.push(bodySec(z, h));
+    }
+  }
+  b.addLoft(sections, (edge) => (edge === 0 ? 0x0a0b0d : body));
+
+  // --- cabin and engine cover -------------------------------------------
+  // Four-point half profile: base, side glass, roof edge, crown. One loft
+  // carries the screen, the roof, the rear buttresses and the engine cover,
+  // coloured by which run it is.
+  const cabSec = (z, xb, hb, xt, ht, crown = 0.02) => ({
+    z, pts: [[0, y(hb)], [xb, y(hb)], [xt, y(ht)], [0, y(ht + crown)]],
+  });
+  const screenBase = zf - 0.22;
+  b.addLoft([
+    cabSec(screenBase, 0.72, 0.84, 0.70, 0.855, 0),
+    cabSec(0.40, 0.75, 0.88, 0.55, 1.165),
+    cabSec(-0.20, 0.73, 0.90, 0.53, 1.18),
+    cabSec(-0.95, 0.71, 0.91, 0.58, 1.00),
+    cabSec(tail + 0.08, 0.72, 0.875, 0.68, 0.905, 0.01),
+  ], (edge, run) => {
+    if (edge <= 0) return body;
+    if (run === 0) return glass;                         // windscreen
+    if (run === 1) return edge === 1 ? glass : body;     // side glass, roof
+    if (run === 2) return edge === 1 ? body : glass;     // buttresses, rear screen
+    return body;                                         // engine cover
+  });
+  // Louvres across the engine cover. As a whole dark panel the cabin, screen
+  // and cover merged into one black slab from above; a few slats say "engine
+  // under here" without it.
+  for (const [lz, lh] of [[-1.20, 0.985], [-1.42, 0.965], [-1.64, 0.945]]) {
+    b.addBox(0.66, 0.02, 0.07, 0, y(lh + 0.012), lz, 0x15171a);
+  }
+
+  // --- arch liners --------------------------------------------------------
+  // The arches are cut clean through the loft, so beside each wheel you would
+  // see straight through the car. A dark block inboard of the tyres closes it.
+  // One per arch, and no taller than the underside over the wheel: a single
+  // core the length of the car stood up through the bonnet near the nose.
+  for (const zc of [zf, zr]) {
+    b.addBox(1.26, y(hubH + R - 0.01) - y(0.12), R * 2,
+      0, (y(hubH + R - 0.01) + y(0.12)) * 0.5, zc, 0x08090b);
+  }
+
+  // --- front ------------------------------------------------------------
+  // Splitter, twin intakes, and slim lamps swept back into the wings.
+  b.addTaperedBox(1.86, 0.03, 0.34, 0, y(0.12), nose - 0.10, trim, 0.98, 0.80);
+  for (const sgn of [1, -1]) {
+    b.addBox(0.50, 0.12, 0.05, sgn * 0.46, y(0.25), nose - 0.005, 0x07080a);
+    b.addTaperedBox(0.44, 0.045, 0.30, sgn * 0.66, y(0.575), nose - 0.20, 0xe7edf5,
+      0.9, 0.7, sgn * 0.30);
+    b.addTaperedBox(0.46, 0.02, 0.32, sgn * 0.66, y(0.545), nose - 0.21, 0x0b0d10,
+      1, 1, sgn * 0.30);
+  }
+  b.addBox(0.34, 0.08, 0.04, 0, y(0.30), nose - 0.004, 0x07080a);
+
+  // --- flanks -----------------------------------------------------------
+  // The side intake behind the door is the signature of a mid-engined car:
+  // that is where the radiators and the engine breathe.
+  for (const sgn of [1, -1]) {
+    b.addTaperedBox(0.05, 0.26, 0.56, sgn * 0.915, y(0.56), zr + R + 0.30, 0x07080a, 1, 0.55);
+    // Door shut lines.
+    b.addBox(0.012, y(0.80) - y(0.26), 0.018, sgn * 0.938, (y(0.80) + y(0.26)) * 0.5,
+      zf - R - 0.06, trim);
+    b.addBox(0.012, y(0.82) - y(0.26), 0.018, sgn * 0.918, (y(0.82) + y(0.26)) * 0.5,
+      -0.12, trim);
+    // Side skirt.
+    b.addTaperedBox(0.06, 0.06, (zf - R) - (zr + R) - 0.06, sgn * 0.93, y(0.18),
+      (zf - R + zr + R) * 0.5, trim, 0.8, 1);
+    // Mirrors, on thin stalks off the base of the A-pillar.
+    b.addBox(0.10, 0.025, 0.04, sgn * 0.80, y(0.93), screenBase - 0.10, trim);
+    b.addTaperedBox(0.17, 0.07, 0.12, sgn * 0.90, y(0.95), screenBase - 0.12, body, 0.8, 0.75);
+  }
+
+  // --- rear -------------------------------------------------------------
+  // A black panel across the tail with four round-ish lamps set into it, a
+  // raised lip, a deep diffuser with fins, and the exhausts in the middle.
+  const rz = tail - 0.004;
+  b.addBox(1.78, y(0.84) - y(0.46), 0.05, 0, (y(0.84) + y(0.46)) * 0.5, rz, 0x0d0e11);
+  for (const lx of [0.42, 0.70]) {
+    for (const sgn of [1, -1]) {
+      b.addBox(0.17, 0.10, 0.05, sgn * lx, y(0.73), rz - 0.012, 0xd01f22);
+      b.addBox(0.09, 0.05, 0.05, sgn * lx, y(0.73), rz - 0.02, 0xff5a4a);
+    }
+  }
+  b.addBox(1.80, 0.035, 0.18, 0, y(0.885), tail + 0.05, body);
+  b.addTaperedBox(1.40, y(0.40) - y(0.15), 0.46, 0, (y(0.40) + y(0.15)) * 0.5,
+    tail + 0.18, 0x0a0b0d, 1, 0.55, 0, -0.10);
+  for (const fx of [-0.45, -0.15, 0.15, 0.45]) {
+    b.addBox(0.02, 0.18, 0.40, fx, y(0.24), tail + 0.18, trim);
+  }
+  for (const sgn of [1, -1]) {
+    b.addBox(0.13, 0.08, 0.10, sgn * 0.16, y(0.40), tail - 0.02, 0x2a2d32);
+    b.addBox(0.09, 0.05, 0.02, sgn * 0.16, y(0.40), tail - 0.07, 0x050506);
+  }
+
+  return buildGrouped([b]);
 }
 
 /** Material set for a car body, matching the groups buildCarGeometry emits. */

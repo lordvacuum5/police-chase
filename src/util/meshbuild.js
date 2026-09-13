@@ -150,6 +150,96 @@ export class MeshBuilder {
   }
 
   /**
+   * A solid skinned through a series of cross-sections, mirrored about X = 0.
+   *
+   * Boxes and tapered boxes are fine for a saloon, which is mostly flat
+   * panels, and hopeless for anything whose shape is a curve along its length
+   * -- a wedge nose, a roofline that falls away into an engine cover, a haunch
+   * that swells over the rear wheel. Stacking boxes to fake those gives a car
+   * made of steps. A loft gives the curve.
+   *
+   * `sections` is a list of { z, pts }, where `pts` is one half of the profile
+   * as [x, y] pairs with x >= 0, running from the centreline at the bottom out
+   * and round to the centreline at the top. Every section needs the same
+   * number of points; a feature that does not exist at some station is made by
+   * collapsing its points onto their neighbours. Two sections a millimetre
+   * apart make a vertical step, which is how wheel arches are cut.
+   *
+   * `color` is a number, or `(edge, interval) => number` so a single loft can
+   * carry glass on one run of edges and paint on the next.
+   *
+   * Flat-shaded, like everything else here. Winding comes from construction,
+   * not from guessing which way is out: the profile runs anticlockwise seen
+   * from the front on the +X side, so the outward face of a strip swept
+   * forward is (profile direction) x (+Z), and the mirrored side is the
+   * reverse. A heuristic about the loft's axis gets the steeply raked faces of
+   * a nose wrong, and a wrongly wound face on a FrontSide material is a hole.
+   */
+  addLoft(sections, color) {
+    const secs = sections.slice().sort((p, q) => p.z - q.z);
+    const n = secs[0].pts.length;
+    const colourOf = typeof color === 'function' ? color : () => color;
+    const a = new THREE.Vector3(), b = new THREE.Vector3(), cc = new THREE.Vector3();
+    const ab = new THREE.Vector3(), ac = new THREE.Vector3(), nrm = new THREE.Vector3();
+
+    const tri = (p0, p1, p2, col) => {
+      a.set(p0[0], p0[1], p0[2]); b.set(p1[0], p1[1], p1[2]); cc.set(p2[0], p2[1], p2[2]);
+      ab.subVectors(b, a); ac.subVectors(cc, a);
+      nrm.crossVectors(ab, ac);
+      const len = nrm.length();
+      if (len < 1e-9) return;               // collapsed point: no face
+      nrm.multiplyScalar(1 / len);
+      _c.set(col);
+      for (const q of [a, b, cc]) {
+        this.pos.push(q.x, q.y, q.z);
+        this.norm.push(nrm.x, nrm.y, nrm.z);
+        this.col.push(_c.r, _c.g, _c.b);
+      }
+    };
+
+    for (let i = 0; i < secs.length - 1; i++) {
+      const s0 = secs[i], s1 = secs[i + 1];
+      for (let j = 0; j < n - 1; j++) {
+        const col = colourOf(j, i);
+        for (const side of [1, -1]) {
+          const p00 = [s0.pts[j][0] * side, s0.pts[j][1], s0.z];
+          const p01 = [s0.pts[j + 1][0] * side, s0.pts[j + 1][1], s0.z];
+          const p10 = [s1.pts[j][0] * side, s1.pts[j][1], s1.z];
+          const p11 = [s1.pts[j + 1][0] * side, s1.pts[j + 1][1], s1.z];
+          if (side > 0) {
+            tri(p00, p11, p10, col);
+            tri(p00, p01, p11, col);
+          } else {
+            tri(p00, p10, p11, col);
+            tri(p00, p11, p01, col);
+          }
+        }
+      }
+    }
+
+    // End caps: a fan from the middle of each end profile, wound to face out
+    // of the end it closes.
+    for (const [s, front] of [[secs[0], false], [secs[secs.length - 1], true]]) {
+      let lo = Infinity, hi = -Infinity;
+      for (const p of s.pts) { lo = Math.min(lo, p[1]); hi = Math.max(hi, p[1]); }
+      const cy = (lo + hi) * 0.5;
+      const col = colourOf(-1, front ? secs.length - 1 : -1);
+      for (let j = 0; j < n - 1; j++) {
+        for (const side of [1, -1]) {
+          const c0 = [0, cy, s.z];
+          const c1 = [s.pts[j][0] * side, s.pts[j][1], s.z];
+          const c2 = [s.pts[j + 1][0] * side, s.pts[j + 1][1], s.z];
+          // Anticlockwise from the front on +X means a fan (centre, j, j+1)
+          // faces +Z there; the mirror and the rear cap each flip it once.
+          if ((side > 0) === front) tri(c0, c1, c2, col);
+          else tri(c0, c2, c1, col);
+        }
+      }
+    }
+    return this;
+  }
+
+  /**
    * Flat quad on the ground plane, given four XZ corners at height y.
    *
    * The corners are re-wound if necessary so the quad always faces upwards.

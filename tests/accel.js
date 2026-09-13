@@ -30,11 +30,11 @@ window.__runAccel = async function () {
     };
 
     const rows = [];
-    for (const kind of ['runner', 'patrol', 'interceptor', 'unmarked']) {
+    for (const kind of ['runner', 'supercar', 'patrol', 'interceptor', 'unmarked']) {
       const start = gr.pointAt(best, 8);
       const heading = Math.atan2(start.tx, start.tz);
       const v = g.createVehicle(kind, kind, { x: start.x, y: 0.95, z: start.z }, heading,
-        { police: kind !== 'runner' });
+        { police: kind !== 'runner' && kind !== 'supercar' });
       subject = v;
       // Assist off: this is the car, not the rubber band.
       v.assist.boost = 1; v.assist.grip = 1;

@@ -32,7 +32,7 @@ window.__runHandling = async function (kind = 'runner') {
     const rows = [];
     for (const kph of [50, 80, 110]) {
       const v = g.createVehicle(kind, kind, { x: start.x, y: 0.95, z: start.z },
-        Math.atan2(start.tx, start.tz), { police: kind !== 'runner' });
+        Math.atan2(start.tx, start.tz), { police: kind !== 'runner' && kind !== 'supercar' });
       subject = v;
       v.assist.boost = 1; v.assist.grip = 1;
 

@@ -9,7 +9,7 @@ import {
 } from './game/vehicles.js';
 import { WORLD_HALF } from './world/common.js';
 import { MAPS, mapById } from './world/maps.js';
-import { showMenu } from './core/menu.js';
+import { showMenu, chosenCar } from './core/menu.js';
 import { DRIVE_SIDE } from './world/roadgraph.js';
 import { Dispatcher } from './ai/dispatcher.js';
 import { Officer, ROLE } from './ai/officer.js';
@@ -194,7 +194,10 @@ class Game {
         : this.graph.randomNode(this.rng, 'street');
       place = this._placeOnRoad(node);
     }
-    this.player = this.createVehicle('runner', 'runner', place.position, place.heading, {});
+    // Whichever car was picked on the menu. Remembered in localStorage, so a
+    // refresh or a trip back through M keeps it.
+    const car = SPECS[chosenCar()] ? chosenCar() : 'runner';
+    this.player = this.createVehicle(car, car, place.position, place.heading, {});
     this.startPlace = place;
   }
 
@@ -725,12 +728,19 @@ class Game {
       v.view.position.copy(v.position);
       v.view.quaternion.copy(v.quaternion);
 
+      // Every wheel is one instance of the same 0.34 m by 0.26 m tyre, scaled
+      // to whatever this car actually runs on -- wider still at the rear if
+      // the spec asks for it, which is purely visual.
+      const s = v.spec;
+      const rs = s.wheelRadius / 0.34;
       for (let i = 0; i < 4; i++) {
         const w = v.wheels[i];
         v.wheelCentre(i, _v);
         _qA.setFromAxisAngle(AXIS_Y, w.steer);
         _qB.setFromAxisAngle(AXIS_X, -w.spin);
         _qC.copy(v.quaternion).multiply(_qA).multiply(_qB);
+        const width = !w.front && s.wheelWidthRear ? s.wheelWidthRear : s.wheelWidth;
+        _scale.set(width / 0.26, rs, rs);
         _m.compose(_v, _qC, _scale);
         this.wheelMesh.setMatrixAt(wi++, _m);
       }
