@@ -1580,6 +1580,19 @@ Measured at the master bus, Stiletto, RMS:
 | flat out, 7 500 rpm | 0.077 | 0.036 |
 | flat out, during a call | 0.077 | **0.022** |
 
+**The male voice needed more.** It was the one that was hard to hear, and
+rendering the same sentence through the Windows speech engine Chrome uses
+showed why: Hazel came out at −16.5 dBFS, Susan at −15.6, and George at
+−23.5 — seven or eight dB quieter before the game touches it. Nothing can
+raise a speech voice above full volume, so the duck is per speaker instead: the
+mix drops 5.4 dB under Control and 11.8 dB under a unit, and the siren, tyres
+and wind now go down with the engine, since the siren sweeps straight through
+the band speech lives in and is loudest exactly when a nearby unit is talking.
+The unit voice is also a touch slower and brighter (rate 1.8, pitch 1.08):
+George is the fastest of the three at his default rate, and at 2.3 he was the
+hardest to follow as well as the quietest. Measured flat out with a siren 40 m
+away: 0.043 RMS with no call, 0.023 under Control, 0.011 under a unit.
+
 The radio log that used to sit in the bottom right corner is hidden, since
 everything on it is now spoken. It is still written to, so deleting one
 `display: none` in `index.html` brings it back.

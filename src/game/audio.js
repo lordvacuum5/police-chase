@@ -57,11 +57,22 @@ const RADIO_LO = 330, RADIO_HI = 2850;
  * either: measured on that line, 1.3 only took it to 6.1 s, 2.1 to 4.9 s.
  * Network voices do scale roughly linearly, so they get a gentler version of
  * the same numbers (see _transmit) rather than being read at double speed.
+ *
+ * `duck` is how far everything else in the mix drops while that speaker is
+ * talking, and it is not the same for all three because the voices are not
+ * equally loud. Rendered through the same Windows speech engine Chrome uses,
+ * the same sentence came out at -16.5 dBFS from Hazel, -15.6 from Susan, and
+ * -23.5 from George: the male voice is seven or eight dB quieter than the
+ * others before the game does anything to it, and the speech engine will not
+ * go above full volume to make up for it. So the mix makes up for it instead,
+ * and the unit voice is also taken a little slower and brighter -- George is
+ * already the fastest of the three at his default rate, and at 2.3 he was the
+ * hardest to follow as well as the quietest.
  */
 const SPEAKERS = {
-  control: { prefer: 'female', rate: 2.0, pitch: 1.00, rumble: 0 },
-  unit:    { prefer: 'male',   rate: 2.3, pitch: 0.97, rumble: 0 },
-  air:     { prefer: 'other',  rate: 2.1, pitch: 0.94, rumble: 0.35 },
+  control: { prefer: 'female', rate: 2.0, pitch: 1.00, rumble: 0,    duck: 0.55 },
+  unit:    { prefer: 'male',   rate: 1.8, pitch: 1.08, rumble: 0,    duck: 0.25 },
+  air:     { prefer: 'other',  rate: 2.1, pitch: 0.94, rumble: 0.35, duck: 0.50 },
 };
 
 const FEMALE_NAME = /female|zira|hazel|susan|libby|sonia|maisie|aria|jenny|michelle|samantha|karen|moira|tessa|serena|kate|fiona|victoria|allison|ava|emma|natasha|catherine|heera|linda/i;
@@ -130,7 +141,7 @@ const ENGINE_ORDER = 4;
  */
 const ENGINE_VOLUME = 0.5;
 
-/** How far the engine drops while a radio call is being spoken. */
+/** How far the mix drops under a call from a speaker with no duck of its own. */
 const RADIO_DUCK = 0.55;
 
 /** The recorded engine loop, and what it is doing. */
@@ -769,6 +780,7 @@ export class GameAudio {
     t += 0.10;
 
     const carrier = this._openCarrier(t, style.rumble);
+    this.callDuck = style.duck;
     this.radioFreeAt = Infinity;
     const serial = ++this.transmitSerial;
 
@@ -1038,10 +1050,14 @@ export class GameAudio {
     const shifting = player.shiftTimer > 0 ? 0.35 : 1;
     // And under the radio while somebody is talking. The spoken calls play
     // outside Web Audio and are already at the speech engine's maximum, so the
-    // only way to bring the voices up any further is to bring the engine down
-    // while they are on.
+    // only way to bring the voices up any further is to bring everything else
+    // down while they are on -- by however much that speaker needs (SPEAKERS).
+    // The siren, tyres and wind go down with the engine: the siren sweeps
+    // straight through the band speech lives in, and in a chase it is loudest
+    // exactly when a unit close by is talking.
     const talking = this.radioFreeAt === Infinity;
-    this.duck = damp(this.duck || 1, talking ? RADIO_DUCK : 1, talking ? 10 : 3, dt);
+    const duckTo = talking ? (this.callDuck || RADIO_DUCK) : 1;
+    this.duck = damp(this.duck || 1, duckTo, talking ? 10 : 3, dt);
     const engVol = (0.085 + load * 0.130 + revs * 0.080) * shifting * ENGINE_VOLUME * this.duck;
     this.engineGain.gain.setTargetAtTime(engVol, t, smooth);
 
@@ -1052,7 +1068,7 @@ export class GameAudio {
     const rolling = player.grounded > 0 && player.speed > 4;
     const sliding = rolling ? clamp01((player.maxSlip - 0.45) / 0.45) : 0;
     this.tyreFilter.frequency.setTargetAtTime(950 + sliding * 500, t, 0.08);
-    this.tyreGain.gain.setTargetAtTime(sliding * 0.075, t, 0.06);
+    this.tyreGain.gain.setTargetAtTime(sliding * 0.075 * this.duck, t, 0.06);
 
     // Scrub: the worst lateral slip angle any grounded wheel is carrying.
     // Starts around three degrees, which is where a tyre begins to protest,
@@ -1069,10 +1085,10 @@ export class GameAudio {
     const scrub = clamp01((worstAngle - 0.040) / 0.155)
       * clamp01((player.speed - 4) / 9);
     this.scrubFilter.frequency.setTargetAtTime(560 + scrub * 260, t, 0.09);
-    this.scrubGain.gain.setTargetAtTime(scrub * 0.055, t, 0.07);
+    this.scrubGain.gain.setTargetAtTime(scrub * 0.055 * this.duck, t, 0.07);
 
     // ---- wind ------------------------------------------------------------
-    this.windGain.gain.setTargetAtTime(clamp01(player.speed / 75) * 0.045, t, 0.12);
+    this.windGain.gain.setTargetAtTime(clamp01(player.speed / 75) * 0.045 * this.duck, t, 0.12);
     this.windFilter.frequency.setTargetAtTime(400 + player.speed * 14, t, 0.12);
 
     // ---- siren -----------------------------------------------------------
@@ -1107,7 +1123,7 @@ export class GameAudio {
       this.sirenHorn.frequency.setTargetAtTime(hz * 1.9, t, glide);
 
       const prox = 1 - clamp01(nearest / 190);
-      this.sirenGain.gain.setTargetAtTime(prox * prox * 0.075, t, 0.12);
+      this.sirenGain.gain.setTargetAtTime(prox * prox * 0.075 * this.duck, t, 0.12);
     } else {
       this.sirenGain.gain.setTargetAtTime(0, t, 0.25);
     }
