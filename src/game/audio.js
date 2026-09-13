@@ -16,7 +16,7 @@
 //            between a PTT click and a squelch crash; recorded traffic
 //            underneath a pursuit
 
-import { clamp, clamp01, lerp } from '../util/math.js';
+import { clamp, clamp01, lerp, damp } from '../util/math.js';
 
 // =====================================================================
 //  Police radio
@@ -123,6 +123,15 @@ function voiceFor(text) {
  * matters because a 50 Hz fundamental is inaudible on laptop speakers.
  */
 const ENGINE_ORDER = 4;
+
+/**
+ * Overall engine level, intake roar included. Halved on request: the engine
+ * was the loudest thing in the mix and sat on top of the radio.
+ */
+const ENGINE_VOLUME = 0.5;
+
+/** How far the engine drops while a radio call is being spoken. */
+const RADIO_DUCK = 0.55;
 
 /** The recorded engine loop, and what it is doing. */
 const ENGINE_SAMPLE = '/resources/sounds/freesound_community-engine-61234.mp3';
@@ -789,7 +798,9 @@ export class GameAudio {
       const rate = voice.localService ? style.rate : 1 + (style.rate - 1) * 0.3;
       u.rate = rate;
       u.pitch = style.pitch;
-      u.volume = clamp01(0.95 * this.masterVolume / 0.75);
+      // Full volume: the speech engine will not go any louder than 1, so the
+      // rest of the voice's headroom comes from ducking the engine under it.
+      u.volume = clamp01(this.masterVolume / 0.75);
       u.onend = finish;
       u.onerror = finish;
       this.currentUtterance = u;
@@ -860,8 +871,8 @@ export class GameAudio {
     const src = this.ctx.createBufferSource();
     src.buffer = buf;
     const g = this.ctx.createGain();
-    // Twice the background chatter's level: this is the call, not the room.
-    const level = this.chatterLevel * 2.2;
+    // Well above the background chatter: this is the call, not the room.
+    const level = this.chatterLevel * 3.2;
     g.gain.setValueAtTime(0.0001, at);
     g.gain.exponentialRampToValueAtTime(level, at + 0.04);
     g.gain.setValueAtTime(level, at + run - 0.1);
@@ -1025,11 +1036,17 @@ export class GameAudio {
 
     // Duck the note briefly while the clutch is out mid-shift.
     const shifting = player.shiftTimer > 0 ? 0.35 : 1;
-    const engVol = (0.085 + load * 0.130 + revs * 0.080) * shifting;
+    // And under the radio while somebody is talking. The spoken calls play
+    // outside Web Audio and are already at the speech engine's maximum, so the
+    // only way to bring the voices up any further is to bring the engine down
+    // while they are on.
+    const talking = this.radioFreeAt === Infinity;
+    this.duck = damp(this.duck || 1, talking ? RADIO_DUCK : 1, talking ? 10 : 3, dt);
+    const engVol = (0.085 + load * 0.130 + revs * 0.080) * shifting * ENGINE_VOLUME * this.duck;
     this.engineGain.gain.setTargetAtTime(engVol, t, smooth);
 
     this.intakeFilter.frequency.setTargetAtTime(300 + revs * 1500, t, smooth);
-    this.intakeGain.gain.setTargetAtTime(load * revs * 0.05, t, smooth);
+    this.intakeGain.gain.setTargetAtTime(load * revs * 0.05 * ENGINE_VOLUME * this.duck, t, smooth);
 
     // ---- tyres -----------------------------------------------------------
     const rolling = player.grounded > 0 && player.speed > 4;

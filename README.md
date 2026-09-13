@@ -1562,6 +1562,28 @@ limiter sits on the output: engine at full chat, siren alongside and a collision
 thud all land together often enough that without one the mix clips exactly when
 it matters. Worst case measured at 0.53 peak — no clipping.
 
+### The engine sits under the radio
+
+The engine was the loudest thing in the mix and talked over the calls. It is
+halved (`ENGINE_VOLUME`, intake roar included), and it ducks by a further 45%
+while a call is being spoken — easing down over a fraction of a second and back
+up over about a second. The ducking is the only way to make the voices louder
+than they are: the speech engine plays outside Web Audio and is already at its
+maximum volume of 1.
+
+Measured at the master bus, Stiletto, RMS:
+
+| | before | after |
+|---|---|---|
+| idle | 0.020 | 0.010 |
+| cruising, 4 000 rpm | 0.042 | 0.022 |
+| flat out, 7 500 rpm | 0.077 | 0.036 |
+| flat out, during a call | 0.077 | **0.022** |
+
+The radio log that used to sit in the bottom right corner is hidden, since
+everything on it is now spoken. It is still written to, so deleting one
+`display: none` in `index.html` brings it back.
+
 ## The maps
 
 Two, chosen from the menu at startup. Press **M** in game to come back and

@@ -65,9 +65,13 @@
   #dmgpct.bad { color: var(--hot); }
 
   /* ---- radio feed, bottom right ---- */
+  /* Hidden: the calls are spoken now, so the text log is redundant on screen.
+     The element stays in the page and keeps being written to, so it can be
+     brought back by deleting the display rule. */
   #radio {
     position: absolute; bottom: 14px; right: 14px; width: 330px;
     padding: 9px 11px; font-size: 11px; line-height: 1.5;
+    display: none;
   }
   #radio h4 { margin: 0 0 6px; font-size: 9px; letter-spacing: 2px; color: var(--dim); font-weight: 500; }
   #radiolog div { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
