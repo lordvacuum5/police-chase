@@ -1366,51 +1366,98 @@ Measured through a steering sweep at a steady 60 km/h:
 
 ### The police radio
 
-Every line that reaches the HUD also goes out over the net. `Game.radio` was
-already the single choke point for all 22 call sites, so the audio hangs off
-that and the two can never drift apart.
+Every line that reaches the HUD also goes out over the net. `Game.radio` is the
+single choke point for every call site, so the audio hangs off that and the two
+can never drift apart.
 
-A police radio is recognisable long before you have parsed a word of it, and
-almost all of that is the *channel* rather than the voice. So the channel is
-where the work went: 330 Hz to 2.85 kHz, a presence peak at 1.7 kHz, and a
-waveshaper standing in for the compressor at the transmitter that squashes
-every syllable to the same level. The highpass is two cascaded stages, not one
-— a single 12 dB/octave slope still lets about a third of the energy through
-underneath it, because the voice fundamental is around 110 Hz and its low
-harmonics sail past, and that bass is exactly what stops it sounding like a
-radio.
+**The voice actually speaks.** It used to be synthesised: a buzz through two
+formant filters, stepped to a different vowel once a syllable, meant to read as
+speech without ever saying anything. It did not read as speech — the verdict
+was *"it just makes a really weird noise, it's not even speech"* — and that is
+fair: nonsense syllables are uncanny in exactly the way a real voice is not.
+So the line is now read out by the browser's own speech engine, rewritten
+first into something a person would say (`speakable`): "U3" becomes "Unit 3",
+"PIT" is a word rather than three letters, a slash between two roads is "and",
+and dashes are pauses.
 
-The "words" are a buzz through two formant filters, moved to a different vowel
-once per syllable, gated by an envelope with a falling intonation and the odd
-gap for breath. Nonsense by design: the radio can never say something that
-contradicts the line printed on the HUD. A seeded PRNG keyed on the message
-means a given call always sounds the same.
+Voices are chosen from whatever the machine has (`pickVoices`): English only,
+British first, local voices ahead of network ones — a network voice can lag
+behind the HUD or not arrive at all offline. Control is a female voice where
+there is one, units a male one, air support a third; on this machine that is
+Hazel, George and Susan. With no English voice at all, a stretch of the real
+recorded radio traffic stands in for each call instead.
 
-Three voices, picked off the text. Control is a base station — lower, steadier,
-cleaner. A unit is on a handheld in a car doing 90, so it is higher, faster and
-driven harder into the shaper. India 99 has the rotor underneath everything it
-says. A priority call from Control opens with a short attention beep,
-rate-limited to once every 24 s so that it keeps meaning something. One
-transmission at a time, queued: two units never talk over each other on a real
-net, and it is the queueing that makes it sound like a net rather than a
-soundboard.
+The speech engine plays outside Web Audio, so it cannot go through the radio
+channel's filters. What makes it sound like a radio is everything around it:
+the PTT click before, a faint open-carrier hiss underneath (and the rotor for
+India 99), and the squelch crash after. The channel is held for as long as the
+engine is actually speaking — nobody can know in advance how long a line takes
+to say — with a timeout in case an engine never reports the end.
 
-`tests/radio.js` renders the chain inside an `OfflineAudioContext` and measures
-the samples, which is deterministic and does not care whether the tab is
-throttling its timers:
+Three things had to be measured rather than guessed:
 
-| | |
-|---|---|
-| transmission length | 3.29 s for a 54-character line |
-| energy below 300 Hz | 0.4% |
-| energy 300 Hz – 3 kHz | 99.5% |
-| energy above 3 kHz | 0.1% |
-| key-up crash vs speech | 1.63× — and it is the loudest moment |
-| priority call opens louder | 3.5× |
-| voice pairs told apart | 3 of 3 |
+* **Speed.** At its default rate a Windows voice took 6.8 s over *"Control,
+  reports of a vehicle driving dangerously, all units respond"* — about half
+  the pace of real radio traffic — and every call behind it went stale
+  waiting. Rate does not scale linearly on those voices either: 1.3 only took
+  that line to 6.1 s, 2.1 to 4.9 s. So the rates are 2.0 to 2.3, with a much
+  gentler version for network voices, which do scale roughly linearly.
+* **Staleness.** A call that has waited more than ten seconds is about
+  something that has already happened — "PIT authorised" after the PIT — and is
+  dropped rather than read out late.
+* **Traffic.** The intercept solver re-picks junctions every second, and every
+  unit announced every change: once calls took real time to say, *"U2 — cut
+  them off at the roundabout, 4s"* was sixty lines a minute and more than half
+  of everything on the net. A unit now says it is going to cut them off when it
+  takes the job, and again only twenty seconds later.
 
-A 45-second pursuit puts four calls on the air: one from Control, three from
-units.
+A priority call from Control opens with a short attention beep, at most once
+every 24 s. One transmission at a time: two units never talk over each other on
+a real net, and it is the queueing that makes it sound like a net rather than a
+soundboard. Muting cancels the speech directly, since it does not go through the
+master volume, and so does leaving the page — speech otherwise carries on
+through a reload, into the menu.
+
+### What the police say
+
+The dispatcher only ever spoke when it made a decision, so for most of a chase
+the net was silent and nothing on it told you what they could see.
+`game/commentary.js` watches the chase and reports it, the way a real pursuit
+does — it never decides anything:
+
+| When | Who | Says, for example |
+|---|---|---|
+| a unit takes the lead | the unit | *"Unit 2, I'm primary, in pursuit of a red sports car, southbound on Fifth Street."* |
+| a second unit is on you | the unit | *"Unit 1, I'm secondary, right behind Unit 2."* |
+| every 11–15 s while they can see you | primary | *"Unit 1, northbound, approaching Eighth Street and Ashcroft Road, speeds 80."* — or *on the motorway now*, *they've slowed right down*, *I'm struggling to keep up* |
+| through a red light | whoever saw it | *"…they've gone straight through a red at Sixth Street and Bright Lane."* |
+| off the road | primary | *"…they've left the road, going across open ground."* |
+| you hit something, or ram a unit | primary, or the unit | *"…they've hit something, still mobile."* / *"…they've rammed us! Still in pursuit."* |
+| a police car is wrecked | the unit | *"…we're out of it, vehicle's disabled."* |
+| the wanted level rises | Control | pursuit authorised → tactical contact → authorised to box → critical incident |
+| they lose sight | last primary, then Control | *"…lost visual. Last seen eastbound on Sixth Street."* / *"all units, suspect last seen on Carrick Road. Search the area and report."* |
+| still searching | Control | *"any units, anything on that vehicle?"* |
+| they find you again | the spotter | *"…eyes on! They're northbound on Faraday Road."* |
+| air support has you in the light | India 99 | *"we have them… I'll commentate"*, then its own running commentary |
+| you are pinned | nearest unit | *"suspect vehicle's stopped! Moving in."* → *"we've got them blocked in. Going to the driver."* — or *"they've pushed free! Still going."* |
+| arrested | the unit, then Control | *"one detained"* → *"received. Suspect in custody. All units, stand down."* |
+
+It is rate-limited twice: at least 4.5 s between any two lines, and a cooldown
+per kind of line. Primary has hysteresis, so two cars trading places a length
+apart do not hand it back and forth. Routine commentary is marked low priority
+and is not read out if anything is already waiting — it still appears on the
+HUD. And once you are arrested nothing else gets on the net: before, units kept
+announcing intercepts after Control had stood everybody down.
+
+`tests/commentary.js` runs a scripted chase through every phase with the audio
+muted and prints the transcript. Before the intercept fix that was 157 lines in
+two minutes; after it, 82, of which 51 are low priority.
+
+`tests/radio.js` measures what can be measured: the channel (white noise in,
+0.1% below 300 Hz, 88% between 300 Hz and 3 kHz), the key-up crash against the
+opening click (3.1×), what every line becomes when read aloud, the voice choice
+on this machine and on lists it does not have, and — live — three queued calls
+spoken one at a time with none overlapping, and silence on mute.
 
 ### Recorded chatter underneath it
 
@@ -1433,11 +1480,12 @@ same radio rather than a second one — and a burst books the channel like a rea
 transmission, so a dispatch call arriving mid-burst waits its turn.
 
 Getting the level right needed measuring rather than judgement, twice over. A
-recording is mastered dense and full-band while the synthesised voice is sparse
-and generated at an amplitude of 0.075, and both then pass through the
-channel's saturating waveshaper — so the recording arrives with far more energy
-at the same nominal gain. Peaks at the master bus, against **0.287** for a
-dispatch call:
+recording is mastered dense and full-band while the synthesised voice it was
+first set against was sparse and generated at an amplitude of 0.075, and both
+passed through the channel's saturating waveshaper — so the recording arrives
+with far more energy at the same nominal gain. Peaks at the master bus, against
+**0.287** for a synthesised dispatch call (the spoken calls that replaced it
+play outside Web Audio, louder, so the chatter sits further under them still):
 
 | burst gain | peak | RMS |
 |---|---|---|

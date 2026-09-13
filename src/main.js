@@ -9,7 +9,7 @@ import {
 } from './game/vehicles.js';
 import { WORLD_HALF } from './world/common.js';
 import { MAPS, mapById } from './world/maps.js';
-import { showMenu, chosenCar } from './core/menu.js';
+import { showMenu, hideMenu, chosenCar } from './core/menu.js';
 import { DRIVE_SIDE } from './world/roadgraph.js';
 import { Dispatcher } from './ai/dispatcher.js';
 import { Officer, ROLE } from './ai/officer.js';
@@ -24,6 +24,7 @@ import { Hud } from './game/hud.js';
 import { Input } from './core/input.js';
 import { SkidMarks, LightBars } from './game/effects.js';
 import { GameAudio } from './game/audio.js';
+import { Commentary } from './game/commentary.js';
 import { vertexColorMaterial, shinyVertexMaterial } from './util/meshbuild.js';
 import { makeRng, clamp, clamp01, dist2, lerp } from './util/math.js';
 
@@ -104,6 +105,8 @@ class Game {
     // Props first: the signals hand their posts to it to be knocked over.
     this.props = new StreetProps(this);
     this.signals = new TrafficLights(this);
+    // The police talking about what is going on. Reads everything above; decides nothing.
+    this.commentary = new Commentary(this);
     this.hud = new Hud(this);
     this.input = new Input();
     this.camera3 = new ChaseCamera(this.camera);
@@ -450,11 +453,17 @@ class Game {
 
   // =================================================================== events
 
-  radio(text, hot = false) {
+  radio(text, hot = false, opts = {}) {
+    // Once the run has ended in an arrest the chase is over, but the units are
+    // still thinking -- and without this they kept announcing intercepts after
+    // Control had stood everybody down. Only the lines that close the run out
+    // get through.
+    if (this.outcome && !opts.final) return;
     if (this.hud) this.hud.addMessage(text, hot);
     // Every line that reaches the HUD is also heard on the net. One choke
-    // point for both, so the two can never drift apart.
-    if (this.audio) this.audio.radio(text, hot);
+    // point for both, so the two can never drift apart. `opts.low` marks
+    // running commentary, which the audio side may skip when the net is busy.
+    if (this.audio) this.audio.radio(text, hot, opts);
   }
 
   roadName(pos) {
@@ -484,7 +493,8 @@ class Game {
       `Peak heat <b>${this.heat.peak.toFixed(1)}</b>`,
       `Damage <b>${(this.player.damage * 100).toFixed(0)}%</b>`,
     ].join(' &nbsp;·&nbsp; '));
-    this.radio('Suspect in custody. Stand down.', true);
+    this.commentary.onBusted();
+    this.radio('Control, received. Suspect in custody. All units, stand down.', true, { final: true });
   }
 
   /**
@@ -522,6 +532,7 @@ class Game {
     this.helicopter.reset();
     this.props.reset();
     this.signals.reset();
+    this.commentary.reset();
     this.player.repair();
     this.player.teleport(this.startPlace.position, this.startPlace.heading);
     this.skids.clear();
@@ -632,6 +643,7 @@ class Game {
     this.props.update(dt);
     this.signals.update(dt);
     this.heat.update(dt, player, this.dispatcher);
+    this.commentary.update(dt);
     this._checkProvocation(dt);
 
     // ---- physics ----
@@ -841,6 +853,10 @@ window.__game = game;
 function launch(mapDef) {
   sessionStorage.setItem('pc.map', mapDef.id);
   game.mapDef = mapDef;
+  // The menu is in the page from the start and only hid itself when a map card
+  // was clicked, so a refresh straight back into a map left its headings drawn
+  // over the game.
+  hideMenu();
   boot.show();
   game.init().catch((e) => {
     const el = document.getElementById('booterr');

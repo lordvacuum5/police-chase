@@ -1,20 +1,20 @@
-// Sound, synthesised at runtime.
+// Sound.
 //
-// There are no audio files in this project, so everything is built from
-// oscillators and a single buffer of white noise. That keeps the download at
-// zero and lets the engine note track rpm exactly rather than crossfading
-// between samples.
+// Mostly built at runtime from oscillators and a buffer of white noise, with
+// three recordings where synthesis could not do the job: the engine, and two
+// clips of real police radio traffic.
 //
 // Layers:
-//   engine   three oscillators locked to firing frequency, through a lowpass
-//            whose cutoff opens with throttle -- so load is audible, not just speed
+//   engine   a recorded engine pitched to rpm, over oscillators locked to the
+//            firing frequency, through a filter that opens with throttle
 //   intake   filtered noise that swells with revs
-//   tyres    narrow band noise driven by the worst wheel's slip
+//   tyres    scrub and squeal, driven by slip angle and slip
 //   wind     broad noise driven by road speed
-//   siren    a wailing two-tone that fades in with the nearest pursuing unit
+//   siren    wail and yelp, faded in with the nearest marked unit
 //   impacts  one-shot filtered noise bursts
-//   radio    dispatch traffic: squelch, a band-limited voice, and the crash
-//            of the key coming up
+//   radio    dispatch calls actually spoken by the browser's speech engine,
+//            between a PTT click and a squelch crash; recorded traffic
+//            underneath a pursuit
 
 import { clamp, clamp01, lerp } from '../util/math.js';
 
@@ -28,57 +28,87 @@ import { clamp, clamp01, lerp } from '../util/math.js';
  * A police radio is recognisable long before you have parsed a word of it,
  * and almost all of that is the channel rather than the voice: 300 Hz to
  * 3 kHz, squashed flat by the compressor at the transmitter, with the click
- * of the PTT closing at one end and the squelch crash at the other. Get those
- * right and a synthesised mumble reads as radio traffic; get them wrong and a
- * perfect voice recording still does not.
+ * of the PTT closing at one end and the squelch crash at the other. The
+ * recorded traffic and the carrier hiss go through this channel. The spoken
+ * calls cannot -- see _transmit -- so they get the click and the crash instead.
  */
 const RADIO_LO = 330, RADIO_HI = 2850;
 
 /**
- * Formant pairs for a handful of vowels, in Hz.
+ * Who is talking, and how.
  *
- * The "words" are nonsense -- a buzz through two resonances, moved from one
- * vowel to the next once per syllable. That is enough for the ear to hear
- * speech, and it means the radio never says anything that contradicts the
- * message printed on the HUD.
+ * The voice used to be synthesised here: a buzz through two formant filters,
+ * stepped from one vowel to the next once a syllable. It was meant to read as
+ * speech without ever saying anything, and it did not read as speech -- the
+ * verdict was "a really weird noise, it's not even speech", which is fair.
+ * Nonsense syllables are uncanny in exactly the way a real voice is not.
+ *
+ * So the radio now actually says the line, with the browser's own speech
+ * engine. Control is a dispatcher at a desk: steady, a female voice where there
+ * is one. A unit is somebody in a car doing ninety: quicker, a male voice. The
+ * helicopter gets a third voice where the machine has one, and the rotor under
+ * everything it says.
+ *
+ * Rates are well above the engine default, on purpose. At its own pace a
+ * desktop voice took 6.8 s over "Control, reports of a vehicle driving
+ * dangerously, all units respond" -- about half the speed of real radio
+ * traffic, which is clipped and quick -- and in a busy chase every call behind
+ * it went stale waiting. The Windows voices do not scale linearly with rate,
+ * either: measured on that line, 1.3 only took it to 6.1 s, 2.1 to 4.9 s.
+ * Network voices do scale roughly linearly, so they get a gentler version of
+ * the same numbers (see _transmit) rather than being read at double speed.
  */
-const VOWELS = [
-  [730, 1090],   // ah
-  [530, 1840],   // eh
-  [270, 2290],   // ee
-  [570, 840],    // oh
-  [440, 1020],   // aw
-  [490, 1350],   // er
-  [640, 1190],   // uh
-];
-
-/**
- * Who is talking. Control is a base station: lower, steadier, cleaner. A unit
- * is on a handheld in a car doing 90, so it is higher, faster and dirtier.
- * The helicopter has the rotor sitting under everything it says.
- */
-const VOICES = {
-  control: { pitch: 104, rate: 5.6, formant: 1.00, noise: 0.10, drive: 2.2, rumble: 0 },
-  unit:    { pitch: 128, rate: 6.6, formant: 1.09, noise: 0.20, drive: 3.4, rumble: 0 },
-  air:     { pitch: 118, rate: 6.1, formant: 1.05, noise: 0.26, drive: 3.8, rumble: 0.35 },
+const SPEAKERS = {
+  control: { prefer: 'female', rate: 2.0, pitch: 1.00, rumble: 0 },
+  unit:    { prefer: 'male',   rate: 2.3, pitch: 0.97, rumble: 0 },
+  air:     { prefer: 'other',  rate: 2.1, pitch: 0.94, rumble: 0.35 },
 };
 
-/** Cheap deterministic PRNG, so a given message always sounds the same. */
-function seededRng(text) {
-  let h = 2166136261;
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return () => {
-    h ^= h << 13; h >>>= 0;
-    h ^= h >> 17;
-    h ^= h << 5; h >>>= 0;
-    return h / 4294967296;
-  };
+const FEMALE_NAME = /female|zira|hazel|susan|libby|sonia|maisie|aria|jenny|michelle|samantha|karen|moira|tessa|serena|kate|fiona|victoria|allison|ava|emma|natasha|catherine|heera|linda/i;
+const MALE_NAME = /\bmale\b|david|mark|george|ryan|guy|daniel|alex|fred|oliver|thomas|arthur|james|christopher|eric|roger|brian|richard|william|sean/i;
+
+/**
+ * Choose a voice for each speaker from whatever the machine has.
+ *
+ * English only, British first -- it is a British police net -- then any other
+ * English. Local voices ahead of network ones: a network voice can lag a
+ * second behind the line on the HUD, or not arrive at all offline, and a call
+ * that turns up late is worse than one in a plainer voice. Returns null when
+ * there is no English voice at all, which sends the radio to its fallback.
+ */
+export function pickVoices(all) {
+  const en = (all || []).filter((v) => /^en([-_]|$)/i.test(v.lang));
+  if (!en.length) return null;
+  const score = (v) => (/^en[-_]GB/i.test(v.lang) ? 4 : 1) + (v.localService ? 2 : 0);
+  const sorted = en.slice().sort((a, b) => score(b) - score(a));
+  const female = sorted.filter((v) => FEMALE_NAME.test(v.name));
+  const male = sorted.filter((v) => !FEMALE_NAME.test(v.name) && MALE_NAME.test(v.name));
+
+  const control = female[0] || sorted[0];
+  const unit = male[0] || sorted.find((v) => v !== control) || sorted[0];
+  const air = sorted.find((v) => v !== control && v !== unit) || unit;
+  return { control, unit, air };
 }
 
-/** Which of the three voices a line of dispatch is in. */
+/**
+ * A HUD line, rewritten the way a person would read it aloud.
+ *
+ * Speech engines read what they are given: "U3" comes out as "you three",
+ * "PIT" gets spelled, a slash is "slash" and an em dash is nothing at all.
+ */
+export function speakable(text) {
+  return String(text)
+    .replace(/\s*[—–]\s*/g, ', ')
+    .replace(/\s+\/\s+/g, ' and ')
+    .replace(/\bU(\d+)\b/g, 'Unit $1')
+    .replace(/\bPIT\b/g, 'pit')
+    .replace(/\b(\d+)s\b/g, '$1 seconds')
+    .replace(/,\s*,/g, ',')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Which of the three speakers a line of dispatch belongs to. */
 function voiceFor(text) {
   if (/India 99|Air support/i.test(text)) return 'air';
   if (/^Control\b|^All units\b/i.test(text)) return 'control';
@@ -120,12 +150,11 @@ const LOOP_FROM = 2.0, LOOP_TO = 15.0, LOOP_FADE = 0.2;
 /**
  * Recorded police net chatter, played underneath a pursuit.
  *
- * The synthesised voice is good at *structure* -- it says something whenever
- * the game says something, and it can never contradict the line on the HUD --
- * and it will never be mistaken for a real person. Recorded traffic is the
- * other way round, so the two are used for what each is good at: the synth
- * carries the calls that mean something, and a recording fills the gaps with
- * the sound of a busy net.
+ * The spoken calls say what is on the HUD and nothing else. Recorded traffic
+ * is the rest of the net -- other units, other jobs -- so the calls that mean
+ * something are spoken, and a recording fills the gaps with the sound of a
+ * busy channel. It is also what the radio falls back to on a machine with no
+ * speech engine.
  *
  * Every path here is optional and tried in order. Drop a clip into
  * `resources/sounds/` under one of these names and it is picked up on the next
@@ -552,6 +581,23 @@ export class GameAudio {
     this.radioQueue = [];
     this.radioFreeAt = 0;      // ctx time the channel is clear again
     this.lastAlertAt = -1e9;
+    this.transmitSerial = 0;
+    this.currentUtterance = null;
+
+    // The speech engine and its voices. Voices arrive asynchronously in most
+    // browsers -- the list is empty on the first call and filled in by a
+    // voiceschanged event -- so the choice is made again whenever it changes.
+    this.speech = (typeof window !== 'undefined' && window.speechSynthesis) || null;
+    this.voices = null;
+    if (this.speech) {
+      const choose = () => { this.voices = pickVoices(this.speech.getVoices()); };
+      choose();
+      this.speech.addEventListener('voiceschanged', choose);
+      // Speech carries on across a page reload -- pressing M to go back to
+      // the menu reloads -- so without this the last calls of a chase follow
+      // you into the menu.
+      window.addEventListener('pagehide', () => this.speech.cancel());
+    }
 
     this.chatter = [];         // decoded recordings, if any were found
     this.chatterTimer = 4;
@@ -623,12 +669,12 @@ export class GameAudio {
     // response.
     //
     // The number is small, and it has to be. A recording is mastered dense and
-    // full-band; the synthesised voice is sparse and generated at an amplitude
-    // of 0.075, and both then go through the channel's saturating waveshaper.
-    // So the recording arrives with far more energy at the same nominal gain.
-    // Peaks at the master bus, against 0.287 for a dispatch call: gain 0.03
-    // gives 0.135, 0.08 gives 0.317, 0.15 gives 0.454. Anything above about
-    // 0.05 and the background is the loudest thing on the net.
+    // full-band, and the channel's waveshaper saturates, so it arrives with a
+    // lot of energy for its nominal gain. Measured at the master bus against
+    // the old synthesised call, which peaked at 0.287: gain 0.03 gives 0.135,
+    // 0.08 gives 0.317, 0.15 gives 0.454. The spoken calls now play outside
+    // Web Audio, louder than that call ever was, so this sits further under
+    // them still.
     const level = this.chatterLevel * (0.8 + 0.06 * Math.min(5, tier));
     g.gain.setValueAtTime(0.0001, at);
     g.gain.exponentialRampToValueAtTime(level, at + 0.05);
@@ -652,15 +698,19 @@ export class GameAudio {
    * real net, and it is the queueing that makes it sound like a net rather
    * than a soundboard.
    */
-  radio(text, hot = false) {
+  radio(text, hot = false, opts = {}) {
     if (!this.ready || this.muted || this.failed) return;
     // Bracketed lines are the game talking to the player about settings, not
     // anybody talking on the radio.
     if (!text || text.startsWith('[')) return;
+    // Running commentary is the first thing to give way when the net is busy.
+    // It is still on the HUD; it just does not get read out behind two calls
+    // that matter more.
+    if (opts.low && this.radioQueue.length >= 1) return;
     // A long pursuit generates more traffic than there is airtime. Keep the
     // newest, since stale calls are the ones worth dropping.
     if (this.radioQueue.length > 3) this.radioQueue.splice(0, this.radioQueue.length - 3);
-    this.radioQueue.push({ text, hot });
+    this.radioQueue.push({ text, hot, at: performance.now() });
   }
 
   /** Start the next transmission if the channel is clear. Called per frame. */
@@ -668,22 +718,34 @@ export class GameAudio {
     if (!this.radioQueue.length) return;
     const now = this.ctx.currentTime;
     if (now < this.radioFreeAt) return;
-    this._transmit(this.radioQueue.shift());
+    // Spoken lines take real time to say, so a busy chase can back up behind
+    // one. A call that has waited more than ten seconds is about something
+    // that is no longer happening -- "PIT authorised" after the PIT -- and is
+    // dropped rather than read out late.
+    while (this.radioQueue.length && performance.now() - (this.radioQueue[0].at || 0) > 10000) {
+      this.radioQueue.shift();
+    }
+    if (this.radioQueue.length) this._transmit(this.radioQueue.shift());
   }
 
   /**
-   * One transmission, scheduled in full at the moment it starts.
+   * One transmission: the key closing, the line spoken, the squelch crash.
    *
-   * Nothing here runs per frame: the whole thing -- click, syllables, squelch
-   * tail -- is written into the AudioParam timeline up front and then left
-   * alone, which is both cheaper and immune to a dropped frame stuttering
-   * somebody's sentence.
+   * The clicks and the carrier hiss are scheduled on the audio clock like
+   * everything else. The voice is not, because the browser's speech engine
+   * plays through its own output rather than through Web Audio -- which also
+   * means it cannot be put through the radio channel's band limiting. What
+   * makes it sound like a radio instead is everything around it: the PTT click
+   * before, a faint open-carrier hiss underneath (and the rotor, for the
+   * helicopter), and the squelch crash after.
+   *
+   * The channel is held for as long as the engine is actually speaking, since
+   * nothing can know in advance how long a line will take to say.
    */
   _transmit(msg) {
     const ctx = this.ctx;
     const kind = voiceFor(msg.text);
-    const v = VOICES[kind];
-    const rnd = seededRng(msg.text);
+    const style = SPEAKERS[kind];
     let t = Math.max(ctx.currentTime + 0.03, this.radioFreeAt + 0.12);
 
     // A priority call from Control gets the attention tone first -- but only
@@ -697,99 +759,117 @@ export class GameAudio {
     this._squelch(t, 0.05, 0.55, 2400);
     t += 0.10;
 
-    // ---- the voice -------------------------------------------------------
-    // Long enough to track the length of the line on the HUD, short enough to
-    // sound like dispatch rather than a conversation. Real radio traffic is
-    // terse; a six-second mumble is neither.
-    const syl = clamp(Math.round(msg.text.length / 3.6), 3, 17);
-    const osc = ctx.createOscillator();
-    osc.type = 'sawtooth';
+    const carrier = this._openCarrier(t, style.rumble);
+    this.radioFreeAt = Infinity;
+    const serial = ++this.transmitSerial;
 
-    const f1 = ctx.createBiquadFilter();
-    f1.type = 'bandpass'; f1.Q.value = 5.5;
-    const f2 = ctx.createBiquadFilter();
-    f2.type = 'bandpass'; f2.Q.value = 8;
-    const g1 = ctx.createGain(); g1.gain.value = 1.0;
-    const g2 = ctx.createGain(); g2.gain.value = 0.55;
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      if (this.transmitSerial === serial) this.currentUtterance = null;
+      // ---- the key coming up -----------------------------------------------
+      // Louder and longer than the click that opened it: the receiver's
+      // squelch has a moment of open carrier before it shuts, and that crash
+      // of noise is the single most recognisable thing about the whole sound.
+      const end = Math.max(ctx.currentTime + 0.02, t + 0.2);
+      carrier(end);
+      this._squelch(end + 0.03, 0.12, 1.7, 3200);
+      this.radioFreeAt = end + 0.27;
+    };
 
-    // Consonants: a little band-passed hiss riding the same envelope.
-    const hiss = ctx.createBufferSource();
-    hiss.buffer = this.noiseBuffer; hiss.loop = true;
-    const hf = ctx.createBiquadFilter();
-    hf.type = 'bandpass'; hf.frequency.value = 2100; hf.Q.value = 1.2;
-    const hg = ctx.createGain(); hg.gain.value = v.noise;
+    const startIn = Math.max(0, (t - ctx.currentTime) * 1000);
+    const voice = this.voices && this.voices[kind];
 
-    const env = ctx.createGain();
-    env.gain.value = 0.0001;
-
-    osc.connect(f1); f1.connect(g1); g1.connect(env);
-    osc.connect(f2); f2.connect(g2); g2.connect(env);
-    hiss.connect(hf); hf.connect(hg); hg.connect(env);
-    env.connect(this.radioIn);
-
-    const start = t;
-    for (let i = 0; i < syl; i++) {
-      const u = i / syl;
-      const len = (1 / v.rate) * (0.72 + rnd() * 0.62);
-      // A statement falls away at the end; a stressed syllable lifts.
-      //
-      // Both of those used to be steps, and they were big ones: a 13% stress
-      // on top of a 12% spread is three semitones between one syllable and the
-      // next, held flat for the length of the syllable. Discrete intervals
-      // held steady is the definition of a melody, which is why the radio
-      // sounded like it was singing at you. Speech slides, so this slides --
-      // and the intervals are a fraction of what they were.
-      const stress = rnd() < 0.28 ? 1.05 : 1.0;
-      const fall = 1 - 0.20 * u;
-      const hz = v.pitch * fall * stress * (0.975 + rnd() * 0.05);
-      osc.frequency.setValueAtTime(hz, t);
-      osc.frequency.linearRampToValueAtTime(hz * (0.955 + rnd() * 0.06), t + len * 0.92);
-
-      const vow = VOWELS[(rnd() * VOWELS.length) | 0];
-      f1.frequency.setValueAtTime(vow[0] * v.formant, t);
-      f2.frequency.setValueAtTime(vow[1] * v.formant, t);
-
-      // `drive` is how hard this voice hits the shaper on the bus, which is
-      // what makes a handheld in a moving car sound more squashed than the
-      // base station does.
-      const amp = 0.075 * v.drive * (0.75 + rnd() * 0.45);
-      env.gain.setValueAtTime(0.0001, t);
-      env.gain.exponentialRampToValueAtTime(amp, t + Math.min(0.022, len * 0.25));
-      env.gain.exponentialRampToValueAtTime(amp * 0.5, t + len * 0.6);
-      env.gain.exponentialRampToValueAtTime(0.0001, t + len * 0.94);
-      t += len;
-
-      // The odd gap, where somebody draws breath or hunts for a word.
-      if (rnd() < 0.09) t += 0.07 + rnd() * 0.10;
+    if (this.speech && voice) {
+      const words = speakable(msg.text);
+      const u = new SpeechSynthesisUtterance(words);
+      u.voice = voice;
+      u.lang = voice.lang;
+      const rate = voice.localService ? style.rate : 1 + (style.rate - 1) * 0.3;
+      u.rate = rate;
+      u.pitch = style.pitch;
+      u.volume = clamp01(0.95 * this.masterVolume / 0.75);
+      u.onend = finish;
+      u.onerror = finish;
+      this.currentUtterance = u;
+      setTimeout(() => {
+        if (finished || this.muted) { finish(); return; }
+        this.speech.speak(u);
+      }, startIn);
+      // Some engines never report the end of an utterance. A generous guess
+      // at how long the line takes, so a lost event cannot hold the channel
+      // for the rest of the chase.
+      // About 9.8 characters a second at rate 1 on a desktop voice, and the
+      // speed-up from a higher rate is far less than proportional -- so the
+      // square root, which keeps the guess on the long side.
+      const guess = 1.5 + (words.length / 9.5) / Math.sqrt(rate);
+      setTimeout(finish, startIn + (guess + 3) * 1000);
+    } else {
+      // No speech engine, or no English voice on this machine. Real radio
+      // traffic out of the recordings, the length of the line, stands in for
+      // it -- not the words on the HUD, but a real voice on a real net, which
+      // is the thing the synthesised one never managed.
+      const len = this._recordedVoice(t, msg.text);
+      setTimeout(finish, startIn + len * 1000);
     }
+  }
 
-    osc.start(start);
-    osc.stop(t + 0.05);
-    hiss.start(start);
-    hiss.stop(t + 0.05);
+  /**
+   * The open carrier under a transmission: a faint band-limited hiss, and the
+   * rotor for the aircraft. Returns a function that closes it at a given time.
+   */
+  _openCarrier(at, rumble) {
+    const ctx = this.ctx;
+    const nodes = [];
+    const layer = (freq, q, level) => {
+      const src = ctx.createBufferSource();
+      src.buffer = this.noiseBuffer;
+      src.loop = true;
+      const f = ctx.createBiquadFilter();
+      f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(level, at + 0.04);
+      src.connect(f); f.connect(g); g.connect(this.radioIn);
+      src.start(at);
+      nodes.push({ src, g, level });
+    };
+    layer(1900, 0.6, 0.010);
+    if (rumble > 0) layer(700, 0.8, 0.05 * rumble);
+    return (end) => {
+      for (const n of nodes) {
+        n.g.gain.cancelScheduledValues(end);
+        n.g.gain.setValueAtTime(n.level, end);
+        n.g.gain.exponentialRampToValueAtTime(0.0001, end + 0.05);
+        n.src.stop(end + 0.08);
+      }
+    };
+  }
 
-    // Rotor noise under the whole thing, for the aircraft.
-    if (v.rumble > 0) {
-      const r = ctx.createBufferSource();
-      r.buffer = this.noiseBuffer; r.loop = true;
-      const rf = ctx.createBiquadFilter();
-      rf.type = 'bandpass'; rf.frequency.value = 700; rf.Q.value = 0.8;
-      const rg = ctx.createGain();
-      rg.gain.setValueAtTime(0.0001, start);
-      rg.gain.exponentialRampToValueAtTime(0.05 * v.rumble, start + 0.05);
-      rg.gain.setValueAtTime(0.05 * v.rumble, t - 0.05);
-      rg.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
-      r.connect(rf); rf.connect(rg); rg.connect(this.radioIn);
-      r.start(start); r.stop(t + 0.1);
-    }
-
-    // ---- the key coming up -----------------------------------------------
-    // Louder and longer than the click that opened it: the receiver's squelch
-    // has a moment of open carrier before it shuts, and that crash of noise is
-    // the single most recognisable thing about the whole sound.
-    t += 0.03;
-    this._squelch(t, 0.12, 1.7, 3200);
-    this.radioFreeAt = t + 0.24;
+  /**
+   * A stretch of recorded radio traffic the length of a line, for a machine
+   * with no speech engine. Returns how long it runs, in seconds.
+   */
+  _recordedVoice(at, text) {
+    const len = clamp(0.9 + text.length / 17, 1.4, 4.2);
+    const buf = this.chatter && this.chatter[(Math.random() * this.chatter.length) | 0];
+    if (!buf) return 0.6;
+    const run = Math.min(len, buf.duration - 0.2);
+    const from = Math.random() * Math.max(0, buf.duration - run - 0.1);
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    const g = this.ctx.createGain();
+    // Twice the background chatter's level: this is the call, not the room.
+    const level = this.chatterLevel * 2.2;
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(level, at + 0.04);
+    g.gain.setValueAtTime(level, at + run - 0.1);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + run);
+    src.connect(g); g.connect(this.radioIn);
+    src.start(at, from, run);
+    src.stop(at + run + 0.05);
+    return run;
   }
 
   /** A burst of band-passed noise: the PTT closing, or the squelch tail. */
@@ -841,6 +921,10 @@ export class GameAudio {
     // Drop anything still queued, or unmuting fires off a backlog of calls
     // about a pursuit that finished a minute ago.
     if (this.muted && this.radioQueue) this.radioQueue.length = 0;
+    // The voice does not go through the master gain, so muting has to stop it
+    // directly. Cancelling fires the utterance's error handler, which releases
+    // the channel.
+    if (this.muted && this.speech) this.speech.cancel();
     if (this.master) {
       this.master.gain.setTargetAtTime(this.muted ? 0 : this.masterVolume, this.ctx.currentTime, 0.05);
     }

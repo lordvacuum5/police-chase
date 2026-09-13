@@ -65,6 +65,7 @@ export class Dispatcher {
       spotter: null,
     };
 
+    this.clock = 0;            // seconds of game time, for rate-limiting radio calls
     this.roleTimer = 0;
     this.interceptTimer = 0;
     this.spawnTimer = 0;
@@ -87,6 +88,7 @@ export class Dispatcher {
   // =================================================================== update
 
   update(dt, target) {
+    this.clock += dt;
     this.pitCooldown -= dt;
     this.blockCooldown -= dt;
     this._updateKnowledge(dt, target);
@@ -199,7 +201,7 @@ export class Dispatcher {
       const u = this.game.spawnPoliceNear(target.position, this.tier);
       if (u) {
         this.units.push(u);
-        this.game.radio(`${u.callsign} responding, ${this._bearingWord(u.position, target.position)}bound`);
+        this.game.radio(`${u.callsign} responding, ${this._bearingWord(u.position, target.position)}bound`, false, { low: true });
       }
     }
 
@@ -341,7 +343,7 @@ export class Dispatcher {
       assigned.add(u);
       if (u.role !== ROLE.PURSUE) {
         u.setRole(ROLE.PURSUE);
-        if (d < 120) this.game.radio(`${u.callsign} has visual, in pursuit ${this.game.roadName(k.position)}`);
+        if (d < 120) this.game.radio(`${u.callsign} has visual, in pursuit ${this.game.roadName(k.position)}`, false, { low: true });
       }
     }
 
@@ -500,9 +502,19 @@ export class Dispatcher {
         // Start the path at the car, not at the junction behind it.
         u._routeTo(best.c.id, 2.4);
         placed++;
-        if (changed) {
+        // The intercept is re-solved every second and the best junction moves
+        // with the target, so "changed" is true for most units most of the
+        // time. Announcing every change put about sixty "cut them off at the
+        // roundabout, 4s" calls a minute on the net once the radio actually
+        // spoke -- more than half of everything said. A unit says it is going
+        // to cut them off when it first takes the job, and again only if it is
+        // still at it twenty seconds later.
+        const quietFor = this.clock - (u.lastInterceptCall || -1e9);
+        if (changed && quietFor > 20) {
+          u.lastInterceptCall = this.clock;
           this.game.radio(
-            `${u.callsign} — cut them off at ${this.game.nodeName(best.c.id)}, ${best.margin.toFixed(0)}s`,
+            `${u.callsign}, I'll cut them off at ${this.game.nodeName(best.c.id)}.`,
+            false, { low: true },
           );
         }
       } else {
