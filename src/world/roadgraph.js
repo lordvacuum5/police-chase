@@ -86,6 +86,27 @@ function segmentCross(p, q) {
 /** Which side of the road traffic drives on. -1 = right-hand, +1 = left-hand. */
 export const DRIVE_SIDE = +1;   // left-hand traffic
 
+/**
+ * Turning off at the junction a car is already in (see RoadGraph._turnHere).
+ * TURN_SPEED is the fastest a car may be going, in m/s, to be given a turn it
+ * is not already swinging into -- about 47 km/h, which a car braking into a
+ * junction can still make. TURN_BIAS is how many seconds quicker the turn has
+ * to be than carrying on, so two near-equal routes do not flip back and forth
+ * with every re-plan.
+ */
+const TURN_SPEED = 13;
+const TURN_BIAS = 2;
+
+/** Seconds to drive a path at its roads' speeds. */
+function pathTime(pts) {
+  let t = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const d = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z);
+    t += d / Math.max(4, pts[i].speed || 15);
+  }
+  return t;
+}
+
 export const ROAD_KIND = {
   street:   { width: 15, lanes: 1, speed: 15, colour: 0x24272b },
   avenue:   { width: 20, lanes: 2, speed: 19, colour: 0x26292d },
@@ -703,8 +724,75 @@ export class RoadGraph {
    * handed that path drives straight at its first waypoint, which means
    * straight across whatever lies between. So the route is prefixed with the
    * remainder of the edge the car is currently on.
+   *
+   * `speed` is how fast the car is going, in m/s. It only matters in a
+   * junction: see _turnHere.
    */
-  pathFromPosition(x, z, dirX, dirZ, goalId, laneOffset = 0, speedCap = Infinity) {
+  pathFromPosition(x, z, dirX, dirZ, goalId, laneOffset = 0, speedCap = Infinity, speed = 0) {
+    const straight = this._pathAhead(x, z, dirX, dirZ, goalId, laneOffset, speedCap);
+    const turn = this._turnHere(x, z, dirX, dirZ, goalId, laneOffset, speedCap, speed);
+    if (turn && (!straight.length || pathTime(turn) < pathTime(straight) - TURN_BIAS)) return turn;
+    return straight;
+  }
+
+  /**
+   * A route that turns off at the junction the car is standing in, or null.
+   *
+   * The path above always starts at the junction *ahead*, which is right
+   * everywhere except inside a junction. There, the nearest edge is as often
+   * the road straight on as the road the car came in on, and "the junction
+   * ahead" is then the next one along. A unit slowing into its turn got a
+   * fresh route at that moment, found the new route began a block further on,
+   * and went straight across -- then did the same at the next junction, and
+   * the next. Measured on one 600 m trip across the city: four turns missed in
+   * a row and never arrived. Police re-plan every second or so, and a car
+   * braking for a corner spends a second or two inside the junction, so it
+   * happened on most turns that were not made at speed.
+   *
+   * So when the car is inside a junction, also ask for a route that turns
+   * there. Only turns the car can actually take: one it is already swinging
+   * into, or any turn short of a U-turn when it is slow enough to make it.
+   */
+  _turnHere(x, z, dirX, dirZ, goalId, laneOffset, speedCap, speed) {
+    const snap = this.nearestEdge(x, z);
+    if (!snap) return null;
+    const e = snap.edge;
+    const dir = this.edgeDirection(e, snap.along, { x: 0, z: 1 });
+    const forward = (dir.x * dirX + dir.z * dirZ) >= 0;
+
+    // Only the junction *behind* the car on its edge. If the junction is still
+    // ahead, the ordinary path already runs to it and can turn there.
+    const nodeId = forward ? e.a : e.b;
+    const n = this.nodes[nodeId];
+    if (!n || n.edges.length < 3 || nodeId === goalId) return null;
+    let widest = 0;
+    for (const eid of n.edges) widest = Math.max(widest, this.edges[eid].width);
+    if (Math.hypot(n.x - x, n.z - z) > widest * 0.5 + 6) return null;
+
+    const route = this.route(nodeId, goalId, speedCap);
+    if (!route || route.length < 2) return null;
+    // Straight on is what the ordinary path already does.
+    if (route[1] === (forward ? e.b : e.a)) return null;
+
+    const first = this.edgeBetween(nodeId, route[1]);
+    if (!first) return null;
+    const probe = Math.min(12, first.length * 0.5);
+    const p = this.pointAt(first, first.a === nodeId ? probe : first.length - probe);
+    const node = this.nodes[nodeId];
+    let lx = p.x - node.x, lz = p.z - node.z;
+    const l = Math.hypot(lx, lz) || 1; lx /= l; lz /= l;
+    const along = lx * dirX + lz * dirZ;
+
+    // Already pointing down it, or slow enough to swing into anything that is
+    // not back the way it came.
+    if (!(along > 0.5 || (along > -0.2 && speed < TURN_SPEED))) return null;
+
+    const pts = this.pathToPoints(route, laneOffset);
+    return pts.length >= 2 ? pts : null;
+  }
+
+  /** The path from a car's position via the junction ahead. See pathFromPosition. */
+  _pathAhead(x, z, dirX, dirZ, goalId, laneOffset, speedCap) {
     const snap = this.nearestEdge(x, z);
     if (!snap) return [];
     const e = snap.edge;

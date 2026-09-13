@@ -75,6 +75,7 @@ export class Officer {
     const v = this.vehicle;
     const pts = this.game.graph.pathFromPosition(
       v.position.x, v.position.z, v.forward.x, v.forward.z, goalId, laneOffset,
+      Infinity, v.speed,
     );
     if (pts.length < 2) return false;
     this.driver.setPath(pts);

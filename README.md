@@ -1143,7 +1143,8 @@ where you are, and hands each unit a job:
   graph *node*, which on a long curving A-road can be seventy metres away; a car
   handed that path drives straight at its first waypoint, and therefore straight
   across whatever lies between. Every path is prefixed with the remainder of the
-  carriageway the car is actually on.
+  carriageway the car is actually on — and inside a junction, the car may also
+  turn there. See [Missing the turn](#missing-the-turn).
 * **Intercepts** — rather than driving at your current position, the dispatcher
   expands the road graph forward from you to find every junction you could
   plausibly reach in the next ~25 seconds, then asks each free unit whether it
@@ -1179,6 +1180,65 @@ one vanish.
 
 Radio traffic names real streets, so you can hear the plan forming: *"U6,
 cutting them off at Fifteenth Street and Meridian Avenue."*
+
+### Missing the turn
+
+"Have the police got slower and worse at routing?" They had. `tests/response.js`
+puts one patrol car on a quiet map and sends it to a junction 400–650 m away,
+twelve fixed trips chosen by map position so every version of the game drives
+the same ones, and times it. Run against older commits, the city trips took:
+
+| version | arrived | total time |
+|---|---|---|
+| before raised kerbs | 12 of 12 | 592 s |
+| raised kerbs | 12 of 12 | 649 s |
+| crossings stitched into the motorway, and every commit since | 11 of 12 | 648 s |
+
+Nothing after that changed the driving at all — the numbers were identical to
+the tenth of a second through every later commit. Tracing the slow trips showed
+the same thing each time. A unit re-plans its route every second or so, and a
+new route starts at the junction *ahead* of the car — correct everywhere except
+inside a junction, where the nearest road is as often the one straight on as the
+one the car came in on. So a car slowing into its turn got a fresh route that
+began a block further on, and went straight across. One trip missed four turns
+in a row that way and never arrived. The kerbs made it common — a car corners
+slower over them and spends longer in the junction — and stitching the crossings
+added junctions for it to happen at.
+
+`RoadGraph._turnHere` now asks, when the car is inside a junction, for a route
+that turns off there too, and takes it if it is at least two seconds quicker. It
+only offers turns the car can make: one it is already swinging into, or any turn
+short of a U-turn below 47 km/h.
+
+| | arrived | total time | average speed | stuck |
+|---|---|---|---|---|
+| city, the twelve trips, before | 11 of 12 | 648 s | — | 16 s |
+| city, the twelve trips, after | **12 of 12** | **579 s** | — | 26 s |
+| city, twenty other trips, before | 20 of 20 | 1004 s | 59 km/h | 50 s |
+| city, twenty other trips, after | 20 of 20 | **851 s** | **70 km/h** | **17 s** |
+| Wexbury, sixteen trips, before | 14 of 16 | 759 s | 66 km/h | 38 s |
+| Wexbury, sixteen trips, after | **15 of 16** | **713 s** | 67 km/h | 67 s |
+
+On the twenty city trips not one got slower; the worst were 80 s → 37 s and
+89 s → 55 s. They also leave the carriageway less (5.8% of the time → 1.1%): the
+wide sweeps across the pavement were mostly missed turns being recovered.
+Wexbury's stuck time is one trip wedged on the same spot in both versions.
+
+Two other fixes were tried and measured worse, and are not in: refusing to plan
+a U-turn at the junction ahead (going round the block is a longer route with
+more turns to miss — 12 of 12 trips became 9), and stopping the path follower
+jumping onto the return leg of a route that doubles back (a real bug, but every
+version of the fix cost more elsewhere than it saved — 10 of 12).
+
+What this does not change is pursuit with the car in sight, which is not routed
+at all — a unit with a clear line drives straight at you across whatever ground
+is there. `tests/tail.js` moves the player's car along a fixed route at a fixed
+speed that nothing can slow down and measures how closely the police stay with
+it; on both routes measured it came out identical before and after this change.
+Across older versions it moves about with the route — on one, the first unit
+reached the car ten seconds later once spawns had to be out of sight, on the
+other there was no difference — and two runs are not enough to say more than
+that.
 
 ### Nobody appears in view
 

@@ -1,13 +1,24 @@
 // Behaviour measurement harness, loaded from the page console during
 // verification. Drives the player with the same controller the police use, and
 // forces contact so that driving quality is measured rather than perception.
-window.__runHarness = async function (seconds = 90) {
+window.__runHarness = async function (seconds = 90, seed = null) {
   try {
     for (let i = 0; i < 200 && !(window.__game && window.__game.player); i++) {
       await new Promise((r) => setTimeout(r, 100));
     }
     const g = window.__game, M = window.__modules, p = g.player, gr = g.graph;
     if (!p) { window.__res = 'NO PLAYER (still at the menu?)'; return; }
+    // A different chase for each seed. Runs are chaotic -- one collision early
+    // on changes everything after it -- so compare versions over several.
+    if (seed !== null) {
+      let s = seed >>> 0;
+      g.rng = () => {
+        s = (s + 0x6D2B79F5) | 0;
+        let t = Math.imul(s ^ (s >>> 15), 1 | s);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
 
     const errs = [];
     window.onerror = (m) => { errs.push(String(m).slice(0, 140)); };
@@ -16,9 +27,15 @@ window.__runHarness = async function (seconds = 90) {
     // ---- a quarry that actually drives ----
     const auto = new M.Driver(p, M.SKILL.pursuit);
     auto.limitScale = 1.6;
+    // The quarry plans without the turn-at-this-junction step, which only
+    // police routing should be judged on: given it too, the quarry got a third
+    // faster and every "how close are the police" number measured the quarry.
+    // Older copies of the game have no _pathAhead and use the full planner,
+    // which in them is the same thing.
+    const plan = gr._pathAhead ? gr._pathAhead.bind(gr) : gr.pathFromPosition.bind(gr);
     const rp = () => {
       const to = gr.randomNode(g.rng);
-      const pts = gr.pathFromPosition(p.position.x, p.position.z, p.forward.x, p.forward.z, to.id, 2.5);
+      const pts = plan(p.position.x, p.position.z, p.forward.x, p.forward.z, to.id, 2.5, Infinity);
       if (pts.length > 1) auto.setPath(pts);
     };
     let stuck = 0, nudges = 0;
@@ -60,7 +77,7 @@ window.__runHarness = async function (seconds = 90) {
     };
 
     const chase = new Set(['pursue', 'respond', 'intercept', 'pit', 'box', 'block']);
-    const off = [], pspd = [], police = [], byRole = {};
+    const off = [], pspd = [], police = [], byRole = {}, nearest = [];
     let t = 0, wreck = 0, maxB = 0;
     const ev = [];
     const lead = (u) => {
@@ -118,6 +135,13 @@ window.__runHarness = async function (seconds = 90) {
         if (u.driver && u.driver.wayCap < Infinity) { wayTicks++; break; }
       }
       maxB = Math.max(maxB, g.roadblocks.blocks.length);
+      // How close the pursuit is keeping to the car: the nearest working unit.
+      let near = Infinity;
+      for (const u of g.dispatcher.units) {
+        if (u.vehicle.disabled || !chase.has(u.role)) continue;
+        near = Math.min(near, Math.hypot(u.position.x - p.position.x, u.position.z - p.position.z));
+      }
+      if (isFinite(near)) nearest.push(near);
       for (const u of g.dispatcher.units) {
         if (u.role === 'block') {
           const e = ev.find((x) => x.unit === u);
@@ -154,6 +178,8 @@ window.__runHarness = async function (seconds = 90) {
     window.__res = JSON.stringify({
       map: sessionStorage.getItem('pc.map'), sim_s: seconds, exceptions: errs.length, errs: errs.slice(0, 3),
       nudges, playerKphMedian: med(pspd), policeKphMedian: med(police), chaseTicks: t,
+      nearestUnitMedianM: med(nearest),
+      within40mPct: nearest.length ? +(100 * nearest.filter((x) => x < 40).length / steps).toFixed(1) : null,
       wellOffRoadPct: off.length ? +(100 * off.filter((x) => x > 6).length / off.length).toFixed(1) : null,
       byRoleWellOffRoadPct: roles,
       wreckedPct: +(100 * wreck / Math.max(1, t)).toFixed(1),
