@@ -39,8 +39,18 @@ const BEAM_MAX_OFFSET = 210;     // how far from the aircraft the light reaches
 const ENDURANCE = 165;           // seconds on station
 const REFUEL_TIME = 70;          // seconds away
 
-/** Top speed, m/s. Faster than any car, but it still has to cover ground. */
-const TOP_SPEED = 62;
+/**
+ * Top speed, m/s. Faster than any car, but it still has to cover ground.
+ *
+ * It was 62 -- 223 km/h -- which was faster than any car until the Stiletto.
+ * tests/outrun.js flies it over a car on a long straight: at 62 it held a
+ * 200 km/h car the whole two minutes, lost a 230 km/h one within seconds and
+ * never found it again, and a Stiletto flat out was 2.4 km away by the end. So
+ * the one thing that shook five stars outright was keeping your foot down on a
+ * straight. 280 km/h is about what a light twin can do flat out, and it is
+ * clear of the fastest car in the game.
+ */
+const TOP_SPEED = 78;
 
 /**
  * How far ahead of the target it tries to sit. A helicopter crew keeps the car

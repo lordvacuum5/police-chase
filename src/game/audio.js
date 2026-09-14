@@ -76,29 +76,103 @@ const SPEAKERS = {
 };
 
 const FEMALE_NAME = /female|zira|hazel|susan|libby|sonia|maisie|aria|jenny|michelle|samantha|karen|moira|tessa|serena|kate|fiona|victoria|allison|ava|emma|natasha|catherine|heera|linda/i;
-const MALE_NAME = /\bmale\b|david|mark|george|ryan|guy|daniel|alex|fred|oliver|thomas|arthur|james|christopher|eric|roger|brian|richard|william|sean/i;
+const MALE_NAME = /\bmale\b|david|mark|george|ryan|guy|daniel|alex|fred|oliver|thomas|arthur|james|christopher|eric|roger|brian|richard|william|sean|ravi/i;
 
 /**
  * Choose a voice for each speaker from whatever the machine has.
  *
  * English only, British first -- it is a British police net -- then any other
- * English. Local voices ahead of network ones: a network voice can lag a
- * second behind the line on the HUD, or not arrive at all offline, and a call
- * that turns up late is worse than one in a plainer voice. Returns null when
- * there is no English voice at all, which sends the radio to its fallback.
+ * English. Local voices ahead of ordinary network ones: a network voice can lag
+ * a second behind the line on the HUD, or not arrive at all offline, and a call
+ * that turns up late is worse than one in a plainer voice. Natural voices are
+ * the exception; see englishVoices. Returns null when there is no English
+ * voice at all, which sends the radio to its fallback.
  */
-export function pickVoices(all) {
-  const en = (all || []).filter((v) => /^en([-_]|$)/i.test(v.lang));
+export function pickVoices(all, chosen = voiceChoices()) {
+  const en = englishVoices(all);
   if (!en.length) return null;
-  const score = (v) => (/^en[-_]GB/i.test(v.lang) ? 4 : 1) + (v.localService ? 2 : 0);
-  const sorted = en.slice().sort((a, b) => score(b) - score(a));
-  const female = sorted.filter((v) => FEMALE_NAME.test(v.name));
-  const male = sorted.filter((v) => !FEMALE_NAME.test(v.name) && MALE_NAME.test(v.name));
+  const female = en.filter((v) => FEMALE_NAME.test(v.name));
+  const male = en.filter((v) => !FEMALE_NAME.test(v.name) && MALE_NAME.test(v.name));
 
-  const control = female[0] || sorted[0];
-  const unit = male[0] || sorted.find((v) => v !== control) || sorted[0];
-  const air = sorted.find((v) => v !== control && v !== unit) || unit;
-  return { control, unit, air };
+  const control = female[0] || en[0];
+  const unit = male[0] || en.find((v) => v !== control) || en[0];
+  const air = en.find((v) => v !== control && v !== unit) || unit;
+  const picked = { control, unit, air };
+
+  // Whatever the player chose on the menu wins, for as long as that voice is
+  // still on the machine.
+  for (const who of Object.keys(picked)) {
+    const v = chosen[who] && (all || []).find((x) => x.name === chosen[who]);
+    if (v) picked[who] = v;
+  }
+  return picked;
+}
+
+/**
+ * The English voices, best first: British, then natural, then local.
+ *
+ * "Natural" voices -- Edge's neural ones, Ryan and Thomas and Sonia -- come
+ * ahead of local ones despite coming over the network. The reason for
+ * preferring local was a line turning up late; the reason for this is the
+ * complaint that started it, that the only local British man, George, is
+ * seven dB quieter than the women and hard to make out under the engine. A
+ * neural voice is both louder and far clearer, and it starts quickly enough.
+ */
+export function englishVoices(all) {
+  const en = (all || []).filter((v) => /^en([-_]|$)/i.test(v.lang));
+  const score = (v) => (/^en[-_]GB/i.test(v.lang) ? 4 : 1)
+    + (/\b(natural|neural)\b/i.test(v.name) ? 3 : 0)
+    + (v.localService ? 2 : 0);
+  return en.slice().sort((a, b) => score(b) - score(a));
+}
+
+/** Who says what, for the menu. */
+export const SPEAKER_NAMES = { control: 'Control', unit: 'Units', air: 'Air support' };
+
+const VOICE_KEY = 'pc.voices';
+
+/** The voice picked on the menu for each speaker, by name. Empty is automatic. */
+export function voiceChoices() {
+  try {
+    const v = JSON.parse(localStorage.getItem(VOICE_KEY) || '{}');
+    return v && typeof v === 'object' ? v : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+export function setVoiceChoice(who, name) {
+  const v = voiceChoices();
+  if (name) v[who] = name; else delete v[who];
+  try { localStorage.setItem(VOICE_KEY, JSON.stringify(v)); } catch (e) { /* storage blocked */ }
+}
+
+/** The rate a speaker's lines go out at in this voice. See SPEAKERS. */
+function rateFor(voice, style) {
+  return voice.localService ? style.rate : 1 + (style.rate - 1) * 0.3;
+}
+
+const SAMPLE_LINES = {
+  control: 'Control, all units, vehicle failing to stop. Respond.',
+  unit: "Unit 3, I'm primary, northbound on the high street, ninety.",
+  air: 'India 99, we have them, eastbound towards the ring road.',
+};
+
+/**
+ * Say a sample line in a voice, the way it would go out in a chase, so a voice
+ * can be heard before it is chosen. Speech only: no radio clicks on the menu.
+ */
+export function speakSample(who, voice) {
+  const speech = typeof window !== 'undefined' && window.speechSynthesis;
+  if (!speech || !voice) return;
+  const style = SPEAKERS[who];
+  speech.cancel();
+  const u = new SpeechSynthesisUtterance(speakable(SAMPLE_LINES[who]));
+  u.voice = voice;
+  u.lang = voice.lang;
+  u.rate = rateFor(voice, style);
+  u.pitch = style.pitch;
+  speech.speak(u);
 }
 
 /**
@@ -883,7 +957,7 @@ export class GameAudio {
       const u = new SpeechSynthesisUtterance(words);
       u.voice = voice;
       u.lang = voice.lang;
-      const rate = voice.localService ? style.rate : 1 + (style.rate - 1) * 0.3;
+      const rate = rateFor(voice, style);
       u.rate = rate;
       u.pitch = style.pitch;
       // Full volume: the speech engine will not go any louder than 1, so the

@@ -125,7 +125,10 @@ window.__runSupercar = async function () {
       // 50 km/h. How much one costs, and so how many it takes.
       const wall = g.createVehicle('patrol', 'patrol', { x: LANE_X, y: 0.9, z: -900 }, 0,
         { police: true });
-      const d = spawn(kind, LANE_X, -960, 0);
+      // Ten metres short of it, not sixty: coasting sixty metres let engine
+      // braking decide the impact speed, so a change of gearing moved the
+      // "toughness" figure without the car being any tougher.
+      const d = spawn(kind, LANE_X, -915, 0);
       d.repair();
       controls = { throttle: 0, brake: 1, steer: 0, handbrake: 1 };
       d.setVelocity({ x: 0, y: 0, z: 50 / 3.6 });

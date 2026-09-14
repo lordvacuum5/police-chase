@@ -134,8 +134,8 @@ export const SPECS = {
    * The Stiletto: a mid-engined supercar, and the other way to run.
    *
    * Everything the Runner is not. A V12 that revs to 8 800 on a seven-speed
-   * gearbox, so it is geared for something like 300 km/h where every other car
-   * in the game runs into its limiter at about 220; wide, sticky tyres and
+   * gearbox, good for about 258 km/h where every other car in the game runs
+   * into its limiter at about 220; wide, sticky tyres and
    * real downforce, so it corners harder the faster it goes; low, stiff and
    * short of travel, so it hates kerbs and grass. And it is fragile: carbon
    * and aluminium rather than a saloon's steel, so the contact the Runner
@@ -198,16 +198,24 @@ export const SPECS = {
       // Launch control: see physics/vehicle.js. Near the top of the torque
       // curve without being at the part of it that just lights up the rears.
       launchRpm: 4800,
+      // Taken down by 18%, with the final drive shortened to match. As first
+      // built it did 0-200 in 9.8 s and 304 km/h, against 222 km/h for the
+      // fastest police car even with the rubber band at full stretch, and 223
+      // for the helicopter: at five stars you could simply drive away from all
+      // of it on any long straight. Now 0-100 in 4.4 s, 0-200 in 12.2 and
+      // 257 km/h (tests/outrun.js) -- still far quicker than the Runner, but a
+      // pursuit car closing on the rubber band can live with it, and the
+      // helicopter can outfly it.
       torqueCurve: [
-        [900, 390], [2000, 520], [3000, 612], [4000, 672],
-        [5000, 705], [6000, 716], [7000, 694], [8000, 640], [9000, 568],
+        [900, 320], [2000, 426], [3000, 502], [4000, 551],
+        [5000, 578], [6000, 587], [7000, 569], [8000, 525], [9000, 466],
       ],
     }),
-    // Seven ratios. Changes at roughly 78 / 112 / 148 / 185 / 227 / 266 km/h,
-    // and seventh runs into the limiter at about 305.
+    // Seven ratios. Changes at roughly 66 / 95 / 125 / 157 / 191 / 225 km/h,
+    // and seventh runs into the limiter at about 258.
     gears: [0, 3.15, 2.18, 1.66, 1.32, 1.08, 0.92, 0.80],
     reverseGear: 3.10,
-    finalDrive: 4.74,
+    finalDrive: 5.62,
     shiftUpRpm: 8400,
     shiftDownRpm: 4300,
     // A twin-clutch box: the torque interruption is a fraction of the Runner's.
@@ -240,7 +248,7 @@ export const SPECS = {
     // much, and because engine power falls away past 28% damage, two solid
     // ones and it is already down on the car it was.
     durability: 1.40,
-    topSpeedHint: 92,
+    topSpeedHint: 72,
     // Grip at speed, as on the Runner but weighted harder to the rear. With
     // 58% of the weight at the back, stiffening the fronts as much as the
     // rears -- or adding grip evenly -- made the nose bite harder than the tail

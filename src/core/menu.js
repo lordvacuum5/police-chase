@@ -6,6 +6,9 @@
 
 import { MAPS } from '../world/maps.js';
 import { makeRng, TAU } from '../util/math.js';
+import {
+  englishVoices, pickVoices, voiceChoices, setVoiceChoice, speakSample, SPEAKER_NAMES,
+} from '../game/audio.js';
 
 /**
  * The cars you can run in.
@@ -27,8 +30,8 @@ export const CARS = [
     stats: [
       ['Top speed', 215, 'km/h'],
       ['0-100', 7.4, 's', true],
-      ['Grip', 1.25, 'g'],
-      ['Toughness', 10, 'hits'],
+      ['Grip', 1.40, 'g'],
+      ['Toughness', 11, 'hits'],
     ],
   },
   {
@@ -38,9 +41,9 @@ export const CARS = [
     colour: '#b3101e',
     shape: 'wedge',
     stats: [
-      ['Top speed', 303, 'km/h'],
-      ['0-100', 3.7, 's', true],
-      ['Grip', 1.58, 'g'],
+      ['Top speed', 257, 'km/h'],
+      ['0-100', 4.4, 's', true],
+      ['Grip', 1.77, 'g'],
       ['Toughness', 5, 'hits'],
     ],
   },
@@ -65,6 +68,7 @@ export function showMenu(onPick) {
   holder.innerHTML = '';
   menu.classList.remove('gone');
   buildCarCards();
+  buildVoicePicker();
 
   for (const m of MAPS) {
     const card = document.createElement('div');
@@ -169,6 +173,75 @@ function buildCarCards() {
     const on = c.dataset.id === current;
     c.classList.toggle('chosen', on);
     c.setAttribute('aria-checked', on ? 'true' : 'false');
+  }
+}
+
+/**
+ * Which voice says each speaker's lines.
+ *
+ * The radio speaks with the browser's own voices, and which ones there are is
+ * down to the machine and the browser: Windows has one British man, George,
+ * who is noticeably quieter than the women and hard to make out under an
+ * engine. Nothing in the game can make a speech voice louder, so the fix that
+ * always works is a different voice -- and only the player can hear which one
+ * suits them. Choosing one plays a sample; the choice is remembered.
+ */
+let voicesListening = false;
+function buildVoicePicker() {
+  const holder = document.getElementById('voices');
+  const sub = document.getElementById('voicesub');
+  const hint = document.getElementById('voicehint');
+  const speech = window.speechSynthesis;
+  if (!holder || !speech) return;
+
+  const short = (v) => (v ? v.name
+    .replace(/^(Microsoft|Google)\s+/, '')
+    .replace(/\s+Online\s+\(Natural\)/i, ' (natural)')
+    .replace(/\s+-\s+English\s+\((.+?)\)\s*$/, (m, where) => ` · ${where
+      .replace('United Kingdom', 'UK').replace('United States', 'US')}`) : 'none');
+
+  const render = () => {
+    const all = speech.getVoices();
+    const list = englishVoices(all);
+    const shown = list.length > 0;
+    holder.hidden = sub.hidden = hint.hidden = !shown;
+    if (!shown) return;
+
+    const auto = pickVoices(all, {});
+    const chosen = voiceChoices();
+    holder.innerHTML = '';
+    for (const who of Object.keys(SPEAKER_NAMES)) {
+      const card = document.createElement('div');
+      card.className = 'voice';
+      const id = `voice-${who}`;
+      card.innerHTML = `<label for="${id}">${SPEAKER_NAMES[who].toUpperCase()}</label>`
+        + `<div class="row"><select id="${id}"></select>`
+        + `<button type="button" title="Hear it">&#9654;</button></div>`;
+      const select = card.querySelector('select');
+      select.add(new Option(`Auto: ${short(auto[who])}`, ''));
+      for (const v of list) select.add(new Option(short(v), v.name, false, chosen[who] === v.name));
+      const current = () => (pickVoices(speech.getVoices()) || {})[who];
+      select.addEventListener('change', () => {
+        setVoiceChoice(who, select.value);
+        speakSample(who, current());
+      });
+      card.querySelector('button').addEventListener('click', () => speakSample(who, current()));
+      holder.appendChild(card);
+    }
+
+    // Where more voices come from, when this browser has so few.
+    const windows = /Windows/.test(navigator.userAgent);
+    const edge = /Edg\//.test(navigator.userAgent);
+    hint.textContent = !windows ? 'Pick a voice to hear it.'
+      : `Pick a voice to hear it. More voices: Windows Settings › Time & language › Speech › Add voices${
+        edge ? '.' : ', or play in Microsoft Edge, which has clearer natural voices.'}`;
+  };
+
+  render();
+  if (!voicesListening) {
+    voicesListening = true;
+    // Most browsers fill the list in a moment after the page asks for it.
+    speech.addEventListener('voiceschanged', render);
   }
 }
 

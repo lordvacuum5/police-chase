@@ -16,6 +16,7 @@
     --blue: #4ea3ff;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html, body {
     margin: 0; padding: 0; height: 100%; overflow: hidden;
     background: #05070a; color: var(--ink);
@@ -160,6 +161,24 @@
   .mapcard .tag { font-size: 10px; color: var(--blue); letter-spacing: 2px; margin-bottom: 9px; }
   .mapcard p { font-size: 11.5px; line-height: 1.6; color: var(--dim); margin: 0; }
   #menuhint { margin-top: 18px; font-size: 11px; color: var(--dim); }
+
+  /* ---- radio voices ---- */
+  #voicesub { margin-top: 20px; }
+  #voices { display: flex; gap: 19px; flex-wrap: wrap; justify-content: center; padding: 0 20px; }
+  .voice {
+    width: 200px; padding: 9px 10px 10px; text-align: left;
+    background: rgba(14, 20, 28, .82); border: 1px solid var(--edge); border-radius: 8px;
+  }
+  .voice label { display: block; font-size: 10px; letter-spacing: 2px; color: var(--dim); margin-bottom: 6px; }
+  .voice .row { display: flex; gap: 6px; }
+  .voice select, .voice button {
+    background: #0d1116; color: var(--ink); border: 1px solid var(--edge); border-radius: 4px;
+    font: inherit; font-size: 11px;
+  }
+  .voice select { flex: 1; min-width: 0; padding: 4px 3px; }
+  .voice button { color: var(--blue); padding: 0 9px; cursor: pointer; }
+  .voice select:focus, .voice button:focus, .voice button:hover { border-color: var(--blue); outline: none; }
+  #voicehint { margin-top: 8px; max-width: 640px; padding: 0 20px; font-size: 10.5px; line-height: 1.5; color: var(--dim); text-align: center; }
 
   /* ---- loading ---- */
   #boot {
@@ -321,6 +340,9 @@
   <div id="cars" role="radiogroup" aria-label="Car"></div>
   <div class="menusub" id="menusub">CHOOSE YOUR GROUND</div>
   <div id="maps"></div>
+  <div class="menusub" id="voicesub" hidden>RADIO VOICES</div>
+  <div id="voices" hidden></div>
+  <div id="voicehint" hidden></div>
   <div id="menuhint">Press <b>M</b> in game to come back here</div>
 </div>
 

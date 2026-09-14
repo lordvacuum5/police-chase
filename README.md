@@ -355,6 +355,27 @@ Measured: silent below five stars; launches from about 420 m out and closes to
 map** it alone keeps the dispatcher in contact. Drop below five stars and it
 goes home.
 
+**Faster than any car — actually.** Its top speed was 62 m/s, 223 km/h, which
+was faster than any car until the Stiletto turned up at 303. `tests/outrun.js`
+flies it on its own over a car driven along a fixed course, starting on station
+overhead, so nothing else in the chase helps or hinders it:
+
+| car on a long straight at | 62 m/s: light on the car | 78 m/s: light on the car |
+|---|---|---|
+| 200 km/h | 100% | 100% |
+| 230 km/h | 72%, then lost for good | **100%** |
+| 257 km/h (the Stiletto flat out) | 19%, then lost for good | **100%** |
+| 280 km/h | — | **100%** |
+| 300 km/h | 13%, 2.4 km behind at the end | 32% |
+
+Once the light slipped off a car going faster than the aircraft, it never came
+back: the light hunts around where the car was last seen, and the car was
+already well past that. On a course of city blocks — flat out down a 400 m
+straight, braking for a right angle at 70 km/h — it held the car the whole two
+minutes at either speed, because every corner lets it cut across. It is now
+78 m/s, about 280 km/h, which is roughly what a light twin does flat out and is
+clear of the fastest car in the game.
+
 ### The detection ring
 
 A red ring on the minimap, always centred on your own marker, showing how far
@@ -1299,17 +1320,43 @@ or a verge — only against the other car. These are the figures on the menu:
 
 | | Runner | Stiletto |
 |---|---|---|
-| 0–100 km/h | 7.37 s | **3.67 s** |
-| 0–160 km/h | 15.2 s | **6.73 s** |
-| 0–200 km/h | 27.9 s | **9.72 s** |
-| top speed | 215 km/h, on the limiter in 6th | **303 km/h**, on the limiter in 7th |
-| peak steady grip, 60 km/h | 1.28 g | **1.51 g** |
-| peak steady grip, 120 km/h | 1.25 g | **1.58 g** |
-| peak steady grip, 170 km/h | cannot hold the speed | **1.62 g** |
+| 0–100 km/h | 7.37 s | **4.38 s** |
+| 0–160 km/h | 15.3 s | **8.23 s** |
+| 0–200 km/h | 28.0 s | **12.2 s** |
+| top speed | 215 km/h, on the limiter in 6th | **257 km/h**, on the limiter in 7th |
+| peak steady grip, 60 km/h | 1.28 g | **1.57 g** |
+| peak steady grip, 120 km/h | 1.40 g | **1.77 g** |
+| peak steady grip, 170 km/h | cannot hold the speed | **1.91 g** |
 | braking from 100 km/h | 31.8 m | **26.1 m** |
-| damage from one 50 km/h shunt | 9.3% | **22%** |
+| damage from one 50 km/h shunt | 8.5% | **20%** |
 | shunts until the engine starts to fade | 4 | **2** |
-| shunts to a wreck | 10 | **5** |
+| shunts to a wreck | 11 | **5** |
+
+The shunt used to start sixty metres short of the parked car and coast in, so
+engine braking decided how hard it hit — detuning the Stiletto's engine moved
+its figure from five hits to four without the car being any less tough. It now
+starts ten metres short and arrives at the speed it says.
+
+**Not too fast to catch.** As first built the Stiletto did 0–200 in 9.7 s and
+303 km/h. Every police car tops out at 222 km/h, rubber band or not — the
+rubber band adds torque and cuts drag, but it cannot take a car past its own
+limiter — and the helicopter at 223. So at five stars you could simply drive
+away from everything on the first long straight: *"even on wanted level five,
+I can easily escape the police, even the helicopter."* The torque curve is down
+18% and the final drive shortened to match, so it still reaches seventh and
+still pulls hardest at the top (`tests/outrun.js`):
+
+| | 0–100 | 0–200 | top speed |
+|---|---|---|---|
+| Runner | 7.4 s | 28.0 s | 215 km/h |
+| Stiletto, as built | 3.7 s | 9.8 s | 304 km/h |
+| **Stiletto, now** | **4.4 s** | **12.2 s** | **257 km/h** |
+| Unmarked, rubber band at full stretch | 5.2 s | 11.1 s | 222 km/h |
+| Interceptor, rubber band at full stretch | 5.5 s | 12.1 s | 222 km/h |
+
+Still far quicker than the Runner and still faster than the fleet flat out, but
+a pursuit car closing on the rubber band can live with it, and the helicopter
+can now outfly it (see Air support).
 
 Grip rises with speed on the Stiletto and not on the Runner: that is 0.95 m²
 of downforce against 0.42. And every police car still out-brakes both, because
@@ -1560,11 +1607,27 @@ first into something a person would say (`speakable`): "U3" becomes "Unit 3",
 and dashes are pauses.
 
 Voices are chosen from whatever the machine has (`pickVoices`): English only,
-British first, local voices ahead of network ones — a network voice can lag
-behind the HUD or not arrive at all offline. Control is a female voice where
-there is one, units a male one, air support a third; on this machine that is
-Hazel, George and Susan. With no English voice at all, a stretch of the real
+British first, local voices ahead of ordinary network ones — a network voice
+can lag behind the HUD or not arrive at all offline. Control is a female voice
+where there is one, units a male one, air support a third; on this machine that
+is Hazel, George and Susan. With no English voice at all, a stretch of the real
 recorded radio traffic stands in for each call instead.
+
+**Picking a different voice.** Windows has one British man, George, and he is
+the quiet one (see "The engine sits under the radio"): even after the mix was
+ducked hard under him, *"I still can't hear them very well."* No game can make a
+speech voice louder than full volume, so the menu now has a **Radio voices**
+row under the maps: Control, Units and Air support each get a list of every
+English voice the browser has, with a play button, and choosing one reads out a
+sample line at the rate and pitch that speaker uses in a chase. The choice is
+remembered, and a voice that has since gone from the machine falls back to the
+automatic pick. Which voices are on the list is down to the browser: Chrome and
+Vivaldi on Windows show the Windows voices, and more can be added under
+*Settings › Time & language › Speech*; Edge also has Microsoft's natural
+voices — Ryan and Thomas among the men — which are both louder and far clearer.
+Those are now picked automatically when they are there, ahead of the local
+voices, since the reason for preferring local voices was a line arriving late
+and a natural voice starts quickly enough.
 
 The speech engine plays outside Web Audio, so it cannot go through the radio
 channel's filters. What makes it sound like a radio is everything around it:
