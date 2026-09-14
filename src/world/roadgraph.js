@@ -1009,6 +1009,136 @@ export class RoadGraph {
   }
 
   /**
+   * Unit direction a car leaves `nodeId` in along `edge`, measured over the
+   * first dozen metres so a fillet's short segments do not decide it.
+   * Arriving at the node along the same edge is the opposite direction.
+   */
+  leaveDirection(edge, nodeId) {
+    if (!this._leaveCache) this._leaveCache = new Map();
+    const key = edge.id * 2 + (edge.a === nodeId ? 0 : 1);
+    let d = this._leaveCache.get(key);
+    if (!d) {
+      const n = this.nodes[nodeId];
+      const span = Math.min(12, edge.length);
+      const p = this.pointAt(edge, edge.a === nodeId ? span : edge.length - span);
+      const dx = p.x - n.x, dz = p.z - n.z;
+      const l = Math.hypot(dx, dz) || 1;
+      d = { x: dx / l, z: dz / l };
+      this._leaveCache.set(key, d);
+    }
+    return d;
+  }
+
+  /**
+   * Where is this car likely to be in the next `horizon` seconds?
+   *
+   * `reachable` answers where it *could* be, and treats every junction as
+   * equally likely and every road as driven at its limit. That is the right
+   * question for putting a roadblock somewhere it cannot be avoided, and the
+   * wrong one for sending a car to cut someone off: it spread the intercepts
+   * over every side street, and at 200 km/h the target was through the
+   * junction before the unit that was sent there had arrived.
+   *
+   * This follows the car's likely choices instead. Every junction splits the
+   * probability between the ways on, weighted by how people drive away from
+   * the police: straight on far more often than not (`straightShare`, which
+   * the dispatcher learns from what this driver actually does), onto a road
+   * at least as big as the one they are on in preference to a smaller one, and
+   * almost never into a dead end or back the way they came. Time is the car's
+   * own speed where that is faster than the road's, less what it would cost
+   * to brake for a turn and get back up to speed -- which at motorway speed
+   * is several seconds, and is a large part of why fast drivers go straight.
+   *
+   * Returns Map nodeId -> { eta, prob }: the chance the car passes through the
+   * junction within the horizon, and when it would, on its most likely way
+   * there.
+   */
+  predict(fromX, fromZ, dirX, dirZ, speed, straightShare = 0.65, horizon = 24) {
+    const out = new Map();
+    const snap = this.nearestEdge(fromX, fromZ);
+    if (!snap) return out;
+    const e = snap.edge;
+    const dir = { x: 0, z: 0 };
+    this.edgeDirection(e, snap.along, dir);
+    const fwd = dir.x * dirX + dir.z * dirZ >= 0;
+    const ahead = fwd ? e.b : e.a;
+    const behind = fwd ? e.a : e.b;
+    const distAhead = fwd ? e.length - snap.along : snap.along;
+    const v0 = Math.max(6, speed);
+    const share = clamp(straightShare, 0.3, 0.9);
+    // Weight of the straight-on option, set so that at an ordinary crossroads
+    // -- straight, left, right -- straight on gets `share` of the probability.
+    const straightW = (2 * share) / (1 - share);
+
+    // How fast the car covers an edge: its own speed where that is quicker
+    // than the road, the road's otherwise.
+    const cruise = (edge) => Math.max(edge.speed * 0.88, Math.min(v0, 70));
+
+    // Seconds lost braking for a turn of `cos` (1 = straight on) at speed `v`
+    // and getting back up: 8 m/s^2 down, about 5 back up.
+    const turnCost = (cos, v) => {
+      if (cos > 0.82) return 0;                       // under ~35 degrees
+      const deg = Math.acos(clamp(cos, -1, 1)) * 57.3;
+      const vt = clamp(27 - deg * 0.19, 8, 22);
+      if (v <= vt) return 0;
+      return ((v - vt) * (v - vt)) / (2 * v) * (1 / 8 + 1 / 5);
+    };
+
+    const add = (id, eta, prob) => {
+      const rec = out.get(id);
+      if (!rec) out.set(id, { eta, prob: Math.min(1, prob), best: prob });
+      else {
+        rec.prob = Math.min(1, rec.prob + prob);
+        if (prob > rec.best) { rec.best = prob; rec.eta = eta; }
+      }
+    };
+
+    // States: at a node, having arrived along an edge, with a probability.
+    const open = [
+      { node: ahead, via: e, eta: distAhead / cruise(e), prob: 0.94, v: v0 },
+      // Turning round is possible -- handbrake turns happen -- but rare.
+      { node: behind, via: e, eta: (e.length - distAhead) / Math.min(cruise(e), 18) + 5, prob: 0.06, v: 12 },
+    ];
+    let guard = 0;
+    while (open.length && guard++ < 3000) {
+      // Most probable first, so the cap keeps the states that matter.
+      let bi = 0;
+      for (let i = 1; i < open.length; i++) if (open[i].prob > open[bi].prob) bi = i;
+      const s = open.splice(bi, 1)[0];
+      if (s.eta > horizon || s.prob < 0.012) continue;
+      add(s.node, s.eta, s.prob);
+
+      const node = this.nodes[s.node];
+      const arriving = this.leaveDirection(s.via, s.node);   // points back where it came from
+      const options = [];
+      let total = 0;
+      for (const eid of node.edges) {
+        const edge = this.edges[eid];
+        if (!edge || edge.dead || edge === s.via) continue;
+        const leave = this.leaveDirection(edge, s.node);
+        const cos = -(arriving.x * leave.x + arriving.z * leave.z);
+        let w = cos > 0.82 ? straightW : cos > -0.5 ? 1 : 0.35;
+        if (edge.speed >= s.via.speed) w *= 1.35;
+        const far = this.nodes[this.other(edge, s.node)];
+        if (far.edges.length <= 1) w *= 0.25;            // a dead end
+        options.push({ edge, cos, w });
+        total += w;
+      }
+      if (!options.length) continue;
+      for (const o of options) {
+        const prob = s.prob * (o.w / total);
+        if (prob < 0.012) continue;
+        const loss = turnCost(o.cos, s.v);
+        const vOut = loss > 0 ? Math.min(s.v, cruise(o.edge)) : s.v;
+        const eta = s.eta + loss + o.edge.length / cruise(o.edge);
+        open.push({ node: this.other(o.edge, s.node), via: o.edge, eta, prob, v: vOut });
+      }
+    }
+    for (const rec of out.values()) delete rec.best;
+    return out;
+  }
+
+  /**
    * Turn a node path into a drivable polyline, offset into the correct lane.
    * `laneOffset` is in metres from the centreline, positive toward the driving
    * side; passing 0 gives the centreline, which is what a pursuing unit uses

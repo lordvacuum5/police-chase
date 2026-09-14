@@ -341,6 +341,11 @@ export class Vehicle {
     if (s < 1e-3) return;
     const k = Math.max(0, s - dv) / s;
     this.body.setLinvel({ x: lv.x * k, y: lv.y, z: lv.z * k }, true);
+    // Keep the collision detector's reference in step, as setVelocity does.
+    // Otherwise the next substep reads the loss as a crash and charges damage
+    // for it a second time -- more than the hit itself, once it is a big one.
+    this._prevVel.x *= k;
+    this._prevVel.z *= k;
   }
 
   /** Add damage directly, through the same durability and shield rules. */

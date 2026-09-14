@@ -19,6 +19,7 @@ import { RoadblockManager } from './game/roadblock.js';
 import { Helicopter } from './game/helicopter.js';
 import { TrafficLights, SIGNAL } from './game/trafficlights.js';
 import { StreetProps } from './game/streetprops.js';
+import { Garage } from './game/garage.js';
 import { ChaseCamera } from './game/camera.js';
 import { Hud } from './game/hud.js';
 import { Input } from './core/input.js';
@@ -114,6 +115,8 @@ class Game {
     this.dispatcher = new Dispatcher(this);
     this.roadblocks = new RoadblockManager(this);
     this.helicopter = new Helicopter(this);
+    // The garage before the props, so nothing is stood across its entrance.
+    this.garage = new Garage(this);
     // Props first: the signals hand their posts to it to be knocked over.
     this.props = new StreetProps(this);
     this.signals = new TrafficLights(this);
@@ -755,6 +758,7 @@ class Game {
     this.roadblocks.update(dt, player);
     this.helicopter.update(dt, player);
     this.props.update(dt);
+    this.garage.update(dt);
     this.signals.update(dt);
     this.heat.update(dt, player, this.dispatcher);
     this.commentary.update(dt);

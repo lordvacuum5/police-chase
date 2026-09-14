@@ -42,6 +42,11 @@ export class Hud {
     this.trackEl = document.getElementById('track');
     this.trackFill = document.getElementById('trackfill');
     this._trackShown = false;
+    this.repairEl = document.getElementById('repair');
+    this.repairLabel = document.getElementById('repairlabel');
+    this.repairValue = document.getElementById('repairvalue');
+    this.repairFill = document.getElementById('repairfill');
+    this._repairShown = false;
 
     this.speedo = document.getElementById('speedo');
     this.sctx = this.speedo.getContext('2d');
@@ -181,6 +186,24 @@ export class Hud {
       const left = clamp01(1 - k.timeSinceSeen / TRACK_SECONDS);
       this.trackFill.style.width = (left * 100).toFixed(1) + '%';
       this.trackEl.classList.toggle('fading', left < 0.34);
+    }
+
+    // ---- garage ----
+    const garage = this.game.garage;
+    const r = garage ? garage.readout : null;
+    const on = !!r;
+    if (on !== this._repairShown) {
+      this._repairShown = on;
+      this.repairEl.classList.toggle('on', on);
+    }
+    if (r) {
+      if (this.repairLabel.textContent !== r.label) this.repairLabel.textContent = r.label;
+      if (this.repairValue.textContent !== r.value) this.repairValue.textContent = r.value;
+      this.repairFill.style.width = (r.fill * 100).toFixed(1) + '%';
+      if (this.repairEl.dataset.cls !== r.cls) {
+        this.repairEl.dataset.cls = r.cls;
+        this.repairEl.classList.toggle('work', r.cls === 'work');
+      }
     }
 
     this._drawSpeedo(dt, player);
@@ -366,6 +389,40 @@ export class Hud {
       ctx.moveTo(p.x - Math.cos(a) * 10, p.y - Math.sin(a) * 10);
       ctx.lineTo(p.x + Math.cos(a) * 10, p.y + Math.sin(a) * 10);
       ctx.stroke();
+    }
+
+    // ---- the garage ----
+    // Always on the map, and pinned to the edge in its direction when it is
+    // further away than the map shows, so it can be found from anywhere.
+    const gm = this.game.garage && this.game.garage.marker;
+    if (gm) {
+      let p = toMap(gm.x, gm.z);
+      const dx = p.x - W / 2, dy = p.y - W / 2;
+      const lim = W / 2 - 18;
+      const far = Math.max(Math.abs(dx), Math.abs(dy)) > lim;
+      if (far) {
+        const s = lim / Math.max(Math.abs(dx), Math.abs(dy));
+        p = { x: W / 2 + dx * s, y: W / 2 + dy * s };
+      }
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.fillStyle = '#2f9d5c';
+      ctx.strokeStyle = '#e9f7ee';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(-13, -13, 26, 26, 6); else ctx.rect(-13, -13, 26, 26);
+      ctx.fill();
+      ctx.stroke();
+      // A spanner, as on the bay floor.
+      ctx.rotate(-Math.PI / 4);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(-2.2, -3, 4.4, 13);
+      ctx.beginPath();
+      ctx.arc(0, -5.5, 5.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#2f9d5c';
+      ctx.fillRect(-2, -12, 4, 6.5);
+      ctx.restore();
     }
 
     // ---- police ----

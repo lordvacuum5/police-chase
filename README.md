@@ -706,6 +706,8 @@ that topples and slides, and the car takes the momentum it actually lost.
 | bollard (24 kg) | 21.1 → 20.6 m/s | +0.2% |
 | sign (18 kg) | 22.7 → 22.3 m/s | +1.3% |
 
+*(Measured at 24 m/s, before bollards were made heavier — see below.)*
+
 A shove and a scratch, not a wall. They live in `GROUP.STREET`, which no ray or
 sweep in the game looks at — the police AI must not brake for a bollard and a
 suspension ray must not climb a lamp post — so all the interaction happens in
@@ -719,6 +721,31 @@ worth knowing about: subtracting on world Y is correct only while the prop is
 upright, and once a lamp post is lying flat it buries it under the road by its
 own length. Which way it fell decided how badly, which made it look like a
 problem with one side of the street.
+
+**Not a wall at 200.** *"I can do 200 miles an hour and they'll just stop me
+dead."* They could. Knocking a prop over is decided once a frame, for anything
+within 0.9 m of the car's nose — but physics runs up to five substeps in a
+frame, and a fast car on a slow frame travels further than that before it is
+checked again. It reached the post's static collider first, and a static
+collider is an immovable wall. `tests/bollard.js` stands one bollard out past
+the map edge and drives into it: at 60 frames a second everything was fine,
+but at 30 — an ordinary phone — 230 km/h went to **21 km/h in one substep, and
+the car was wrecked**. The check now sweeps the car's footprint along its
+velocity for everything it will cover before the next check, so the prop goes
+over before contact at any frame rate.
+
+Asked for at the same time: *"they need to do damage and knock me back a bit."*
+A bollard is now 95 kg rather than 24 (a real one is cast iron set in concrete)
+with a little more bite, the knocked prop is sent off slightly faster than the
+car so it is not hit a second time, and the speed loss no longer also gets
+counted as a crash by the impact detector — the jolt and the thud are given
+directly instead. Stiletto, straight on:
+
+| | before, 60 fps | before, 30 fps | now, any frame rate |
+|---|---|---|---|
+| 100 km/h | −1 km/h, 0.5% | −1 km/h, 0.5% | −4 km/h, 2.3% |
+| 190 km/h | −6 km/h, 1.0% | −8 km/h, 1.0% | −13 km/h, 4.4% |
+| 230 km/h | −10 km/h, 1.2% | **−209 km/h, 100%** | −18 km/h, 5.3% |
 
 ### Knowing how big the car is
 
@@ -1225,10 +1252,11 @@ where you are, and hands each unit a job:
   carriageway the car is actually on — and inside a junction, the car may also
   turn there. See [Missing the turn](#missing-the-turn).
 * **Intercepts** — rather than driving at your current position, the dispatcher
-  expands the road graph forward from you to find every junction you could
-  plausibly reach in the next ~25 seconds, then asks each free unit whether it
-  can get there first. A unit that can is sent there and ignores you completely
-  until it arrives. This is why the police appear *in front* of you.
+  follows the road graph forward from you to the junctions you are *likely* to
+  reach in the next ~25 seconds — at your speed, and learning your habits —
+  then asks each free unit whether it can get there first. A unit that can is
+  sent there and ignores you completely until it arrives. This is why the police
+  appear *in front* of you. See [Guessing where you are going](#guessing-where-you-are-going).
 * **PIT manoeuvre** — a real car steered into your rear quarter, only authorised
   between roughly 25 and 155 km/h. Tested in isolation: no spin at 58 km/h,
   reliable spins at 79 and 101 km/h, officer wrecks himself at 122.
@@ -1336,6 +1364,57 @@ four-star chase through the city and checks every police car at the moment it is
 created: before, 7 of 20 were created in plain view; after, 0 of 16. Rolling
 blocks still get placed — a failed attempt now looks again after 3 s rather
 than waiting out the 14 s cooldown, since the next corner usually hides one.
+
+### Guessing where you are going
+
+*"Make the interceptors better at predicting where I am going to go."* The
+intercept solver used to ask `RoadGraph.reachable` where the car *could* be in
+the next 24 seconds, which has two blind spots for this job. Every junction was
+as likely as every other, so units were spread over side streets the car was
+never going to take. And every road was assumed to be driven at its limit, so
+at 160 km/h the car was through a junction before the unit sent to it arrived.
+
+`RoadGraph.predict` follows the car's likely choices instead:
+
+* **Probability.** Each junction splits the chance between the ways on:
+  straight on far more often than not, onto a road at least as big as the
+  current one in preference to a smaller one, a dead end or doubling back only
+  rarely. Junctions are then ranked by how likely the car is to come through
+  them, times whether the timing is worth driving for.
+* **The car's own speed**, where that is faster than the road's — less what a
+  turn would cost it: braking to a speed the corner allows and getting back up
+  again, which at motorway speed is several seconds and a large part of why a
+  fast driver goes straight on.
+* **Learning.** The dispatcher watches the heading going into and coming out of
+  every junction it sees you take, and keeps a running share of how often you
+  go straight on (`straightShare`, weighted to the last five or so). Throw the
+  car down every side road and the intercepts spread across the side roads;
+  stay on the main road and they wait on it.
+
+Each unit then takes the junction with the best mix of likelihood and a
+comfortable arrival margin, rather than simply the best margin.
+
+`tests/intercept.js` measures it: the car is moved along a fixed route — the
+same in every version — braking for corners the way a driver would, with four
+stars held and contact forced, on three routes at 90 and at 160 km/h, two
+minutes each:
+
+| | old solver | new, 8% cut-off | **new, 3% cut-off** |
+|---|---|---|---|
+| junctions where a unit was already waiting | 7.8% | 12.1% | **12.7%** |
+| intercept orders the car did then drive through | 8.9% | 34% | **19%** |
+| seconds of *correct* intercept, all runs | 68 | 68 | **117** |
+
+The 8% cut-off was right most often but sent so few cars that no more
+intercepts came off; 3% is still twice as accurate as the old solver and makes
+most of them count. Runs vary a lot — one collision changes the rest of a chase
+— so these are totals across all six rather than any single run.
+
+The catch-up assistance was checked and left alone on request. For the record,
+because it is easy to misremember: yellow on the minimap is a unit on
+intercept, which is routing and nothing else; the physics help (more power,
+more grip, a stability aid, no damage on the way in) applies only to a unit
+*more* than 30 m away and is gone by the time it is close enough to touch you.
 
 ## The cars you can run in
 
@@ -1643,8 +1722,8 @@ Voices are chosen from whatever the machine has (`pickVoices`): English only,
 British first, local voices ahead of ordinary network ones — a network voice
 can lag behind the HUD or not arrive at all offline. Control is a female voice
 where there is one, units a male one, air support a third; on this machine that
-is Hazel, George and Susan. With no English voice at all, a stretch of the real
-recorded radio traffic stands in for each call instead.
+is Hazel, George and Susan. With no English voice at all, a call is just the
+key going down and coming up again.
 
 **Picking a different voice.** Windows has one British man, George, and he is
 the quiet one (see "The engine sits under the radio"): even after the mix was
@@ -1675,8 +1754,13 @@ Three things had to be measured rather than guessed:
   reports of a vehicle driving dangerously, all units respond"* — about half
   the pace of real radio traffic — and every call behind it went stale
   waiting. Rate does not scale linearly on those voices either: 1.3 only took
-  that line to 6.1 s, 2.1 to 4.9 s. So the rates are 2.0 to 2.3, with a much
-  gentler version for network voices, which do scale roughly linearly.
+  that line to 6.1 s, 2.1 to 4.9 s. So the rates are 1.8 to 2.1 — but only for
+  the Windows desktop voices. Every other engine takes the rate at its word,
+  and on a phone 2.0 really was double speed: *"the voices say the stuff way
+  too fast"*. A phone's own voices report themselves as local, which is what
+  used to earn the full rate, so `rateFor` now asks what the engine is — a
+  local `Microsoft` voice that is not a natural one — and gives everything else
+  the gentle version, about 1.25 to 1.35.
 * **Staleness.** A call that has waited more than ten seconds is about
   something that has already happened — "PIT authorised" after the PIT — and is
   dropped rather than read out late.
@@ -1822,58 +1906,15 @@ All of it goes through the radio channel. Measured against the key-up crash,
 which stays the loudest moment of a call: data burst 0.52×, talk-permit chirps
 0.42×, roger beep 0.48×, attention beep 0.83×, crackle 0.30×.
 
-### Recorded chatter underneath it
+### No recorded chatter
 
-The synth is good at *structure* — it says something whenever the game says
-something, and it can never contradict the line printed on the HUD — and it
-will never be mistaken for a real person. A recording is the other way round.
-So both are used for what each is good at: the synth carries the calls that
-mean something, and a recording fills the gaps with the sound of a busy net.
-
-Two clips ship with the game, from the same Pixabay uploader as the engine
-recording and named the same way — 24 s of dense radio chatter, and a 60 s
-excerpt of a Los Angeles police and fire scanner. (An excerpt because the
-original is four minutes, and 254 s of stereo is 49 MB once decoded, which is a
-lot of memory to hold for room tone.) Anything you drop in yourself as
-`police-radio-chatter.mp3` or `police-scanner.mp3` is picked up too.
-
-Bursts of 1.6–4.2 s are cut out of the middle of a clip with a squelch click
-either end and played through the same channel as everything else, so it is the
-same radio rather than a second one — and a burst books the channel like a real
-transmission, so a dispatch call arriving mid-burst waits its turn.
-
-Getting the level right needed measuring rather than judgement, twice over. A
-recording is mastered dense and full-band while the synthesised voice it was
-first set against was sparse and generated at an amplitude of 0.075, and both
-passed through the channel's saturating waveshaper — so the recording arrives
-with far more energy at the same nominal gain. Peaks at the master bus, against
-**0.287** for a synthesised dispatch call (the spoken calls that replaced it
-play outside Web Audio, louder, so the chatter sits further under them still):
-
-| burst gain | peak | RMS |
-|---|---|---|
-| 0.03 — what it ships at | 0.135 | 0.019 |
-| 0.08 | 0.317 | 0.049 |
-| 0.15 | 0.454 | 0.087 |
-| 0.30 | 0.520 | 0.143 |
-
-The squelch clicks needed the same treatment. A real transmission's key-up
-crash is deliberately the loudest thing on the net — it is the local set keying
-up — and borrowing that level for background traffic made the clicks, not the
-voices, the loudest moment of a chase.
-
-Every path is optional and failure is silent, the same contract the engine
-sample has: with no file present nothing happens and the radio behaves exactly
-as it did before. `tests/chatter.js` injects a synthetic clip and measures the
-behaviour rather than the sound:
-
-| | |
-|---|---|
-| bursts a minute, no chase | 0 |
-| bursts a minute, in a chase | 6 |
-| talked over a dispatch call | no |
-| jumped a queued call | no |
-| bursts while muted | 0 |
+For a while two recordings of real police radio traffic played in the gaps
+between calls, and stood in for the voice on a machine with no speech engine.
+They were taken out on request, files and all. The net between calls is back to
+what the game makes itself — somebody keying up and thinking better of it, a
+status burst, a distant roger beep (`_pumpNetNoise`) — and with no English
+voice a call is now just the key going down and up with nothing readable in
+between.
 
 ### The siren
 
@@ -2025,6 +2066,32 @@ fixed marker, with an `N` pointer for orientation.
 
 ---
 
+### The garage
+
+Each map has a petrol station with a repair bay, marked on the minimap with a
+green spanner that sits on the edge of the map when it is out of range. Drive
+into the bay — the hatched square on the workshop floor — and stop. After
+three seconds sitting still the bay turns green and the car starts to mend at
+5% a second, until it is back to 100% or you move; the meter at the bottom of
+the screen counts the three seconds and then the repair. It works in a chase
+too, but stopping is how you get arrested, so it is only safe if you have got
+some distance first.
+
+The site is found, not authored, so the same code (`src/game/garage.js`)
+serves both maps: a straight stretch of ordinary road a few hundred metres from
+the start with a 34 × 24 m lot of clear ground beside it — no road, no
+building, no tree. The ground under the lot is repainted as footway in the
+surface grid, so it is level (the physics reads its height from there) and
+flush with the pavement you cross to get in, and street furniture is never
+placed across its entrance. In the city it is on Ninth Street, 394 m from the
+start; in Wexbury the town streets are built up to the kerb, so it is out on
+Fosse Way at the edge of town, 359 m out.
+
+`tests/garage.js` checks it on whichever map is loaded: the lot is level
+(0.138–0.140 m), a car pointed at the bay from the road drives in with no
+collisions, nothing happens for the first 2.8 s, the repair runs at 5.0% a
+second, it stops when the car drives off, and 30% damage is gone 12 s later.
+
 ## Performance
 
 Measured on the target machine (Intel Core 3 N355, Intel UHD graphics, 8 GB), at
@@ -2071,6 +2138,7 @@ src/
     heat.js            wanted level, cooldown, arrest
     roadblock.js       roadblock siting, construction, despawn
     helicopter.js      air support at five stars
+    garage.js          the petrol station and its repair bay
     audio.js           sampled + synthesised engine, tyres, siren, impacts, radio
     camera.js  hud.js  effects.js
   core/

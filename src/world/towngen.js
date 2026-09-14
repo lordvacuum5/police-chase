@@ -83,6 +83,7 @@ export function buildTown(sim, scene, seed = 6180339) {
 
   return {
     graph,
+    surface,
     surfaceAt: makeSurfaceAt(surface),
     heightAt: makeHeightAt(surface),
     meshes,

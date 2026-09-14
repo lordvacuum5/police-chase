@@ -27,8 +27,11 @@ const KINDS = {
     mass: 62, radius: 0.16, height: 4.6, bite: 0.5,
     spacing: 34, chance: 1.0, out: 2.2,
   },
+  // Heavier than it looks, as a real one is -- cast iron set in concrete -- so
+  // flat out it knocks about 20 km/h off and does about 5% damage to the
+  // Stiletto. It was 24 kg and 0.25, which went through for 9 km/h and 1%.
   bollard: {
-    mass: 24, radius: 0.13, height: 0.95, bite: 0.25,
+    mass: 95, radius: 0.13, height: 0.95, bite: 0.30,
     spacing: 9, chance: 0.55, out: 1.1,
   },
   bin: {
@@ -46,6 +49,8 @@ const FURNISHED = new Set(['street', 'avenue', 'dual', 'lane']);
 
 const MAX_LIVE = 26;          // toppled props kept simulating at once
 const HIT_SPEED = 2.4;        // m/s below which you just nudge past
+const SUBSTEP = 1 / 120;      // the physics substep, as in main.js
+const MAX_SUBSTEP_TIME = 5 / 120;   // the most physics one frame can run
 
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
@@ -106,6 +111,8 @@ export class StreetProps {
   _add(kind, def, x, z, rot) {
     // Never in the carriageway, and never inside something solid.
     if (this.game.graph.overlapsRoad(x, z, def.radius * 2, def.radius * 2, 0, 0.4)) return;
+    // Nor across the way into the garage.
+    if (this.game.garage && this.game.garage.covers(x, z, 1.5)) return;
 
     // Street furniture stands on the footway, which is a kerb height above the
     // road. Planting it at zero buries a bollard to its knees.
@@ -193,6 +200,15 @@ export class StreetProps {
    * something actually hits one.
    */
   update(dt) {
+    // How far ahead to look: everything the car will cover before this is
+    // checked again. It runs once a frame, but physics runs up to five
+    // substeps in that frame. Checking only where the car is now let a fast
+    // car on a slow frame -- 250 km/h at 30 frames a second is 2.1 m a frame
+    // -- reach the post's static collider before it was ever knocked, and a
+    // static collider is an immovable wall: 230 km/h down to 21 in one substep
+    // and the car wrecked. Sweeping the footprint along the velocity for the
+    // frame, plus a substep to spare, knocks it over before contact instead.
+    const ahead = Math.min(dt, MAX_SUBSTEP_TIME) + SUBSTEP;
     for (const v of this.game.vehicles) {
       const sp = v.speed;
       if (sp < HIT_SPEED) continue;
@@ -200,6 +216,9 @@ export class StreetProps {
       const halfW = v.spec.dims.w * 0.5 + 0.5;
       const px = v.position.x, pz = v.position.z;
       const fx = v.forward.x, fz = v.forward.z;
+      const ux = v.linvel.x / sp, uz = v.linvel.z / sp;
+      const travel = sp * ahead;
+      const samples = Math.ceil(travel / 0.5);
 
       const cx = Math.floor(px / this.cell), cz = Math.floor(pz / this.cell);
       for (let j = cz - 1; j <= cz + 1; j++) {
@@ -208,12 +227,16 @@ export class StreetProps {
           if (!bucket) continue;
           for (const p of bucket) {
             if (p.down) continue;
-            const dx = p.x - px, dz = p.z - pz;
-            // Into the car's own frame: forward and lateral offsets.
-            const f = dx * fx + dz * fz;
-            const l = dx * fz - dz * fx;
-            if (Math.abs(f) > reach || Math.abs(l) > halfW + p.def.radius) continue;
-            this._knock(p, v, f);
+            for (let k = 0; k <= samples; k++) {
+              const s = samples ? (travel * k) / samples : 0;
+              const dx = p.x - (px + ux * s), dz = p.z - (pz + uz * s);
+              // Into the car's own frame: forward and lateral offsets.
+              const f = dx * fx + dz * fz;
+              const l = dx * fz - dz * fx;
+              if (Math.abs(f) > reach || Math.abs(l) > halfW + p.def.radius) continue;
+              this._knock(p, v, f);
+              break;
+            }
           }
         }
       }
@@ -234,6 +257,14 @@ export class StreetProps {
     // A little damage too, so a street furnished with bollards is not a free
     // shortcut, but nothing like hitting a wall.
     v.applyDamage(dv * p.def.bite * 0.045);
+    // Felt, not just counted: the speed loss is taken quietly so it cannot be
+    // mistaken for a crash (see Vehicle.applySpeedLoss), so the jolt and the
+    // thud are given here, sized to the hit.
+    if (v === this.game.player && dv > 0.8) {
+      const s = Math.min(0.55, dv * 0.09);
+      if (this.game.camera3) this.game.camera3.impulse(s);
+      if (this.game.audio) this.game.audio.impact(s);
+    }
 
     this.game.world.removeRigidBody(p.collider);
     p.collider = null;
@@ -258,11 +289,12 @@ export class StreetProps {
 
     const vv = v.linvel;
     const push = Math.min(1, v.speed / 26);
-    body.applyImpulse({
-      x: vv.x * m * 0.030 * push,
-      y: m * 0.9 * push,
-      z: vv.z * m * 0.030 * push,
-    }, true);
+    // Sent off a little faster than the car, the way a struck post goes: the
+    // hit has already been paid for above. Thrown slower than the car -- as it
+    // was, at a couple of metres a second -- the car ran into it again a moment
+    // later, and once bollards weighed what they should that second hit cost
+    // as much again as the first.
+    body.setLinvel({ x: vv.x * 1.1, y: 2.5 * push, z: vv.z * 1.1 }, true);
     // Off-centre, so it spins as it goes over rather than sliding upright.
     body.applyTorqueImpulse({
       x: -vv.z * m * 0.020 * push, y: 0, z: vv.x * m * 0.020 * push,

@@ -80,6 +80,18 @@ export class Dispatcher {
     this.boxCooldown = 0;
     this.claimedNodes = new Set();
     this.lastReport = '';
+
+    // How often this driver goes straight on at a junction, learned from what
+    // the police have watched them do (see _learnHabits). Starts at a typical
+    // fleeing driver's and feeds RoadGraph.predict.
+    this.straightShare = 0.65;
+    // Junctions less likely than this are not worth sending a car to. Measured
+    // with tests/intercept.js: 0.08 made the intercepts right a third of the
+    // time but sent so few that no more of them came off; 0.03 is right a
+    // fifth of the time -- twice the old solver -- and sends enough to meet the
+    // car at more junctions.
+    this.interceptMinProb = 0.03;
+    this._junction = null;
   }
 
   get tier() { return this.game.heat.tier; }
@@ -92,6 +104,7 @@ export class Dispatcher {
     this.pitCooldown -= dt;
     this.blockCooldown -= dt;
     this._updateKnowledge(dt, target);
+    this._learnHabits(target);
     this._manageRoster(dt, target);
 
     this.roleTimer -= dt;
@@ -181,6 +194,42 @@ export class Dispatcher {
       // sight is.
       if (k.timeSinceSeen < TRACK_SECONDS) k.position.copy(target.position);
       k.confidence = clamp01(1 - k.timeSinceSeen / SEARCH_SECONDS);
+    }
+  }
+
+  /**
+   * Learn how this driver takes junctions.
+   *
+   * Only from what the police can see: the heading going into a junction
+   * against the heading coming out, straight on or not, folded into a running
+   * share that weighs the last five or so junctions most. Somebody who throws
+   * the car down every side road gets intercepts spread across the side
+   * roads; somebody who stays on the main road finds cars waiting on it.
+   */
+  _learnHabits(target) {
+    const k = this.knowledge;
+    const sp = target.speed;
+    if (!k.seen || sp < 5) return;
+    const g = this.game.graph;
+    const x = target.position.x, z = target.position.z;
+    const vx = target.linvel.x / sp, vz = target.linvel.z / sp;
+    const j = this._junction;
+    if (j) {
+      if (Math.hypot(j.x - x, j.z - z) > 20) {
+        const straight = j.hx * vx + j.hz * vz > 0.82 ? 1 : 0;
+        this.straightShare = this.straightShare * 0.8 + straight * 0.2;
+        this._junction = null;
+      }
+      return;
+    }
+    const snap = g.nearestEdge(x, z, 30);
+    if (!snap) return;
+    for (const id of [snap.edge.a, snap.edge.b]) {
+      const n = g.nodes[id];
+      if (n.edges.length >= 3 && Math.hypot(n.x - x, n.z - z) < 12) {
+        this._junction = { x: n.x, z: n.z, hx: vx, hz: vz };
+        return;
+      }
     }
   }
 
@@ -487,21 +536,26 @@ export class Dispatcher {
     // Direction of travel: velocity if they are moving, nose if not.
     _dir.copy(k.velocity);
     _dir.y = 0;
+    const speed = _dir.length();
     if (_dir.lengthSq() < 4) _dir.copy(target.forward);
     _dir.normalize();
 
-    const reach = g.reachable(k.position.x, k.position.z, _dir.x, _dir.z, 26, 0.88);
-
-    // Keep the most useful candidates: far enough ahead to be worth driving to,
-    // near enough that the prediction is still meaningful. Chokepoints first.
+    // Where they are likely to go, not merely where they could: see
+    // RoadGraph.predict. Candidates are ranked by how likely the target is to
+    // come through, and by whether the time is right -- far enough ahead to be
+    // worth driving to, near enough that the prediction still means something.
+    // Chokepoints still count for extra: there is no way round them.
+    const likely = g.predict(k.position.x, k.position.z, _dir.x, _dir.z, speed, this.straightShare, 24);
     const candidates = [];
-    for (const [id, rec] of reach) {
-      if (rec.eta < 4.5 || rec.eta > 24) continue;
+    for (const [id, rec] of likely) {
+      if (rec.eta < 4.5 || rec.eta > 24 || rec.prob < this.interceptMinProb) continue;
       const node = g.nodes[id];
-      const score = rec.eta + (node.chokepoint ? -4 : 0) + (node.edges.length >= 4 ? -1.2 : 0);
-      candidates.push({ id, eta: rec.eta, score, x: node.x, z: node.z });
+      if (node.edges.length < 3 && !node.chokepoint) continue;
+      const timing = rec.eta < 6 ? 0.6 + (rec.eta - 4.5) * 0.27 : rec.eta > 16 ? 1 - (rec.eta - 16) * 0.07 : 1;
+      const value = rec.prob * timing * (node.chokepoint ? 1.3 : 1);
+      candidates.push({ id, eta: rec.eta, prob: rec.prob, value, x: node.x, z: node.z });
     }
-    candidates.sort((a, b) => a.score - b.score);
+    candidates.sort((a, b) => b.value - a.value);
     const shortlist = candidates.slice(0, 12);
 
     if (!shortlist.length) {
@@ -523,11 +577,13 @@ export class Dispatcher {
 
       // Pre-filter by straight-line distance so we only pay for a handful of
       // A* runs per unit per second.
-      const near = shortlist
-        .filter((c) => !this.claimedNodes.has(c.id))
+      const open = shortlist.filter((c) => !this.claimedNodes.has(c.id));
+      const near = open
         .map((c) => Object.assign({ raw: dist2(u.position.x, u.position.z, c.x, c.z) }, c))
         .sort((a, b) => a.raw - b.raw)
         .slice(0, 4);
+      // And always the likeliest junction still unclaimed, near or not.
+      if (open.length && !near.some((c) => c.id === open[0].id)) near.push(open[0]);
 
       let best = null;
       for (const c of near) {
@@ -536,9 +592,12 @@ export class Dispatcher {
         const t = g.routeTime(path, 0.82);
         const margin = c.eta - t;
         if (margin < 1.2 || margin > 15) continue;
-        // Prefer arriving with a small but real cushion.
-        const quality = Math.abs(margin - 4.0);
-        if (!best || quality < best.quality) best = { c, path, quality, margin };
+        // Prefer arriving with a small but real cushion, somewhere they are
+        // actually likely to come through: a certain junction reached with
+        // eight seconds to spare beats a coin-toss one reached with four.
+        const cushion = margin < 2.5 ? 0.6 : margin <= 6 ? 1 : 1 - (margin - 6) * 0.07;
+        const quality = c.prob * cushion;
+        if (!best || quality > best.quality) best = { c, path, quality, margin };
       }
 
       if (best) {

@@ -34,9 +34,8 @@ window.__runRadio = async function () {
       a.noiseBuffer = buf;
       a.master = off.createGain();
       a.master.connect(off.destination);
-      // _buildRadio also looks for recordings and a speech engine; neither
-      // matters to an offline render.
-      a._loadChatter = () => {};
+      // _buildRadio also looks for a speech engine, which does not matter to an
+      // offline render.
       a._buildRadio();
       fill(a, off);
       return (await off.startRendering()).getChannelData(0);

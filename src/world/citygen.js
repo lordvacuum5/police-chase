@@ -62,7 +62,7 @@ export function buildCity(sim, scene, seed = 20260822) {
   const surfaceAt = makeSurfaceAt(surface);
   const heightAt = makeHeightAt(surface);
 
-  return { graph, surfaceAt, heightAt, meshes, roundabout, bounds: WORLD_HALF };
+  return { graph, surface, surfaceAt, heightAt, meshes, roundabout, bounds: WORLD_HALF };
 }
 
 // =====================================================================

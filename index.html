@@ -267,6 +267,25 @@
   #track.fading #tracktrack { border-color: rgba(87,210,255,.5); box-shadow: 0 0 18px rgba(87,210,255,.25); }
   #track.fading #trackfill { background: linear-gradient(90deg, #9fe8ff, #29b6ff); }
 
+  /* ---- repair meter: sitting in the garage bay ---- */
+  #repair {
+    position: absolute; bottom: 64px; left: 50%; transform: translateX(-50%);
+    width: 280px; text-align: center; opacity: 0; transition: opacity .18s;
+  }
+  #repair.on { opacity: 1; }
+  #repairhead { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  #repairlabel { font-size: 12px; letter-spacing: 4px; color: #ffc861; text-shadow: 0 0 12px rgba(255,190,80,.6); }
+  #repairvalue { font-size: 18px; font-weight: 600; color: #fff; text-shadow: 0 1px 8px rgba(4,6,9,.9); }
+  #repairtrack {
+    height: 9px; background: rgba(8,10,14,.8); border: 1px solid rgba(255,200,97,.5);
+    border-radius: 5px; overflow: hidden;
+  }
+  #repairfill { height: 100%; width: 0%; background: linear-gradient(90deg, #ffd166, #ffae34); transition: width .1s linear; }
+  #repair.work #repairlabel { color: #5fe39a; text-shadow: 0 0 12px rgba(95,227,154,.6); }
+  #repair.work #repairtrack { border-color: rgba(95,227,154,.5); }
+  #repair.work #repairfill { background: linear-gradient(90deg, #7ef0b0, #2fbf6e); }
+  body.touch #repair { bottom: calc(112px + var(--safe-b)); width: min(280px, 60vw); }
+
   /* =================================================== touchscreen controls
      Built by src/core/touch.js. Nothing below applies until body.touch is set,
      which only happens on a phone or once the screen has been touched, so a
@@ -450,6 +469,10 @@
     <div id="tracktrack"><div id="trackfill"></div></div>
   </div>
 
+  <div id="repair">
+    <div id="repairhead"><span id="repairlabel">REPAIRING</span><span id="repairvalue">0%</span></div>
+    <div id="repairtrack"><div id="repairfill"></div></div>
+  </div>
   <div id="bust">
     <div id="bustlabel">BUSTED</div>
     <div id="busttrack"><div id="bustfill"></div></div>

@@ -1,8 +1,7 @@
 // Sound.
 //
 // Mostly built at runtime from oscillators and a buffer of white noise, with
-// three recordings where synthesis could not do the job: the engine, and two
-// clips of real police radio traffic.
+// one recording where synthesis could not do the job: the engine.
 //
 // Layers:
 //   engine   a recorded engine pitched to rpm, over oscillators locked to the
@@ -13,8 +12,7 @@
 //   siren    wail and yelp, faded in with the nearest marked unit
 //   impacts  one-shot filtered noise bursts
 //   radio    dispatch calls actually spoken by the browser's speech engine,
-//            between a PTT click and a squelch crash; recorded traffic
-//            underneath a pursuit
+//            between a PTT click and a squelch crash
 
 import { clamp, clamp01, lerp, damp } from '../util/math.js';
 
@@ -29,7 +27,7 @@ import { clamp, clamp01, lerp, damp } from '../util/math.js';
  * and almost all of that is the channel rather than the voice: 300 Hz to
  * 3 kHz, squashed flat by the compressor at the transmitter, with the click
  * of the PTT closing at one end and the squelch crash at the other. The
- * recorded traffic and the carrier hiss go through this channel. The spoken
+ * carrier hiss and the noise of the net between calls go through this channel. The spoken
  * calls cannot -- see _transmit -- so they get the click and the crash instead.
  */
 const RADIO_LO = 330, RADIO_HI = 2850;
@@ -147,9 +145,21 @@ export function setVoiceChoice(who, name) {
   try { localStorage.setItem(VOICE_KEY, JSON.stringify(v)); } catch (e) { /* storage blocked */ }
 }
 
-/** The rate a speaker's lines go out at in this voice. See SPEAKERS. */
-function rateFor(voice, style) {
-  return voice.localService ? style.rate : 1 + (style.rate - 1) * 0.3;
+/**
+ * The rate a speaker's lines go out at in this voice. See SPEAKERS.
+ *
+ * The full rates only suit the Windows desktop voices, which barely speed up
+ * when asked to: 2.0 on George is nowhere near twice as fast. Every other
+ * engine -- Android's, Apple's, the network voices -- takes the rate at its
+ * word, and on a phone 2.0 really was double speed: "the voices say the stuff
+ * way too fast". They were only spared before if they happened to report
+ * themselves as network voices, and a phone's own voices are local. So the
+ * test is now what the engine is, not where it runs.
+ */
+export function rateFor(voice, style) {
+  const windowsDesktop = voice.localService && /^Microsoft\b/i.test(voice.name)
+    && !/\b(natural|online)\b/i.test(voice.name);
+  return windowsDesktop ? style.rate : 1 + (style.rate - 1) * 0.3;
 }
 
 const SAMPLE_LINES = {
@@ -253,45 +263,6 @@ const PITCH_EXP = 0.62;
 
 /** The stable stretch of the recording to loop, in seconds. */
 const LOOP_FROM = 2.0, LOOP_TO = 15.0, LOOP_FADE = 0.2;
-
-/**
- * Recorded police net chatter, played underneath a pursuit.
- *
- * The spoken calls say what is on the HUD and nothing else. Recorded traffic
- * is the rest of the net -- other units, other jobs -- so the calls that mean
- * something are spoken, and a recording fills the gaps with the sound of a
- * busy channel. It is also what the radio falls back to on a machine with no
- * speech engine.
- *
- * Every path here is optional and tried in order. Drop a clip into
- * `resources/sounds/` under one of these names and it is picked up on the next
- * load; with none of them present nothing happens at all and the radio behaves
- * exactly as it did before. Same fire-and-forget contract as the engine
- * sample: a missing or undecodable file must never break the game's audio.
- */
-const CHATTER_SAMPLES = [
-  // Both from the same Pixabay uploader as the engine recording, and named
-  // the same way: uploader, subject, Pixabay id. The scanner one is a 60 s
-  // excerpt cut out of a four-minute recording -- 254 s of 24 kHz stereo is
-  // 49 MB once decoded, which is a lot of memory to hold for room tone.
-  'resources/sounds/freesound_community-police-radio-chatter-30048.mp3',
-  'resources/sounds/freesound_community-police-scanner-14646.mp3',
-];
-
-/**
- * Your own recordings, under either of these names. Only looked for if fewer
- * than two of the shipped clips loaded -- so replacing or deleting one picks
- * yours up, and a default install does not put a pair of 404s in the console
- * every boot looking for files that were never meant to be there.
- */
-const CHATTER_EXTRA = [
-  'resources/sounds/police-radio-chatter.mp3',
-  'resources/sounds/police-scanner.mp3',
-];
-
-/** Seconds between bursts of background chatter, and how long one runs for. */
-const CHATTER_GAP = [7.0, 17.0];
-const CHATTER_LEN = [1.6, 4.2];
 
 /**
  * Fold a region of a recording into a seamless mono loop by crossfading the
@@ -718,96 +689,6 @@ export class GameAudio {
       // you into the menu.
       window.addEventListener('pagehide', () => this.speech.cancel());
     }
-
-    this.chatter = [];         // decoded recordings, if any were found
-    this.chatterTimer = 4;
-    this.chatterLevel = 0.03;  // see _pumpChatter; set by measurement
-    this._loadChatter();
-  }
-
-  /**
-   * Fetch and decode whatever police net recordings are present.
-   *
-   * Deliberately silent about failure, like the engine sample: with no files
-   * in place `this.chatter` stays empty and `_pumpChatter` does nothing.
-   */
-  async _loadChatter() {
-    const tryLoad = async (url) => {
-      try {
-        const res = await fetch(url);
-        if (!res.ok) return;
-        const buf = await this.ctx.decodeAudioData(await res.arrayBuffer());
-        if (buf.duration > 1.0) this.chatter.push(buf);
-      } catch (e) {
-        // Missing, wrong format, or a decoder that does not like it. Fine.
-      }
-    };
-    for (const url of CHATTER_SAMPLES) await tryLoad(url);
-    if (this.chatter.length < 2) {
-      for (const url of CHATTER_EXTRA) await tryLoad(url);
-    }
-  }
-
-  /**
-   * Background traffic on the net while a pursuit is running.
-   *
-   * A burst is a window cut out of the middle of a recording with a squelch
-   * click either end, played through the same channel as everything else, so
-   * it is the same radio rather than a second one. It never speaks over a
-   * dispatch call -- `radioFreeAt` is the channel, and the queue owns it --
-   * and it holds the channel itself for the length of the burst, so a call
-   * that arrives mid-burst waits its turn the way a real transmission would.
-   */
-  _pumpChatter(dt, heat) {
-    if (!this.chatter.length || this.muted) return;
-    const tier = heat ? heat.tier : 0;
-    if (tier <= 0) { this.chatterTimer = CHATTER_GAP[0]; return; }
-
-    this.chatterTimer -= dt;
-    if (this.chatterTimer > 0) return;
-    const ctx = this.ctx;
-    const now = ctx.currentTime;
-    if (now < this.radioFreeAt || this.radioQueue.length) return;
-
-    const buf = this.chatter[(Math.random() * this.chatter.length) | 0];
-    const len = Math.min(buf.duration - 0.2,
-      CHATTER_LEN[0] + Math.random() * (CHATTER_LEN[1] - CHATTER_LEN[0]));
-    const from = Math.random() * Math.max(0, buf.duration - len - 0.1);
-
-    // Quieter clicks than a real transmission gets. The key-up crash is
-    // deliberately the loudest thing on the net -- it is the local set keying
-    // up -- and borrowing that level for background traffic made the clicks,
-    // not the voices, the loudest moment of a chase: 0.39 at the master bus
-    // against 0.29 for the call it was sitting under.
-    const at = now + 0.05;
-    this._squelch(at, 0.05, 0.30, 2600);
-
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    const g = ctx.createGain();
-    // Under the calls that matter, and a little busier the higher the
-    // response.
-    //
-    // The number is small, and it has to be. A recording is mastered dense and
-    // full-band, and the channel's waveshaper saturates, so it arrives with a
-    // lot of energy for its nominal gain. Measured at the master bus against
-    // the old synthesised call, which peaked at 0.287: gain 0.03 gives 0.135,
-    // 0.08 gives 0.317, 0.15 gives 0.454. The spoken calls now play outside
-    // Web Audio, louder than that call ever was, so this sits further under
-    // them still.
-    const level = this.chatterLevel * (0.8 + 0.06 * Math.min(5, tier));
-    g.gain.setValueAtTime(0.0001, at);
-    g.gain.exponentialRampToValueAtTime(level, at + 0.05);
-    g.gain.setValueAtTime(level, at + len - 0.12);
-    g.gain.exponentialRampToValueAtTime(0.0001, at + len);
-    src.connect(g); g.connect(this.radioIn);
-    src.start(at + 0.04, from, len);
-    src.stop(at + len + 0.05);
-
-    this._squelch(at + len, 0.10, 0.45, 3000);
-    this.radioFreeAt = at + len + 0.2;
-    this.chatterTimer = CHATTER_GAP[0]
-      + Math.random() * (CHATTER_GAP[1] - CHATTER_GAP[0]);
   }
 
   /**
@@ -997,12 +878,11 @@ export class GameAudio {
       const guess = 1.5 + (words.length / 9.5) / Math.sqrt(rate);
       setTimeout(finish, startIn + (guess + 3) * 1000);
     } else {
-      // No speech engine, or no English voice on this machine. Real radio
-      // traffic out of the recordings, the length of the line, stands in for
-      // it -- not the words on the HUD, but a real voice on a real net, which
-      // is the thing the synthesised one never managed.
-      const len = this._recordedVoice(t, msg.text);
-      setTimeout(finish, startIn + len * 1000);
+      // No speech engine, or no English voice on this machine: the key goes
+      // down and comes up again with nothing readable in between. There used
+      // to be recorded police traffic here, and under every pursuit, until it
+      // was asked to go.
+      setTimeout(finish, startIn + 600);
     }
   }
 
@@ -1036,31 +916,6 @@ export class GameAudio {
         n.src.stop(end + 0.08);
       }
     };
-  }
-
-  /**
-   * A stretch of recorded radio traffic the length of a line, for a machine
-   * with no speech engine. Returns how long it runs, in seconds.
-   */
-  _recordedVoice(at, text) {
-    const len = clamp(0.9 + text.length / 17, 1.4, 4.2);
-    const buf = this.chatter && this.chatter[(Math.random() * this.chatter.length) | 0];
-    if (!buf) return 0.6;
-    const run = Math.min(len, buf.duration - 0.2);
-    const from = Math.random() * Math.max(0, buf.duration - run - 0.1);
-    const src = this.ctx.createBufferSource();
-    src.buffer = buf;
-    const g = this.ctx.createGain();
-    // Well above the background chatter: this is the call, not the room.
-    const level = this.chatterLevel * 3.2;
-    g.gain.setValueAtTime(0.0001, at);
-    g.gain.exponentialRampToValueAtTime(level, at + 0.04);
-    g.gain.setValueAtTime(level, at + run - 0.1);
-    g.gain.exponentialRampToValueAtTime(0.0001, at + run);
-    src.connect(g); g.connect(this.radioIn);
-    src.start(at, from, run);
-    src.stop(at + run + 0.05);
-    return run;
   }
 
   /** A burst of band-passed noise: the PTT closing, or the squelch tail. */
@@ -1273,7 +1128,6 @@ export class GameAudio {
     const smooth = 0.045;
 
     this._pumpRadio();
-    this._pumpChatter(dt, heat);
     this._pumpNetNoise(dt);
 
     // ---- engine ----------------------------------------------------------
