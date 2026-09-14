@@ -48,6 +48,7 @@ const _v1 = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _v3 = new THREE.Vector3();
 const _v4 = new THREE.Vector3();
+const _v5 = new THREE.Vector3();
 const _wf = new THREE.Vector3();
 const _wl = new THREE.Vector3();
 const _qs = new THREE.Quaternion();
@@ -884,8 +885,25 @@ export class Vehicle {
       // Rolling resistance, much higher once you are off any hard surface.
       const rr = -sign(vLong) * Fs * (w.surface === 0 ? 0.045 : 0.016);
 
-      _v4.copy(_wf).multiplyScalar(f.Fx + rr).addScaledVector(_wl, f.Fy);
-      this.body.addForceAtPoint(_v4, w.contact, true);
+      // The cornering force goes into the body at the roll centre, not at the
+      // road. On a real car the suspension links carry it there, and it is the
+      // height between that point and the centre of mass that tries to roll
+      // the car -- not the full height from the tarmac. Pushing sideways at
+      // the contact patch put a 0.5 m lever under every car, which the saloons
+      // never had the grip to use but the Stiletto did: past about 1.7 g the
+      // inside wheels came up and it went over, from 100 km/h on full lock.
+      // Longitudinal force stays at the contact, where dive and squat come from.
+      const rc = sus.rollCentre || 0;
+      if (rc > 0) {
+        _v4.copy(_wf).multiplyScalar(f.Fx + rr);
+        this.body.addForceAtPoint(_v4, w.contact, true);
+        _v4.copy(_wl).multiplyScalar(f.Fy);
+        _v5.copy(w.contact).addScaledVector(this.up, rc);
+        this.body.addForceAtPoint(_v4, _v5, true);
+      } else {
+        _v4.copy(_wf).multiplyScalar(f.Fx + rr).addScaledVector(_wl, f.Fy);
+        this.body.addForceAtPoint(_v4, w.contact, true);
+      }
 
       // ---- wheel spin dynamics ----
       //

@@ -1352,6 +1352,40 @@ Peak steady cornering grip (`tests/gripsweep.js`): the Runner is unchanged at
 Stiletto is unchanged at 60 km/h (1.51 g) and goes from 1.58 g to 1.89 g at 120
 and 1.62 g to 2.02 g at 170. The police cars do not have it.
 
+### Keeping the Stiletto on its wheels
+
+That extra grip put the Stiletto on its roof. The Stiletto figures above were
+partly measured on a car already rolling: `tests/rollover.js` holds full lock
+from a straight line, slaloms, and slides the car sideways into a 14 cm kerb,
+and with that tuning the Stiletto went over on full lock at every speed from
+100 km/h up, and in a 160 km/h slalom. The Runner never did.
+
+The cause was where cornering force went into the car. Each tyre's sideways
+force was applied at the contact patch, on the road, half a metre below the
+centre of mass. On a real car the suspension links carry that force into the
+body at the *roll centre*, well above the road, and only the height from there
+to the centre of mass tries to roll it. Applied at the road, the Stiletto's
+tipping point worked out at about 1.7 g, and at speed its tyres could do 2. Its
+inside wheels were already lifting on full lock at 60 km/h, before the
+high-speed grip existed; the grip only pushed it the rest of the way.
+
+So a car's suspension now has a `rollCentre`, the height at which cornering
+force enters the body. It is 0 — the road, unchanged — for every car except the
+Stiletto, which has 18 cm. Longitudinal force still goes in at the road, where
+dive under braking and squat under power come from.
+
+| Stiletto | before | after |
+|---|---|---|
+| full lock, 100–220 km/h | **rolled over** every time | 1.7–2.2° of roll, all four wheels down |
+| slalom, 80–200 km/h | rolled at 160; a wheel in the air for up to 3 s | 1.6–2.3°, all four wheels down |
+| sideways into a kerb at 90 km/h | 5.0–5.4°, a wheel up for 0.15 s | 4.7–5.1°, 0.1 s |
+| full lock at 130 km/h (`tests/stability.js`) | ended on its roof at 47 km/h | 1.80 g, 0.4° of slip, held |
+| steady grip at 60 / 120 / 170 km/h | 1.51 / 1.89 / 2.02 g | 1.57 / 1.77 / 1.91 g |
+
+The old 2.02 g at 170 km/h was being reached on two wheels. Full lock held at
+speed (`tests/highspeed.js`) now gives 1.62–1.66 g at under 1° of slip, where
+before it gave 0.7–1.0 g because the car was on its way over.
+
 ### The bodywork
 
 The saloons are mostly flat panels, which tapered boxes suit. This car is all

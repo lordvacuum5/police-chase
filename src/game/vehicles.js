@@ -21,6 +21,10 @@ const baseSuspension = {
   dampRebound: 5800,   // rebound is always the stiffer direction
   bumpStop: 26000,
   maxForce: 34000,
+  // Height above the road, in metres, at which cornering force enters the body
+  // (see physics/vehicle.js). 0 is the road itself, which is what every car
+  // was tuned on; only a car with the grip to roll itself needs more.
+  rollCentre: 0,
   // Softened at the front. A front bar twice the rear moves lateral load onto
   // the front axle, and a load-sensitive tyre gives back less than
   // proportionally -- which is understeer, felt as a heavy car that will not
@@ -175,6 +179,12 @@ export const SPECS = {
       dampRebound: 7600,
       bumpStop: 34000,
       maxForce: 38000,
+      // Its grip reaches 2 g at speed, and with cornering force going in at
+      // the road it tipped over at about 1.7: full lock from 100 km/h upward
+      // put it on its roof. Taken in 18 cm up, the lever that rolls it is a
+      // third shorter and the tipping point comes out well past anything the
+      // tyres can do.
+      rollCentre: 0.18,
       arbFront: 15500,
       arbRear: 12500,
     }),
