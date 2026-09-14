@@ -523,44 +523,69 @@ screenshots and called it fixed. What settled it was measuring —
 `tests/surfaces.js` fires 4,000 rays straight down onto the carriageway and
 asks which surface is nearest the sky.
 
-So nothing raised reasons about which road might be near which any more. It is
-all **clipped against the surface grid**, which had the carriageways burned
-into it after the pavement and therefore already knows exactly where footway
-is:
+The first fix clipped everything raised against the surface grid, which had the
+carriageways burned into it and so knew where footway was. It measured well —
+carriageway drawn over went from 14.5% to 0.00% in Wexbury — and it looked
+terrible. A pavement cut to fit a metre grid has a metre-grid edge: every
+junction mouth and every bend in the town grew a **staircase of grey teeth**,
+block plates in the city got stepped edges along every road through them, and
+from a distance the whole town shimmered with them.
 
-* The town's bands are walked in 2.2 m pieces, and each piece is *fitted* to
-  the grid rather than kept or dropped whole: it becomes the widest run across
-  the band that the grid calls footway. A piece beside a side turning narrows
-  instead of vanishing, which reads as a footway pinching in rather than as a
-  row of teeth.
-* `buildCornerFootways` fills the sector between two approaches — which is
-  exactly where a pedestrian stands — in pieces short enough to clip the same
-  way. Its sector arithmetic also had a wraparound bug worth naming: on a fork,
-  where two approaches sit closer together than their angular bites, the span
-  comes out negative, and wrapping it the other way turned a corner that should
-  have been skipped into a 328° ring that painted over the entire junction.
-  That one line was 14% of the town's tarmac.
-* The city's block plates stop at each edge's own kerb line (avenues are wider
-  than streets, so a single inset would either cover an avenue or leave bare
-  ground along a street), with corners **curved** to follow the junction's
-  tarmac fillet. Curve, not chamfer: a straight cut across the corner takes
-  more out than the tarmac puts back, and leaves a wedge of grass showing.
-* That clears the roads that run *along* the grid lines. A road through the
-  *middle* of a block — a suburban lane, a country road, the roundabout that
-  sits across the corner of two avenues — is not on a grid line and was still
-  covered, the roundabout alone being three fifths of what was left. Those
-  blocks get their plate subdivided against the grid instead, quartering down
-  to a metre only where it meets tarmac, so a block interior still costs a
-  handful of quads.
+**So the pavement is no longer cut at all.** Pavement shapes are back to the
+smooth ones from before the kerbs were raised — a full-width ribbon along each
+town road, a plain plate across each city block — only now at kerb height. What
+changed is the *drawing order* (`DRAW_ORDER` in `world/common.js`): grass, then
+pavement, then tarmac, and the tarmac ignores the pavement's depth, which is
+what a road painted onto the ground is anyway. Where road and pavement overlap,
+the road shows; everywhere else, the pavement. The kerbs — the face and the
+stone on top, which are what actually tell you the footway is raised — are
+drawn after that with an ordinary depth test. The catch is a sliver: at a very
+low angle a raised pavement edge should hide a few centimetres of road just
+behind it, and the road draws over that edge instead. From a chase camera it
+cannot be seen.
 
-| carriageway drawn over | before | after |
+That moved the problem onto the kerbs, which were never right either:
+
+* **Kerb lines across other roads.** A kerb ran the length of its road, trimmed
+  back only at the junctions at its two ends — so wherever another road crossed
+  it mid-length, merged into it or passed close by, the kerb carried straight on
+  across that road's tarmac. Kerbs are now walked a metre at a time and dropped
+  wherever the kerb itself, or the ground just behind it, lies on another
+  road's carriageway, tested against the roads' actual shapes rather than the
+  metre grid. The kerb round each junction corner gets the same test: where
+  more than two roads meet, a corner can land on a third road's tarmac, and a
+  kerb there was a U of stone standing in the middle of the junction.
+* **Kerbs crossing in an X at bends.** A kerb drawn road-piece by road-piece
+  ends at every node, so at a bend the two inside kerbs ran past each other and
+  the two outside ones stopped short. Kerbs are now drawn along whole runs of
+  road joined through plain bends, so the offset line mitres round the corner
+  like any other ribbon. Two traps on the way: splitting the run into metre
+  pieces put points so close to the bend that the kerb, drawn five metres out,
+  folded back over itself — only the road's own vertices and the cut points go
+  into the line now — and a road that doubled back on itself joined into a
+  hairpin, which mitred into a kerb shot straight across the carriageway, so
+  runs only continue through genuine bends. The kerb *face* was also offset
+  without a mitre and cut every corner short of the stone on top of it; it
+  mitres now too.
+* **Corners.** The gaps between square road ends at a node were filled with a
+  disc the size of the widest road there, which at a junction of an avenue and
+  two narrower streets stood out past the streets' kerbs as a polygon of tarmac.
+  They are filled with the exact wedge between the ends now, reaching out to the
+  mitred corner on the outside of a bend. Corner kerbs are raised like the rest,
+  where they used to be flat stripes.
+
+| what you would see on the carriageway (`tests/surfaces.js`) | grid clipping | now |
 |---|---|---|
-| Wexbury | 14.5% | **0.00%** |
-| the city | 1.45% | **0.13%** |
+| Wexbury | 0.00% covered, but a staircase everywhere | **0.00%**, smooth |
+| the city | 0.13% | **0.00%** |
 
-The city's residue is the deliberate 12 cm seam where the plate meets the kerb.
-And because the drawing and the height field are now reading the same array,
-they cannot disagree about where the kerb is.
+`tests/surfaces.js` now works out what would actually be *drawn* at each point,
+taking the drawing order into account, rather than what is nearest the sky —
+which means a kerb carried across somebody else's road now counts against it.
+`tests/roadshots.js` photographs fixed places on each map by coordinates, so the
+same views can be taken of any version of the game and compared; that is how
+every one of the problems above was found. The height field is untouched by any
+of this, so the kerb feels exactly as it did.
 
 **This is the mechanism terrain would use.** Give `heightAt` a hill and cars
 drive over it, pitching and rolling on the gradient, with nothing else

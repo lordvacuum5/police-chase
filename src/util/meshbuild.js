@@ -339,10 +339,22 @@ export class MeshBuilder {
       const p = points[i];
       const prev = points[Math.max(0, i - 1)];
       const next = points[Math.min(points.length - 1, i + 1)];
-      let dx = next.x - prev.x, dz = next.z - prev.z;
-      const l = Math.hypot(dx, dz) || 1;
-      dx /= l; dz /= l;
-      edge.push({ x: p.x - dz * offset, z: p.z + dx * offset });
+      // Mitred like addRibbon. Offset along the averaged normal alone, the
+      // wall cut every corner short of the ribbon drawn beside it -- by 40 cm
+      // at a 45-degree bend five metres out -- and a kerb face showed as a
+      // dark line across the carriageway.
+      let d1x = p.x - prev.x, d1z = p.z - prev.z;
+      let l1 = Math.hypot(d1x, d1z);
+      if (l1 < 1e-6) { d1x = next.x - p.x; d1z = next.z - p.z; l1 = Math.hypot(d1x, d1z) || 1; }
+      d1x /= l1; d1z /= l1;
+      let d2x = next.x - p.x, d2z = next.z - p.z;
+      const l2 = Math.hypot(d2x, d2z);
+      if (l2 < 1e-6) { d2x = d1x; d2z = d1z; } else { d2x /= l2; d2z /= l2; }
+      let mx = -d1z - d2z, mz = d1x + d2x;
+      const ml = Math.hypot(mx, mz);
+      if (ml < 1e-6) { mx = -d1z; mz = d1x; } else { mx /= ml; mz /= ml; }
+      const scale = Math.min(2.6, 1 / Math.max(0.30, mx * -d1z + mz * d1x));
+      edge.push({ x: p.x + mx * offset * scale, z: p.z + mz * offset * scale });
     }
 
     for (let i = 0; i < edge.length - 1; i++) {

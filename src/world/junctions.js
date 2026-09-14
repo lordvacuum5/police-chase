@@ -119,8 +119,12 @@ export function planJunctions(graph) {
  * fills each one in with tarmac out to a kerb radius and runs a kerb round it,
  * which is the single change that stops a crossroads reading as two rectangles
  * dropped on top of each other.
+ *
+ * `kerb` is { builder, colour, face, height, onRoad }: where the kerb round each
+ * corner is drawn, in what, how high the footway behind it stands, and an
+ * optional test for whether a point is on some other road's carriageway.
  */
-export function buildJunctionCorners(junctions, road, y, kerbColour) {
+export function buildJunctionCorners(junctions, road, y, kerb) {
   for (const { node, app } of junctions) {
     for (let i = 0; i < app.length; i++) {
       const a = app[i];
@@ -180,7 +184,22 @@ export function buildJunctionCorners(junctions, road, y, kerbColour) {
           y + 0.002, colour,
         );
       }
-      road.addRibbon(arc, 0.5, y + 0.006, kerbColour);
+      // The kerb round the corner is the same raised edge as the kerb along the
+      // road: a face up to the footway and the stone on top of it, set back
+      // onto the footway side, which is the side away from the square corner.
+      const mx = (t1.x + t2.x) * 0.5 - C.x, mz = (t1.z + t2.z) * 0.5 - C.z;
+      const cx = t2.x - t1.x, cz = t2.z - t1.z;
+      const away = (-cz * mx + cx * mz) > 0 ? 1 : -1;
+      // Only if the corner is a corner. Where more than two roads meet, or two
+      // meet close by another junction, the gap between one pair of approaches
+      // can lie on a third road's tarmac -- and a kerb there is a U of stone
+      // standing in the middle of the junction.
+      if (kerb.onRoad) {
+        const mine = new Set([a.edge, b.edge]);
+        if (arc.some((p) => kerb.onRoad(p.x, p.z, 0.3, mine))) continue;
+      }
+      kerb.builder.addWall(arc, y, kerb.height, kerb.face, 0);
+      kerb.builder.addRibbon(arc, 0.45, kerb.height + 0.002, kerb.colour, 0.22 * away);
     }
   }
 }
@@ -207,92 +226,44 @@ export function buildStopLines(junctions, paint, y, colour) {
 }
 
 /**
- * Raised footway in the corners of a junction.
+ * Fill the gaps between the square ends of the ribbons meeting at a node.
  *
- * A footway band runs alongside its own road, so it has to stop at the
- * junction mouth or it runs straight across every road that crosses it. That
- * leaves the corners bare, and the corners are exactly where a pedestrian
- * would be standing. This fills them: a ring segment in each sector *between*
- * two approaches, from the edge of the junction outwards.
+ * Each ribbon ends square across its own direction at the node, so two of them
+ * meeting at an angle leave a wedge of nothing between their ends on the
+ * outside of the bend. The triangle from the node to the two near corners of
+ * those ends is exactly that wedge; between approaches that overlap anyway it
+ * falls inside them and does nothing. A disc used to do this job, sized to the
+ * widest road at the node -- which at a junction of an avenue and two narrower
+ * streets stood out past the streets' kerbs as a polygon of tarmac bitten into
+ * the pavement.
  *
- * `r0` matches the disc rasteriseRoads paints into the grip grid, so what is
- * drawn raised here is also what the height field calls raised -- which is the
- * whole point, since a step you can see but not feel is worse than neither.
+ * `app` is approachesAt() for the node, filtered to the ribbons being filled;
+ * `halfOf(edge)` is the half width of each one's ribbon.
  */
-export function buildCornerFootways(junctions, builder, y, colour, width, paved = null) {
-  for (const { node, app } of junctions) {
-    let r0 = 0;
-    for (const a of app) r0 = Math.max(r0, a.half);
-    r0 *= 1.45;
-    const r1 = r0 + width;
-
-    for (let i = 0; i < app.length; i++) {
-      const a = app[i], b = app[(i + 1) % app.length];
-
-      // The angle from one approach to the next, the short way round. Taking
-      // the difference of the two bearings directly does not work for the last
-      // pair, which wraps.
-      let gap = b.ang - a.ang;
-      while (gap <= 0) gap += Math.PI * 2;
-
-      // Each carriageway takes an angular bite out of the ring at this radius;
-      // footway is whatever is left between two of them. On a fork the two
-      // bites can be wider than the gap, in which case there is no footway
-      // between them at all -- and it must be *skipped*, not wrapped round the
-      // other way. Wrapping turns a negative sector into a ring segment of
-      // almost 360 degrees, which then paints over every road at the junction:
-      // that one line cost 14% of the town's carriageway.
-      const from = Math.asin(Math.min(0.99, a.half / r0));
-      const to = gap - Math.asin(Math.min(0.99, b.half / r0));
-      const span = to - from;
-      if (span < 0.06 || span > Math.PI) continue;
-
-      // Finer pieces when there is a clip to apply: each one is kept or
-      // dropped whole, so a long arc would take a road with it either way.
-      const steps = Math.max(1, Math.ceil(span / (paved ? 0.16 : 0.30)));
-      for (let k = 0; k < steps; k++) {
-        const t0 = a.ang + from + (span * k) / steps;
-        const t1 = a.ang + from + (span * (k + 1)) / steps;
-        const c0 = Math.cos(t0), s0 = Math.sin(t0);
-        const c1 = Math.cos(t1), s1 = Math.sin(t1);
-        // The sector arithmetic above only knows about the approaches at this
-        // junction. A road that merely passes close by can still run under
-        // this quad, and the ring is wide enough for that to happen often.
-        // The surface grid knows where footway really is, so ask it.
-        if (paved) {
-          const tm = (t0 + t1) * 0.5, rm = (r0 + r1) * 0.5;
-          if (!paved(node.x + Math.cos(tm) * rm, node.z + Math.sin(tm) * rm)) continue;
-        }
-        builder.addQuadY(
-          node.x + c0 * r0, node.z + s0 * r0,
-          node.x + c1 * r0, node.z + s1 * r0,
-          node.x + c1 * r1, node.z + s1 * r1,
-          node.x + c0 * r1, node.z + s0 * r1,
-          y, colour,
-        );
-      }
+export function addNodeWedges(builder, node, app, halfOf, y, colour) {
+  if (app.length < 2) return;
+  for (let i = 0; i < app.length; i++) {
+    const a = app[i], b = app[(i + 1) % app.length];
+    const ha = halfOf(a.edge), hb = halfOf(b.edge);
+    const col = typeof colour === 'function' ? colour(a.edge, b.edge) : colour;
+    // +perp of a and -perp of b both face into the sector between them.
+    const ax = node.x - a.dir.z * ha, az = node.z + a.dir.x * ha;
+    const bx = node.x + b.dir.z * hb, bz = node.z - b.dir.x * hb;
+    // On the outside of a bend the two edges meet at a point further out than
+    // either square end: the mitre that a kerb drawn round the bend reaches.
+    // Stopping at the ends left a sliver of pavement showing on the road
+    // between that kerb corner and the tarmac. Bends only: at a junction the
+    // kerbs stop short of the node, and the same point is just a spike of
+    // tarmac out into the verge.
+    let d = b.ang - a.ang;
+    while (d <= 0) d += Math.PI * 2;
+    const M = app.length === 2 && d > Math.PI + 0.02
+      ? lineCross(ax, az, a.dir, bx, bz, b.dir) : null;
+    if (M && Math.hypot(M.x - node.x, M.z - node.z) < 3 * Math.max(ha, hb)) {
+      builder.addQuadY(node.x, node.z, ax, az, M.x, M.z, bx, bz, y, col);
+    } else {
+      builder.addQuadY(node.x, node.z, ax, az, bx, bz, node.x, node.z, y, col);
     }
-  }
-}
-
-/**
- * A small disc of surface centred on a node.
- *
- * Every ribbon ends square at its node, so where two roads meet at anything
- * other than a straight line the two square ends leave a wedge of bare ground
- * showing on the outside of the bend. Both ends pass through the node, so a
- * disc of the widest half-width covers every one of those wedges exactly.
- */
-export function addNodeApron(builder, x, z, radius, y, colour, sides = 10) {
-  const step = (Math.PI * 2) / sides;
-  for (let k = 0; k < sides; k++) {
-    const a0 = k * step, a1 = (k + 1) * step;
-    builder.addQuadY(
-      x, z,
-      x + Math.cos(a0) * radius, z + Math.sin(a0) * radius,
-      x + Math.cos(a1) * radius, z + Math.sin(a1) * radius,
-      x, z, y, colour,
-    );
   }
 }
 

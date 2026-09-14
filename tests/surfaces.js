@@ -2,10 +2,10 @@
 //
 // Two things that "looks fine to me" is not good enough for.
 //
-// 1. Raising the footway means any pavement geometry that overlaps a road now
-//    hides it. Eyeballing a few screenshots does not prove that has stopped
-//    happening, so this fires rays straight down onto thousands of points on
-//    the carriageway and asks which surface is nearest the sky.
+// 1. The footway stands above the road, so anything that can cover the road
+//    has to be ruled out by measurement, not by eyeballing a few screenshots.
+//    This fires rays straight down onto thousands of points on the carriageway
+//    and works out which surface would actually be drawn there.
 //
 // 2. Routing can only turn from one road onto another where the graph says
 //    they meet. Two edges can cross on screen and share no node, in which case
@@ -22,12 +22,25 @@ window.__runSurfaces = async function () {
     const rows = [];
 
     // ------------------------------------ 1. what is on top of the tarmac
+    //
+    // "Nearest the sky" is not the same as "what you see" any more. The tarmac
+    // is drawn after the pavement and ignores its depth (DRAW_ORDER in
+    // common.js), so a pavement sheet under a road is intended and invisible.
+    // What can still cover the road is anything drawn after it with an
+    // ordinary depth test and standing higher -- the kerbs, which is exactly
+    // the kerb line carried out across somebody else's carriageway.
     const road = g.scene.getObjectByName('roads');
     const surfaces = [];
-    for (const nm of ['roads', 'pavements', 'plates', 'ground']) {
+    for (const nm of ['roads', 'pavements', 'plates', 'ground', 'kerbs']) {
       const m = g.scene.getObjectByName(nm);
       if (m) surfaces.push(m);
     }
+    const visible = (hits) => {
+      const kerb = hits.find((h) => h.object.name === 'kerbs');
+      if (kerb) return 'kerbs';
+      const always = hits.find((h) => h.object.material && h.object.material.depthFunc === THREE.AlwaysDepth);
+      return always ? always.object.name : hits[0].object.name;
+    };
     const ray = new THREE.Raycaster();
     ray.far = 200;
     const down = new THREE.Vector3(0, -1, 0);
@@ -48,7 +61,7 @@ window.__runSurfaces = async function () {
       const hits = ray.intersectObjects(surfaces, false);
       if (!hits.length) continue;
       samples++;
-      const top = hits[0].object.name;
+      const top = visible(hits);
       tally[top] = (tally[top] || 0) + 1;
       if (top !== 'roads') covered++;
     }

@@ -9,7 +9,7 @@ import * as THREE from 'three';
 import { MeshBuilder, vertexColorMaterial } from '../util/meshbuild.js';
 import { ROAD_KIND } from './roadgraph.js';
 import {
-  planJunctions, buildJunctionCorners, buildStopLines, sliceLine, addNodeApron,
+  planJunctions, buildJunctionCorners, buildStopLines, sliceLine, approachesAt, addNodeWedges,
 } from './junctions.js';
 import { GROUP, addStaticBox } from '../physics/world.js';
 import { rand, randInt, lerp, TAU } from '../util/math.js';
@@ -140,82 +140,6 @@ export function makeHeightAt(surface) {
   };
 }
 
-/**
- * A ribbon that only appears where the ground is actually paved.
- *
- * Drawing a footway as a plain ribbon beside its own road is wrong in a way
- * that is hard to see and easy to get wrong repeatedly. The band reaches six
- * or seven metres past its kerb, so it lies across any other carriageway that
- * passes within that distance -- and since the footway now stands *above* the
- * road, it hides it. Trimming at junction nodes only fixes the cases where the
- * two roads actually meet; it does nothing for a bend, or for two estate roads
- * that run close by each other without ever crossing.
- *
- * The surface grid already knows exactly where pavement is, because the
- * carriageways were burned into it afterwards. So rather than reasoning about
- * which roads might be near which, the ribbon is walked in short pieces and
- * each piece is fitted to the grid: the widest run across the band that the
- * grid calls footway. A piece next to a crossing road narrows rather than
- * disappearing, which reads as a footway pinching in past a side turning
- * instead of the row of teeth that dropping whole pieces leaves. The kerb
- * stays a smooth curve along its length, and what is drawn raised is what the
- * height field calls raised -- the two cannot disagree, because they are
- * reading the same array.
- */
-export function addPavedRibbon(builder, points, width, y, colour, offset, paved, step = 2.2) {
-  if (points.length < 2) return builder;
-  const LAT = 4;                       // lateral samples across the band
-  const slab = width / LAT;
-  let carry = 0;
-  for (let i = 0; i < points.length - 1; i++) {
-    const a = points[i], b = points[i + 1];
-    const segLen = Math.hypot(b.x - a.x, b.z - a.z);
-    if (segLen < 1e-6) continue;
-    const dx = (b.x - a.x) / segLen, dz = (b.z - a.z) / segLen;
-    const nx = -dz, nz = dx;
-    let t = 0;
-    while (t < segLen) {
-      const piece = Math.min(step - carry, segLen - t);
-      const t0 = t, t1 = t + piece;
-      t = t1;
-      carry += piece;
-      if (carry >= step - 1e-6) carry = 0;
-      if (piece <= 0.12) continue;
-
-      const mid = (t0 + t1) * 0.5;
-      const bx = a.x + dx * mid, bz = a.z + dz * mid;
-
-      // The longest unbroken run of footway across the band. Sampling the
-      // middle alone would throw the whole piece away for a road that only
-      // clips the inner edge of it.
-      let bestFrom = -1, bestTo = -1, from = -1;
-      for (let k = 0; k <= LAT; k++) {
-        const u = offset - width * 0.5 + slab * k;
-        const ok = paved(bx + nx * u, bz + nz * u);
-        if (ok && from < 0) from = k;
-        if (!ok || k === LAT) {
-          const to = ok ? k : k - 1;
-          if (from >= 0 && to - from > bestTo - bestFrom) { bestFrom = from; bestTo = to; }
-          if (!ok) from = -1;
-        }
-      }
-      if (bestFrom < 0) continue;
-
-      // Half a slab of slack each end, so neighbouring pieces still meet.
-      const lo = Math.max(offset - width * 0.5,
-        offset - width * 0.5 + slab * (bestFrom - 0.5));
-      const hi = Math.min(offset + width * 0.5,
-        offset - width * 0.5 + slab * (bestTo + 0.5));
-      if (hi - lo < 0.35) continue;
-      builder.addRibbon(
-        [{ x: a.x + dx * t0, z: a.z + dz * t0 }, { x: a.x + dx * t1, z: a.z + dz * t1 }],
-        hi - lo, y, colour, (lo + hi) * 0.5,
-      );
-    }
-  }
-  return builder;
-}
-
 export function makeSurfaceAt(surface) {
   return (x, z) => {
     const cx = ((x + WORLD_HALF) / CELL) | 0;
@@ -247,6 +171,7 @@ export function buildGround(ctx) {
   mesh.position.y = -0.05;
   mesh.receiveShadow = true;
   mesh.name = 'ground';
+  mesh.renderOrder = DRAW_ORDER.ground;
 
   // One big static box under everything gives the wheels something to hit.
   addStaticBox(ctx.sim.world, 0, -2, 0, WORLD_HALF * 1.2, 2, WORLD_HALF * 1.2, GROUP.TERRAIN);
@@ -255,14 +180,225 @@ export function buildGround(ctx) {
 
 // ------------------------------------------------------------------- roads
 
+/**
+ * Draw order for everything flat on the ground: grass, then pavement, then
+ * tarmac, then anything else.
+ *
+ * The footway stands KERB_H above the carriageway, and every pavement shape in
+ * both maps -- a ribbon beside each road, a plate across each city block -- runs
+ * under some road it is not beside: the one crossing it at a junction, the lane
+ * cutting a block, the estate road that passes close by. Drawn by height alone,
+ * the pavement wins and the road vanishes. Cutting the pavement to fit was
+ * tried: against the metre surface grid it could only ever be as smooth as the
+ * grid, and every pavement edge on the town map came out as a staircase.
+ *
+ * So the tarmac is drawn after the pavement and ignores its depth, which is
+ * what a road painted onto the ground is anyway. The pavement shapes stay the
+ * smooth ones they always were, and where road and pavement overlap the road
+ * shows. The kerb faces and stones, which are what actually tell you the
+ * footway is raised, are drawn afterwards like everything else.
+ */
+export const DRAW_ORDER = { ground: -3, pavement: -2, tarmac: -1 };
+
+/**
+ * Roads joined end to end through plain bends, as single polylines.
+ *
+ * A kerb drawn edge by edge ends at every node, and at a bend that is wrong on
+ * both sides at once: on the inside of the bend the two kerbs carry on past
+ * each other and cross in an X over the footway, and on the outside they stop
+ * short of each other and leave a notch. Drawn along the whole run, the offset
+ * line mitres round the bend like any other ribbon. Only edges of the same
+ * width are joined, since the kerb sits at the road's half width.
+ *
+ * Returns [{ points, edges, trimStart, trimEnd }]: the trims are the junction
+ * setbacks at the two real ends of the run.
+ */
+function roadChains(graph) {
+  const live = (e) => e && !e.dead && !e.turningHead;
+  // Unit direction an edge leaves a node in.
+  const away = (e, nodeId) => {
+    const p = e.points, n = p.length;
+    const [q0, q1] = e.a === nodeId ? [p[0], p[1]] : [p[n - 1], p[n - 2]];
+    const l = Math.hypot(q1.x - q0.x, q1.z - q0.z) || 1;
+    return { x: (q1.x - q0.x) / l, z: (q1.z - q0.z) / l };
+  };
+  const onward = (nodeId, from) => {
+    const es = graph.nodes[nodeId].edges.map((id) => graph.edges[id]).filter(live);
+    if (es.length !== 2) return null;
+    const o = es[0] === from ? es[1] : es[0];
+    if (o === from || o.width !== from.width) return null;
+    // A bend, not a hairpin. Two edges leaving a node in nearly the same
+    // direction -- a road doubled back on itself, or the same stub recorded
+    // twice -- would mitre into a kerb shot straight across the carriageway.
+    const u = away(from, nodeId), v = away(o, nodeId);
+    return u.x * v.x + u.z * v.z < 0.2 ? o : null;
+  };
+  const used = new Set();
+  const chains = [];
+  for (const e of graph.edges) {
+    if (!live(e) || used.has(e)) continue;
+    // Back to the start of the run...
+    let first = e, start = e.a;
+    const back = new Set([e]);
+    for (;;) {
+      const o = onward(start, first);
+      if (!o || back.has(o) || used.has(o)) break;
+      back.add(o);
+      start = o.a === start ? o.b : o.a;
+      first = o;
+    }
+    // ...then along it to the end.
+    const points = [], edges = [], owner = [];
+    let edge = first, at = start, trimStart = 0, trimEnd = 0;
+    for (;;) {
+      used.add(edge);
+      edges.push(edge);
+      const fwd = edge.a === at;
+      const pts = fwd ? edge.points : edge.points.slice().reverse();
+      if (edges.length === 1) trimStart = (fwd ? edge.trimA : edge.trimB) || 0;
+      trimEnd = (fwd ? edge.trimB : edge.trimA) || 0;
+      for (let i = points.length ? 1 : 0; i < pts.length; i++) {
+        points.push(pts[i]);
+        if (points.length > 1) owner.push(edges.length - 1);
+      }
+      at = fwd ? edge.b : edge.a;
+      const o = onward(at, edge);
+      if (!o || used.has(o)) break;
+      edge = o;
+    }
+    chains.push({ points, owner, edges, trimStart, trimEnd });
+  }
+  return chains;
+}
+
+/**
+ * Is a point on some road's carriageway other than the ones listed? Returns a
+ * function over (x, z, margin, excluded edge set), backed by a bucket grid of
+ * every road segment, so the question is answered from the roads' own shapes
+ * rather than from the metre surface grid.
+ */
+function carriagewayTest(graph) {
+  const B = 24;
+  const buckets = new Map();
+  for (const e of graph.edges) {
+    if (e.dead) continue;
+    const r = e.width * 0.5;
+    for (const s of e.segs) {
+      const i0 = Math.floor((Math.min(s.a.x, s.b.x) - r) / B), i1 = Math.floor((Math.max(s.a.x, s.b.x) + r) / B);
+      const j0 = Math.floor((Math.min(s.a.z, s.b.z) - r) / B), j1 = Math.floor((Math.max(s.a.z, s.b.z) + r) / B);
+      for (let i = i0; i <= i1; i++) {
+        for (let j = j0; j <= j1; j++) {
+          const k = `${i},${j}`;
+          let list = buckets.get(k);
+          if (!list) { list = []; buckets.set(k, list); }
+          list.push({ e, s });
+        }
+      }
+    }
+  }
+  return (x, z, margin, not) => {
+    const list = buckets.get(`${Math.floor(x / B)},${Math.floor(z / B)}`);
+    if (!list) return false;
+    for (const { e, s } of list) {
+      if (not.has(e)) continue;
+      const dx = s.b.x - s.a.x, dz = s.b.z - s.a.z;
+      const l2 = dx * dx + dz * dz || 1;
+      const t = Math.max(0, Math.min(1, ((x - s.a.x) * dx + (z - s.a.z) * dz) / l2));
+      const px = s.a.x + dx * t - x, pz = s.a.z + dz * t - z;
+      const r = e.width * 0.5 - margin;
+      if (r > 0 && px * px + pz * pz < r * r) return true;
+    }
+    return false;
+  };
+}
+
+/**
+ * The parts of a kerb line that are beside footway or verge rather than out
+ * across another road's carriageway.
+ *
+ * A kerb runs the length of its own road, trimmed back at the junctions at
+ * either end. That trim knows about the roads meeting at those two nodes and
+ * nothing else, so where another road crosses mid-edge, merges at a slip road
+ * or simply passes close, the kerb line carried straight on over its tarmac.
+ * Walked a metre at a time, a piece is dropped if the kerb itself lies on
+ * another road, or the ground just behind it does.
+ */
+function kerbRuns(chain, side, onRoad) {
+  const { points, owner, edges } = chain;
+  const half = edges[0].width * 0.5;
+  let total = 0;
+  for (let i = 1; i < points.length; i++) {
+    total += Math.hypot(points[i].x - points[i - 1].x, points[i].z - points[i - 1].z);
+  }
+  const from = chain.trimStart, to = total - chain.trimEnd;
+  const runs = [];
+  // `pending` is how far the current run has got inside a segment. Only the
+  // road's own vertices, and the points where a run starts or stops, go into
+  // the line -- not a point every metre. The kerb is drawn five metres or more
+  // out from these points, and on the inside of a bend any point nearer the
+  // corner than that folds back past it: the kerb crossed itself in an X at
+  // every sharp bend.
+  let cur = null, pending = null, acc = 0;
+  const not = new Set();
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i], b = points[i + 1];
+    const len = Math.hypot(b.x - a.x, b.z - a.z);
+    const s0 = acc, s1 = acc + len;
+    acc = s1;
+    if (len < 1e-6 || s1 <= from || s0 >= to) continue;
+    // A piece may sit on its own road and on the roads either side of it in
+    // the run -- that is what a kerb round a bend does -- but not on a part of
+    // the same run further along, which is a road crossing itself.
+    const j = owner[i];
+    not.clear();
+    for (const k of [j - 1, j, j + 1]) if (edges[k]) not.add(edges[k]);
+    const u0 = Math.max(0, (from - s0) / len), u1 = Math.min(1, (to - s0) / len);
+    const nx = -(b.z - a.z) / len * side, nz = (b.x - a.x) / len * side;
+    const at = (t) => ({ x: lerp(a.x, b.x, t), z: lerp(a.z, b.z, t) });
+    const n = Math.max(1, Math.ceil(len * (u1 - u0)));
+    for (let k = 0; k < n; k++) {
+      const t0 = u0 + (u1 - u0) * (k / n), t1 = u0 + (u1 - u0) * ((k + 1) / n);
+      const tm = (t0 + t1) * 0.5;
+      const mx = lerp(a.x, b.x, tm), mz = lerp(a.z, b.z, tm);
+      if (onRoad(mx + nx * half, mz + nz * half, 0.25, not)
+        || onRoad(mx + nx * (half + 0.8), mz + nz * (half + 0.8), 0, not)) {
+        if (cur && pending) cur.push(pending);
+        cur = null; pending = null;
+        continue;
+      }
+      if (!cur) { cur = [at(t0)]; runs.push(cur); }
+      if (k === n - 1) { cur.push(at(t1)); pending = null; } else pending = at(t1);
+    }
+  }
+  if (cur && pending) cur.push(pending);
+  return runs.filter((r) => r.length >= 2);
+}
+
 export function buildRoadMeshes(ctx) {
   const { graph } = ctx;
   const road = new MeshBuilder();
+  const kerbs = new MeshBuilder();
   const paint = new MeshBuilder();
+  const onRoad = carriagewayTest(graph);
 
   // Worked out in graph.finalise(): how far back from each node the markings
   // have to stop, and which junctions are worth signalising.
   const junctions = graph.junctionPlan || planJunctions(graph);
+
+  // The kerb: a face standing up out of the carriageway, with the flat top of
+  // the stone along it. The footway behind is drawn at KERB_H to match, and the
+  // height field the suspension reads has its step in the same place, so what
+  // you can see and what you can feel are the same edge.
+  for (const chain of roadChains(graph)) {
+    const half = chain.edges[0].width * 0.5;
+    for (const side of [1, -1]) {
+      const off = (half - 0.10) * side;
+      for (const run of kerbRuns(chain, side, onRoad)) {
+        kerbs.addWall(run, 0.03, KERB_H, PALETTE.kerbFace, off);
+        kerbs.addRibbon(run, 0.45, KERB_H + 0.002, PALETTE.kerb, off + 0.22 * side);
+      }
+    }
+  }
 
   for (const e of graph.edges) {
     const def = ROAD_KIND[e.kind];
@@ -273,18 +409,6 @@ export function buildRoadMeshes(ctx) {
     // Everything drawn on top of the tarmac stops at the junction mouth.
     const inner = sliceLine(e.points, e.trimA || 0, e.length - (e.trimB || 0));
     if (!inner) continue;
-
-    // The kerb: a face standing up out of the carriageway, with the flat top
-    // of the stone along it. The footway behind is drawn at KERB_H to match,
-    // and the height field the suspension reads has its step in the same
-    // place, so what you can see and what you can feel are the same edge.
-    if (!e.turningHead) {
-      for (const side of [1, -1]) {
-        const off = (e.width * 0.5 - 0.10) * side;
-        road.addWall(inner, 0.03, KERB_H, PALETTE.kerbFace, off);
-        road.addRibbon(inner, 0.45, KERB_H + 0.002, PALETTE.kerb, off + 0.22 * side);
-      }
-    }
 
     if (e.kind === 'motorway') {
       paint.addRibbon(inner, 0.9, 0.04, PALETTE.markingWarm);
@@ -301,27 +425,32 @@ export function buildRoadMeshes(ctx) {
   }
 
   // Close the wedge two square ribbon ends leave at every bend and junction.
-  // Just under the ribbons, so it only ever shows where they do not reach.
   for (const n of graph.nodes) {
-    const live = n.edges.map((id) => graph.edges[id]).filter((e) => e && !e.dead);
-    if (live.length < 2) continue;
-    let r = 0, widest = live[0];
-    for (const e of live) {
-      r = Math.max(r, e.width * 0.5);
-      if (e.width > widest.width) widest = e;
-    }
-    addNodeApron(road, n.x, n.z, r, 0.029, ROAD_KIND[widest.kind].colour);
+    addNodeWedges(road, n, approachesAt(graph, n), (e) => e.width * 0.5, 0.029,
+      (a, b) => ROAD_KIND[(a.width >= b.width ? a : b).kind].colour);
   }
 
-  buildJunctionCorners(junctions, road, 0.03, PALETTE.kerb);
+  buildJunctionCorners(junctions, road, 0.03, {
+    builder: kerbs, colour: PALETTE.kerb, face: PALETTE.kerbFace, height: KERB_H, onRoad,
+  });
   buildStopLines(junctions, paint, 0.042, PALETTE.marking);
 
-  const m1 = new THREE.Mesh(road.build(), vertexColorMaterial());
+  // See DRAW_ORDER: over the pavement whatever its height.
+  const m1 = new THREE.Mesh(road.build(), vertexColorMaterial({ depthFunc: THREE.AlwaysDepth }));
   m1.name = 'roads';
   m1.receiveShadow = true;
-  const m2 = new THREE.Mesh(paint.build(), vertexColorMaterial());
+  m1.renderOrder = DRAW_ORDER.tarmac;
+  // Markings sit a centimetre above the tarmac and the kerb stone two
+  // millimetres above the footway: far too close for the depth buffer a few
+  // hundred metres out, where they flickered through each other as hatching.
+  // Pulled toward the camera in depth instead of lifted any higher.
+  const nearer = { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 };
+  const m2 = new THREE.Mesh(paint.build(), vertexColorMaterial(nearer));
   m2.name = 'markings';
-  return [m1, m2];
+  const m3 = new THREE.Mesh(kerbs.build(), vertexColorMaterial(nearer));
+  m3.name = 'kerbs';
+  m3.receiveShadow = true;
+  return [m1, m2, m3];
 }
 
 // ----------------------------------------------------------------- scenery
