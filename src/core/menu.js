@@ -5,6 +5,7 @@
 // menu is to appear instantly.
 
 import { MAPS } from '../world/maps.js';
+import { prefersTouch } from './touch.js';
 import { makeRng, TAU } from '../util/math.js';
 import {
   englishVoices, pickVoices, voiceChoices, setVoiceChoice, speakSample, SPEAKER_NAMES,
@@ -69,6 +70,10 @@ export function showMenu(onPick) {
   menu.classList.remove('gone');
   buildCarCards();
   buildVoicePicker();
+  if (prefersTouch()) {
+    const hint = document.getElementById('menuhint');
+    if (hint) hint.innerHTML = 'Tap <b>MENU</b> in game to come back here';
+  }
 
   for (const m of MAPS) {
     const card = document.createElement('div');

@@ -52,6 +52,39 @@ handbrake, `X` clutch kick.
 Sound only starts after your first key press — browsers refuse to play audio
 until the page has been interacted with.
 
+### On a phone or tablet
+
+The touch controls appear on their own on a phone, or on any screen the moment
+it is touched, and a key press on a machine with a mouse puts the desktop layout
+back. Add `?touch` to the address to see them on a desktop.
+
+| Touch | Action |
+|---|---|
+| Left half of the screen | Steer: put a thumb down anywhere and slide it left or right. Wherever it lands is the middle, so there is no stick to find without looking |
+| `GAS` / `BRAKE` | Throttle and brake — slide between them without lifting, as you would rock a foot |
+| `HANDBRAKE` | Handbrake, usable while holding either pedal |
+| `II` `CAM` `FLIP` `SND` | Pause · camera · flip upright · sound on or off |
+| `FULL` | Full screen, and landscape where the phone allows it to be locked |
+| `MENU` | Back to the menu — tap twice, so a stray thumb does not end the run |
+
+Sideways is the way to hold it. Upright works, with the view widened so there is
+still road either side of the car, and a note suggesting you turn the phone.
+The HUD shrinks to fit round the thumbs, and after being busted a `RUN AGAIN`
+button stands in for `R`.
+
+It is all in `src/core/touch.js`, and it does not drive anything itself: it
+publishes throttle, brake, handbrake and steering for `Input.sample` to merge
+with the keyboard, and its buttons press the same virtual keys the keyboard
+does, so `_handleKeys` is still the one place that decides what a key does.
+Two phone rules needed handling. A finger going *down* does not count as
+interacting with the page — only lifting it does — so audio is also woken on
+`pointerup`. And an iPhone will only let a page speak once it has spoken from
+inside a tap, so the first tap speaks a silent empty line to unlock the radio.
+
+**Playing it on a phone** needs the game served somewhere the phone can reach:
+`serve.ps1` only listens on `localhost`. It is plain static files with relative
+paths, so GitHub Pages serves it as it is.
+
 ---
 
 ## How the driving model works
@@ -2041,7 +2074,9 @@ src/
     audio.js           sampled + synthesised engine, tyres, siren, impacts, radio
     camera.js  hud.js  effects.js
   core/
-    menu.js            map selection at startup
+    menu.js            car, map and radio voice selection at startup
+    input.js           keyboard and gamepad, merged with touch
+    touch.js           on-screen steering, pedals and buttons for phones
 ```
 
 ### Tuning

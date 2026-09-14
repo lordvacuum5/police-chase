@@ -232,7 +232,7 @@ const CALL_TTL = 3;
 const LOW_QUIET = 2;
 
 /** The recorded engine loop, and what it is doing. */
-const ENGINE_SAMPLE = '/resources/sounds/freesound_community-engine-61234.mp3';
+const ENGINE_SAMPLE = 'resources/sounds/freesound_community-engine-61234.mp3';
 
 /**
  * The recording is a steady idle: 31 s with a rock-solid 50 Hz fundamental and
@@ -274,8 +274,8 @@ const CHATTER_SAMPLES = [
   // the same way: uploader, subject, Pixabay id. The scanner one is a 60 s
   // excerpt cut out of a four-minute recording -- 254 s of 24 kHz stereo is
   // 49 MB once decoded, which is a lot of memory to hold for room tone.
-  '/resources/sounds/freesound_community-police-radio-chatter-30048.mp3',
-  '/resources/sounds/freesound_community-police-scanner-14646.mp3',
+  'resources/sounds/freesound_community-police-radio-chatter-30048.mp3',
+  'resources/sounds/freesound_community-police-scanner-14646.mp3',
 ];
 
 /**
@@ -285,8 +285,8 @@ const CHATTER_SAMPLES = [
  * every boot looking for files that were never meant to be there.
  */
 const CHATTER_EXTRA = [
-  '/resources/sounds/police-radio-chatter.mp3',
-  '/resources/sounds/police-scanner.mp3',
+  'resources/sounds/police-radio-chatter.mp3',
+  'resources/sounds/police-scanner.mp3',
 ];
 
 /** Seconds between bursts of background chatter, and how long one runs for. */
@@ -358,6 +358,17 @@ export class GameAudio {
       try { this._build(); } catch (e) { this.failed = true; return; }
     }
     if (this.ctx.state === 'suspended') this.ctx.resume();
+    // iPhones only let a page speak once it has spoken from inside a tap, and
+    // the radio's first line comes later, from the game loop. A silent empty
+    // line on the first interaction unlocks it; elsewhere it does nothing.
+    if (!this._speechPrimed && this.speech) {
+      this._speechPrimed = true;
+      try {
+        const u = new SpeechSynthesisUtterance('');
+        u.volume = 0;
+        this.speech.speak(u);
+      } catch (e) { /* no speech engine worth priming */ }
+    }
   }
 
   _build() {

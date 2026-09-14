@@ -1,8 +1,12 @@
-// Keyboard and gamepad input.
+// Keyboard, gamepad and touchscreen input.
 //
 // Steering is deliberately passed through almost raw: the vehicle already rate
 // limits the road wheels, and adding a second smoothing stage on top makes the
 // car feel like it is being driven through treacle.
+//
+// The touchscreen controls (core/touch.js) attach themselves as `touch` and
+// are merged with the keyboard rather than replacing it, so a laptop with a
+// touchscreen can use either at any moment.
 
 import { clamp, moveTowards } from '../util/math.js';
 
@@ -22,6 +26,7 @@ export class Input {
     this.steerAxis = 0;
     this.gamepadIndex = null;
     this.usingPad = false;
+    this.touch = null;
 
     this._onDown = (e) => {
       if (e.repeat) return;
@@ -48,6 +53,12 @@ export class Input {
     if (this.pressed.has(code)) { this.pressed.delete(code); return true; }
     return false;
   }
+
+  /**
+   * A key press that did not come from a key: the on-screen buttons. Counts
+   * for tapped() exactly as a real press would.
+   */
+  press(code) { this.pressed.add(code); }
 
   endFrame() { this.pressed.clear(); }
 
@@ -81,13 +92,28 @@ export class Input {
     const rate = want === 0 ? 7.0 : 3.1;
     this.steerAxis = moveTowards(this.steerAxis, want, rate * dt);
 
-    return {
+    const out = {
       throttle: this.down('throttle') ? 1 : 0,
       brake: this.down('brake') ? 1 : 0,
       steer: clamp(this.steerAxis, -1, 1),
       handbrake: this.down('handbrake') ? 1 : 0,
       clutchKick: this.down('clutch'),
     };
+
+    // Touch: pedals add to the keys, and a thumb on the stick takes the
+    // steering. The stick is analogue, like a pad, so it goes straight through
+    // rather than through the keyboard's wind-on ramp.
+    const t = this.touch;
+    if (t && t.enabled) {
+      out.throttle = Math.max(out.throttle, t.throttle);
+      out.brake = Math.max(out.brake, t.brake);
+      out.handbrake = Math.max(out.handbrake, t.handbrake);
+      if (t.steering) {
+        out.steer = t.steer;
+        this.steerAxis = t.steer;
+      }
+    }
+    return out;
   }
 
   dispose() {

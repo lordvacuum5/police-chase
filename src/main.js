@@ -22,6 +22,7 @@ import { StreetProps } from './game/streetprops.js';
 import { ChaseCamera } from './game/camera.js';
 import { Hud } from './game/hud.js';
 import { Input } from './core/input.js';
+import { TouchControls } from './core/touch.js';
 import { SkidMarks, LightBars } from './game/effects.js';
 import { GameAudio } from './game/audio.js';
 import { Commentary } from './game/commentary.js';
@@ -120,15 +121,20 @@ class Game {
     this.commentary = new Commentary(this);
     this.hud = new Hud(this);
     this.input = new Input();
+    this.touch = new TouchControls(this);
     this.camera3 = new ChaseCamera(this.camera);
     this.camera3.snapTo(this.player);
 
     // Audio cannot start until the user has interacted with the page, so the
     // context is only built and resumed on the first key press or click.
+    // A finger going down does not count as that interaction in the spec --
+    // only lifting it does -- so phones need pointerup and touchend too.
     this.audio = new GameAudio();
     const wake = () => this.audio.resume();
     window.addEventListener('keydown', wake);
     window.addEventListener('pointerdown', wake);
+    window.addEventListener('pointerup', wake);
+    window.addEventListener('touchend', wake);
 
     this._initDebug();
     window.addEventListener('resize', () => this._resize());
@@ -658,6 +664,7 @@ class Game {
 
     this._trackPerformance(dt);
     this._handleKeys();
+    this.touch.frame();
 
     if (!this.paused) {
       this._update(dt);
@@ -712,7 +719,7 @@ class Game {
     if (i.tapped('KeyP')) this.paused = !this.paused;
     if (i.tapped('KeyH')) this.hud.toggleHelp();
     if (i.tapped('KeyC')) this.camera3.cycle();
-    if (i.tapped('KeyM') && this.audio) {
+    if ((i.tapped('KeyM') || i.tapped('Mute')) && this.audio) {
       this.radio(this.audio.toggleMute() ? '[sound] muted' : '[sound] on');
     }
     if (i.tapped('F3')) {

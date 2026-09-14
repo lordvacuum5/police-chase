@@ -115,8 +115,19 @@ export class ChaseCamera {
       this.camera.rotateZ(roll);
     }
 
-    if (Math.abs(this.camera.fov - this.fov) > 0.05) {
-      this.camera.fov = this.fov;
+    // The field of view is vertical, so on a screen taller than it is wide --
+    // a phone held upright -- the same number leaves a sliver of road either
+    // side of the car. Widen it there by the square root of how tall the
+    // screen is: 66 degrees on a phone becomes about 88, which is a wide view
+    // rather than a fisheye, and a landscape screen is untouched.
+    let fov = this.fov;
+    const aspect = this.camera.aspect;
+    if (aspect < 1) {
+      const half = Math.atan(Math.tan((fov * Math.PI) / 360) / Math.sqrt(aspect));
+      fov = Math.min(96, (half * 360) / Math.PI);
+    }
+    if (Math.abs(this.camera.fov - fov) > 0.05) {
+      this.camera.fov = fov;
       this.camera.updateProjectionMatrix();
     }
   }
