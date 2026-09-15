@@ -851,7 +851,7 @@ export class Driver {
     return this.wallBias;
   }
 
-  avoid(others, dt) {
+  avoid(others, dt, ignore = null) {
     const v = this.v;
     this._avoidScenery(dt);
     let bias = 0;
@@ -901,7 +901,7 @@ export class Driver {
     }
 
     for (const o of others) {
-      if (o === v) continue;
+      if (o === v || o === ignore) continue;
       _p.copy(o.position).sub(v.position);
       const ahead = _p.dot(v.forward);
       if (ahead < 1 || ahead > range) continue;

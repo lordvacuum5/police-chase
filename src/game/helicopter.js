@@ -88,6 +88,23 @@ export class Helicopter {
 
     this.fuel = ENDURANCE;
     this.refuelTimer = 0;
+
+    // A real light as well as the drawn pool. The pool is a disc laid on the
+    // ground, and the footways stand a kerb above the road, so wherever the
+    // beam fell on a pavement the pavement covered it: "the police helicopter
+    // is not lighting up the pavements." A spotlight lights whatever is
+    // actually there -- road, kerb, pavement, the side of a car, a wall. Made
+    // up front and left at zero rather than added at launch, because adding a
+    // light to a scene recompiles every material in it, and that is a hitch
+    // at exactly the moment the aircraft arrives.
+    this.light = new THREE.SpotLight(0xfff4d6, 0, 0, 0.3, 0.45, 1);
+    this.light.castShadow = false;
+    this.lightTarget = new THREE.Object3D();
+    this.light.target = this.lightTarget;
+    if (game.scene && game.scene.add) {
+      game.scene.add(this.light);
+      game.scene.add(this.lightTarget);
+    }
   }
 
   /**
@@ -133,6 +150,7 @@ export class Helicopter {
   stand_down(why) {
     if (!this.active) return;
     this.active = false;
+    if (this.light) this.light.intensity = 0;
     if (this.mesh) {
       this.game.scene.remove(this.mesh);
       this.game.scene.remove(this.mesh.userData.beam);
@@ -339,8 +357,36 @@ export class Helicopter {
       const on = this.spotlight > 0.05;
       pool.visible = on;
       if (on) {
-        pool.position.set(this.beam.x, 0.07, this.beam.z);
-        pool.material.opacity = Math.min(0.8, this.spotlight * 0.30 * (this.game.weather ? this.game.weather.lightBoost : 1));
+        // Above the kerb, or the footway hides it. Additive and not writing depth,
+        // so standing a few centimetres off the road does not show.
+        //
+        // Faint now: the spot light below does the actual lighting, and the disc
+        // is only the bright edge that makes it read as a searchlight. At its old
+        // strength the two added together and blew a night-time junction out
+        // to flat white.
+        const ground = this.game.sim && this.game.sim.heightAt
+          ? this.game.sim.heightAt(this.beam.x, this.beam.z) || 0 : 0;
+        pool.position.set(this.beam.x, ground + 0.4, this.beam.z);
+        pool.material.opacity = Math.min(0.2, this.spotlight * 0.075 * (this.game.weather ? this.game.weather.lightBoost : 1));
+      }
+    }
+
+    // The real light: from the aircraft, down the beam, the cone sized so its
+    // edge lands where the pool's does.
+    if (this.light) {
+      const on = this.active && this.spotlight > 0.05;
+      if (on) {
+        this.light.position.copy(this.pos);
+        this.lightTarget.position.set(this.beam.x,
+          this.game.sim && this.game.sim.heightAt ? this.game.sim.heightAt(this.beam.x, this.beam.z) || 0 : 0,
+          this.beam.z);
+        this.lightTarget.updateMatrixWorld();
+        const len = this.pos.distanceTo(this.lightTarget.position) || 1;
+        this.light.angle = Math.atan(BEAM_RADIUS / len) * 1.08;
+        const boost = this.game.weather ? this.game.weather.lightBoost : 1;
+        this.light.intensity = this.spotlight * 140 * boost;
+      } else {
+        this.light.intensity = 0;
       }
     }
   }

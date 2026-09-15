@@ -18,6 +18,10 @@ const _aim2 = new THREE.Vector3();
 const _dirTmp = new THREE.Vector3();
 const _origin2 = new THREE.Vector3();
 
+/** How close a unit must be to the player's trail to drive it, and to the player. */
+const TRAIL_JOIN = 9;
+const TRAIL_RANGE = 130;
+
 export const ROLE = {
   PATROL: 'patrol',
   RESPOND: 'respond',
@@ -90,6 +94,7 @@ export class Officer {
       this.driver.setPath([]);
       this.repathTimer = 0;
       if (role !== ROLE.PIT) this.pitState = {};
+      this._ramBack = 0;
     }
     this.orders = orders;
   }
@@ -135,7 +140,9 @@ export class Officer {
       return;
     }
 
-    this.driver.avoid(this.game.vehicles, dt);
+    // A unit chasing the player does not steer round the player: that is the car
+    // it is trying to hit. It still steers round everything else.
+    this.driver.avoid(this.game.vehicles, dt, this.role === ROLE.PURSUE && target ? target : null);
     this.repathTimer -= dt;
     this._updateAssist(target);
 
@@ -453,10 +460,105 @@ export class Officer {
     return best;
   }
 
+  /**
+   * How badly this unit wants to hit the car it is chasing, 0..1.
+   *
+   * Separate from `aggression`, which is nothing at one star and drives the
+   * rubber band and the tactics. Ramming starts at one star -- a unit on your
+   * bumper at one star still gives you a shove -- and rises to everything at
+   * five: "they seem reluctant to ram me -- make them ram me more, and
+   * increase the closing speed and aggression as the wanted level increases."
+   */
+  get ramAggression() {
+    return clamp01(0.3 + 0.7 * (this.game.heat.tier - 1) / 4);
+  }
+
+  /**
+   * Follow the line the target actually drove.
+   *
+   * A unit close behind used to drive straight at the car in front, which is
+   * right on an open road and wrong everywhere else: the target turns a corner
+   * past a building, and the straight line to it goes through the corner of
+   * the building. "I asked for the police not to crash at all. If they are
+   * close behind me and in pursuit then just make them follow me." The game
+   * keeps a breadcrumb trail of where the player has been (Game.playerTrail),
+   * and a unit that finds itself on that trail drives it -- through the same
+   * gap, round the same corner, at a speed the path planner works out from the
+   * trail's own bends -- until it is close enough to ram.
+   *
+   * Returns null when this car is not on the trail, which leaves it to the
+   * usual pursuit.
+   */
+  _followTrail(dt, target, trail, d) {
+    const v = this.vehicle;
+    let best = -1, bestD = TRAIL_JOIN;
+    for (let i = trail.length - 2; i >= 0; i--) {
+      const q = trail[i];
+      const dd = Math.hypot(q.x - v.position.x, q.z - v.position.z);
+      if (dd < bestD) { bestD = dd; best = i; }
+    }
+    if (best < 0) return null;
+    const pts = this._trailPts || (this._trailPts = []);
+    pts.length = 0;
+    for (let i = best; i < trail.length; i++) pts.push(trail[i]);
+    pts.push({ x: target.position.x, z: target.position.z });
+    this.driver.setPath(pts);
+    const ram = this.ramAggression;
+    const speed = Math.abs(target.forwardSpeed) + clamp(d * 0.3, 3, 10 + 10 * ram);
+    return this.driver.followPath(dt, Math.min(speed, this._chaseSpeed(), this._gapCap(target)), { lane: false });
+  }
+
+  /**
+   * Keep a gap to the police car in front.
+   *
+   * Everyone following the same trail puts the whole pursuit on one line, and
+   * every unit on it closing on the car ahead as if it were the target: measured,
+   * twenty police-on-police shunts a minute, where before there were a handful.
+   * So a unit with another police car ahead of it on its line holds a following
+   * distance -- seven metres plus about half a second -- and only the one at the
+   * front closes for the hit. The target itself is not counted: that is the car
+   * this is all for.
+   */
+  _gapCap(target) {
+    const v = this.vehicle;
+    let cap = Infinity;
+    // Only a car between this one and the target is in the way. One level
+    // with the target, or past it -- a unit running a PIT alongside -- is not
+    // a reason to hang back.
+    const targetAhead = target
+      ? (target.position.x - v.position.x) * v.forward.x + (target.position.z - v.position.z) * v.forward.z
+      : Infinity;
+    for (const o of this.game.vehicles) {
+      // A stopped car is something to steer round (Driver.avoid), not to queue
+      // behind for the rest of the chase.
+      if (o === v || o === target || o.disabled || o.speed < 3) continue;
+      const dx = o.position.x - v.position.x, dz = o.position.z - v.position.z;
+      const ahead = dx * v.forward.x + dz * v.forward.z;
+      if (ahead < 0 || ahead > 45 || ahead > targetAhead - 3) continue;
+      const side = Math.abs(dx * v.left.x + dz * v.left.z);
+      if (side > (v.spec.dims.w + o.spec.dims.w) * 0.5 + 0.8) continue;
+      const want = 7 + v.speed * 0.55;
+      if (ahead >= want) continue;
+      const theirs = o.linvel.x * v.forward.x + o.linvel.z * v.forward.z;
+      cap = Math.min(cap, Math.max(0, theirs + (ahead - want) * 0.9));
+    }
+    return cap;
+  }
+
   _pursue(dt, target) {
     if (!target) return this._patrol(dt);
     const v = this.vehicle;
     const d = this.distanceTo(target.position);
+    const ram = this.ramAggression;
+
+    // Close behind, but not yet close enough to hit: drive where they drove.
+    const ramRange = lerp(10, 26, ram);
+    const trail = this.game.playerTrail;
+    if (trail && trail.length > 3 && d > ramRange && d < TRAIL_RANGE && target === this.game.player) {
+      const follow = this._followTrail(dt, target, trail, d);
+      this._mode = follow ? 'trail' : this._mode;
+      if (follow) return follow;
+    }
 
     // Only chase the target's position directly when there is actually a clear
     // line to it. Driving at a car you cannot see means driving at whatever is
@@ -515,6 +617,7 @@ export class Officer {
       //
       // The road network is still the answer when a unit is genuinely boxed
       // in, and `_driveDirect` keeps that as its own fallback.
+      this._mode = 'noLos';
       return this._driveDirect(dt, target.position, this._chaseSpeed());
     }
 
@@ -524,32 +627,91 @@ export class Officer {
     const lead = clamp(d / closing, 0, 1.15);
     _aim.copy(target.position).addScaledVector(target.linvel, lead);
 
-    // How much they want a collision rather than a follow. Nothing at one
-    // star, everything at five.
-    const agg = this.aggression;
-
     // Hang slightly off to one side once close, so a following unit is already
-    // positioned for a PIT rather than square behind the boot. An aggressive
-    // unit gives that up and lines the nose straight at the boot instead --
-    // being tidy is not the priority any more.
-    if (d < 26) {
+    // positioned for a PIT rather than square behind the boot -- but only the
+    // calmest ones. From about two stars a unit lines its nose straight up at
+    // the car instead.
+    if (d < 26 && ram < 0.5) {
       const side = Math.abs(r.lat) > 0.5 ? sign(r.lat) : (this.vehicle.id % 2 ? 1 : -1);
-      const off = lerp(2.2, 0.4, clamp01(d / 26)) * lerp(1, 0.2, agg);
+      const off = lerp(2.2, 0.4, clamp01(d / 26)) * lerp(1, 0.2, ram * 2);
       _aim.addScaledVector(target.left, side * off);
     }
 
-    // Aim *through* them, not at them. A pursuit driver holding station a car's
-    // length back never quite makes contact; one aiming a couple of metres past
-    // the boot does, which is the difference between being followed and being
-    // rammed.
-    if (agg > 0.05 && d < 34) {
-      _aim.addScaledVector(target.forward, -lerp(0, 3.2, agg) * clamp01(1 - d / 34));
+    // Aim *through* them, not at them. A driver aiming at a car tends to arrive
+    // alongside it; one aiming a couple of metres beyond its middle carries on
+    // into it, which is the difference between being followed and being rammed.
+    // The aim point used to be *behind* the car's middle -- at its boot -- which
+    // is exactly the place a following car stops.
+    if (d < ramRange + 8) {
+      _aim.addScaledVector(target.forward, lerp(0.6, 2.6, ram) * clamp01(1 - d / (ramRange + 8)));
     }
 
     this.driver.setPath([]);
-    // More closing speed the angrier they are, so contact carries some weight.
-    const speed = Math.abs(target.forwardSpeed) + clamp(d * 0.35, 2, 14 + 11 * agg);
-    return this.driver.driveTo(_aim, Math.min(speed, this._chaseSpeed()), dt);
+    const runUp = lerp(7.5, 17, ram);
+    if (this._ramBackOff(dt, target, d, runUp)) {
+      // Just hit them: drop back for a run-up before the next one. Braked
+      // for firmly, and eased off near the gap it wants so it does not fall
+      // twenty metres behind. Aimed at the car itself, not through it, so the
+      // unit stays on its tail.
+      this._mode = 'reset';
+      const drop = clamp((runUp - d) * 1.5, 1.5, lerp(4, 10, ram));
+      return this.driver.driveTo(target.position,
+        Math.min(Math.max(0, target.forwardSpeed - drop), this._gapCap(target)), dt);
+    }
+    // Closing speed for the hit. It was mostly proportional to the gap -- 35%
+    // of it -- so at ten metres a unit was closing at three or four metres a
+    // second and every contact was a nudge. Now a floor that rises with the
+    // wanted level: about 20 km/h faster than you at one star, 58 at five.
+    this._mode = d < ramRange + 8 ? 'ram' : 'direct';
+    const closeBy = Math.max(lerp(5.5, 16, ram), Math.min(d * 0.35, 16 + 11 * ram));
+    const speed = Math.abs(target.forwardSpeed) + closeBy;
+    return this.driver.driveTo(_aim, Math.min(speed, this._chaseSpeed() * lerp(1, 1.15, ram), this._gapCap(target)), dt);
+  }
+
+  /**
+   * Hit, drop back, come again.
+   *
+   * Measured on its own -- one unit, a target doing 70 km/h -- a pursuer
+   * arrived, hit once, and then sat on the bumper for the rest of the run at
+   * exactly the target's speed with its foot flat down. That is a push, not a
+   * ram: nothing registers as an impact and from the driver's seat it is
+   * barely there. So contact, or half a second of leaning on the car, sends
+   * the unit back for a run-up, and when it has one it comes again at full
+   * closing speed.
+   *
+   * How hard a ram lands is mostly how much road the unit had to build up
+   * speed on -- a car starting four metres back reaches the bumper at five or
+   * six metres a second whatever it asks for. So the run-up is what scales
+   * with the wanted level: a shove from seven and a half metres at one star,
+   * a proper hit from seventeen at five.
+   *
+   * Only against a car that is moving. One that has stopped is being arrested,
+   * and the job then is to stay against it (see _holdingArrest).
+   */
+  _ramBackOff(dt, target, d, runUp) {
+    const v = this.vehicle;
+    const dx = target.position.x - v.position.x, dz = target.position.z - v.position.z;
+    const ahead = dx * v.forward.x + dz * v.forward.z;
+    const side = Math.abs(dx * v.left.x + dz * v.left.z);
+    const touching = ahead > 0
+      && ahead < (v.spec.dims.l + target.spec.dims.l) * 0.5 + 0.8
+      && side < (v.spec.dims.w + target.spec.dims.w) * 0.5 + 0.4;
+    const hit = touching && v.lastImpactAt && v.lastImpactAt !== this._ramHitAt;
+    this._ramHitAt = v.lastImpactAt;
+    this._leanFor = touching ? (this._leanFor || 0) + dt : 0;
+
+    if (target.speed > 5 && (hit || this._leanFor > 0.5)) {
+      // A time limit as well as a distance, so a unit that cannot open the gap
+      // -- the target braking as hard as it is -- does not sit out the chase.
+      this._ramBack = 3;
+      this._leanFor = 0;
+    }
+    if (!(this._ramBack > 0)) return false;
+    this._ramBack -= dt;
+    // Run-up made -- the knock itself often opens most of it -- or the target
+    // has slowed right down, which is the moment to be on them.
+    if (d >= runUp || target.speed < 5) this._ramBack = 0;
+    return this._ramBack > 0;
   }
 
   /**

@@ -419,6 +419,17 @@ seconds of tracking after sight is lost. Measured with `tests/outrun.js`, it
 still holds a car at every speed any car can reach; a car that did get away was
 6.6 km from it two minutes later, where before it was followed the whole way.
 
+**The searchlight lights the ground.** The pool used to be only a bright disc
+laid just above the road, and footways stand a kerb higher than that, so
+wherever the beam fell on a pavement the pavement covered it: *"the police
+helicopter is not lighting up the pavements."* It is now a real spot light as
+well, from the aircraft to wherever the beam is
+pointing, sized to the beam, so kerbs, pavements, walls and cars inside it are
+all lit by it, at night and in the rain most obviously. It exists from the
+start at zero brightness rather than being added when the aircraft arrives:
+adding a light to the scene makes every material rebuild its shaders, a visible
+hitch in the middle of a chase.
+
 ### The detection ring
 
 A red ring on the minimap, always centred on your own marker, showing how far
@@ -875,6 +886,62 @@ and patrols still use the roads. An intercept's whole purpose is to get
 somewhere you are not yet, and a unit crossing town to a position you were last
 reported at is genuinely quicker on the network than in a straight line through
 a housing estate.
+
+### Following you, not the straight line
+
+*"If they are close behind me and in pursuit then just make them follow me."*
+The straight line is right on an open road and wrong everywhere else: you take
+a corner past a house, and the line from the car behind you to your car goes
+through the corner of the house. So the game keeps a breadcrumb trail of where
+you have actually driven — a point every 2.5 m, the last 400 m or so — and a
+pursuing unit that finds itself on it (within 9 m) drives it: through the same
+gap, round the same corner, at a speed the path planner works out from the
+trail's own bends. It stays on your line until it is close enough to ram, and
+leaves it only for the straight-line pursuit above when it has fallen off it.
+
+Everyone following the same line puts the whole pursuit in single file, and
+every car in the file closed on the one in front as if it were you: twenty
+police-on-police shunts a minute. So a unit with another police car between it
+and you keeps a following distance, seven metres plus about half a second.
+Only the car at the front closes, and a unit alongside you running a PIT does
+not count as being in the way.
+
+### Ramming
+
+*"The police also seem reluctant to ram me — make them ram me more, and increase
+the closing speed at which they ram me and aggression as the wanted level
+increases."*
+
+Set up on its own (`tests/ram.js`: one interceptor forty metres behind a car
+doing 70 km/h, nothing else on the map), a pursuer arrived, hit once, and then
+sat on the bumper for the rest of the run at exactly your speed with its foot
+flat down. That is a push, not a ram — nothing registers as an impact, and from
+the driver's seat it is barely there. Now contact, or half a second of leaning
+on you, sends the unit back for a run-up, and when it has one it comes again.
+
+How hard a ram lands is mostly how much road the unit had to build up speed
+on: starting four metres back it reaches your bumper at five or six metres a
+second whatever it asks for. So the run-up is what scales with the wanted
+level — a shove from 7.5 m at one star, a proper hit from 17 m at five — along
+with the speed it asks for on the way in, from 20 km/h faster than you to
+58 km/h. None of it is extra power; the charge is the car's own acceleration.
+Nor does a unit back off a car that has stopped: that is an arrest, and it
+stays against you.
+
+Three runs of 30 s at each level:
+
+| | before: hits per 30 s | now: hits per 30 s | closing speed at impact | knock on your car |
+|---|---|---|---|---|
+| one star | 1.0 | **5.3** | 7.1 m/s (26 km/h) | 4.1 m/s |
+| three stars | 1.0 | **3.7** | 9.3 m/s (33 km/h) | 5.9 m/s |
+| five stars | 0.7 | **4.0** | 9.9 m/s (36 km/h) | 6.2 m/s |
+
+No scenery contacts by the pursuer in any of them. At one and two stars a unit
+still sits slightly off to one side once close, lined up for a PIT; from three
+it puts its nose straight at your boot. Either way it aims through the car
+rather than at it — up to 2.6 m past your middle at five stars — because a
+driver aiming at a car arrives alongside it, and one aiming beyond it carries
+on into it.
 
 ### Cutting corners
 
