@@ -124,6 +124,17 @@ export class Officer {
     }
     this.recoverTimer = 0;
 
+    // Making the arrest: stay put. A unit that has the suspect stopped against
+    // it used to carry on doing whatever its role said -- reversing out of the
+    // contact, going round for another push -- which opened the gap and
+    // cancelled the arrest it had just started. Anyone this close to a stopped
+    // suspect, or to one the arrest clock is already running on, sits on the
+    // brakes until the suspect moves off.
+    if (this._holdingArrest(target)) {
+      v.setControls({ throttle: 0, brake: 1, steer: 0, handbrake: 1 });
+      return;
+    }
+
     this.driver.avoid(this.game.vehicles, dt);
     this.repathTimer -= dt;
     this._updateAssist(target);
@@ -176,6 +187,22 @@ export class Officer {
     }
 
     v.setControls(controls);
+  }
+
+  /**
+   * Is this unit one of the cars pinning a stopped suspect? Measured between
+   * the cars rather than their centres, the way the arrest rule measures it
+   * (see Heat._checkBust), with a little more reach once the clock is running
+   * so a car that has rocked back half a metre does not drive off.
+   */
+  _holdingArrest(target) {
+    const heat = this.game.heat;
+    if (!target || heat.value <= 0 || this.game.outcome) return false;
+    const gap = this.distanceTo(target.position)
+      - target.spec.dims.l * 0.5 - this.vehicle.spec.dims.l * 0.5;
+    const clockRunning = heat.bustTimer > 0.05;
+    if (clockRunning) return gap <= 5 && target.speed < 3;
+    return gap <= 3.2 && target.speed < 1.2;
   }
 
   // ------------------------------------------------------------------ roles

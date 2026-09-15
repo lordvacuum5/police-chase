@@ -18,6 +18,7 @@
 import * as THREE from 'three';
 import { ROLE } from '../ai/officer.js';
 import { addCone } from '../physics/world.js';
+import { MeshBuilder, vertexColorMaterial } from '../util/meshbuild.js';
 import { SPECS } from './vehicles.js';
 import { dist2, clamp } from '../util/math.js';
 
@@ -65,6 +66,7 @@ export class RoadblockManager {
 
   update(dt, target) {
     this.timer -= dt;
+    this._checkSpikes(target, dt);
 
     for (let i = this.blocks.length - 1; i >= 0; i--) {
       const b = this.blocks[i];
@@ -96,9 +98,9 @@ export class RoadblockManager {
     this.blocks.push(block);
     this.lastSite = { x: site.x, z: site.z };
     this.game.say('roadblock', [
-      (v) => `Control, roadblock going in on ${v.site}.`,
-      (v) => `Control, block going in on ${v.site}.`,
-      (v) => `Control, road closed, ${v.site}.`,
+      (v) => `Control, roadblock and stinger going in on ${v.site}.`,
+      (v) => `Control, block going in on ${v.site}, stinger out.`,
+      (v) => `Control, road closed, ${v.site}. Stinger deployed.`,
     ], { site: site.name }, true);
   }
 
@@ -107,6 +109,7 @@ export class RoadblockManager {
     this.timer = Math.max(this.timer, AFTER_BEATEN);
     if (why === 'past' && !this._reported) {
       this._reported = true;
+      if (this.game.score) this.game.score.onBlockBeaten();
       this.game.say('block-beaten', [
         (v) => `${v.cs}, they're through the block!`,
         (v) => `${v.cs}, they've gone round the block!`,
@@ -196,7 +199,7 @@ export class RoadblockManager {
     const heading = Math.atan2(tx, tz);
     const nx = -tz, nz = tx;                 // across the carriageway
 
-    const block = { x, z, meshes: [], units: [], cones: [] };
+    const block = { x, z, meshes: [], units: [], cones: [], spikes: null };
 
     // Cars angled across the road, as they are parked in reality -- side on to
     // the traffic so they present the longest possible obstacle.
@@ -264,7 +267,78 @@ export class RoadblockManager {
       block.cones.push({ mesh: cone, body });
     }
 
+    // A stinger across the whole road, further up the approach than the cones,
+    // so a car that sees the block late and threads a gap between the cars
+    // still goes over it. Kerb to kerb: going round the block on the pavement
+    // is the one way past it.
+    const SPIKE_BACK = 19;
+    const len = width - 0.4;
+    const sx = x - tx * SPIKE_BACK, sz = z - tz * SPIKE_BACK;
+    const mesh = new THREE.Mesh(spikeStripGeometry(len), game.stingerMaterial
+      || (game.stingerMaterial = vertexColorMaterial()));
+    mesh.position.set(sx, 0.012, sz);
+    mesh.rotation.y = heading;
+    mesh.receiveShadow = true;
+    game.scene.add(mesh);
+    block.meshes.push(mesh);
+    block.spikes = { x: sx, z: sz, tx, tz, halfLen: len * 0.5, halfDepth: 0.45 };
+
     return block;
+  }
+
+  /**
+   * Has the player's car gone over a stinger since last frame?
+   *
+   * Each wheel's path over the frame is tested against the strip, not just
+   * where the wheel is now: at 200 km/h on a slow frame a wheel travels two
+   * metres, and a strip 70 cm deep is easily stepped over between two checks.
+   * A punctured tyre goes down over a couple of seconds (Vehicle.postStep)
+   * rather than instantly, so the car is still just about drivable -- and the
+   * garage mends it.
+   */
+  _checkSpikes(target, dt) {
+    if (!this._wheelPrev) this._wheelPrev = target.wheels.map(() => null);
+    let hit = 0;
+    for (let i = 0; i < target.wheels.length; i++) {
+      const w = target.wheels[i];
+      const cur = { x: w.contact.x, z: w.contact.z };
+      const prev = this._wheelPrev[i];
+      this._wheelPrev[i] = cur;
+      if (!prev || !w.grounded || w.punctured) continue;
+      // Further than the car could have driven: it was put somewhere -- flipped
+      // upright, restarted -- and the line between is not a path it took.
+      if (Math.hypot(cur.x - prev.x, cur.z - prev.z) > target.speed * dt * 2 + 1.5) continue;
+      for (const b of this.blocks) {
+        const s = b.spikes;
+        if (!s) continue;
+        if (dist2(cur.x, cur.z, s.x, s.z) > s.halfLen + 30) continue;
+        // Into the strip's frame: along the road, and across it.
+        const along = (p) => (p.x - s.x) * s.tx + (p.z - s.z) * s.tz;
+        const across = (p) => (p.x - s.x) * -s.tz + (p.z - s.z) * s.tx;
+        const a0 = along(prev), a1 = along(cur);
+        const lo = Math.min(a0, a1), hi = Math.max(a0, a1);
+        if (hi < -s.halfDepth || lo > s.halfDepth) continue;
+        // Where the path crosses the middle of the strip, or where it is now.
+        const t = Math.abs(a1 - a0) > 1e-6 ? Math.min(1, Math.max(0, -a0 / (a1 - a0))) : 1;
+        const c = across({ x: prev.x + (cur.x - prev.x) * t, z: prev.z + (cur.z - prev.z) * t });
+        if (Math.abs(c) > s.halfLen + 0.15) continue;
+        w.punctured = true;
+        hit++;
+        break;
+      }
+    }
+    if (hit) {
+      this.game.camera3.impulse(0.25);
+      if (this.game.audio) this.game.audio.impact(0.3);
+      if (!this._stungAt || this.game.clock - this._stungAt > 6) {
+        this._stungAt = this.game.clock;
+        this.game.say('stinger', [
+          'Control, stinger\'s got them. Tyres are going.',
+          'Control, they\'ve hit the stinger!',
+          'Control, stinger successful, they\'re on the rims.',
+        ], {}, true);
+      }
+    }
   }
 
   /**
@@ -302,5 +376,34 @@ export class RoadblockManager {
     this.blocks.length = 0;
     this.timer = RESPAWN_DELAY * 0.5;
     this.lastSite = null;
+    this._wheelPrev = null;
   }
+}
+
+/**
+ * A stinger: a long hinged strip of spiked links, laid across the road. Built
+ * lying along X, centred, for the mesh to be turned to face the traffic.
+ */
+function spikeStripGeometry(len) {
+  const b = new MeshBuilder();
+  const n = Math.max(6, Math.round(len / 0.36));
+  const step = len / n;
+  for (let i = 0; i < n; i++) {
+    const x = -len * 0.5 + step * (i + 0.5);
+    // Links alternate a little in height and angle, as a folded-out stinger does.
+    b.addBox(step * 0.92, 0.05, 0.50, x, 0.025, 0, i % 2 ? 0x34383d : 0x202327, (i % 2 ? 1 : -1) * 0.06);
+    // A reflective stripe down each link, so it can be seen coming.
+    b.addBox(step * 0.7, 0.052, 0.07, x, 0.027, 0, 0xe8c21a, (i % 2 ? 1 : -1) * 0.06);
+    for (const dz of [-0.18, -0.08, 0.08, 0.18]) {
+      for (const dx of [-0.25, 0.25]) {
+        b.addTaperedBox(0.05, 0.13, 0.05, x + dx * step, 0.11, dz, 0xeef1f4, 0.1, 0.1);
+      }
+    }
+  }
+  // Yellow and black ends, and the lanyard back to the kerb.
+  for (const s of [1, -1]) {
+    b.addBox(0.30, 0.08, 0.56, s * (len * 0.5 + 0.11), 0.025, 0, 0xf2c20f);
+    b.addBox(0.10, 0.082, 0.56, s * (len * 0.5 + 0.11), 0.026, 0, 0x121212);
+  }
+  return b.build();
 }

@@ -409,6 +409,16 @@ minutes at either speed, because every corner lets it cut across. It is now
 78 m/s, about 280 km/h, which is roughly what a light twin does flat out and is
 clear of the fastest car in the game.
 
+**Losing it means losing it.** Once the force has lost you, the aircraft flies
+where its own searchlight is hunting — round the last place anybody saw you,
+widening the circle the longer it has been — rather than on over your car
+wherever you went, which gave the game away: *"the spotlight looks around, but
+the helicopter still stays with me."* It follows the car only while somebody
+actually has it: the light on it, a ground unit with eyes on, or the three
+seconds of tracking after sight is lost. Measured with `tests/outrun.js`, it
+still holds a car at every speed any car can reach; a car that did get away was
+6.6 km from it two minutes later, where before it was followed the whole way.
+
 ### The detection ring
 
 A red ring on the minimap, always centred on your own marker, showing how far
@@ -1122,6 +1132,24 @@ for the full 90 s of a test where the target never came near; released on
 `past` when the target drove through at 54 km/h, and on `turned back` after
 21.6 s when it went elsewhere.
 
+**Stingers.** Every roadblock now lays a stinger right across the road, kerb to
+kerb, 19 m up the approach — further out than the cones, so a car that sees the
+block late and threads a gap between the cars still goes over it. A wheel that
+crosses it is punctured and goes down over about two seconds to a third of its
+grip (`FLAT` in `vehicle.js`): still drivable, but slow to accelerate and
+hopeless at speed in a corner. The tyre lights on the dashboard flash red, the
+radio says so, and the garage fits new ones. Going round the block on the
+pavement is the one way past it clean.
+
+Each wheel's *path* over the frame is tested, not just where it is: at 200 km/h
+on a slow frame a wheel travels two metres, and a strip 90 cm deep is easily
+stepped over between two checks. Driven out past the map edge straight at a
+stinger: all four tyres at 252 km/h at both 60 and 20 frames a second, and
+at 144 km/h two when driven down its very end and none a metre clear. A jump in
+wheel position larger than the car could have driven — flipping it upright,
+a restart — is ignored, after that exact case punctured all four tyres of a car
+teleported past a strip.
+
 One bug worth recording, because it produced behaviour that looked like
 anything but its cause: the road tangent runs from an edge's `a` end to its
 `b` end, so a target arriving *at* the `a` end is travelling against it.
@@ -1181,6 +1209,16 @@ Drop below 3 km/h with a police car within 3 m of your bodywork and a five
 second countdown starts, shown as a bar across the screen. Break contact or get
 moving and it drains back at roughly twice the rate it filled, so shoving free
 genuinely buys time rather than just pausing the clock.
+
+**The police stay put while they arrest you.** *"When the police cars are
+busting me, they should just stay still if they're near me, because otherwise
+they just keep moving, and then it stops the busting."* They did: a unit that
+had you pinned went on doing whatever its role said — backing out of the
+contact, going round for another shove — which opened the gap and cancelled the
+arrest it had started. Now any unit within 3 m of a stopped suspect, or within
+5 m once the clock is running, sits on its brakes until you move off
+(`Officer._holdingArrest`). Three cars driven in against a stopped car: all
+three at a standstill within a second, and the arrest after exactly 5.0 s.
 
 ### Getting away
 
@@ -1505,6 +1543,30 @@ the body ends up from the direction of travel. At half lock and 90 km/h, with
 throttle holding the speed, the Runner spins and the Stiletto holds 1.3° of
 body slip at 1.34 g.
 
+### The Badger
+
+The third way to run: a square-rigged old 4x4. Slow on the road, heavy in the
+corners, and the toughest thing you can drive — four-wheel drive, long springs
+that do not notice kerbs, and tyres that grip on grass nearly as well as on
+tarmac (grass comes up from 0.62 to about 1.1, against the Stiletto's 0.74), so
+the shortcut across the park that bogs everyone else down is yours.
+
+| | Runner | Stiletto | **Badger** |
+|---|---|---|---|
+| 0–100 km/h | 7.4 s | 4.4 s | **8.6 s** |
+| top speed | 215 km/h | 257 km/h | **204 km/h** |
+| peak steady grip, 120 km/h | 1.40 g | 1.77 g | **1.08 g** |
+| shunts to a wreck | 11 | 5 | **19** |
+
+The body is lofted the same way as the police SUV and van (`bodies.js`): flat
+panels, an upright screen, a raised waist behind the bonnet, a cream roof, wide
+black arch flares over big tyres, a bull bar, round lamps, a roof rack with a
+pair of spotlights, a snorkel and the spare wheel on the back door. First built
+it did 9.5 s to 100 and took 23 shunts to wreck — more than twice the Runner —
+so it got 10% more engine and slightly less armour. It sits high, so like the
+SUV it takes cornering force in above the road, and it does not lift a wheel
+at full lock at any speed.
+
 ### Grip at speed
 
 Both cars slid too much at speed, and the cause was not what it looked like.
@@ -1605,23 +1667,52 @@ four, and the recording underneath it is pitched to match.
 
 Marked cars carry a full modern British livery, and like everything else in the
 project it is generated at runtime rather than shipped as an image. `livery.js`
-paints one 512 × 512 canvas holding four panels and uploads it once:
+paints one 1024 × 1024 canvas holding five panels and uploads it once:
 
 | Panel | Where it goes |
 |---|---|
-| Battenburg checks with **POLICE** over them | both flanks |
+| Battenburg the length of the car, with **POLICE** on a plate in the middle | both flanks, nose to tail |
 | **POLICE** reversed | bonnet — so it reads in the mirror of the car in front, which is the whole reason forces do it |
 | Red and yellow chevrons | tailgate |
 | Unit number | roof |
+| Battenburg with **POLICE** over it, door-sized | the armoured van, above the windscreen |
+
+*"What I really want is some good-looking police cars."* The battenburg used to
+cover one door, the light bar was a slim strip, and the push bar hid the
+headlamps. Now the checks run the whole flank, the light bar is full-width with
+seven lens modules and clear end caps, and every flashing lamp has a soft halo
+round it (additive points in `LightBars`, one draw per colour however many
+cars), which is what makes a lit lamp read as a light rather than a coloured
+brick on the roof. The kit — bar, battenburg, chevrons, roof number, push bar
+and strobes — is one function, `addPoliceKit` in `bodies.js`, laid out from a
+handful of measurements of whichever body it is going on, so every police
+vehicle wears it the same way and the flashers follow its bar.
 
 The bodywork stays vertex-coloured and the decals are textured quads; both live
-in one geometry with a material group each, so a police car is two draw calls
-rather than a separate mesh per marking. On top of that the cars carry a
-low-profile light bar with individual lamp modules, a shark-fin aerial, an
-A-pillar spotlight, a push bar and grille strobes.
+in one geometry with a material group each, so a police vehicle is two draw
+calls rather than a separate mesh per marking.
 
-Decal quads are proportioned to their texture panel. A near-square decal fed by
-a 5:1 panel stretches the letters into something unreadable.
+### The fleet
+
+| | from | 0–100 | top speed | grip | hits to wreck | |
+|---|---|---|---|---|---|---|
+| Patrol | 0 stars | 7.0 s | 215 km/h | — | — | the saloon everything starts with |
+| **SUV** | 2 stars | 8.2 s | 218 km/h | 1.16 g | 17 | tall, heavy, four-wheel drive, best on grass |
+| Interceptor | 3 stars | 6.5 s | 222 km/h | — | — | more engine than the patrol car |
+| Unmarked | 4 stars | 6.0 s | 222 km/h | — | — | the quickest thing they have |
+| **Armoured van** | 5 stars | 10.5 s | 167 km/h | 0.96 g | 67 | one at a time, and there to be in the way |
+
+The SUV and the van are new bodies (`bodies.js`), built like the Stiletto from
+lofted cross-sections with round wheel arches rather than stacked boxes, with
+heights worked out above the ground: a tall vehicle on long springs sits a very
+different distance above its centre of mass than a saloon does. The SUV is a
+square-shouldered modern 4x4 with the band along its doors above the arches;
+the van is a high-roofed panel van with mesh over the windscreen, barred
+windows, a second light bar facing backwards and a blue stripe along the box.
+Both take cornering force in above the road (`rollCentre`), and neither lifts a
+wheel at full lock or in a slalom at any speed in `tests/rollover.js`. SUVs make
+up about a quarter of the cars at two stars and more above, and stand in
+roadblocks from three; the van is one car in seven at five stars, never two.
 
 ## Sound
 
@@ -2001,6 +2092,30 @@ The radio log that used to sit in the bottom right corner is hidden, since
 everything on it is now spoken. It is still written to, so deleting one
 `display: none` in `index.html` brings it back.
 
+## Score
+
+A run lasts until you are arrested. Getting away does not end it — the town
+carries on and so does the score — so the way to a big number is to keep
+getting chased and keep getting away. The score sits under the wanted stars,
+each bonus rises out from under it as it lands, and the arrest screen says what
+the run was worth and whether it is a new best.
+
+| | points |
+|---|---|
+| every second with the police after you | 5 / 10 / 20 / 35 / 60 at one to five stars |
+| getting away | 400 × the most stars that chase reached |
+| getting past a roadblock | 300 |
+| a police car wrecked while you were close by | 250 |
+| a near miss — a police car past you at speed, close enough to touch, no contact | 100 |
+
+So surviving at five stars is worth twelve times surviving at one, and a
+five-star escape is worth 2 000 on its own. The best ten runs are kept in the
+browser (`localStorage`, `pc.scores`) with the car, the map, how long the run
+lasted and the most stars it reached, and the top five are on the menu
+(`src/game/score.js`). Checked by driving a chase by hand: 12 s at four stars
+and an escape came to 2 020, five more seconds at two stars to 2 069, and the
+arrest saved it as a new best and cleared the score for the next run.
+
 ## The maps
 
 Two, chosen from the menu at startup. Press **M** in game to come back and
@@ -2139,6 +2254,8 @@ src/
     roadblock.js       roadblock siting, construction, despawn
     helicopter.js      air support at five stars
     garage.js          the petrol station and its repair bay
+    score.js           the score and the best runs
+    bodies.js          SUV, van and Badger bodywork, and the police kit
     audio.js           sampled + synthesised engine, tyres, siren, impacts, radio
     camera.js  hud.js  effects.js
   core/

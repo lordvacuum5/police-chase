@@ -183,10 +183,23 @@ export class Helicopter {
     }
 
     // Aim for a point ahead of the target, so it is looking down at the car
-    // rather than hovering on top of it.
-    const lead = clamp(target.speed * 0.9, 0, LEAD);
-    const wantX = target.position.x + target.forward.x * lead;
-    const wantZ = target.position.z + target.forward.z * lead;
+    // rather than hovering on top of it -- but only while somebody actually
+    // knows where the target is. Once the force has lost the car the crew has
+    // lost it too, and the aircraft goes where its own light is searching.
+    // It used to go on flying over the car wherever it went, sweeping the light
+    // round a spot a mile behind: "the spotlight looks around, but the
+    // helicopter still stays with me."
+    const k = this.game.dispatcher ? this.game.dispatcher.knowledge : null;
+    const tracking = !k || k.seen || this.beamLocked || k.timeSinceSeen < 3;
+    let wantX, wantZ;
+    if (tracking) {
+      const lead = clamp(target.speed * 0.9, 0, LEAD);
+      wantX = target.position.x + target.forward.x * lead;
+      wantZ = target.position.z + target.forward.z * lead;
+    } else {
+      wantX = this.beam.x;
+      wantZ = this.beam.z;
+    }
 
     // Steer-and-accelerate rather than lerping the position: a helicopter has
     // momentum, and letting it overshoot and swing back is most of what makes
@@ -238,11 +251,13 @@ export class Helicopter {
       aimZ = target.position.z + target.linvel.z * 0.35;
       rate = BEAM_TRACK;
     } else {
-      // Hunting: circle the last place anybody saw the car.
+      // Hunting: circle the last place anybody saw the car, widening the
+      // search the longer it has been, since the car has had longer to go.
       const cx = k && k.position ? k.position.x : target.position.x;
       const cz = k && k.position ? k.position.z : target.position.z;
       this.sweepPhase += dt * 0.9;
-      const r = 34 + Math.sin(this.sweepPhase * 0.7) * 22;
+      const widen = k ? Math.min(140, Math.max(0, k.timeSinceSeen - 3) * 4) : 0;
+      const r = 34 + widen + Math.sin(this.sweepPhase * 0.7) * 22;
       aimX = cx + Math.cos(this.sweepPhase) * r;
       aimZ = cz + Math.sin(this.sweepPhase) * r;
       rate = BEAM_SWEEP;
@@ -260,7 +275,8 @@ export class Helicopter {
     this.beam.z = damp(this.beam.z, aimZ, rate, dt);
 
     this.beamLocked = this._lit(target);
-    this.spotlight = damp(this.spotlight, inRange ? 1 : 0, 2.5, dt);
+    // Lit the whole time it is up: searching is when the light matters most.
+    this.spotlight = damp(this.spotlight, 1, 2.5, dt);
   }
 
   /** Is the target actually standing in the pool of light? */

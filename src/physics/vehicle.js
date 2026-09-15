@@ -42,6 +42,9 @@ const SURFACE_TYRES = [TYRE_GRASS, TYRE_ROAD, TYRE_PAVED];
  */
 const GROUND_RELIEF = 1.0;
 
+/** What a punctured tyre is left with: a third of its grip. */
+const FLAT = 0.34;
+
 // Scratch vectors. Allocating inside the substep loop would thrash the GC at
 // 120 Hz across twenty cars, which shows up immediately as frame stutter.
 const _v1 = new THREE.Vector3();
@@ -324,6 +327,13 @@ export class Vehicle {
 
     if (this.up.y < 0.25) this.flippedFor += dt;
     else this.flippedFor = 0;
+
+    // A tyre that has been through a stinger goes down over a couple of
+    // seconds rather than at once: most of its grip, and none of its ability
+    // to hold a line at speed, but not all the way to nothing.
+    for (const w of this.wheels) {
+      if (w.punctured && w.condition > FLAT) w.condition = Math.max(FLAT, w.condition - dt * 0.33);
+    }
 
     if (this.damage >= 0.92) this.disabled = true;
   }
@@ -1036,7 +1046,7 @@ export class Vehicle {
   repair() {
     this.damage = 0;
     this.disabled = false;
-    for (const w of this.wheels) w.condition = 1;
+    for (const w of this.wheels) { w.condition = 1; w.punctured = false; }
   }
 
   /**

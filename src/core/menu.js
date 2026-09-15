@@ -6,6 +6,7 @@
 
 import { MAPS } from '../world/maps.js';
 import { prefersTouch } from './touch.js';
+import { bestScores } from '../game/score.js';
 import { makeRng, TAU } from '../util/math.js';
 import {
   englishVoices, pickVoices, voiceChoices, setVoiceChoice, speakSample, SPEAKER_NAMES,
@@ -18,7 +19,7 @@ import {
  * 0-100 on flat tarmac past the map edge, grip as the peak steady lateral
  * acceleration at 120 km/h, and toughness as how many 50 km/h shunts into a
  * parked patrol car it takes to wreck the car. Each bar is scaled to the
- * better of the two, so the pair reads as a trade rather than a rating.
+ * best of the three, so the cards read as a trade rather than a rating.
  * Re-run the test and update these if a spec changes.
  */
 export const CARS = [
@@ -48,6 +49,20 @@ export const CARS = [
       ['Toughness', 5, 'hits'],
     ],
   },
+  {
+    id: 'offroad',
+    name: 'Badger',
+    tag: 'OFF-ROAD',
+    colour: '#4c7a3a',
+    roof: '#e9e2c8',
+    shape: 'boxy',
+    stats: [
+      ['Top speed', 204, 'km/h'],
+      ['0-100', 8.6, 's', true],
+      ['Grip', 1.08, 'g'],
+      ['Toughness', 19, 'hits'],
+    ],
+  },
 ];
 
 const CAR_KEY = 'pc.car';
@@ -69,6 +84,7 @@ export function showMenu(onPick) {
   holder.innerHTML = '';
   menu.classList.remove('gone');
   buildCarCards();
+  buildBestScores();
   buildVoicePicker();
   if (prefersTouch()) {
     const hint = document.getElementById('menuhint');
@@ -181,6 +197,21 @@ function buildCarCards() {
   }
 }
 
+/** The best five runs so far, if there are any. */
+function buildBestScores() {
+  const wrap = document.getElementById('bestwrap');
+  const holder = document.getElementById('bestscores');
+  if (!wrap || !holder) return;
+  const list = bestScores().slice(0, 5);
+  wrap.hidden = !list.length;
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  holder.innerHTML = list.map((r, i) => {
+    const mins = Math.floor((r.seconds || 0) / 60), secs = String((r.seconds || 0) % 60).padStart(2, '0');
+    return `<span class="rank">${i + 1}</span><b>${Number(r.score).toLocaleString()}</b>`
+      + `<span>${esc(r.car || '')} · ${esc(r.map || '')}</span><span>${mins}:${secs} · ${'★'.repeat(r.peak || 0)}</span>`;
+  }).join('');
+}
+
 /**
  * Which voice says each speaker's lines.
  *
@@ -286,6 +317,17 @@ function drawCarProfile(canvas, car) {
       intake: [[0.29, 0.52], [0.37, 0.64], [0.37, 0.40], [0.31, 0.36]],
       wheels: [0.21, 0.80], r: 0.22,
     },
+    // Square-rigged: an upright screen, a flat roof the full length of the
+    // body, a short bonnet, and big wheels standing well clear of the ground.
+    boxy: {
+      tall: 124,
+      body: [[0.00, 0.26], [0.00, 0.95], [0.02, 0.99], [0.66, 0.99], [0.69, 0.96],
+        [0.72, 0.64], [0.98, 0.62], [1.00, 0.56], [1.00, 0.26], [0.86, 0.20], [0.14, 0.20]],
+      glass: [[0.05, 0.68], [0.05, 0.93], [0.64, 0.93], [0.68, 0.68]],
+      roof: [[0.02, 0.99], [0.66, 0.99], [0.67, 0.955], [0.02, 0.955]],
+      spare: [-0.015, 0.60],
+      wheels: [0.19, 0.81], r: 0.25,
+    },
   };
   const s = shapes[car.shape];
 
@@ -308,6 +350,20 @@ function drawCarProfile(canvas, car) {
   ctx.beginPath();
   s.body.slice(1, 4).forEach(([u, v], i) => (i ? ctx.lineTo(px(u), py(v, s.tall) + 3) : ctx.moveTo(px(u), py(v, s.tall) + 3)));
   ctx.stroke();
+
+  if (s.roof && car.roof) {
+    ctx.fillStyle = car.roof;
+    ctx.beginPath();
+    s.roof.forEach(([u, v], i) => (i ? ctx.lineTo(px(u), py(v, s.tall)) : ctx.moveTo(px(u), py(v, s.tall))));
+    ctx.closePath();
+    ctx.fill();
+  }
+  if (s.spare) {
+    ctx.fillStyle = '#07090c';
+    ctx.beginPath();
+    ctx.arc(px(s.spare[0]), py(s.spare[1], s.tall), s.r * s.tall * 0.8, -Math.PI / 2, Math.PI / 2, true);
+    ctx.fill();
+  }
 
   ctx.fillStyle = '#0c1118';
   for (const poly of [s.glass, s.intake]) {

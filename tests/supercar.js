@@ -4,7 +4,7 @@
 // Everything runs out beyond the edge of the map, on the flat plate with the
 // surface forced to tarmac, so neither car is measured against a road that
 // bends, a tree, or a verge -- only against the other car.
-window.__runSupercar = async function () {
+window.__runSupercar = async function (kinds = ['runner', 'supercar', 'offroad']) {
   try {
     for (let i = 0; i < 200 && !(window.__game && window.__game.player); i++) {
       await new Promise((r) => setTimeout(r, 100));
@@ -52,7 +52,7 @@ window.__runSupercar = async function () {
     };
 
     const rows = {};
-    for (const kind of ['runner', 'supercar']) {
+    for (const kind of kinds) {
       const r = rows[kind] = {};
 
       // ------------------------------------------------------ straight line

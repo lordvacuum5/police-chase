@@ -127,14 +127,44 @@ export class LightBars {
 
     this.red = mk(0xff2418);
     this.blue = mk(0x2f7dff);
-    this.glowRed = null;
     this.time = 0;
     this.count = 0;
+
+    // A soft halo round each lit lamp. A lit box on its own reads as a coloured
+    // brick on the roof; the halo is what makes it read as a light. Drawn as
+    // additive points, so they cost one draw per colour however many cars.
+    const halo = haloTexture();
+    const glow = (colour) => {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(capacity * 3), 3));
+      geo.setDrawRange(0, 0);
+      const pts = new THREE.Points(geo, new THREE.PointsMaterial({
+        color: colour, map: halo, size: 2.4, sizeAttenuation: true, transparent: true,
+        opacity: 0.75, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
+      }));
+      pts.frustumCulled = false;
+      scene.add(pts);
+      return pts;
+    };
+    this.glowRed = glow(0xff3a2a);
+    this.glowBlue = glow(0x3f8cff);
+    this._nRed = 0;
+    this._nBlue = 0;
+  }
+
+  /** How strong the halo is: faint by day, much stronger in the dark. */
+  setGlow(opacity, size) {
+    for (const p of [this.glowRed, this.glowBlue]) {
+      p.material.opacity = opacity;
+      p.material.size = size;
+    }
   }
 
   begin(dt) {
     this.time += dt;
     this.count = 0;
+    this._nRed = 0;
+    this._nBlue = 0;
   }
 
   /**
@@ -156,6 +186,11 @@ export class LightBars {
       _s.setScalar(on ? 1 : 0.0001);
       _m.compose(on ? _a : _zero, _q, _s);
       mesh.setMatrixAt(i, _m);
+      if (on) {
+        const pts = k === 0 ? this.glowRed : this.glowBlue;
+        const n = k === 0 ? this._nRed++ : this._nBlue++;
+        pts.geometry.attributes.position.setXYZ(n, _a.x, _a.y, _a.z);
+      }
     }
   }
 
@@ -164,5 +199,24 @@ export class LightBars {
     this.blue.count = this.count;
     this.red.instanceMatrix.needsUpdate = true;
     this.blue.instanceMatrix.needsUpdate = true;
+    for (const [pts, n] of [[this.glowRed, this._nRed], [this.glowBlue, this._nBlue]]) {
+      pts.geometry.setDrawRange(0, n);
+      pts.geometry.attributes.position.needsUpdate = true;
+    }
   }
+}
+
+/** A round, soft-edged spot for the halo points. */
+function haloTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grd.addColorStop(0, 'rgba(255,255,255,1)');
+  grd.addColorStop(0.18, 'rgba(255,255,255,0.85)');
+  grd.addColorStop(0.45, 'rgba(255,255,255,0.25)');
+  grd.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grd;
+  g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
 }

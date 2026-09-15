@@ -346,7 +346,8 @@ export class Garage {
       if (this.repairing) {
         p.damage = Math.max(0, p.damage - RATE * dt);
         if (p.damage <= 0.001) p.damage = 0;
-        for (const w of p.wheels) w.condition = Math.min(1, w.condition + RATE * 2 * dt);
+        // New tyres too: a punctured one is replaced, not pumped back up.
+        for (const w of p.wheels) { w.punctured = false; w.condition = Math.min(1, w.condition + RATE * 2 * dt); }
         if (p.disabled && p.damage < 0.92) p.disabled = false;
       }
     }

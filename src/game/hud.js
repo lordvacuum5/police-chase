@@ -42,6 +42,8 @@ export class Hud {
     this.trackEl = document.getElementById('track');
     this.trackFill = document.getElementById('trackfill');
     this._trackShown = false;
+    this.scoreEl = document.getElementById('scorevalue');
+    this.popsEl = document.getElementById('scorepops');
     this.repairEl = document.getElementById('repair');
     this.repairLabel = document.getElementById('repairlabel');
     this.repairValue = document.getElementById('repairvalue');
@@ -139,7 +141,10 @@ export class Hud {
       const w = player.wheels[i];
       const s = clamp01(w.slip);
       const el = this.tyreEls[i];
-      const col = !w.grounded ? '#3a4048'
+      // A flat tyre -- a stinger -- flashes red until it is fixed.
+      const flat = w.condition < 0.8 && (performance.now() % 700) < 420;
+      const col = flat ? '#ff3b30'
+        : !w.grounded ? '#3a4048'
         : s > 0.6 ? `rgb(255,${Math.round(90 + (1 - s) * 120)},40)`
           : `rgb(${Math.round(50 + s * 200)},${Math.round(110 + s * 60)},${Math.round(120 - s * 60)})`;
       if (el.style.background !== col) el.style.background = col;
@@ -186,6 +191,26 @@ export class Hud {
       const left = clamp01(1 - k.timeSinceSeen / TRACK_SECONDS);
       this.trackFill.style.width = (left * 100).toFixed(1) + '%';
       this.trackEl.classList.toggle('fading', left < 0.34);
+    }
+
+    // ---- score ----
+    const score = this.game.score;
+    if (score) {
+      const val = score.value.toLocaleString();
+      if (this.scoreEl.textContent !== val) this.scoreEl.textContent = val;
+      // Each bonus as a line that rises and fades under the wanted panel.
+      const key = score.popups.map((p) => p.text + p.points).join('|');
+      if (key !== this._popKey) {
+        this._popKey = key;
+        this.popsEl.innerHTML = score.popups
+          .map((p) => `<div><b>+${p.points.toLocaleString()}</b>${p.text}</div>`).join('');
+      }
+      const kids = this.popsEl.children;
+      for (let i = 0; i < kids.length; i++) {
+        const t = score.popups[i] ? score.popups[i].t : 9;
+        kids[i].style.opacity = String(Math.max(0, Math.min(1, (2.6 - t) / 0.6)));
+        kids[i].style.transform = `translateY(${-Math.min(t, 0.25) * 24 + 6}px)`;
+      }
     }
 
     // ---- garage ----

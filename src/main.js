@@ -20,6 +20,7 @@ import { Helicopter } from './game/helicopter.js';
 import { TrafficLights, SIGNAL } from './game/trafficlights.js';
 import { StreetProps } from './game/streetprops.js';
 import { Garage } from './game/garage.js';
+import { Score } from './game/score.js';
 import { ChaseCamera } from './game/camera.js';
 import { Hud } from './game/hud.js';
 import { Input } from './core/input.js';
@@ -37,6 +38,26 @@ const MAX_VEHICLES = 18;
 
 /** Seconds between any two routine radio lines -- commentary, units en route. */
 const ROUTINE_GAP = 12;
+
+/**
+ * Which kind of car answers a call, by wanted level.
+ *
+ * Patrol cars all the way up; interceptors from three stars, and unmarked
+ * cars at the top. The SUV joins from two stars. The armoured van only comes
+ * out at five, and only one at a time: it is slow, and a pursuit made of vans
+ * is a traffic jam.
+ */
+function policeKindFor(tier, roll, vehicles) {
+  if (tier >= 5) {
+    const vanOut = vehicles.some((v) => v.specKey === 'van');
+    if (!vanOut && roll < 0.14) return 'van';
+    return roll < 0.36 ? 'unmarked' : roll < 0.68 ? 'interceptor' : roll < 0.88 ? 'suv' : 'patrol';
+  }
+  if (tier === 4) return roll < 0.1 ? 'unmarked' : roll < 0.5 ? 'interceptor' : roll < 0.78 ? 'suv' : 'patrol';
+  if (tier === 3) return roll < 0.35 ? 'interceptor' : roll < 0.6 ? 'suv' : 'patrol';
+  if (tier === 2) return roll < 0.25 ? 'suv' : 'patrol';
+  return 'patrol';
+}
 
 const AXIS_X = new THREE.Vector3(1, 0, 0);
 const AXIS_Y = new THREE.Vector3(0, 1, 0);
@@ -114,6 +135,7 @@ class Game {
     this.heat = new Heat(this);
     this.dispatcher = new Dispatcher(this);
     this.roadblocks = new RoadblockManager(this);
+    this.score = new Score(this);
     this.helicopter = new Helicopter(this);
     // The garage before the props, so nothing is stood across its entrance.
     this.garage = new Garage(this);
@@ -375,15 +397,12 @@ class Game {
     }
     if (!place) return null;
 
-    const roll = this.rng();
-    let kind = 'patrol';
-    if (tier >= 5) kind = roll < 0.3 ? 'unmarked' : roll < 0.8 ? 'interceptor' : 'patrol';
-    else if (tier === 4) kind = roll < 0.1 ? 'unmarked' : roll < 0.6 ? 'interceptor' : 'patrol';
-    else if (tier === 3) kind = roll < 0.4 ? 'interceptor' : 'patrol';
+    const kind = policeKindFor(tier, this.rng(), this.vehicles);
 
     const skill = kind === 'unmarked' ? SKILL.pursuit
-      : kind === 'interceptor' ? (this.rng() < 0.35 ? SKILL.pursuit : SKILL.advanced)
-        : (this.rng() < 0.15 ? SKILL.rookie : SKILL.regular);
+      : kind === 'interceptor' || kind === 'suv' ? (this.rng() < 0.35 ? SKILL.pursuit : SKILL.advanced)
+        : kind === 'van' ? SKILL.advanced
+          : (this.rng() < 0.15 ? SKILL.rookie : SKILL.regular);
 
     const v = this.createVehicle(kind, kind, place.position, place.heading, {
       police: true, unmarked: kind === 'unmarked',
@@ -403,7 +422,10 @@ class Game {
     for (const other of this.vehicles) {
       if (dist2(other.position.x, other.position.z, position.x, position.z) < 4.2) return null;
     }
-    const kind = tier >= 4 && this.rng() < 0.5 ? 'interceptor' : 'patrol';
+    const r = this.rng();
+    // SUVs make a good wall: the widest, heaviest thing the fleet has short of the van.
+    const kind = tier >= 4 ? (r < 0.4 ? 'interceptor' : r < 0.75 ? 'suv' : 'patrol')
+      : tier >= 3 && r < 0.4 ? 'suv' : 'patrol';
     const v = this.createVehicle(kind, kind, position, heading, { police: true });
     v.lampPhase = this.rng();
     // Parked, not arriving: no roll-on velocity, and the lights are already
@@ -595,7 +617,9 @@ class Game {
   onBusted() {
     if (this.outcome) return;
     this.outcome = 'busted';
+    const run = this.score.finish();
     this.hud.showOverlay('BUSTED', [
+      `Score <b>${run.score.toLocaleString()}</b>${run.newBest ? ' &nbsp;<b class="best">NEW BEST</b>' : ` &nbsp;(best ${run.best.toLocaleString()})`}`,
       `Survived <b>${this.heat.elapsed.toFixed(1)}s</b>`,
       `Peak heat <b>${this.heat.peak.toFixed(1)}</b>`,
       `Damage <b>${(this.player.damage * 100).toFixed(0)}%</b>`,
@@ -630,12 +654,14 @@ class Game {
       'Control, we\'ve lost them. Units stand down.',
       'Control, nothing further. Back to patrol.',
     ], {}, true);
+    this.score.onEscaped(this.heat.peak);
     this.dispatcher.standDown();
     this.heat.reset();
   }
 
   restart() {
     this.outcome = null;
+    this.score.reset();
     this.hud.hideOverlay();
     this.heat.reset();
     this.dispatcher.reset();
@@ -759,6 +785,7 @@ class Game {
     this.helicopter.update(dt, player);
     this.props.update(dt);
     this.garage.update(dt);
+    this.score.update(dt);
     this.signals.update(dt);
     this.heat.update(dt, player, this.dispatcher);
     this.commentary.update(dt);
@@ -927,7 +954,8 @@ class Game {
       }
 
       if (v.isPolice && !v.unmarked && this.heat.tier > 0) {
-        this.lights.place(v, LAMP_OFFSETS, v.lampPhase || 0);
+        // Each body puts its bar somewhere different; the geometry says where.
+        this.lights.place(v, v.view.geometry.userData.lamps || LAMP_OFFSETS, v.lampPhase || 0);
       }
     }
 

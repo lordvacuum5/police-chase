@@ -23,6 +23,7 @@
 const DESCRIBE = {
   runner: 'an orange saloon',
   supercar: 'a red sports car',
+  offroad: 'a green four-by-four',
 };
 
 /** Minimum seconds between any two lines of commentary. */

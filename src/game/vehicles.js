@@ -8,7 +8,10 @@
 
 import * as THREE from 'three';
 import { MeshBuilder, buildGrouped } from '../util/meshbuild.js';
-import { policeTexture, DECAL } from './livery.js';
+import { policeTexture } from './livery.js';
+import {
+  buildSuvGeometry, buildVanGeometry, buildOffroadGeometry, addPoliceKit,
+} from './bodies.js';
 
 // ---------------------------------------------------------------- base spec
 
@@ -336,6 +339,148 @@ export const SPECS = {
     durability: 2.4,
     topSpeedHint: 103,
   }),
+
+  /**
+   * Police SUV. Heavy, tall and four-wheel drive: as quick as an interceptor
+   * off the line, better than anything on the grass, and a lot of car to be
+   * shunted by. Rolls more than a saloon, so the springs and bars are stiff
+   * and cornering force goes in above the road, as on the Stiletto.
+   */
+  suv: makeSpec({
+    name: 'Police SUV',
+    body: 'suv',
+    mass: 2150,
+    frontWeight: 0.52,
+    dims: { w: 2.0, h: 1.56, l: 4.95 },
+    colliderY: 0.46,
+    wheelbase: 2.98,
+    trackFront: 1.70,
+    trackRear: 1.70,
+    wheelRadius: 0.39,
+    wheelWidth: 0.28,
+    wheelMass: 26,
+    drive: 'awd',
+    inertiaScale: { yaw: 1.2, roll: 1.3, pitch: 1.1 },
+    suspension: Object.assign({}, baseSuspension, {
+      mountY: 0.12, rest: 0.40, travel: 0.26, stiffness: 56000,
+      dampCompress: 5600, dampRebound: 7600, bumpStop: 34000, maxForce: 46000,
+      arbFront: 19000, arbRear: 14000, rollCentre: 0.16,
+    }),
+    engine: Object.assign({}, baseEngine, {
+      torqueCurve: [
+        [800, 380], [1500, 540], [2500, 660], [3500, 690],
+        [4500, 670], [5500, 610], [6500, 500], [7200, 400],
+      ],
+    }),
+    finalDrive: 3.85,
+    brakes: { maxTorque: 4400, frontBias: 0.63, handbrakeTorque: 3400, abs: 1, gripBonus: 1.5 },
+    aero: { dragArea: 0.92, downforce: 0.2 },
+    gripScale: 0.98,
+    gripBias: { front: 1.08, rear: 1.06 },
+    offRoadGrip: 2.0,
+    durability: 3.4,
+    topSpeedHint: 92,
+  }),
+
+  /**
+   * Armoured van, at five stars only. Slow -- a diesel in a box -- but three
+   * and a half tonnes of it, built to take hits and to hand them out. It is not
+   * there to catch you; it is there to be in the way when the others do.
+   */
+  van: makeSpec({
+    name: 'Armoured Van',
+    body: 'van',
+    mass: 3400,
+    frontWeight: 0.55,
+    dims: { w: 2.05, h: 2.1, l: 5.9 },
+    colliderY: 0.72,
+    wheelbase: 3.66,
+    trackFront: 1.76,
+    trackRear: 1.76,
+    wheelRadius: 0.40,
+    wheelWidth: 0.26,
+    wheelMass: 30,
+    drive: 'rwd',
+    inertiaScale: { yaw: 1.25, roll: 1.35, pitch: 1.2 },
+    suspension: Object.assign({}, baseSuspension, {
+      mountY: 0.12, rest: 0.42, travel: 0.24, stiffness: 96000,
+      dampCompress: 9600, dampRebound: 13000, bumpStop: 70000, maxForce: 90000,
+      arbFront: 30000, arbRear: 24000, rollCentre: 0.24,
+    }),
+    engine: Object.assign({}, baseEngine, {
+      idleRpm: 750,
+      redline: 5000,
+      brakeTorque: 90,
+      inertia: 0.45,
+      torqueCurve: [
+        [700, 520], [1500, 780], [2500, 860], [3500, 820], [4500, 690], [5200, 540],
+      ],
+    }),
+    gears: [0, 4.6, 2.9, 1.95, 1.42, 1.0, 0.8],
+    finalDrive: 3.9,
+    shiftUpRpm: 4500,
+    shiftDownRpm: 2100,
+    shiftTime: 0.2,
+    brakes: { maxTorque: 7600, frontBias: 0.62, handbrakeTorque: 5000, abs: 1, gripBonus: 1.4 },
+    steering: {
+      maxAngle: 0.55, minAngle: 0.05, latLimit: 9.5, overshoot: 1.15,
+      slipAllowance: 0.06, rate: 2.0, returnRate: 3.2,
+    },
+    aero: { dragArea: 1.9, downforce: 0.1 },
+    gripScale: 0.93,
+    gripBias: { front: 1.06, rear: 1.04 },
+    offRoadGrip: 1.7,
+    durability: 9,
+    topSpeedHint: 44,
+  }),
+
+  /**
+   * The Badger: a square old 4x4, and the third way to run. Slow on the road
+   * and heavy in the corners, but the toughest thing you can drive, long
+   * springs that do not care about kerbs, and four-wheel drive on tyres that
+   * grip on grass nearly as well as on tarmac -- so the shortcut across the
+   * park that bogs everyone else down is yours.
+   */
+  offroad: makeSpec({
+    name: 'Badger',
+    body: 'offroad',
+    mass: 2050,
+    frontWeight: 0.54,
+    dims: { w: 1.95, h: 1.62, l: 4.45 },
+    colliderY: 0.52,
+    wheelbase: 2.65,
+    trackFront: 1.62,
+    trackRear: 1.62,
+    wheelRadius: 0.42,
+    wheelWidth: 0.30,
+    wheelMass: 28,
+    drive: 'awd',
+    inertiaScale: { yaw: 1.1, roll: 1.25, pitch: 1.1 },
+    suspension: Object.assign({}, baseSuspension, {
+      mountY: 0.12, rest: 0.44, travel: 0.32, stiffness: 50000,
+      dampCompress: 5000, dampRebound: 7000, bumpStop: 30000, maxForce: 46000,
+      arbFront: 15000, arbRear: 11000, rollCentre: 0.22,
+    }),
+    engine: Object.assign({}, baseEngine, {
+      redline: 6500,
+      torqueCurve: [
+        [800, 400], [1500, 550], [2500, 640], [3500, 650],
+        [4500, 615], [5500, 530], [6500, 420],
+      ],
+    }),
+    gears: [0, 4.3, 2.6, 1.75, 1.3, 1.02, 0.84],
+    finalDrive: 3.9,
+    shiftUpRpm: 6000,
+    brakes: { maxTorque: 3200, frontBias: 0.62, handbrakeTorque: 4000 },
+    aero: { dragArea: 1.05, downforce: 0.1 },
+    gripScale: 0.96,
+    gripBias: { front: 1.04, rear: 1.04 },
+    // Grass mu 0.62 comes up to about 1.1: as good as most of the fleet does
+    // on the road, and far more than the Stiletto's 0.74.
+    offRoadGrip: 1.8,
+    durability: 4.0,
+    topSpeedHint: 55,
+  }),
 };
 
 // ---------------------------------------------------------------- liveries
@@ -346,6 +491,9 @@ export const LIVERIES = {
   patrol:      { body: 0xeef2f6, accent: 0x13233f, glass: 0x0e1319, trim: 0x14171b },
   interceptor: { body: 0x0f1626, accent: 0xe8edf4, glass: 0x0d1218, trim: 0x14171b },
   unmarked:    { body: 0x23272e, accent: 0x1a1e24, glass: 0x0c1015, trim: 0x15181c },
+  suv:         { body: 0xf1f4f7, accent: 0x13233f, glass: 0x0b1016, trim: 0x15181c },
+  van:         { body: 0xeef1f4, accent: 0x13233f, glass: 0x0b1016, trim: 0x1b1f25 },
+  offroad:     { body: 0x4c7a3a, accent: 0xe9e2c8, glass: 0x0e1319, trim: 0x15171a },
 };
 
 // ------------------------------------------------------------ body geometry
@@ -366,6 +514,9 @@ export const LIVERIES = {
  */
 export function buildCarGeometry(spec, livery, opts = {}) {
   if (spec.body === 'supercar') return buildSupercarGeometry(spec, livery);
+  if (spec.body === 'suv') return buildSuvGeometry(spec, livery, opts);
+  if (spec.body === 'van') return buildVanGeometry(spec, livery, opts);
+  if (spec.body === 'offroad') return buildOffroadGeometry(spec, livery, opts);
   const b = new MeshBuilder();
   const { body, accent, glass, trim } = livery;
   const L = spec.dims.l;
@@ -519,88 +670,53 @@ export function buildCarGeometry(spec, livery, opts = {}) {
 
   // --- police fit-out ---------------------------------------------------
   const decals = new MeshBuilder();
+  let lamps = null;
   if (opts.police) {
     if (!opts.unmarked) {
-      // Modern low-profile light bar: a slim aerodynamic spine on two feet,
-      // with a row of individual lamp modules along it and clear end caps
-      // where the instanced flashers sit.
-      const barZ = -0.14;
-      b.addBox(0.11, 0.035, 0.17, +0.44, roofTop + 0.018, barZ, trim);
-      b.addBox(0.11, 0.035, 0.17, -0.44, roofTop + 0.018, barZ, trim);
-      b.addTaperedBox(1.30, 0.05, 0.23, 0, roofTop + 0.055, barZ, trim, 0.92, 0.84);
-      b.addBox(1.16, 0.08, 0.17, 0, roofTop + 0.105, barZ, 0x11161d);
-      for (let i = -2; i <= 2; i++) {
-        b.addBox(0.13, 0.05, 0.18, i * 0.21, roofTop + 0.112, barZ, i % 2 ? 0x2f7dff : 0xd8dde4);
-      }
-      b.addBox(0.08, 0.095, 0.19, +0.62, roofTop + 0.105, barZ, trim);
-      b.addBox(0.08, 0.095, 0.19, -0.62, roofTop + 0.105, barZ, trim);
+      // The shared kit (see bodies.js): a full-width light bar, battenburg
+      // down the whole flank rather than one door, chevrons, roof number,
+      // push bar and grille strobes. The band stops short of the nose, where
+      // the wings step down below its top edge.
+      lamps = addPoliceKit(b, decals, {
+        flankX: hw,
+        band: { y0: tyreTop + 0.01, y1: wingTop - 0.03, z0: -half + 0.22, z1: cowl + bonnetD * 0.55 },
+        roof: { y: roofTop, z: -0.14, halfW: 0.46 },
+        roofId: { z0: 0.16, z1: 0.42 },
+        bonnet: {
+          y0: belt + 0.082, y1: belt + 0.082,
+          z0: cowl + bonnetD * 0.10, z1: cowl + bonnetD * 0.10 + 0.30, halfW: 0.66,
+        },
+        rear: { z: -half * 0.998, y0: 0.04, y1: 0.40, halfW: 0.72 },
+        nose: { z: half, y: lampY - 0.115, halfW: hw },
+        barW: 1.36,
+      }, trim);
 
       // Shark-fin aerial and a whip, as on any modern response car.
       b.addTaperedBox(0.07, 0.11, 0.26, 0, roofTop + 0.05, rf0 + 0.18, body, 0.3, 0.35, 0, -0.06);
       b.addBox(0.025, 0.30, 0.025, -0.30, roofTop + 0.14, rf0 + 0.34, trim);
       // A-pillar spotlight.
       b.addBox(0.11, 0.11, 0.17, +(hw - 0.06), belt + 0.055, cowl - 0.02, 0xb9bec6);
-
-      // ---- decals -------------------------------------------------------
-      const sx = hw + 0.016;
-      const fz1 = fArch - 0.02, fz0 = fz1 - 2.15;
-      const fy0 = tyreTop - 0.02, fy1 = fy0 + 0.33;
-      // u runs toward the rear on the left flank and toward the nose on the
-      // right, which is what makes the wordmark read forwards on both sides.
-      decals.addDecalQuad([
-        { x: sx, y: fy0, z: fz1 }, { x: sx, y: fy0, z: fz0 },
-        { x: sx, y: fy1, z: fz0 }, { x: sx, y: fy1, z: fz1 },
-      ], { x: 1, y: 0, z: 0 }, DECAL.flank);
-      decals.addDecalQuad([
-        { x: -sx, y: fy0, z: fz0 }, { x: -sx, y: fy0, z: fz1 },
-        { x: -sx, y: fy1, z: fz1 }, { x: -sx, y: fy1, z: fz0 },
-      ], { x: -1, y: 0, z: 0 }, DECAL.flank);
-
-      // Bonnet wordmark, reversed so it reads in a wing mirror. Proportioned
-      // to the texture panel -- a near-square decal stretches the letters into
-      // something unreadable.
-      const by = belt + 0.082;
-      const bz0 = cowl + bonnetD * 0.10, bz1 = bz0 + 0.30;
-      decals.addDecalQuad([
-        { x: -0.66, y: by, z: bz0 }, { x: 0.66, y: by, z: bz0 },
-        { x: 0.66, y: by, z: bz1 }, { x: -0.66, y: by, z: bz1 },
-      ], { x: 0, y: 1, z: 0 }, DECAL.bonnet);
-
-      // Roof unit number, ahead of the light bar.
-      decals.addDecalQuad([
-        { x: -0.46, y: roofTop + 0.002, z: barZ + 0.28 },
-        { x: 0.46, y: roofTop + 0.002, z: barZ + 0.28 },
-        { x: 0.46, y: roofTop + 0.002, z: barZ + 0.54 },
-        { x: -0.46, y: roofTop + 0.002, z: barZ + 0.54 },
-      ], { x: 0, y: 1, z: 0 }, DECAL.roof);
-
-      // Rear chevrons across the tailgate, below the light bar.
-      const rz = -half * 0.998;
-      decals.addDecalQuad([
-        { x: 0.72, y: 0.04, z: rz }, { x: -0.72, y: 0.04, z: rz },
-        { x: -0.72, y: 0.40, z: rz }, { x: 0.72, y: 0.40, z: rz },
-      ], { x: 0, y: 0, z: -1 }, DECAL.rear);
     } else {
       // Unmarked: no markings at all, just the hardware.
       b.addBox(0.10, 0.05, 0.14, +0.30, roofTop + 0.025, -0.10, trim);
       b.addBox(0.025, 0.26, 0.025, -0.28, roofTop + 0.13, -0.70, trim);
+      // Push bar and hidden grille strobes.
+      b.addBox(W * 0.70, 0.075, 0.07, 0, lampY + 0.01, half + 0.11, trim);
+      b.addBox(W * 0.70, 0.065, 0.07, 0, lampY - 0.24, half + 0.11, trim);
+      for (const px of [-0.30, 0.30]) {
+        b.addBox(0.06, 0.32, 0.06, px * W, lampY - 0.115, half + 0.11, trim);
+      }
+      b.addBox(0.26, 0.06, 0.05, +W * 0.14, lampY - 0.115, half - 0.005, 0x2f7dff);
+      b.addBox(0.26, 0.06, 0.05, -W * 0.14, lampY - 0.115, half - 0.005, 0xff2418);
     }
-
-    // Push bar. Kept slim and set close in: the earlier one was a full-width
-    // slab that hid the whole front of the car behind it.
-    b.addBox(W * 0.70, 0.075, 0.07, 0, lampY + 0.01, half + 0.11, trim);
-    b.addBox(W * 0.70, 0.065, 0.07, 0, lampY - 0.24, half + 0.11, trim);
-    for (const px of [-0.30, 0.30]) {
-      b.addBox(0.06, 0.32, 0.06, px * W, lampY - 0.115, half + 0.11, trim);
-    }
-    // Grille and rear-screen strobes.
-    b.addBox(0.26, 0.06, 0.05, +W * 0.14, lampY - 0.115, half - 0.005, 0x2f7dff);
-    b.addBox(0.26, 0.06, 0.05, -W * 0.14, lampY - 0.115, half - 0.005, 0xff2418);
+    // Rear-screen strobes.
     b.addBox(0.20, 0.06, 0.05, +0.30, gy + 0.05, deck + 0.30, 0x2f7dff);
     b.addBox(0.20, 0.06, 0.05, -0.30, gy + 0.05, deck + 0.30, 0xff2418);
   }
 
-  return buildGrouped([b, decals]);
+  const geo = buildGrouped([b, decals]);
+  geo.userData.lamps = lamps;
+  return geo;
 }
 
 /**

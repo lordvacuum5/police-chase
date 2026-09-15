@@ -93,7 +93,7 @@ window.__runOutrun = async function (kinds = ['runner', 'supercar', 'patrol', 'i
     // ---------------------------------------------------------- 2. helicopter
     const Heli = g.helicopter.constructor;
     const dummy = { add() {}, remove() {} };
-    const k = { position: new THREE.Vector3(), seen: false };
+    const k = { position: new THREE.Vector3(), seen: false, timeSinceSeen: 0 };
     const fake = {
       heat: { tier: 5 }, scene: dummy, rng: () => 0.37, say() {},
       dispatcher: { knowledge: k },
@@ -156,6 +156,9 @@ window.__runOutrun = async function (kinds = ['runner', 'supercar', 'patrol', 'i
           // Ground units have the car for the first few seconds, as they would
           // when the aircraft is called up: that is where the light starts.
           if (t < 10) k.position.copy(target.position);
+          // What the aircraft is allowed to know, as the dispatcher would tell it.
+          k.seen = seen || t < 10;
+          k.timeSinceSeen = k.seen ? 0 : (k.timeSinceSeen || 0) + dt;
           if (seen) {
             k.position.copy(target.position);
             if (first === null) first = t;
