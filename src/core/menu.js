@@ -44,8 +44,8 @@ export const CARS = [
     colour: '#b3101e',
     shape: 'wedge',
     stats: [
-      ['Top speed', 257, 'km/h'],
-      ['0-100', 4.4, 's', true],
+      ['Top speed', 240, 'km/h'],
+      ['0-100', 5.1, 's', true],
       ['Grip', 1.77, 'g'],
       ['Toughness', 5, 'hits'],
     ],
@@ -58,8 +58,8 @@ export const CARS = [
     roof: '#e9e2c8',
     shape: 'boxy',
     stats: [
-      ['Top speed', 204, 'km/h'],
-      ['0-100', 8.6, 's', true],
+      ['Top speed', 190, 'km/h'],
+      ['0-100', 10.0, 's', true],
       ['Grip', 1.08, 'g'],
       ['Toughness', 19, 'hits'],
     ],

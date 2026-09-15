@@ -52,6 +52,31 @@ const baseEngine = {
 // the changes at roughly 54 / 82 / 110 / 140 / 171 km/h.
 const baseGears = [0, 4.20, 2.75, 2.05, 1.62, 1.32, 1.08];
 
+/**
+ * Tuning levers, applied across whole groups of cars.
+ *
+ * The police were still struggling to keep up at every wanted level -- "just
+ * increase their speed and grip a bit" -- and the Badger and the Stiletto were
+ * both "a bit too fast", on maps where slipping between two houses already
+ * loses a pursuit. Measured before and after in README, "Evening it up".
+ */
+const POLICE_POWER = 1.12;
+const POLICE_GRIP = 1.08;
+const STILETTO_POWER = 0.85;
+const BADGER_POWER = 0.86;
+
+/**
+ * The fleet's gears: the patrol car's ratios with a taller sixth, so the extra
+ * power turns into top speed as well as acceleration instead of running into
+ * the limiter at 222 km/h like the Runner.
+ */
+const POLICE_GEARS = [0, 4.20, 2.75, 2.05, 1.62, 1.32, 0.96];
+
+/** A torque curve with every point scaled. */
+function scaled(k, curve) {
+  return curve.map(([rpm, nm]) => [rpm, Math.round(nm * k)]);
+}
+
 function makeSpec(o) {
   return Object.assign({
     dims: { w: 1.90, h: 1.20, l: 4.62 },
@@ -209,16 +234,16 @@ export const SPECS = {
       // 257 km/h (tests/outrun.js) -- still far quicker than the Runner, but a
       // pursuit car closing on the rubber band can live with it, and the
       // helicopter can outfly it.
-      torqueCurve: [
+      torqueCurve: scaled(STILETTO_POWER, [
         [900, 320], [2000, 426], [3000, 502], [4000, 551],
         [5000, 578], [6000, 587], [7000, 569], [8000, 525], [9000, 466],
-      ],
+      ]),
     }),
     // Seven ratios. Changes at roughly 66 / 95 / 125 / 157 / 191 / 225 km/h,
     // and seventh runs into the limiter at about 258.
     gears: [0, 3.15, 2.18, 1.66, 1.32, 1.08, 0.92, 0.80],
     reverseGear: 3.10,
-    finalDrive: 5.62,
+    finalDrive: 6.0,
     shiftUpRpm: 8400,
     shiftDownRpm: 4300,
     // A twin-clutch box: the torque interruption is a fraction of the Runner's.
@@ -268,6 +293,7 @@ export const SPECS = {
   /** Bread-and-butter patrol car. Heavy, soft, tough, and slower. */
   patrol: makeSpec({
     name: 'Patrol',
+    gears: POLICE_GEARS.slice(),
     mass: 1780,
     frontWeight: 0.56,
     dims: { w: 1.94, h: 1.26, l: 4.92 },
@@ -276,16 +302,16 @@ export const SPECS = {
       stiffness: 40000, arbFront: 13000, arbRear: 9200, dampRebound: 6200,
     }),
     engine: Object.assign({}, baseEngine, {
-      torqueCurve: [
+      torqueCurve: scaled(POLICE_POWER, [
         [800, 322], [1500, 455], [2500, 558], [3500, 590],
         [4500, 569], [5500, 514], [6500, 416], [7200, 333],
-      ],
+      ]),
     }),
     // Fleet brakes: bigger discs, and an anti-lock system the runner has not
     // got. See README, "Better brakes than yours".
     brakes: { maxTorque: 3500, frontBias: 0.64, handbrakeTorque: 2800, abs: 1, gripBonus: 1.52 },
     aero: { dragArea: 0.76, downforce: 0.25 },
-    gripScale: 0.97,
+    gripScale: 0.97 * POLICE_GRIP,
     gripBias: { front: 1.08, rear: 1.06 },
     // Fleet tyres bite on the loose. Grass mu goes 0.62 -> about 1.1, so a
     // line straight across country is a real option rather than a bog.
@@ -297,6 +323,7 @@ export const SPECS = {
   /** Highway interceptor. Turns up at heat 3 and can actually stay with you. */
   interceptor: makeSpec({
     name: 'Interceptor',
+    gears: POLICE_GEARS.slice(),
     mass: 1700,
     frontWeight: 0.545,
     dims: { w: 1.96, h: 1.22, l: 4.90 },
@@ -305,14 +332,14 @@ export const SPECS = {
     // Genuinely more engine than the runner, and slipperier -- an interceptor
     // that cannot out-accelerate the car it is chasing is just scenery.
     engine: Object.assign({}, baseEngine, {
-      torqueCurve: [
+      torqueCurve: scaled(POLICE_POWER, [
         [800, 324], [1500, 464], [2500, 570], [3500, 616],
         [4500, 605], [5500, 553], [6500, 458], [7200, 372],
-      ],
+      ]),
     }),
     brakes: { maxTorque: 3800, frontBias: 0.63, handbrakeTorque: 3000, abs: 1, gripBonus: 1.58 },
     aero: { dragArea: 0.70, downforce: 0.40 },
-    gripScale: 0.99,
+    gripScale: 0.99 * POLICE_GRIP,
     gripBias: { front: 1.09, rear: 1.05 },
     offRoadGrip: 1.85,
     durability: 2.8,
@@ -322,18 +349,19 @@ export const SPECS = {
   /** Unmarked pursuit car. Fastest thing they have, and hardest to spot. */
   unmarked: makeSpec({
     name: 'Unmarked',
+    gears: POLICE_GEARS.slice(),
     mass: 1620,
     frontWeight: 0.53,
     suspension: Object.assign({}, baseSuspension, { arbRear: 8800 }),
     engine: Object.assign({}, baseEngine, {
-      torqueCurve: [
+      torqueCurve: scaled(POLICE_POWER, [
         [800, 340], [1500, 488], [2500, 600], [3500, 648],
         [4500, 637], [5500, 581], [6500, 480], [7200, 389],
-      ],
+      ]),
     }),
     brakes: { maxTorque: 4000, frontBias: 0.62, handbrakeTorque: 3200, abs: 1, gripBonus: 1.62 },
     aero: { dragArea: 0.67, downforce: 0.44 },
-    gripScale: 1.0,
+    gripScale: 1.0 * POLICE_GRIP,
     gripBias: { front: 1.08, rear: 1.06 },
     offRoadGrip: 1.88,
     durability: 2.4,
@@ -348,6 +376,7 @@ export const SPECS = {
    */
   suv: makeSpec({
     name: 'Police SUV',
+    gears: POLICE_GEARS.slice(),
     body: 'suv',
     mass: 2150,
     frontWeight: 0.52,
@@ -367,15 +396,15 @@ export const SPECS = {
       arbFront: 19000, arbRear: 14000, rollCentre: 0.16,
     }),
     engine: Object.assign({}, baseEngine, {
-      torqueCurve: [
+      torqueCurve: scaled(POLICE_POWER, [
         [800, 380], [1500, 540], [2500, 660], [3500, 690],
         [4500, 670], [5500, 610], [6500, 500], [7200, 400],
-      ],
+      ]),
     }),
     finalDrive: 3.85,
     brakes: { maxTorque: 4400, frontBias: 0.63, handbrakeTorque: 3400, abs: 1, gripBonus: 1.5 },
     aero: { dragArea: 0.92, downforce: 0.2 },
-    gripScale: 0.98,
+    gripScale: 0.98 * POLICE_GRIP,
     gripBias: { front: 1.08, rear: 1.06 },
     offRoadGrip: 2.0,
     durability: 3.4,
@@ -427,7 +456,7 @@ export const SPECS = {
       slipAllowance: 0.06, rate: 2.0, returnRate: 3.2,
     },
     aero: { dragArea: 1.9, downforce: 0.1 },
-    gripScale: 0.93,
+    gripScale: 0.93 * POLICE_GRIP,
     gripBias: { front: 1.06, rear: 1.04 },
     offRoadGrip: 1.7,
     durability: 9,
@@ -463,10 +492,10 @@ export const SPECS = {
     }),
     engine: Object.assign({}, baseEngine, {
       redline: 6500,
-      torqueCurve: [
+      torqueCurve: scaled(BADGER_POWER, [
         [800, 400], [1500, 550], [2500, 640], [3500, 650],
         [4500, 615], [5500, 530], [6500, 420],
-      ],
+      ]),
     }),
     gears: [0, 4.3, 2.6, 1.75, 1.3, 1.02, 0.84],
     finalDrive: 3.9,

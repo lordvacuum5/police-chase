@@ -842,6 +842,8 @@ export class Officer {
    * 1, so the top of the range is exactly what it always was.
    */
   get pace() {
-    return lerp(0.74, 1.0, this.aggression);
+    // Floor raised from 0.74: even at one star the police were too easy to
+    // leave behind by simply driving quickly.
+    return lerp(0.84, 1.0, this.aggression);
   }
 }

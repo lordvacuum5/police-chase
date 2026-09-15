@@ -1329,6 +1329,51 @@ one vanish.
 Radio traffic names real streets, so you can hear the plan forming: *"U6,
 cutting them off at Fifteenth Street and Meridian Avenue."*
 
+### Evening it up
+
+*"The Land Rover is a bit too fast. I think same with the really fast car ...
+it's already relatively easy to lose the police just by going in between two
+houses. Police cars still struggle to keep up, even on one to five. Just
+increase their speed and grip a bit."* The levers are at the top of
+`vehicles.js`, applied to whole groups of cars:
+
+| | 0–100 before → after | top speed before → after |
+|---|---|---|
+| Stiletto (power ×0.85, shorter final drive) | 4.4 → **5.1 s** | 257 → **240 km/h** |
+| Badger (power ×0.86) | 8.6 → **10.0 s** | 204 → **190 km/h** |
+| Patrol | 7.0 → **6.4 s** | 215 → **230 km/h** |
+| Interceptor | 6.5 → **5.9 s** | 222 → **241 km/h** |
+| Unmarked | 6.0 → **5.5 s** | 222 → **247 km/h** |
+| Police SUV | 8.2 → **7.5 s** | 218 → **230 km/h** |
+
+The fleet has 12% more power, 8% more grip, and a taller sixth gear so the
+extra power becomes top speed as well — before, every police car ran into its
+limiter at 222 km/h however much help it had. Two more things turned out to
+matter as much as the cars:
+
+* **The drivers now plan on their own tyres.** A unit's corner speeds came from
+  the road surface and its skill, and never from the car's own grip — so a car
+  given more grip took every corner at exactly the same speed as before and
+  simply had more in hand. `Driver._mu` now includes `gripScale`.
+* **Less holding back at low wanted levels.** A unit's pace ran from 74% of
+  what its car could do at one star to 100% at five; the floor is now 84%.
+
+Measured with `tests/harness.js` — a driven quarry that brakes for corners, at
+four stars with the police allowed contact — over the same three chases, old
+settings against new, switched at runtime in the same page:
+
+| | old | new |
+|---|---|---|
+| nearest unit, median | 60 m | **34 m** |
+| time with a unit within 40 m | 39% | **56%** |
+| police well off the road | 8% | **6%** |
+
+Better in all three, including one where the quarry was driving faster than in
+any other run. The kinematic tail test (`tests/tail.js`, a car moved at a
+constant 100 km/h that never slows for a corner) was too noisy to call either
+way — a car that takes right angles at 100 km/h is not one the police should be
+able to follow round them anyway.
+
 ### Missing the turn
 
 "Have the police got slower and worse at routing?" They had. `tests/response.js`
@@ -1473,10 +1518,10 @@ or a verge — only against the other car. These are the figures on the menu:
 
 | | Runner | Stiletto |
 |---|---|---|
-| 0–100 km/h | 7.37 s | **4.38 s** |
+| 0–100 km/h | 7.37 s | **5.05 s** |
 | 0–160 km/h | 15.3 s | **8.23 s** |
 | 0–200 km/h | 28.0 s | **12.2 s** |
-| top speed | 215 km/h, on the limiter in 6th | **257 km/h**, on the limiter in 7th |
+| top speed | 215 km/h, on the limiter in 6th | **240 km/h**, on the limiter in 7th |
 | peak steady grip, 60 km/h | 1.28 g | **1.57 g** |
 | peak steady grip, 120 km/h | 1.40 g | **1.77 g** |
 | peak steady grip, 170 km/h | cannot hold the speed | **1.91 g** |
@@ -1556,8 +1601,8 @@ the shortcut across the park that bogs everyone else down is yours.
 
 | | Runner | Stiletto | **Badger** |
 |---|---|---|---|
-| 0–100 km/h | 7.4 s | 4.4 s | **8.6 s** |
-| top speed | 215 km/h | 257 km/h | **204 km/h** |
+| 0–100 km/h | 7.4 s | 5.1 s | **10.0 s** |
+| top speed | 215 km/h | 240 km/h | **190 km/h** |
 | peak steady grip, 120 km/h | 1.40 g | 1.77 g | **1.08 g** |
 | shunts to a wreck | 11 | 5 | **19** |
 
@@ -1699,10 +1744,10 @@ calls rather than a separate mesh per marking.
 
 | | from | 0–100 | top speed | grip | hits to wreck | |
 |---|---|---|---|---|---|---|
-| Patrol | 0 stars | 7.0 s | 215 km/h | — | — | the saloon everything starts with |
-| **SUV** | 2 stars | 8.2 s | 218 km/h | 1.16 g | 17 | tall, heavy, four-wheel drive, best on grass |
-| Interceptor | 3 stars | 6.5 s | 222 km/h | — | — | more engine than the patrol car |
-| Unmarked | 4 stars | 6.0 s | 222 km/h | — | — | the quickest thing they have |
+| Patrol | 0 stars | 6.4 s | 230 km/h | — | — | the saloon everything starts with |
+| **SUV** | 2 stars | 7.5 s | 230 km/h | 1.25 g | 17 | tall, heavy, four-wheel drive, best on grass |
+| Interceptor | 3 stars | 5.9 s | 241 km/h | — | — | more engine than the patrol car |
+| Unmarked | 4 stars | 5.5 s | 247 km/h | — | — | the quickest thing they have |
 | **Armoured van** | 5 stars | 10.5 s | 167 km/h | 0.96 g | 67 | one at a time, and there to be in the way |
 
 The SUV and the van are new bodies (`bodies.js`), built like the Stiletto from

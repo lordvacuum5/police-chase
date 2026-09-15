@@ -257,7 +257,10 @@ export class Driver {
   _mu() {
     const v = this.v;
     const assist = v.assist || { grip: 1, boost: 1 };
-    return v.surfaceMu * this.skill.grip * 0.87 * assist.grip * this.gripEstimate;
+    // The car's own tyres count too: surfaceMu is the road, gripScale is the rubber.
+    // Leaving it out meant a unit given more grip took every corner at the same
+    // speed as before and simply had more in hand.
+    return v.surfaceMu * (v.spec.gripScale || 1) * this.skill.grip * 0.87 * assist.grip * this.gripEstimate;
   }
 
   /**
