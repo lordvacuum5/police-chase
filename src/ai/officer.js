@@ -8,7 +8,8 @@
 import * as THREE from 'three';
 import { Driver, SKILL } from './driver.js';
 import { pitUpdate, relativeTo, boxAim, boxSpeed } from './tactics.js';
-import { hasLineOfSight, sweepBox, RAY_SOLID } from '../physics/world.js';
+import { hasLineOfSight, sweepBox, raycast, groups, GROUP, RAY_SOLID } from '../physics/world.js';
+import { WORLD_HALF } from '../world/common.js';
 import { clamp, clamp01, lerp, dist2, sign } from '../util/math.js';
 
 const _aim = new THREE.Vector3();
@@ -21,6 +22,17 @@ const _origin2 = new THREE.Vector3();
 /** How close a unit must be to the player's trail to drive it, and to the player. */
 const TRAIL_JOIN = 9;
 const TRAIL_RANGE = 130;
+
+/** Longest a searching unit keeps trying to reach one spot, seconds. */
+const SPOT_PATIENCE = 28;
+/** Top speed on the road between search spots, m/s: about 80 km/h. */
+const SEARCH_PACE = 22;
+/** Top speed off it, m/s: about 36 km/h. A garden is not a place to be quick. */
+const SEARCH_OFF_ROAD = 10;
+/** What a search spot has to be clear of, tested straight down at its middle and a car's length round it. */
+const SPOT_SOLID = groups(0xFFFF, GROUP.BUILDING | GROUP.PROP);
+const SPOT_PROBES = [[0, 0], [3, 0], [-3, 0], [0, 3], [0, -3]];
+const DOWN = { x: 0, y: -1, z: 0 };
 
 export const ROLE = {
   PATROL: 'patrol',
@@ -95,6 +107,9 @@ export class Officer {
       this.repathTimer = 0;
       if (role !== ROLE.PIT) this.pitState = {};
       this._ramBack = 0;
+      this._searchSpot = null;
+      this._wayIn = null;
+      this._wentIn = false;
     }
     this.orders = orders;
   }
@@ -167,7 +182,14 @@ export class Officer {
     // patrol car keeps to the carriageway, and that difference in how they
     // move is part of how you tell one from the other before the lights come
     // on.
-    this.driver.allowOffRoad = this.role !== ROLE.PATROL;
+    //
+    // A searching unit is not in a hurry either. It leaves the road on purpose,
+    // to check somewhere (see _search), and otherwise keeps to it: cutting
+    // corners on the way between spots was most of what it hit, at speed,
+    // through back gardens.
+    const searchingRoad = this.role === ROLE.SEARCH && !this._wentIn
+      && !(this._searchSpot && this._searchSpot.direct);
+    this.driver.allowOffRoad = this.role !== ROLE.PATROL && !searchingRoad;
 
     // Off the hard surface: getting back onto it is the only job.
     //
@@ -252,17 +274,305 @@ export class Officer {
     return Math.sqrt(2 * 3.4 * Math.max(0, d - 1.0));
   }
 
+  /**
+   * Hunt for a car the force has lost.
+   *
+   * This used to be a wander between road junctions round the last place you
+   * were seen, so every search stayed on the tarmac. A car parked in a field,
+   * a car park or behind an estate sixty metres from the road was simply never
+   * looked for: a stopped car is only picked out from about sixty metres, and
+   * measured with `tests/search.js` the searching units spent 0-6% of their
+   * time off the road. "Make sure the police search off-road."
+   *
+   * Now each unit picks a spot to check -- most of them off the road, spread
+   * out from the other searchers, widening the longer you have been gone and
+   * leaning the way you were heading -- goes along the road to a straight,
+   * clear lane that reaches it, down the lane, and back out the way it came.
+   */
   _search(dt) {
-    const g = this.game.graph;
     const centre = this.orders.point || this.position;
-    if (!this.driver.hasPath || this.driver.remaining() < 30) {
-      // Wander around the last known position rather than parking on it.
-      const a = this.game.rng() * Math.PI * 2;
-      const r = 60 + this.game.rng() * 180;
-      const to = g.nearestNode(centre.x + Math.cos(a) * r, centre.z + Math.sin(a) * r);
-      this._routeTo(to.id, 2.0);
+    let spot = this._searchSpot;
+    if (spot) {
+      spot.age += dt;
+      const d = this.distanceTo(spot);
+      if (d < spot.best - 4) { spot.best = d; spot.progressAt = spot.age; }
+      // Looked at is as good as driven onto, once driving on stops working:
+      // a car tucked behind a fence is seen from thirty metres off, not after
+      // ten seconds nosing at the fence. While the unit is still getting
+      // closer it carries on in -- driving into the field is the search.
+      let arrived = d < (spot.offRoad ? 9 : 16);
+      if (!arrived && (d < 16 || (d < 30 && spot.age - spot.progressAt > 2.5))) {
+        this._spotLookTimer = (this._spotLookTimer || 0) - dt;
+        if (this._spotLookTimer <= 0) {
+          this._spotLookTimer = 0.3;
+          const v = this.vehicle;
+          _eye.set(v.position.x, v.position.y + 1.1, v.position.z);
+          _aim2.set(spot.x, v.position.y + 0.8, spot.z);
+          arrived = hasLineOfSight(this.game.world, _eye, _aim2, 1.5);
+        }
+      }
+      // Not getting any closer: a yard with no way in, a hedge all the way
+      // round a field. Remembered, so the next pick is somewhere else.
+      const stalled = !arrived && (spot.age - spot.progressAt > 7 || spot.age > SPOT_PATIENCE);
+      if (stalled) {
+        const failed = this._failedSpots || (this._failedSpots = []);
+        failed.push({ x: spot.x, z: spot.z });
+        if (failed.length > 8) failed.shift();
+      }
+      if (arrived || stalled || spot.forX !== centre.x || spot.forZ !== centre.z) spot = null;
     }
-    return this.driver.followPath(dt, 30);
+    if (!spot) spot = this._searchSpot = this._pickSearchSpot(centre);
+
+    if (!spot) {
+      // Nowhere suitable at all: the old wander round the roads.
+      const g = this.game.graph;
+      if (!this.driver.hasPath || this.driver.remaining() < 30) {
+        const a = this.game.rng() * Math.PI * 2;
+        const r = 60 + this.game.rng() * 180;
+        const to = g.nearestNode(centre.x + Math.cos(a) * r, centre.z + Math.sin(a) * r);
+        this._routeTo(to.id, 2.0);
+      }
+      return this.driver.followPath(dt, 30);
+    }
+
+    const v = this.vehicle;
+    const road = this.game.graph.nearestEdge(v.position.x, v.position.z);
+    const out = road ? road.dist - road.edge.width * 0.5 : 0;
+    // In at the top of the lane -- or anywhere nearer with a straight, clear
+    // run to it from right here, which also covers a unit already out on
+    // open ground heading for the next spot across the same field. Committed
+    // once started, so a unit that has left the road does not turn back for it
+    // the moment a hedge gets in the way.
+    if (spot.offRoad && !spot.direct) {
+      if (this.distanceTo(spot.entry) < 15) spot.direct = true;
+      else if (this.distanceTo(spot) < 90) {
+        this._runTimer = (this._runTimer || 0) - dt;
+        if (this._runTimer <= 0) {
+          this._runTimer = 0.3;
+          if (this._runClear(v.position.x, v.position.z, spot.x, spot.z)) spot.direct = true;
+        }
+      }
+    }
+    // Only for a unit that went in on purpose. One that ran wide on a corner on
+    // its way somewhere is cutting the corner, and the road route has it.
+    if (spot.direct) this._wentIn = true;
+    const leaving = !spot.direct && out > 6 && this._wentIn;
+    this._recordWayIn(road, out, leaving);
+    this._mode = spot.direct ? 'field' : leaving ? 'leaving' : 'road';
+    if (spot.direct) return this._driveDirect(dt, spot, SEARCH_OFF_ROAD);
+
+    // Leaving a field for somewhere further off: out the way it came in. The
+    // nearest bit of road is very often on the far side of a house -- on
+    // Wexbury, behind a row of back gardens -- and heading straight for it had
+    // units scraping along house walls; the router's own way out is a straight
+    // line through whatever is in the field, which is a tree. The way in was
+    // clear, because the car just drove it.
+    if (leaving) {
+      // Whatever route it had is gone once it is driving this; plan afresh
+      // back on the road.
+      this.goalNode = null;
+      const way = this._wayIn;
+      if (way && way.length >= 2) {
+        const pts = this._wayOutPts || (this._wayOutPts = []);
+        pts.length = 0;
+        for (let i = way.length - 1; i >= 0; i--) pts.push(way[i]);
+        this.driver.setPath(pts);
+        return this.driver.followPath(dt, SEARCH_OFF_ROAD * 0.9, { lane: false });
+      }
+      // Retraced as far as it goes: the last stretch is to where it left the
+      // road, not to whichever road happens to be nearest.
+      return this._driveDirect(dt, way ? way[0] : road, SEARCH_OFF_ROAD * 0.8);
+    }
+
+    // Along the road to it at a searching pace, on a route that runs past it
+    // (to the far end of its stretch of road) so there is no last straight
+    // dash at a point: that dash is how units at 80 km/h ran wide off a bend.
+    // Slowing for the turn off as well: the road planner brakes for bends,
+    // not for a gateway half way along a straight.
+    const toTurn = this.distanceTo(spot.entry);
+    const pace = spot.offRoad ? clamp(12 + (toTurn - 20) * 0.25, 12, SEARCH_PACE) : SEARCH_PACE;
+    // Already on that stretch: straight on to its far end.
+    if (!spot.along && road && road.edge === spot.edge) spot.along = true;
+    const goal = spot.along ? spot.far : spot.near;
+    if (!this.driver.hasPath || this.goalNode !== goal) {
+      if (!this._routeTo(goal, 2.4)) return this._goTo(dt, spot.entry, 0.5);
+    }
+    if (this.driver.remaining() < 8) {
+      if (!spot.along) {
+        // At the near end: now along it.
+        spot.along = true;
+        this.driver.setPath([]);
+      } else {
+        // The far end, without passing close enough: it was on the wrong side
+        // of something. Somewhere else.
+        this._searchSpot = null;
+        this.driver.setPath([]);
+      }
+    }
+    return this.driver.followPath(dt, pace);
+  }
+
+  /**
+   * Keep `_wayIn`: the line this car has driven since it last left the road,
+   * starting from the road. Grows while the unit is heading into open ground,
+   * shrinks behind it as it drives back out, and loops are cut out as they
+   * close so the way back is never longer than it needs to be.
+   */
+  _recordWayIn(road, out, leaving) {
+    const v = this.vehicle;
+    if (out < 3 || !road) { this._wayIn = null; this._wentIn = false; return; }
+    let way = this._wayIn;
+    if (!way) way = this._wayIn = [{ x: road.x, z: road.z }];
+    const px = v.position.x, pz = v.position.z;
+    if (leaving) {
+      while (way.length > 1) {
+        const last = way[way.length - 1];
+        if (dist2(last.x, last.z, px, pz) > 5) break;
+        way.pop();
+      }
+      return;
+    }
+    const last = way[way.length - 1];
+    if (dist2(last.x, last.z, px, pz) < 3) return;
+    for (let i = 0; i < way.length - 2; i++) {
+      if (dist2(way[i].x, way[i].z, px, pz) < 4) { way.length = i + 1; return; }
+    }
+    // A very long way in is rare, and the gap-picking drive is fine for it.
+    if (way.length < 240) way.push({ x: px, z: pz });
+    else this._wayIn = null;
+  }
+
+  /**
+   * Choose somewhere to look. Returns null only when nothing nearby will do.
+   */
+  _pickSearchSpot(centre) {
+    const game = this.game, graph = game.graph, rng = game.rng, v = this.vehicle;
+    const k = game.dispatcher.knowledge;
+    // Near where you vanished at first, then further out as the minutes go by:
+    // you have had time to drive somewhere.
+    const reach = clamp(80 + (k.timeSinceSeen || 0) * 4, 90, 320);
+    const hs = Math.hypot(k.velocity.x, k.velocity.z);
+    const hx = hs > 4 ? k.velocity.x / hs : 0, hz = hs > 4 ? k.velocity.z / hs : 0;
+    const wantOff = rng() < 0.75;
+
+    for (const offWanted of [wantOff, !wantOff]) {
+      const picks = [];
+      for (let i = 0; i < 28; i++) {
+        const a = rng() * Math.PI * 2;
+        const r = Math.max(20, reach * Math.sqrt(rng()));
+        const x = centre.x + Math.cos(a) * r, z = centre.z + Math.sin(a) * r;
+        if (Math.abs(x) > WORLD_HALF - 50 || Math.abs(z) > WORLD_HALF - 50) continue;
+        const e = graph.nearestEdge(x, z);
+        if (!e) continue;
+        const out = e.dist - e.edge.width * 0.5;
+        const offRoad = out > 8 && (!game.sim || game.sim.surfaceAt(x, z) !== 1);
+        if (offRoad !== offWanted) continue;
+        if (offRoad && (out > 150 || this._spotBlocked(x, z))) continue;
+        if ((this._failedSpots || []).some((f) => dist2(f.x, f.z, x, z) < 30)) continue;
+
+        const px = offRoad ? x : e.x, pz = offRoad ? z : e.z;
+        let score = 0;
+        // The way you were going when they lost you.
+        if (hs > 4) score += 45 * ((px - centre.x) * hx + (pz - centre.z) * hz) / (dist2(px, pz, centre.x, centre.z) || 1);
+        // The further from a road, the less likely anyone has looked there.
+        if (offRoad) score += Math.min(out, 70) * 0.5;
+        // Somewhere another searcher is not already going.
+        for (const u of game.dispatcher.units) {
+          const o = u._searchSpot;
+          if (u !== this && o && u.role === ROLE.SEARCH && dist2(o.x, o.z, px, pz) < 70) score -= 80;
+        }
+        // And not the far side of the search from this car.
+        score -= dist2(px, pz, v.position.x, v.position.z) * 0.25;
+        picks.push({ x: px, z: pz, offRoad, entry: { x: e.x, z: e.z }, edge: e.edge, score });
+      }
+      picks.sort((a, b) => b.score - a.score);
+      // Off the road, only somewhere with a straight way in. The best few are
+      // tried; each costs a handful of sweeps.
+      let best = null;
+      for (let i = 0; i < picks.length && i < 6 && !best; i++) {
+        const p = picks[i];
+        if (!p.offRoad) { best = p; break; }
+        const lane = this._laneTo(p.x, p.z);
+        if (lane) {
+          const at = graph.nearestEdge(lane.x, lane.z);
+          if (at) { p.entry = lane; p.edge = at.edge; best = p; }
+        }
+      }
+      if (best) {
+        // The way there: to the nearer end of that stretch of road, then along
+        // it to the other, which runs past the spot.
+        const na = graph.nodes[best.edge.a], nb = graph.nodes[best.edge.b];
+        const aFirst = dist2(na.x, na.z, v.position.x, v.position.z) < dist2(nb.x, nb.z, v.position.x, v.position.z);
+        best.near = aFirst ? na.id : nb.id;
+        best.far = aFirst ? nb.id : na.id;
+        best.along = false;
+        return Object.assign(best, {
+          forX: centre.x, forZ: centre.z, age: 0, progressAt: 0,
+          best: this.distanceTo(best), direct: false,
+        });
+      }
+    }
+    return null;
+  }
+
+  /**
+   * A straight, clear run from a road to an off-road spot, wide enough for
+   * this car: the road end of the shortest one, or null if there is none.
+   *
+   * Without it a unit reached a spot however the gap-picking drive could
+   * manage, and on Wexbury -- houses with back gardens behind them -- that was
+   * scraping along the side of a house at 20 km/h on the way in, and again on
+   * the way out. A spot with a lane to it is driven in along the lane and
+   * out the same way. One without is left alone, and still gets looked at by
+   * whoever checks the spots either side of it.
+   */
+  _laneTo(x, z) {
+    const sim = this.game.sim;
+    if (!sim || !sim.surfaceAt) return null;
+    let best = null, bestLen = Infinity;
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      const dx = Math.sin(a), dz = Math.cos(a);
+      // How far this way the road is, if it is within reach at all.
+      let len = 0;
+      for (let s = 6; s <= 120 && s < bestLen; s += 3) {
+        if (sim.surfaceAt(x + dx * s, z + dz * s) === 1) { len = s; break; }
+      }
+      if (!len) continue;
+      if (!this._runClear(x, z, x + dx * len, z + dz * len)) continue;
+      best = { x: x + dx * (len + 2), z: z + dz * (len + 2) };
+      bestLen = len;
+    }
+    return best;
+  }
+
+  /**
+   * Is the straight run between two ground points clear for this car? Three
+   * thin sweeps a car's width apart: the sweep box is not turned to face its
+   * direction, so one wide box is only wide going one way.
+   */
+  _runClear(x0, z0, x1, z1) {
+    const len = dist2(x0, z0, x1, z1);
+    if (len < 1) return true;
+    const dx = (x1 - x0) / len, dz = (z1 - z0) / len;
+    const side = this.driver.halfWidth + 0.5;
+    const sim = this.game.sim;
+    const y = (sim && sim.heightAt ? sim.heightAt(x0, z0) || 0 : 0) + 0.7;
+    _dirTmp.set(dx, 0, dz);
+    for (const off of [-side, 0, side]) {
+      _origin2.set(x0 - dz * off, y, z0 + dx * off);
+      if (sweepBox(this.game.world, _origin2, _dirTmp, len, SPOT_SOLID, this.vehicle.body, 0.4) < len - 0.5) return false;
+    }
+    return true;
+  }
+
+  /** Is there a building or a tree where a car would have to stand? */
+  _spotBlocked(x, z) {
+    for (const [ox, oz] of SPOT_PROBES) {
+      _eye.set(x + ox, 40, z + oz);
+      if (raycast(this.game.world, _eye, DOWN, 39.5, SPOT_SOLID)) return true;
+    }
+    return false;
   }
 
   /** Head for a fixed world point by road, flat out. */
@@ -277,8 +587,9 @@ export class Officer {
     }
 
     if (this.driver.remaining() < 22) {
-      // Close enough to drive at it directly.
-      return this.driver.driveTo(point, this._chaseSpeed() * 0.8, dt);
+      // Close enough to drive at it directly -- no faster than the caller
+      // asked for the rest of the way.
+      return this.driver.driveTo(point, this._chaseSpeed() * Math.min(0.8, speedFactor), dt);
     }
     return this.driver.followPath(dt, this._chaseSpeed() * speedFactor);
   }
@@ -314,7 +625,13 @@ export class Officer {
     // the corner cutting would be dragged straight back onto the tarmac the
     // moment it began.
     if (this.driver.allowOffRoad) {
-      if (v.speed > 7 || this.offRoadFor < 1.5) return null;
+      // A unit checking a field is meant to be in the field, going slowly
+      // through a gateway or round a hedge. Only one that has actually stopped
+      // there needs pulling out.
+      const hunting = this.role === ROLE.SEARCH
+        && ((this._searchSpot && this._searchSpot.direct) || this._wentIn);
+      if (hunting && (v.speed > 1.5 || this.offRoadFor < 4)) return null;
+      if (!hunting && (v.speed > 7 || this.offRoadFor < 1.5)) return null;
     } else if (this.offRoadFor < 0.35) {
       // A wheel clipping a verge is not worth abandoning a patrol for.
       return null;
@@ -323,6 +640,12 @@ export class Officer {
     const g = this.game.graph;
     const snap = g.nearestEdge(v.position.x, v.position.z);
     if (!snap) return null;
+
+    // A searching unit is often deep in somewhere when this fires -- it was
+    // chasing across the back of an estate when contact went -- and the
+    // straight line to the nearest road from there runs through a house.
+    // It finds its way out the way it would find its way in, and slowly.
+    if (this.role === ROLE.SEARCH) return this._driveDirect(dt, snap, SEARCH_OFF_ROAD * 0.7);
 
     const dir = g.edgeDirection(snap.edge, snap.along, { x: 0, z: 1 });
     if (dir.x * v.forward.x + dir.z * v.forward.z < 0) { dir.x = -dir.x; dir.z = -dir.z; }

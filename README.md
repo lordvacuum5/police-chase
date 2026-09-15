@@ -465,6 +465,62 @@ Ducking behind one building is not an escape. Staying out of sight is. Only
 once the bar empties do they fall back to your last known position, and only
 after that does it become the sixty-second search.
 
+### Searching off the road
+
+*"Make sure the police search off-road."* They did not. A search was a wander
+between road junctions round the last place you were seen, and a car that has
+stopped is only picked out from about sixty metres at three stars — so parking
+in a field, a car park or behind an estate a little way from the road was
+close to a guaranteed escape.
+
+Now each searching unit picks a spot to check and drives to it (`Officer._search`):
+
+* **Where.** Three spots in four are off the road, the further from any road
+  the better, since nobody has looked there; the fourth is a stretch of road,
+  which is still the quickest way to see a car tucked just off one. Spots are
+  spread so two units do not check the same place, lean the way you were
+  heading when contact went, and move further out the longer you have been
+  gone.
+* **Only somewhere with a way in.** An off-road spot is only taken if there is
+  a straight, clear lane to it from a road, swept the width of the car. On
+  Wexbury — houses with back gardens — reaching spots any other way meant
+  scraping along the side of a house on the way in and again on the way out.
+* **Getting there.** Along the roads at a searching pace (80 km/h at most, on
+  a route planned round the bends, that runs along the stretch of road the
+  lane leaves from), slowing for the turn off, then down the lane at 36 km/h.
+  On the road a searching unit keeps to the carriageway like a patrol car: it
+  leaves the road on purpose or not at all, because cutting corners between
+  spots was most of what it hit.
+* **Looking.** Close to the spot, a clear view of it counts: a unit that cannot
+  get any closer does not sit nosing at the fence. One that stops getting
+  closer at all gives up, remembers the place and goes somewhere else.
+* **Leaving.** Out the way it came in — it keeps the line it drove — rather
+  than straight for the nearest road, which on Wexbury is very often through
+  a house.
+
+`tests/search.js` parks the car off the road, tells the force it lost contact
+at the nearest bit of road, switches spotting off so the search runs the whole
+minute, and records where the searching units go. Three stars, five units:
+
+| | hidden | | time off the road | found within the minute | impacts |
+|---|---|---|---|---|---|
+| Ashfield City, 8 places each | 30–60 m from a road | before | 5% | 8 of 8 | 4 |
+| | | now | **27%** | 8 of 8 | **1** |
+| | 60–70 m from a road | before | 2% | **1 of 8** | 4 |
+| | | now | **21%** | **7 of 8** | **2** |
+| Wexbury, 12 places each | 30–60 m from a road | before | 6% | 9 of 12 | 5 |
+| | | now | **29%** | 8 of 12 | **2** |
+| | 60–140 m from a road | before | 4% | **2 of 12** | 5 |
+| | | now | **25%** | **8 of 12** | 5 |
+
+"Found" is a unit inside the stopped-car sight range with a clear line to you.
+Close to a road the old search did about as well — sixty metres of sight covers
+both sides of the road it is driving — but anything further in was effectively
+never looked at, and now is. The impacts are mostly bumps at walking pace; the
+first version of this, which let units reach spots however they could and use
+the ordinary road router between them, had nine and eight on Wexbury, some at
+up to 90 km/h.
+
 ### Braking only for what is in the way
 
 The obstacle sweep casts three swept boxes: one straight ahead and one
@@ -881,8 +937,9 @@ Half the distance, for two extra scenery contacts in two minutes across a
 dozen cars. On Wexbury the nearest unit sits at a median of 21 m with someone
 inside 60 m for 84% of the chase.
 
-Note what is *not* in that change: intercepts, responses to a shout, searches
-and patrols still use the roads. An intercept's whole purpose is to get
+Note what is *not* in that change: intercepts, responses to a shout and patrols
+still use the roads (searches no longer do — see *Searching off the road*). An
+intercept's whole purpose is to get
 somewhere you are not yet, and a unit crossing town to a position you were last
 reported at is genuinely quicker on the network than in a straight line through
 a housing estate.
