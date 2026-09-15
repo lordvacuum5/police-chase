@@ -784,7 +784,7 @@ export class Vehicle {
       if (abs > 0 && braking > 0.02 && w.grounded && Math.abs(this.forwardSpeed) > 2) {
         const grip = SURFACE_TYRES[w.surface] || TYRE_ROAD;
         const bias = s.gripBias ? (w.front ? s.gripBias.front : s.gripBias.rear) : 1;
-        const peak = loadedMu(grip, w.load, w.condition)
+        const peak = loadedMu(grip, w.load, w.condition) * (this.sim.wetGrip || 1)
           * w.load * s.gripScale * bias * this.assist.grip;
 
         // Closed loop on slip ratio, not a fixed cap on torque. A fixed cap
@@ -877,7 +877,7 @@ export class Vehicle {
         hsGrip = 1 + (axle(hs.grip) - 1) * u;
       }
       const f = tyreForces(tyre, Fs, w.slipRatio, w.slipAngle, w.condition,
-        s.gripScale * bias * this.assist.grip * loose * hsGrip, latStiff);
+        s.gripScale * bias * this.assist.grip * loose * hsGrip * (this.sim.wetGrip || 1), latStiff);
       // Fleet braking rubber. Applied to the longitudinal force only, and only
       // while the pedal is down and the force is opposing motion, so it buys
       // stopping distance and nothing else -- a police car does not corner or
@@ -1013,7 +1013,7 @@ export class Vehicle {
     for (const w of this.wheels) {
       if (!w.grounded) continue;
       const loose = w.surface === 0 ? (this.spec.offRoadGrip || 1) : 1;
-      sum += (SURFACE_TYRES[w.surface] || TYRE_ROAD).mu * loose;
+      sum += (SURFACE_TYRES[w.surface] || TYRE_ROAD).mu * loose * (this.sim.wetGrip || 1);
       n++;
     }
     return n ? sum / n : TYRE_ROAD.mu;

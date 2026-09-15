@@ -103,6 +103,11 @@ export function planJunctions(graph) {
     const signal = app.length >= 3
       && app.every((a) => SIGNAL_KINDS.has(a.edge.kind) && !a.edge.turningHead)
       && node.type !== 'roundabout'
+      // Every approach long enough to stop on. A crossroads a few metres from a
+      // roundabout -- the A361 into Wexbury -- has an approach seven metres long,
+      // and its stop lines landed at odd angles in the middle of the junction.
+      // Nobody signals a junction that close to a roundabout anyway.
+      && app.every((a) => a.edge.length >= 24)
       && Math.max(...app.map((a) => a.half)) >= 7;
 
     junctions.push({ node, app, signal });

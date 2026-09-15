@@ -44,7 +44,7 @@ Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
 | `Shift` | Clutch kick (dumps the clutch to break the rear loose) |
 | `C` | Cycle camera — chase / close / bonnet / cinematic |
 | `R` | Flip the car upright, or restart after being busted |
-| `P` | Pause · `H` Controls · `M` Mute · `F3` Debug telemetry |
+| `P` | Pause · `H` Controls · `N` Sound on or off · `M` Back to the menu · `F3` Debug telemetry |
 
 A gamepad works too: left stick steers, triggers are throttle and brake, `A`
 handbrake, `X` clutch kick.
@@ -665,7 +665,10 @@ Junctions with three or more street-grade approaches get signals. Two phases,
 split by bearing — on a crossroads that is exactly the two carriageways — and a
 UK sequence: green 13 s, amber 3 s, all-red 1.7 s, then red-and-amber 1.6 s on
 the other phase. Junctions are staggered by position, so they do not all change
-together.
+together. Not where an approach is shorter than 24 m: the A361 crossroads into
+Wexbury sits seven metres from a roundabout, and its stop lines landed at odd
+angles in the middle of the junction. Nobody signals a junction that close to a
+roundabout anyway, so that one and any like it are left unsignalled.
 
 The head goes on the nearside kerb at the stop line, facing back up the
 approach. With `DRIVE_SIDE = +1` the nearside for arriving traffic works out as
@@ -2092,6 +2095,30 @@ The radio log that used to sit in the bottom right corner is hidden, since
 everything on it is now spoken. It is still written to, so deleting one
 `display: none` in `index.html` brings it back.
 
+## Night and rain
+
+Picked on the menu with two switches under the cars — **DAY / NIGHT** and
+**DRY / RAIN** — and remembered for next time (`src/game/weather.js`).
+
+**Night.** A dark sky and short fog, moonlight in place of the sun, and lights
+that mean something. Your car throws a real headlight beam down the road ahead
+(one spotlight, no shadows); every car on the road has glowing head and tail
+lamps; every street lamp has a halo and a pool of light on the ground under it,
+and goes out if you knock it over; the police light bars glow twice as big and
+the helicopter's searchlight is much brighter — so the police are much easier
+to see coming, and the light on you is much easier to see as well.
+
+**Rain.** Rain falling round the camera — streaks fixed in the world and
+wrapped into a box that follows you, so they fall straight past rather than
+travelling with the car — a grey sky, closer fog, darker wet roads, the sound
+of it, and **20% less grip** for every car on every surface. The police drivers
+plan their braking on the same wet grip (`Vehicle.surfaceMu`), so they find it
+as hard as you do.
+
+Everything that glows is additive points or instanced quads: one draw per kind
+of light however many there are. A real light per street lamp would be hundreds
+of lights, and nothing — least of all a phone — would draw that.
+
 ## Score
 
 A run lasts until you are arrested. Getting away does not end it — the town
@@ -2255,6 +2282,7 @@ src/
     helicopter.js      air support at five stars
     garage.js          the petrol station and its repair bay
     score.js           the score and the best runs
+    weather.js         night and rain
     bodies.js          SUV, van and Badger bodywork, and the police kit
     audio.js           sampled + synthesised engine, tyres, siren, impacts, radio
     camera.js  hud.js  effects.js

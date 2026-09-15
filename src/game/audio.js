@@ -1075,6 +1075,33 @@ export class GameAudio {
     this.radioFreeAt = end + 0.3;
   }
 
+  /**
+   * Rain: two layers of filtered noise -- a broad hiss for the rain in the air
+   * and a lower, rougher band for it drumming on the car. Started the first
+   * frame the audio is running with `rainLevel` set; stays for the drive.
+   */
+  _startRain() {
+    const ctx = this.ctx;
+    this.rainGain = ctx.createGain();
+    this.rainGain.gain.value = 0.0001;
+    this.rainGain.connect(this.master);
+    const layer = (type, freq, q, level) => {
+      const src = ctx.createBufferSource();
+      src.buffer = this.noiseBuffer;
+      src.loop = true;
+      src.playbackRate.value = 0.7 + Math.random() * 0.3;
+      const f = ctx.createBiquadFilter();
+      f.type = type; f.frequency.value = freq; f.Q.value = q;
+      const g = ctx.createGain();
+      g.gain.value = level;
+      src.connect(f); f.connect(g); g.connect(this.rainGain);
+      src.start(ctx.currentTime + Math.random() * 0.5);
+    };
+    layer('highpass', 2600, 0.5, 0.9);
+    layer('bandpass', 900, 0.7, 0.55);
+    this.rainGain.gain.setTargetAtTime(0.05 * this.rainLevel, ctx.currentTime, 1.2);
+  }
+
   toggleMute() {
     this.muted = !this.muted;
     // Drop anything still queued, or unmuting fires off a backlog of calls
@@ -1128,6 +1155,7 @@ export class GameAudio {
     const smooth = 0.045;
 
     this._pumpRadio();
+    if (this.rainLevel > 0 && !this.rainGain) this._startRain();
     this._pumpNetNoise(dt);
 
     // ---- engine ----------------------------------------------------------

@@ -21,6 +21,7 @@ import { TrafficLights, SIGNAL } from './game/trafficlights.js';
 import { StreetProps } from './game/streetprops.js';
 import { Garage } from './game/garage.js';
 import { Score } from './game/score.js';
+import { Weather } from './game/weather.js';
 import { ChaseCamera } from './game/camera.js';
 import { Hud } from './game/hud.js';
 import { Input } from './core/input.js';
@@ -142,6 +143,9 @@ class Game {
     // Props first: the signals hand their posts to it to be knocked over.
     this.props = new StreetProps(this);
     this.signals = new TrafficLights(this);
+    // Night and rain, as chosen on the menu. After the props, whose lamp posts it lights.
+    this.weather = new Weather(this);
+    this.weather.lightStreets(this.props);
     // The police talking about what is going on. Reads everything above; decides nothing.
     this.commentary = new Commentary(this);
     this.hud = new Hud(this);
@@ -155,6 +159,7 @@ class Game {
     // A finger going down does not count as that interaction in the spec --
     // only lifting it does -- so phones need pointerup and touchend too.
     this.audio = new GameAudio();
+    this.audio.rainLevel = this.weather.rain ? 1 : 0;
     const wake = () => this.audio.resume();
     window.addEventListener('keydown', wake);
     window.addEventListener('pointerdown', wake);
@@ -748,7 +753,8 @@ class Game {
     if (i.tapped('KeyP')) this.paused = !this.paused;
     if (i.tapped('KeyH')) this.hud.toggleHelp();
     if (i.tapped('KeyC')) this.camera3.cycle();
-    if ((i.tapped('KeyM') || i.tapped('Mute')) && this.audio) {
+    // N, not M: M is the menu, and was checked first, so muting could never happen.
+    if ((i.tapped('KeyN') || i.tapped('Mute')) && this.audio) {
       this.radio(this.audio.toggleMute() ? '[sound] muted' : '[sound] on');
     }
     if (i.tapped('F3')) {
@@ -808,6 +814,7 @@ class Game {
 
     this._updateSkids(dt);
     this.camera3.update(dt, player);
+    this.weather.update(dt);
 
     // Camera shake and a thud on a real hit.
     if (player.lastImpactAt && performance.now() - player.lastImpactAt < 40) {

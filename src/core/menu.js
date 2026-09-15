@@ -7,6 +7,7 @@
 import { MAPS } from '../world/maps.js';
 import { prefersTouch } from './touch.js';
 import { bestScores } from '../game/score.js';
+import { chosenConditions, setConditions } from '../game/weather.js';
 import { makeRng, TAU } from '../util/math.js';
 import {
   englishVoices, pickVoices, voiceChoices, setVoiceChoice, speakSample, SPEAKER_NAMES,
@@ -84,6 +85,7 @@ export function showMenu(onPick) {
   holder.innerHTML = '';
   menu.classList.remove('gone');
   buildCarCards();
+  buildConditions();
   buildBestScores();
   buildVoicePicker();
   if (prefersTouch()) {
@@ -195,6 +197,34 @@ function buildCarCards() {
     c.classList.toggle('chosen', on);
     c.setAttribute('aria-checked', on ? 'true' : 'false');
   }
+}
+
+/** Day or night, dry or rain: two switches, remembered for next time. */
+function buildConditions() {
+  const holder = document.getElementById('conditions');
+  if (!holder) return;
+  holder.innerHTML = '';
+  const cond = chosenConditions();
+  const seg = (key, options) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'seg';
+    const buttons = options.map(([label, value]) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      b.addEventListener('click', () => {
+        cond[key] = value;
+        setConditions(cond);
+        for (const x of buttons) x.classList.toggle('on', x === b);
+      });
+      b.classList.toggle('on', cond[key] === value);
+      wrap.appendChild(b);
+      return b;
+    });
+    holder.appendChild(wrap);
+  };
+  seg('night', [['DAY', false], ['NIGHT', true]]);
+  seg('rain', [['DRY', false], ['RAIN', true]]);
 }
 
 /** The best five runs so far, if there are any. */

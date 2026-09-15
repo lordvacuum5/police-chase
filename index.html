@@ -267,6 +267,17 @@
   #track.fading #tracktrack { border-color: rgba(87,210,255,.5); box-shadow: 0 0 18px rgba(87,210,255,.25); }
   #track.fading #trackfill { background: linear-gradient(90deg, #9fe8ff, #29b6ff); }
 
+  /* ---- time and weather ---- */
+  #conditions { display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap; justify-content: center; }
+  .seg { display: flex; border: 1px solid var(--edge); border-radius: 8px; overflow: hidden; background: rgba(14,20,28,.82); }
+  .seg button {
+    background: transparent; color: var(--dim); border: 0; font: inherit; font-size: 11px;
+    letter-spacing: 2px; padding: 8px 16px; cursor: pointer;
+  }
+  .seg button + button { border-left: 1px solid var(--edge); }
+  .seg button.on { color: var(--ink); background: rgba(78,163,255,.22); box-shadow: inset 0 -2px 0 var(--blue); }
+  .seg button:focus-visible { outline: 1px solid var(--blue); outline-offset: -2px; }
+
   /* ---- score ---- */
   #score { margin-top: 6px; font-size: 11px; color: var(--dim); letter-spacing: 1px; }
   #score b { color: var(--ink); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -481,8 +492,8 @@
           <td class="k"><kbd>P</kbd></td><td>Pause</td></tr>
       <tr><td class="k"><kbd>H</kbd></td><td>This help</td>
           <td class="k"><kbd>F3</kbd></td><td>Debug overlay</td></tr>
-      <tr><td class="k"><kbd>M</kbd></td><td>Mute sound</td>
-          <td class="k"></td><td></td></tr>
+      <tr><td class="k"><kbd>N</kbd></td><td>Sound on / off</td>
+          <td class="k"><kbd>M</kbd></td><td>Back to the menu</td></tr>
     </table>
   </div>
 
@@ -520,6 +531,7 @@
   <h1>POLICE CHASE</h1>
   <div class="menusub">CHOOSE YOUR CAR</div>
   <div id="cars" role="radiogroup" aria-label="Car"></div>
+  <div id="conditions" role="group" aria-label="Conditions"></div>
   <div class="menusub" id="menusub">CHOOSE YOUR GROUND</div>
   <div id="maps"></div>
   <div id="bestwrap" hidden>

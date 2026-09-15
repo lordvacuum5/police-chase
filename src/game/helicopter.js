@@ -331,7 +331,8 @@ export class Helicopter {
         _axis.subVectors(_to, _from).normalize();
         beam.quaternion.setFromUnitVectors(UP, _axis);
         beam.scale.set(1, len / BEAM_LEN, 1);
-        beam.material.opacity = this.spotlight * 0.12;
+        const boost = this.game.weather ? this.game.weather.lightBoost : 1;
+        beam.material.opacity = Math.min(0.5, this.spotlight * 0.12 * boost);
       }
     }
     if (pool) {
@@ -339,7 +340,7 @@ export class Helicopter {
       pool.visible = on;
       if (on) {
         pool.position.set(this.beam.x, 0.07, this.beam.z);
-        pool.material.opacity = this.spotlight * 0.30;
+        pool.material.opacity = Math.min(0.8, this.spotlight * 0.30 * (this.game.weather ? this.game.weather.lightBoost : 1));
       }
     }
   }
