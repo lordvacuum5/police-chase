@@ -542,6 +542,51 @@ exist to say which side has more room, and that is all they do:
 
 Faster, closer, and no more likely to hit anything — the braking was pure loss.
 
+### Seeing far enough to go fast
+
+*"Even on wanted level five, I can just floor it on a straight road, and they
+will just lag behind so far. How fast can the police cars go?"* Faster than the
+car asking, as it turns out. Flat out on the flat plate, with nothing in the
+way and no corner to take:
+
+| | 0–100 km/h | top speed |
+|---|---|---|
+| Stiletto (the fast one) | 5.05 s | 240 km/h |
+| Runner | 7.37 s | 215 km/h |
+| Patrol | 6.38 s | 230 km/h |
+| Interceptor | 5.93 s | 241 km/h |
+| Unmarked | 5.52 s | 247 km/h |
+
+So the cars were never the problem. The problem was that a police driver may
+only go as fast as it can stop in what it can see, and it could only see 70 m.
+That is an arithmetic speed limit: 63 usable metres at a police car's braking
+gives about **206 km/h**, and no amount of open motorway in front of it made
+any difference. A supercar at 240 simply left.
+
+The probe now reaches as far as the speed actually requires — the car's own
+stopping distance plus a margin, out to 220 m — so on genuinely open road the
+rule stops binding at all, which is the right answer to "is there anything to
+slow down for". Nothing else changed: same engines, same grip, same braking.
+`tests/straightline.js` puts a unit 60 m behind a Stiletto held flat out, on
+open road, for 30 s:
+
+| chasing a Stiletto at 240 km/h | before | now |
+|---|---|---|
+| Patrol — gap after 30 s | 285 m | 113 m |
+| Interceptor — gap after 30 s | 193 m | **66 m** |
+| Unmarked — gap after 30 s | 214 m | **43 m, still closing** |
+| what the interceptor settles at | 203 km/h | **247 km/h** |
+
+In a full chase it shows up as the pursuit simply being *there*: over four
+runs at four stars the nearest unit sat 6–26 m away instead of 90, with no
+more scenery contacts (0.6 per minute) and no change in frame time — nine
+units at five stars cost 3.85 ms a frame with the long probes against 4.15 ms
+with the old ones, which is to say the rays are free and the braking was not.
+
+What the Stiletto keeps is cornering: 1.57 g at 60 km/h and 1.91 g at 170,
+against a police car's 1.30. It is no longer a car you escape in a straight
+line; it is a car you escape in the bends.
+
 ### Cones
 
 Roadblock cones are dynamic bodies of about 2.5 kg in their own collision

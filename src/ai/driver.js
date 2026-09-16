@@ -354,13 +354,30 @@ export class Driver {
     if (this._clearTimer <= 0) {
       this._clearTimer = 3;
 
+      // How far ahead this car has to be able to see: the distance it would
+      // need to stop from the speed it is doing, plus a margin.
+      //
+      // This used to be a flat 70 m, which is its own speed limit and a low
+      // one. A car that can only see 70 m may only go as fast as it can stop
+      // in 63 of them, and for a police car that is about 200 km/h -- so on a
+      // motorway with nothing in front of them for a kilometre, units sat at
+      // 200 while a supercar walked away at 240. "Even on wanted level five, I
+      // can just floor it on a straight road, and they will just lag behind."
+      // Looking as far as the speed actually requires costs a longer ray and
+      // nothing else, and on genuinely open road the rule stops binding at
+      // all -- which is the correct answer to "is there anything to slow for".
+      const need = clamp(7 + (v.speed * v.speed) / (2 * aBrake) + 25, 70, 220);
+
       // Probe toward where we are actually going, not along the nose. A nose
       // probe reads the building on the outside of every corner as a wall to
       // brake for, and the unit crawls round the city at 30 km/h.
       _probe.set(aimX - v.position.x, 0, aimZ - v.position.z);
       if (_probe.lengthSq() < 1) _probe.copy(v.forward);
       _probe.normalize();
-      this._clear = this.clearAhead(_probe, Math.min(70, aimDist + 25));
+      // Deliberately not cut short at the aim point any more: the aim point in
+      // a pursuit is a moving car, and the road beyond it is the road this
+      // car is about to be driving.
+      this._clear = this.clearAhead(_probe, need);
 
       // And a second probe along the direction the car is genuinely
       // travelling. The aim probe answers "is the way I want to go clear";
@@ -370,7 +387,7 @@ export class Driver {
       // the strength of a clear line to the target, the target turns, and the
       // unit arrives at the junction far too fast to take it.
       this._travelDir(_probe);
-      this._clearTravel = this.clearAhead(_probe, RUNOUT_PROBE);
+      this._clearTravel = this.clearAhead(_probe, Math.max(RUNOUT_PROBE, need));
       this._runout = this.roadRunout(RUNOUT_PROBE);
     }
 
