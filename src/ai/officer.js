@@ -44,7 +44,30 @@ export const ROLE = {
   DISABLED: 'disabled',
 };
 
-let nextCallsign = 1;
+/**
+ * Callsigns are a pool, not a counter.
+ *
+ * A force of nine cars that has been running for ten minutes had got to U50 and
+ * beyond, because every car that came on and went off again took its number
+ * with it: "it will start saying, unit fifty-one, going for a PIT". Numbers now
+ * come back when a car is retired, so the board reads U1 to U12 all night and a
+ * callsign means "one of the cars out there" rather than "how many have ever
+ * been out there".
+ */
+const takenCallsigns = new Set();
+
+function claimCallsign() {
+  for (let i = 1; i < 200; i++) {
+    if (takenCallsigns.has(i)) continue;
+    takenCallsigns.add(i);
+    return { id: i, text: 'U' + i };
+  }
+  return { id: 0, text: 'U0' };
+}
+
+export function releaseCallsign(id) {
+  if (id) takenCallsigns.delete(id);
+}
 
 export class Officer {
   constructor(game, vehicle, opts = {}) {
@@ -53,7 +76,13 @@ export class Officer {
     this.skill = opts.skill || SKILL.regular;
     this.driver = new Driver(vehicle, this.skill);
     this.kind = opts.kind || 'patrol';
-    this.callsign = opts.callsign || ('U' + (nextCallsign++));
+    if (opts.callsign) {
+      this.callsign = opts.callsign;
+    } else {
+      const cs = claimCallsign();
+      this.callsign = cs.text;
+      this.callsignId = cs.id;
+    }
 
     this.role = ROLE.PATROL;
     this.orders = {};
@@ -141,6 +170,14 @@ export class Officer {
       return;
     }
     this.recoverTimer = 0;
+
+    // It is over: everybody stops. The screen says you have been arrested, and
+    // behind it the chase used to carry on -- cars still driving at a car that
+    // is not going anywhere, boxes still forming, the radio still working.
+    if (this.game.outcome === 'busted') {
+      v.setControls({ throttle: 0, brake: 1, steer: 0, handbrake: 1 });
+      return;
+    }
 
     // Making the arrest: stay put. A unit that has the suspect stopped against
     // it used to carry on doing whatever its role said -- reversing out of the

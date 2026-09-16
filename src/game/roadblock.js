@@ -23,7 +23,8 @@ import { SPECS } from './vehicles.js';
 import { dist2, clamp } from '../util/math.js';
 
 const MAX_BLOCKS = 2;
-const SPAWN_MIN = 170, SPAWN_MAX = 260;   // metres ahead to look for a site
+/** Closest and furthest a site may be, in metres; the window itself scales with speed (see _findSite). */
+const SPAWN_MIN = 170, SPAWN_MAX = 260;
 const DESPAWN = 200;                      // metres behind before it is removed
 const MIN_APART = 220;
 
@@ -131,12 +132,35 @@ export class RoadblockManager {
     if (Math.hypot(dx, dz) < 4) { dx = target.forward.x; dz = target.forward.z; }
     const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
 
+    // How far ahead to look, in seconds of the target's own driving rather
+    // than in metres. At 240 km/h a fixed 170-260 m window is under four
+    // seconds away -- by the time the block exists the car is past it, which
+    // is exactly the "roadblock keeps appearing behind me because I was going
+    // really fast" case. At a crawl the same seconds would put it half a mile
+    // off, so the old metres are the floor.
+    const sp = Math.max(target.speed, 8);
+    const near = clamp(sp * 3.4, SPAWN_MIN, 520);
+    const far = clamp(sp * 6.0, SPAWN_MAX, 760);
+
+    // And how straight ahead it has to be. A site is only useful on the road
+    // the car is actually going to be on, and the faster it is going the less
+    // likely it is to turn off: at 30 km/h any road off this junction is fair
+    // game, at 200 there is only one road it is going to be on.
+    // Not too tight: a real road bends, so a junction 300 m up it is rarely
+    // dead ahead of where the nose is pointing this instant. Tight enough to
+    // rule out the side roads and the way back.
+    const cone = clamp(0.5 + sp * 0.006, 0.5, 0.8);
+
     const reach = g.reachable(target.position.x, target.position.z, dx, dz, 30, 0.9);
     const candidates = [];
     for (const [id, rec] of reach) {
       const n = g.nodes[id];
       const d = dist2(n.x, n.z, target.position.x, target.position.z);
-      if (d < SPAWN_MIN || d > SPAWN_MAX) continue;
+      if (d < near || d > far) continue;
+      // Reachable going forwards is not the same as in front: a loop round the
+      // block reaches nodes behind the car quite legitimately, and a block put
+      // down there is one the player has already driven past.
+      if (((n.x - target.position.x) * dx + (n.z - target.position.z) * dz) < d * cone) continue;
 
       let clash = false;
       for (const b of this.blocks) {

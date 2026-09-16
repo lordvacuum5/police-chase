@@ -12,7 +12,7 @@ import { MAPS, mapById } from './world/maps.js';
 import { showMenu, hideMenu, chosenCar } from './core/menu.js';
 import { DRIVE_SIDE } from './world/roadgraph.js';
 import { Dispatcher } from './ai/dispatcher.js';
-import { Officer, ROLE } from './ai/officer.js';
+import { Officer, ROLE, releaseCallsign } from './ai/officer.js';
 import { Driver, SKILL } from './ai/driver.js';
 import { Heat } from './game/heat.js';
 import { RoadblockManager } from './game/roadblock.js';
@@ -102,6 +102,9 @@ class Game {
     this.quality = 2;          // 2 = shadows on, 1 = no shadows, 0 = reduced resolution
     this.geometryCache = new Map();
     this.outcome = null;
+    // Published for the dispatcher, which thins the roster harder as the board
+    // fills up (see _manageRoster).
+    this.vehicleLimit = MAX_VEHICLES;
     this.clock = 0;            // game seconds, for anything timed on the radio
     this.phrases = new Phrasebook();
   }
@@ -382,7 +385,11 @@ class Game {
   }
 
   spawnPoliceNear(target, tier) {
-    if (this.vehicles.length >= MAX_VEHICLES) return null;
+    // Four slots held back for a roadblock. The pursuit will happily fill the
+    // board on its own -- every block the player beats hands it three more
+    // cars -- and when it does, `createVehicle` starts refusing, which shows
+    // up as roadblocks that are called on the radio and then are not there.
+    if (this.vehicles.length >= MAX_VEHICLES - 4) return null;
     const g = this.graph;
     const minD = tier === 0 ? 130 : 210;
     const maxD = tier === 0 ? 360 : 520;
@@ -604,15 +611,18 @@ class Game {
 
       const v = this.createVehicle('van', 'van', pos, heading, { police: true });
       v.lampPhase = this.rng();
-      // Already rolling at them, so the whole run is spent accelerating rather
-      // than pulling away from a standstill.
-      v.setVelocity({ x: Math.sin(heading) * 16, y: 0, z: Math.cos(heading) * 16 });
+      // Already up to a fair speed at them, so the whole run is spent
+      // accelerating rather than pulling away from a standstill: three and a
+      // half tonnes takes its time, and the meeting is only seconds off.
+      v.setVelocity({ x: Math.sin(heading) * 24, y: 0, z: Math.cos(heading) * 24 });
       return new Officer(this, v, { skill: SKILL.advanced, kind: 'van' });
     }
     return null;
   }
 
   despawnPolice(officer) {
+    // The number goes back in the pool for the next car on.
+    releaseCallsign(officer.callsignId);
     this.removeVehicle(officer.vehicle);
   }
 

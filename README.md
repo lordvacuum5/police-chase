@@ -1290,8 +1290,17 @@ graph the dispatcher uses to solve intercepts, so a block only ever goes in
 somewhere you are actually heading, and driving unpredictably is a real defence
 against them.
 
-They go in 170–260 m ahead, close enough that you have little time to re-plan,
-and are taken away once you are 200 m past. Distance alone did not keep them
+They go in **four to six seconds ahead of you**, not a fixed number of metres:
+the window starts at 170–260 m and scales with your speed, out to 520–760 m.
+A fixed window is a speed limit on the tactic — at 240 km/h, 260 m is under
+four seconds away, and the block was going in behind a car that had already
+gone past: *"the roadblock keeps on appearing behind me because I was going
+really fast."* The same reasoning tightens the cone a site has to sit in: at a
+crawl any road off the junction ahead is fair game, at 200 km/h there is
+realistically one road you are going to be on, so sites off to the side are
+dropped. Measured at 180 and 240 km/h, blocks now go in 172–193 m up the road
+and 4.6–6.1 seconds ahead, on the road being driven. They are taken away once
+you are 200 m past. Distance alone did not keep them
 out of sight — on a straight road 160 m is plainly visible, and four cars and a
 line of cones appearing there was the most obvious spawn in the game — so a
 site is only used if the camera cannot see the middle of the block or either
@@ -1370,6 +1379,8 @@ to turn out of is just a parked van:
 * **Only on a road you are committed to.** The dispatcher tracks how long you
   have held a heading (`_trackCourse`) — a steady curve counts, a turn at a
   junction resets it — and wants three seconds of it plus 80 km/h.
+* **Already doing 86 km/h when it appears** — three and a half tonnes takes
+  its time, and the meeting is only seconds off.
 * **Sited 190–400 m ahead**, aiming for about 260: far enough to build speed
   and to be seen coming, near enough that the meeting happens on this stretch
   of road. Out of sight if there is anywhere out of sight, and never closer
@@ -1460,6 +1471,12 @@ arrest it had started. Now any unit within 3 m of a stopped suspect, or within
 (`Officer._holdingArrest`). Three cars driven in against a stopped car: all
 three at a standstill within a second, and the arrest after exactly 5.0 s.
 
+**And once it is over, everybody stops.** The radio has always said *"all
+units, stand down"* at the arrest; behind the overlay the chase used to carry
+on regardless — cars still driving at a car that is not going anywhere, boxes
+still forming. Every unit now sits on its brakes the moment the outcome is
+`busted`. Measured: seven units moving at the arrest, none a second later.
+
 ### Getting away
 
 Getting arrested is an ending. Getting away is not, and it used to be: escaping
@@ -1476,10 +1493,42 @@ have before any of it started. Drive badly in front of one and it will.
 The roster comes back down with it. A five-star response is nine cars and an
 ambient patrol is three, and nothing used to reduce that except the rule that
 retires a unit 900 m away, so the town stayed full of police long after they
-had stopped looking for you. Surplus units are now retired furthest-first, one
-every couple of seconds, and only once a car is 260 m away or 110 m away and
-out of sight — the force thins out over the next half minute rather than
-blinking out in front of you.
+had stopped looking for you. Surplus units are now retired furthest-first, and
+only once a car is far enough off or out of sight — the force thins out over
+the next half minute rather than blinking out in front of you. **How hard that
+bites scales with the excess**: one spare car is a straggler and gets the
+patient treatment, five is a crowd, and the crowd goes quickly (160 m, or 70 m
+and out of sight, up to every half second).
+
+That matters because the board has a hard limit of eighteen vehicles, and a
+long chase fills it: every roadblock you beat releases its crews into the
+pursuit, and they are not counted when deciding whether to send more. Once the
+limit is reached, nothing else can be built — including the next roadblock,
+which gets called on the radio and then simply is not there: *"I couldn't see
+half the roadblocks because there were too many police cars."* Four slots are
+now held back from pursuit spawns for exactly that reason.
+
+**A roster that never let go.** Underneath all of that was a one-line bug of my
+own making: `retire` destroyed the car but never removed the officer from the
+roster. The unit stayed on the books forever with no car under it — counted
+against the budget so no replacement was sent, drawn on the minimap, and still
+talking on the radio. It read exactly as reported: *"there were like 50
+supposedly chasing me. I couldn't actually see them."* Over a 90-second
+five-star chase, before and after the line went back in:
+
+| | before | after |
+|---|---|---|
+| units on the board, peak | 19 | **12** |
+| vehicles, peak (the limit is 18) | 18 | **13** |
+| average over the nine-car budget | 10 | **0.1** |
+| units with a destroyed car still listed | many | **0** |
+
+**Callsigns are a pool, not a counter.** They used to count up forever, so a
+chase that had been running a while was dispatching U47 and U51 — *"it will
+start saying, unit fifty-one, going for a PIT"*. A number now goes back in the
+pool when its car is retired, so the board reads U1 to U12 all night and a
+callsign means "one of the cars out there" rather than "how many have ever
+been out there".
 
 Measured: five units at three stars, heat clear 68 s after they lose contact,
 every remaining unit on patrol, and the roster back to the ambient count within

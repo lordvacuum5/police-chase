@@ -327,16 +327,32 @@ export class Dispatcher {
     // They are not deleted where you can see them. One at a time, furthest
     // first, and only once it is far enough away or out of sight -- so the
     // force thins out over the next half minute instead of blinking out.
+    // The further over budget, the harder this bites. A chase that has been
+    // going a while collects cars: every roadblock the player beats releases
+    // its crews into the pursuit, and they are not counted when deciding
+    // whether to spawn more. Left gentle, the board reached the game's hard
+    // limit of eighteen vehicles, and then nothing else could be built --
+    // including the next roadblock, which simply did not appear: "I couldn't
+    // see half the roadblocks because there were too many police cars."
+    //
+    // They are still never deleted in front of the player: furthest first, and
+    // only once far enough away or out of sight. What changes with the excess
+    // is how often, and how close is close enough to count as gone.
     const live = this.units.filter((u) => !u.vehicle.disabled && u.role !== ROLE.HOLD);
-    if (live.length > want && this.trimTimer <= 0) {
+    const over = live.length - want;
+    if (over > 0 && this.trimTimer <= 0) {
       let pick = null, pickD = 0;
       for (const u of live) {
         const d = u.distanceTo(target.position);
         if (d <= pickD) continue;
         pick = u; pickD = d;
       }
-      if (pick && (pickD > 260 || (pickD > 110 && !this._visibleTo(pick, target)))) {
-        this.trimTimer = 2.2;
+      // One spare car is a straggler; five is a crowd nobody can see anyway.
+      const nearLimit = this.game.vehicles.length >= this.game.vehicleLimit - 4;
+      const gap = over >= 3 || nearLimit ? 160 : 260;
+      const hidden = over >= 3 || nearLimit ? 70 : 110;
+      if (pick && (pickD > gap || (pickD > hidden && !this._visibleTo(pick, target)))) {
+        this.trimTimer = clamp(2.2 / over, 0.5, 2.2);
         this.retire(pick);
       }
     }
@@ -772,10 +788,15 @@ export class Dispatcher {
 
   /** Remove a unit from the board and from the world. */
   retire(unit) {
+    // Off the board first. Without this the officer stays on the roster with
+    // its car destroyed underneath it: it still counts against the budget, so
+    // no replacement is sent; it still shows on the minimap and still talks on
+    // the radio. "There were like 50 supposedly chasing me. I couldn't
+    // actually see them."
     const i = this.units.indexOf(unit);
+    if (i >= 0) this.units.splice(i, 1);
     if (this.blockUnit === unit) this.blockUnit = null;
     if (this.rhinoUnit === unit) this.rhinoUnit = null;
-    if (this.blockUnit === unit) this.blockUnit = null;
     if (this.activePit === unit) this.activePit = null;
     // A boxing unit is held by the assignment as well. Leaving it there means
     // _updateBox keeps reading the position of a car that has been removed
