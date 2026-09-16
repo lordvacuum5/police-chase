@@ -102,7 +102,6 @@ class Game {
     this.quality = 2;          // 2 = shadows on, 1 = no shadows, 0 = reduced resolution
     this.geometryCache = new Map();
     this.outcome = null;
-    this.playerTrail = [];
     this.clock = 0;            // game seconds, for anything timed on the radio
     this.phrases = new Phrasebook();
   }
@@ -679,7 +678,6 @@ class Game {
     this.player.repair();
     this.player.teleport(this.startPlace.position, this.startPlace.heading);
     this.skids.clear();
-    this.playerTrail.length = 0;
     this.hud.clearMessages();
     this.camera3.snapTo(this.player);
     this.say('routine', [
@@ -773,35 +771,6 @@ class Game {
     }
   }
 
-  /**
-   * Where the player has been: a point every couple of metres, the last few
-   * hundred metres of it. Pursuing units drive it (Officer._followTrail), so a
-   * car close behind goes where the player went instead of cutting through
-   * whatever stood on the inside of the corner. A jump bigger than a car can
-   * drive in a frame -- flipped upright, a restart -- starts a fresh trail.
-   */
-  _recordTrail() {
-    const p = this.player.position;
-    const t = this.playerTrail;
-    const last = t[t.length - 1];
-    if (last) {
-      const d = Math.hypot(p.x - last.x, p.z - last.z);
-      if (d > 30) t.length = 0;
-      else if (d < 2.5) return;
-    }
-    // Where the line comes back on itself, the loop between is thrown away:
-    // it is somewhere you went and came out of again, and driving it is
-    // pointless. Pulling into the repair bay and reversing out left the whole
-    // pursuit turning into the forecourt after you -- "I went into the repair
-    // station and backed out, and then they all started trying to go into the
-    // repair station" -- and so did any doubling back on yourself.
-    for (let i = 0; i < t.length - 2; i++) {
-      if (Math.hypot(t[i].x - p.x, t[i].z - p.z) < 7) { t.length = i + 1; break; }
-    }
-    t.push({ x: p.x, z: p.z });
-    if (t.length > 170) t.splice(0, t.length - 170);
-  }
-
   _update(dt) {
     this.clock += dt;
     const player = this.player;
@@ -830,8 +799,6 @@ class Game {
     this._checkRedLight();
 
     // ---- physics ----
-    this._recordTrail();
-
     this.accumulator += dt;
     let steps = 0;
     this.world.timestep = FIXED;

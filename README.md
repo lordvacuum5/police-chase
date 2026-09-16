@@ -944,40 +944,41 @@ somewhere you are not yet, and a unit crossing town to a position you were last
 reported at is genuinely quicker on the network than in a straight line through
 a housing estate.
 
-### Following you, not the straight line
+### They do not copy your line — tried, removed
 
-*"If they are close behind me and in pursuit then just make them follow me."*
-The straight line is right on an open road and wrong in one specific place:
-you put the car through a gap — between two buildings, between two trees —
-and the line from the car behind you to your car goes through the building.
-So the game keeps a breadcrumb trail of where you have actually driven, a
-point every 2.5 m, and a unit that is **right behind you with no clear line to
-you** drives your line instead: through the same gap, at a speed the path
-planner works out from the trail's own bends.
+A unit that cannot see the car drives at it anyway, picking its way through
+whatever is in between (above), and that is all it does. There was a version
+that did something else: the game kept a breadcrumb trail of where the player
+had actually driven, and a pursuing unit that found itself on that trail drove
+it — the same gap, the same corner, at a speed planned from the trail's own
+bends — the argument being that a straight line to a car that has just turned
+past a house goes through the house.
 
-All three conditions matter, and the first version of this had only the first:
-within 34 m, on the trail (within 7 m of it), and no line of sight. Following
-someone's exact line from a hundred metres back is not tracking them, it is
-copying them, and it copied every mistake — *"sometimes I might accidentally
-skid a bit off road, but then continue on, and then they would always all skid
-off road"*. With a clear view of the car they drive at the car, which is the
-ordinary pursuit above; the line is only ever a way through something.
+Following someone's exact line turns out not to be tracking them. It is
+copying them, and it copies everything, including the parts that were a
+mistake:
 
-**A line that comes back on itself is thrown away.** Pulling into the repair
-bay and reversing straight out used to leave that detour in the trail, and the
-whole pursuit turned into the forecourt after you: *"I went into the repair
-station and I backed out, and then they all started trying to go into the
-repair station."* When the trail passes within 7 m of a point it already has,
-everything recorded between the two is dropped — it is somewhere you went and
-came out of again, so there is nothing there to follow. The same rule cleans
-up any doubling back, a three-point turn included.
+* *"Sometimes I might accidentally skid a bit off road, but then continue on,
+  and then they would always all skid off road."* The line went onto the verge,
+  so every car in the pursuit went onto the verge, one after another.
+* *"I went into the repair station and I backed out, and then they all started
+  trying to go into the repair station."* The line went into the bay and out
+  again, so the pursuit turned into the forecourt.
 
-Everyone following the same line puts the whole pursuit in single file, and
-every car in the file closed on the one in front as if it were you: twenty
-police-on-police shunts a minute. So a unit with another police car between it
-and you keeps a following distance, seven metres plus about half a second.
-Only the car at the front closes, and a unit alongside you running a PIT does
-not count as being in the way.
+Both were narrowed first — only from right behind, only with no line of sight,
+with doubling-back cut out of the trail — and then the whole thing came out:
+*"I like the previous routing system actually."* The chase reads better with
+units that are visibly making their own decisions, badly sometimes, than with
+units that are visibly doing what you just did. The one case it was good at,
+threading a gap directly behind you, `_driveDirect`'s gap fan and staging
+point already handle.
+
+What stayed from that work is the following distance. A pursuit converging on
+one car converges on one line, with every unit on it closing on the car ahead
+as if it were you: twenty police-on-police shunts a minute. So a unit with
+another police car between it and you keeps a gap of seven metres plus about
+half a second. Only the car at the front closes, and a unit alongside you
+running a PIT does not count as being in the way.
 
 ### Ramming
 

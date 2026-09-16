@@ -19,17 +19,6 @@ const _aim2 = new THREE.Vector3();
 const _dirTmp = new THREE.Vector3();
 const _origin2 = new THREE.Vector3();
 
-/**
- * How close a unit must be to the player's trail to drive it, and to the
- * player. Both are short on purpose: following someone's exact line from a
- * hundred metres back is not tracking them, it is copying them, and it copied
- * every mistake -- a skid onto the verge, a wrong turn into the garage
- * forecourt -- for the whole pursuit. Anything further off, or anything with a
- * clear line to the car, is ordinary pursuit.
- */
-const TRAIL_JOIN = 7;
-const TRAIL_RANGE = 34;
-
 /** Longest a searching unit keeps trying to reach one spot, seconds. */
 const SPOT_PATIENCE = 28;
 /** Top speed on the road between search spots, m/s: about 80 km/h. */
@@ -804,47 +793,12 @@ export class Officer {
   }
 
   /**
-   * Follow the line the target actually drove.
-   *
-   * A unit close behind used to drive straight at the car in front, which is
-   * right on an open road and wrong everywhere else: the target turns a corner
-   * past a building, and the straight line to it goes through the corner of
-   * the building. "I asked for the police not to crash at all. If they are
-   * close behind me and in pursuit then just make them follow me." The game
-   * keeps a breadcrumb trail of where the player has been (Game.playerTrail),
-   * and a unit that finds itself on that trail drives it -- through the same
-   * gap, round the same corner, at a speed the path planner works out from the
-   * trail's own bends -- until it is close enough to ram.
-   *
-   * Returns null when this car is not on the trail, which leaves it to the
-   * usual pursuit.
-   */
-  _followTrail(dt, target, trail, d) {
-    const v = this.vehicle;
-    let best = -1, bestD = TRAIL_JOIN;
-    for (let i = trail.length - 2; i >= 0; i--) {
-      const q = trail[i];
-      const dd = Math.hypot(q.x - v.position.x, q.z - v.position.z);
-      if (dd < bestD) { bestD = dd; best = i; }
-    }
-    if (best < 0) return null;
-    const pts = this._trailPts || (this._trailPts = []);
-    pts.length = 0;
-    for (let i = best; i < trail.length; i++) pts.push(trail[i]);
-    pts.push({ x: target.position.x, z: target.position.z });
-    this.driver.setPath(pts);
-    const ram = this.ramAggression;
-    const speed = Math.abs(target.forwardSpeed) + clamp(d * 0.3, 3, 10 + 10 * ram);
-    return this.driver.followPath(dt, Math.min(speed, this._chaseSpeed(), this._gapCap(target)), { lane: false });
-  }
-
-  /**
    * Keep a gap to the police car in front.
    *
-   * Everyone following the same trail puts the whole pursuit on one line, and
-   * every unit on it closing on the car ahead as if it were the target: measured,
-   * twenty police-on-police shunts a minute, where before there were a handful.
-   * So a unit with another police car ahead of it on its line holds a following
+   * A pursuit converging on one car converges on one line, with every unit on
+   * it closing on the car ahead as if it were the target: measured, twenty
+   * police-on-police shunts a minute, where before there were a handful. So a
+   * unit with another police car ahead of it on its line holds a following
    * distance -- seven metres plus about half a second -- and only the one at the
    * front closes for the hit. The target itself is not counted: that is the car
    * this is all for.
@@ -931,18 +885,6 @@ export class Officer {
     }
 
     if (!this._hasLos) {
-      // Right on their bumper with something solid between: they went through
-      // a gap -- two buildings, two trees -- and the way through is the way
-      // they went. Only then, and only from close enough that the line still
-      // means something: "they need to be right behind me if they're going to
-      // follow me exactly. But otherwise the old routing is good."
-      const trail = this.game.playerTrail;
-      if (trail && trail.length > 3 && d > 6 && d < TRAIL_RANGE
-          && target === this.game.player) {
-        const follow = this._followTrail(dt, target, trail, d);
-        if (follow) { this._mode = 'trail'; return follow; }
-      }
-
       // Something solid in the way -- which is a reason to look for the way
       // through, not a reason to give up and drive round by road. Falling
       // straight back to the network was why a target sitting in a courtyard,

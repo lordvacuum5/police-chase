@@ -44,8 +44,6 @@ window.__runContact = async function (seconds = 50, seed = 101, heat = 4.2) {
             stats.byMode = stats.byMode || {};
             stats.byMode[why] = (stats.byMode[why] || 0) + 1;
             // Where and how, for looking into a particular crash afterwards.
-            let trail = Infinity;
-            for (const q of g.playerTrail || []) trail = Math.min(trail, Math.hypot(q.x - v.position.x, q.z - v.position.z));
             // What is right beside the car, by kind: the nearest of each within
             // four metres, all the way round.
             const near = {};
@@ -64,7 +62,7 @@ window.__runContact = async function (seconds = 50, seed = 101, heat = 4.2) {
             }
             (stats.detail = stats.detail || []).push({ near,
               why, kind: u.kind, kph: +(v.speed * 3.6).toFixed(0), dv: +v.lastImpact.toFixed(1),
-              player: +u.distanceTo(p.position).toFixed(0), trail: +trail.toFixed(1),
+              player: +u.distanceTo(p.position).toFixed(0),
               x: +v.position.x.toFixed(1), z: +v.position.z.toFixed(1), t: +g.clock.toFixed(1),
             });
           }
