@@ -2020,6 +2020,40 @@ and a tail a metre and a half long — so the collider takes a matching
 rears on this one. The engine note fires six times a revolution rather than
 four, and the recording underneath it is pitched to match.
 
+## Bringing in a model
+
+Every car here is generated geometry, and does not have to be. Drop a `.glb`
+into `assets/models` and it replaces the body of one kind of car — `suv.glb`
+takes the police SUV; other kinds are a line in `CAR_MODELS`
+(`src/game/carmodel.js`). With no file there, nothing changes, which is the
+normal case: a missing model is not an error.
+
+What stays the game's, whatever the file contains:
+
+* **The collider**, always `spec.dims` for that kind of car. The model is
+  fitted to it, not the other way round, so the thing you see and the thing you
+  hit are the same size.
+* **The wheels** — one shared instanced mesh the physics spins and steers, so
+  any wheels in the file (anything named `wheel`, `tyre`, `rim`…) are dropped.
+* **The flashing lights**, instanced boxes placed each frame at body-local
+  offsets. The model can keep its own light bar as unlit plastic and the
+  flashers sit on top of it.
+
+The fitting is done against the bounding box of the generated body being
+replaced: scaled by length, held to that body's width, centred, and stood on
+the same plane. A model in centimetres at three times life size lands correctly
+(measured: scale 0.0101, fitted to 5.15 m against the SUV body's 5.15 m, sills
+and lights within four centimetres of where the generated body puts them). What
+it cannot infer is a car modelled facing backwards — that is `yaw` in the table
+— or a light bar in an unusual place, which is `lamps`.
+
+The awkward one is livery. Marked cars are painted from a texture atlas keyed to
+UVs the geometry builder generates, and an imported model arrives with its own,
+so its markings have to be baked into its own texture. There is a per-car cost
+argument too: at five stars there may be eighteen police cars on screen and they
+are all this model, so one material and 5–15k triangles is the budget. See
+`assets/models/README.md`, and `tests/carmodel.js` for the fitting test.
+
 ## Police livery
 
 Marked cars carry a full modern British livery, and like everything else in the

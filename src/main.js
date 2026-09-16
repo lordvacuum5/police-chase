@@ -21,6 +21,7 @@ import { TrafficLights, SIGNAL } from './game/trafficlights.js';
 import { StreetProps } from './game/streetprops.js';
 import { Garage } from './game/garage.js';
 import { Score } from './game/score.js';
+import { loadCarModels } from './game/carmodel.js';
 import { Weather } from './game/weather.js';
 import { ChaseCamera } from './game/camera.js';
 import { Hud } from './game/hud.js';
@@ -141,6 +142,13 @@ class Game {
     boot.set(0.72, 'building vehicles…');
     await frame();
     this._initEffects();
+    // Any imported bodies, before the first car is built. Missing files are
+    // the normal case and cost one HEAD request each.
+    this.carModels = await loadCarModels(this);
+    for (const [kind, m] of Object.entries(this.carModels)) {
+      // Not the radio: the HUD does not exist yet at this point in the boot.
+      console.info(`[carmodel] ${kind} body from ${m.url} (fitted x${m.scale.toFixed(3)})`);
+    }
     this._initPlayer();
 
     boot.set(0.88, 'briefing units…');
@@ -296,9 +304,19 @@ class Game {
     v.isPolice = !!opts.police;
     v.unmarked = !!opts.unmarked;
 
-    const geo = this._geometryFor(specKey, liveryKey, opts.police, opts.unmarked);
-    const mesh = new THREE.Mesh(geo, carMaterials(geo, shinyVertexMaterial()));
-    mesh.castShadow = true;
+    // An imported body for this kind, if one was found at boot; otherwise the
+    // generated one. Clone shares geometry and materials with the original, so
+    // eighteen of them cost one upload of the mesh.
+    const model = this.carModels && this.carModels[specKey];
+    let mesh;
+    if (model) {
+      mesh = model.scene.clone(true);
+      mesh.userData.lamps = model.lamps;
+    } else {
+      const geo = this._geometryFor(specKey, liveryKey, opts.police, opts.unmarked);
+      mesh = new THREE.Mesh(geo, carMaterials(geo, shinyVertexMaterial()));
+      mesh.castShadow = true;
+    }
     mesh.frustumCulled = false;
     this.scene.add(mesh);
     v.view = mesh;
@@ -1059,8 +1077,13 @@ class Game {
       }
 
       if (v.isPolice && !v.unmarked && this.heat.tier > 0) {
-        // Each body puts its bar somewhere different; the geometry says where.
-        this.lights.place(v, v.view.geometry.userData.lamps || LAMP_OFFSETS, v.lampPhase || 0);
+        // Each body puts its bar somewhere different; the body says where. An
+        // imported one carries the offsets on the object (it is a whole scene,
+        // not one geometry), a generated one on its geometry.
+        const lamps = v.view.userData.lamps
+          || (v.view.geometry && v.view.geometry.userData.lamps)
+          || LAMP_OFFSETS;
+        this.lights.place(v, lamps, v.lampPhase || 0);
       }
     }
 
