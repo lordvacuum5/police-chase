@@ -73,6 +73,13 @@ export class Dispatcher {
     this.pitCooldown = 0;
     this.blockCooldown = 0;
     this.blockUnit = null;
+    this.rhinoCooldown = 25;
+    this.rhinoUnit = null;
+    // How long the car has been going the same way, for the head-on van: it
+    // only works on a road the driver is committed to.
+    this.straightFor = 0;
+    this._courseX = 0;
+    this._courseZ = 0;
     this.activePit = null;
     this.boxAssignment = null;
     this.boxTightness = 0;
@@ -103,6 +110,8 @@ export class Dispatcher {
     this.clock += dt;
     this.pitCooldown -= dt;
     this.blockCooldown -= dt;
+    this.rhinoCooldown -= dt;
+    this._trackCourse(dt, target);
     this._updateKnowledge(dt, target);
     this._learnHabits(target);
     this._manageRoster(dt, target);
@@ -127,7 +136,15 @@ export class Dispatcher {
     // out of a city you have lost it in is not. The reacquire range is much
     // shorter than the tracking range, and shorter again if the target has
     // slowed right down and is keeping its head down.
-    const hasContact = k.timeSinceSeen < 1.5;
+    //
+    // The line between the two is the tracking window itself, and nothing
+    // else: while the bar on the screen is still draining they have a hard fix
+    // on the car and everything behaves that way. It used to break at 1.5 s
+    // with the bar running for 3, so the force quietly downgraded itself to a
+    // search halfway through -- "it shows that they're searching, but they
+    // still need to be in full pursuit of me... not searching until that timer
+    // runs out."
+    const hasContact = k.timeSinceSeen < TRACK_SECONDS;
     // Searching units get 20% more range than a plain reacquire, and look all
     // the way round rather than through a forward cone -- a crew hunting for a
     // car is scanning every direction, not staring out of the windscreen.
@@ -325,6 +342,31 @@ export class Dispatcher {
     }
   }
 
+  /**
+   * How long the car has been going the same way.
+   *
+   * Not "on a straight road" -- a long curve is fine, and a road that bends
+   * gently is still a road the driver is committed to. What disqualifies a
+   * stretch is the driver actually changing direction: a turn at a junction, a
+   * U-turn, a swerve into a side street. Anything over about thirty degrees
+   * from the heading a moment ago starts the count again.
+   */
+  _trackCourse(dt, target) {
+    const sp = target.speed;
+    if (sp < 8) { this.straightFor = 0; return; }
+    const hx = target.linvel.x / sp, hz = target.linvel.z / sp;
+    if (this._courseX || this._courseZ) {
+      const dot = hx * this._courseX + hz * this._courseZ;
+      if (dot < 0.86) this.straightFor = 0; else this.straightFor += dt;
+    }
+    // The reference heading follows slowly, so a steady curve counts as
+    // committed while a flick into a side road does not.
+    this._courseX = lerp(this._courseX, hx, 1 - Math.exp(-1.1 * dt));
+    this._courseZ = lerp(this._courseZ, hz, 1 - Math.exp(-1.1 * dt));
+    const l = Math.hypot(this._courseX, this._courseZ) || 1;
+    this._courseX /= l; this._courseZ /= l;
+  }
+
   /** Rough "could the player see this car" test, for tidying up off screen. */
   _visibleTo(unit, target) {
     _eye.copy(target.position); _eye.y += 1.1;
@@ -497,6 +539,39 @@ export class Dispatcher {
         ], { cs: u.callsign }, true, { every: 30 });
       }
     }
+
+    // ---- 5c. the head-on van ----
+    //
+    // An armoured van put on the road well ahead, pointing the wrong way up
+    // it, which then drives at the car as hard as it will go. It only works on
+    // a road the driver has committed to -- there is no point aiming a van
+    // down a street somebody is about to turn out of -- so it wants a straight
+    // run and speed, and it is the top of the force's response: four stars up,
+    // one at a time, with a long cooldown between attempts.
+    if (this.tier >= 4 && k.seen && !this.rhinoUnit && this.rhinoCooldown <= 0
+        && this.straightFor > 3.2 && Math.abs(target.forwardSpeed) > 22) {
+      this.rhinoCooldown = 30;
+      const u = this.game.spawnRhino(target, this.tier);
+      // Nowhere to put it on this stretch: look again shortly rather than
+      // waiting out the whole cooldown.
+      if (!u) this.rhinoCooldown = 4;
+      if (u) {
+        this.units.push(u);
+        available.push(u);
+        u.setRole(ROLE.RHINO);
+        this.rhinoUnit = u;
+        assigned.add(u);
+        // `roadName` already reads "on Cold Harbour", so nothing here may end
+        // with a preposition of its own.
+        this.game.say('rhino', [
+          (v) => `${v.cs}, van's coming at them ${v.road}. Brace.`,
+          (v) => `All units, van the wrong way ${v.road}. Stand clear.`,
+          (v) => `${v.cs}, coming the other way ${v.road}. Stand clear.`,
+          (v) => `Control, ${v.cs} going head-on. All units, hold back.`,
+        ], { cs: u.callsign, road: this.game.roadName(u.position) }, true, { every: 25 });
+      }
+    }
+
     // ---- 6. intercepts ----
     const free = available.filter((u) => !assigned.has(u));
     if (this.interceptTimer <= 0) {
@@ -698,7 +773,8 @@ export class Dispatcher {
   /** Remove a unit from the board and from the world. */
   retire(unit) {
     const i = this.units.indexOf(unit);
-    if (i >= 0) this.units.splice(i, 1);
+    if (this.blockUnit === unit) this.blockUnit = null;
+    if (this.rhinoUnit === unit) this.rhinoUnit = null;
     if (this.blockUnit === unit) this.blockUnit = null;
     if (this.activePit === unit) this.activePit = null;
     // A boxing unit is held by the assignment as well. Leaving it there means
@@ -727,9 +803,11 @@ export class Dispatcher {
     this.activePit = null;
     this.boxAssignment = null;
     this.blockUnit = null;
+    this.rhinoUnit = null;
     this.claimedNodes.clear();
     this.pitCooldown = 0;
     this.blockCooldown = 0;
+    this.rhinoCooldown = 25;
     this.knowledge.seen = false;
     this.knowledge.spotter = null;
     this.knowledge.confidence = 0;
@@ -747,6 +825,29 @@ export class Dispatcher {
   onBlockEnded(unit) {
     if (this.blockUnit === unit) this.blockUnit = null;
     this.blockCooldown = Math.max(this.blockCooldown, 8);
+  }
+
+  /**
+   * The van's run is over -- it has been past, or it has been stopped. It goes
+   * back to being an ordinary, very heavy pursuit car.
+   */
+  onRhinoEnded(unit, hit) {
+    if (this.rhinoUnit === unit) this.rhinoUnit = null;
+    this.rhinoCooldown = Math.max(this.rhinoCooldown, hit ? 26 : 18);
+    if (unit.role === ROLE.RHINO) unit.setRole(ROLE.PURSUE);
+    if (hit) {
+      this.game.say('rhino-hit', [
+        (v) => `${v.cs}, contact! Straight through them.`,
+        (v) => `${v.cs}, hard contact, head-on.`,
+        'Control, the van\'s made contact.',
+      ], { cs: unit.callsign }, true, { every: 12 });
+    } else {
+      this.game.say('rhino-miss', [
+        (v) => `${v.cs}, missed them, turning round.`,
+        (v) => `${v.cs}, they're past me. Coming about.`,
+        (v) => `${v.cs}, no contact, they went by.`,
+      ], { cs: unit.callsign }, true, { every: 12 });
+    }
   }
 
   onPitFinished(unit, result) {
@@ -791,7 +892,10 @@ export class Dispatcher {
   statusLine() {
     const k = this.knowledge;
     if (this.tier === 0) return { text: 'NO ACTIVE PURSUIT', cls: 'clear' };
-    if (k.seen) {
+    // Out of sight but still tracked is still being chased: the force knows
+    // exactly where the car is until the tracking bar empties, and the screen
+    // says so rather than announcing a search that has not started.
+    if (k.seen || k.timeSinceSeen < TRACK_SECONDS) {
       const n = this.units.filter((u) => !u.vehicle.disabled).length;
       return { text: `PURSUED — ${n} UNIT${n === 1 ? '' : 'S'} ENGAGED`, cls: 'spotted' };
     }

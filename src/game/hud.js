@@ -369,8 +369,11 @@ export class Hud {
     }
 
     // ---- last known position, if they have lost you ----
+    // Only once the tracking bar has emptied: until then the "last known"
+    // position is simply where the car is, and drawing it as a guess while the
+    // force still has a hard fix says the opposite of what is happening.
     const kn = dispatcher.knowledge;
-    if (heat.tier > 0 && !kn.seen && kn.confidence > 0) {
+    if (heat.tier > 0 && !kn.seen && !dispatcher.inContact && kn.confidence > 0) {
       const p = toMap(kn.position.x, kn.position.z);
       const rad = lerp(70, 12, kn.confidence) * k;
       ctx.strokeStyle = `rgba(255,176,32,${0.25 + kn.confidence * 0.4})`;

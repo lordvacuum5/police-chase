@@ -465,6 +465,16 @@ Ducking behind one building is not an escape. Staying out of sight is. Only
 once the bar empties do they fall back to your last known position, and only
 after that does it become the sixty-second search.
 
+**The whole bar, not half of it.** The window is one number and everything now
+reads from it. It used to be two: the bar ran for three seconds while the force
+downgraded itself to a reacquire at 1.5 — so halfway through, the detection
+ring shrank from 198 m to 68, the screen announced a search, and the minimap
+put up a "last known" marker for a car it could see perfectly well. *"It shows
+that they're searching, but they still need to be in full pursuit of me... not
+searching until that timer runs out."* Now, for the full three seconds: the
+ring stays, the status line still says PURSUED, and no last-known marker
+appears. The moment the bar empties, all three change together.
+
 ### Searching off the road
 
 *"Make sure the police search off-road."* They did not. A search was a wander
@@ -1345,6 +1355,47 @@ anything but its cause: the road tangent runs from an edge's `a` end to its
 Getting that sign backwards pointed every car the wrong way down the road and
 made the block read every approaching car as one that had already gone
 through — so blocks dissolved on the frame they were built.
+
+### The head-on van
+
+An armoured van put on the road a quarter of a kilometre ahead, pointing back
+down it, on your side of the white line, which then drives at you as hard as
+three and a half tonnes will go. It does not brake for you, it does not steer
+round you, and every other unit gives way to it.
+
+It is rare and it is conditional, because a van aimed down a road you are about
+to turn out of is just a parked van:
+
+* **Four stars and up**, one at a time, thirty seconds between attempts.
+* **Only on a road you are committed to.** The dispatcher tracks how long you
+  have held a heading (`_trackCourse`) — a steady curve counts, a turn at a
+  junction resets it — and wants three seconds of it plus 80 km/h.
+* **Sited 190–400 m ahead**, aiming for about 260: far enough to build speed
+  and to be seen coming, near enough that the meeting happens on this stretch
+  of road. Out of sight if there is anywhere out of sight, and never closer
+  than 260 m if there is not.
+* **Genuinely nose to nose.** A site on a road crossing yours is rejected: the
+  van's heading has to oppose your own, or it is a van parked across a side
+  street rather than a van coming at you.
+
+Getting there is by road, not as the crow flies. Measured first with the
+straight-line version: the van left the carriageway the moment the road bent,
+found a wall on a forecourt, and stopped 136 m short of the meeting. It now
+follows the road toward you — routed to a junction 160 m *beyond* you, because
+a path that ends where the meeting happens is one the driver slows down to
+arrive at, and that version coasted into the contact at 20 km/h. Inside 70 m it
+stops following the road and aims at where you will be.
+
+`tests/rhino.js` drives the car down a long straight at 130 km/h and sends one:
+placed 263–301 m ahead, pointing back at the car (facing −1.0 of a possible
+−1.0), meeting it at up to **178 degrees** — dead ahead — and closing at
+108–139 km/h. Contact is not guaranteed and is not meant to be: hold your line
+and it hits you, move and it goes past. Afterwards it is an ordinary pursuit
+unit again, a very heavy one, facing the wrong way.
+
+It says so on the radio, going out and coming back: *"All units, van the wrong
+way on Cold Harbour. Stand clear."* — then either *"Contact! Straight through
+them."* or *"Missed them, turning round."*
 
 ### The rolling block
 

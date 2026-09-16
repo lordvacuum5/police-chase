@@ -532,6 +532,86 @@ class Game {
     return null;
   }
 
+  /**
+   * An armoured van put on the road well ahead of the target and pointed back
+   * down it, to be driven straight at them (Officer._rhino).
+   *
+   * Sited further out than the rolling block, and by a different rule: a block
+   * wants to be round the next corner, unseen, while this wants a long clear
+   * run at the car with the road between them straight enough that it does not
+   * have to steer for it. Out of sight if there is anywhere out of sight; if
+   * there is not -- a straight road is exactly the case where there will not
+   * be -- then far enough away that it reads as a van in the distance rather
+   * than a van appearing.
+   */
+  spawnRhino(target, tier) {
+    if (this.vehicles.length >= MAX_VEHICLES) return null;
+    const g = this.graph;
+
+    let dx = target.linvel.x, dz = target.linvel.z;
+    if (Math.hypot(dx, dz) < 4) { dx = target.forward.x; dz = target.forward.z; }
+    const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+
+    const reach = g.reachable(target.position.x, target.position.z, dx, dz, 30, 0.9);
+    const candidates = [];
+    for (const [id, rec] of reach) {
+      const n = g.nodes[id];
+      const d = dist2(n.x, n.z, target.position.x, target.position.z);
+      // Far enough to build up speed and to be seen coming; near enough that
+      // the meeting happens while this stretch of road is still the one the
+      // car is on. About seven seconds of closing at chase speeds.
+      if (d < 190 || d > 400) continue;
+      // Straight up the road, not round a loop: a tighter cone than the
+      // rolling block's, because this one has to arrive nose to nose.
+      if (((n.x - target.position.x) * dx + (n.z - target.position.z) * dz) < d * 0.85) continue;
+      candidates.push({ node: n, via: rec.viaNode, score: Math.abs(d - 260) });
+    }
+    if (!candidates.length) return null;
+    candidates.sort((a, b) => a.score - b.score);
+
+    for (const best of candidates.slice(0, 12)) {
+      let edge = best.via >= 0 ? g.edgeBetween(best.via, best.node.id) : null;
+      if (!edge) { const eid = best.node.edges[0]; edge = eid === undefined ? null : g.edges[eid]; }
+      if (!edge) continue;
+      // Wide enough for a van to come the other way and still leave room.
+      if (edge.width < 9) continue;
+
+      const towardNode = edge.a === best.node.id;
+      const along = towardNode ? 18 : Math.max(0, edge.length - 18);
+      const p = g.pointAt(edge, along);
+      // Facing *back* down the road: the opposite of the rolling block.
+      const sign = towardNode ? 1 : -1;
+      const heading = Math.atan2(p.tx * sign, p.tz * sign);
+      // And genuinely nose to nose. A site on a road crossing the target's
+      // leaves the van pointing across their path rather than down it, which
+      // is a parked van, not a head-on.
+      if (Math.sin(heading) * dx + Math.cos(heading) * dz > -0.75) continue;
+      // Nose to nose means the target's side of the road, not its own.
+      const lane = Math.min(3.0, edge.width * 0.25);
+      const pos = {
+        x: p.x + -p.tz * sign * lane * -DRIVE_SIDE,
+        y: 0.95,
+        z: p.z + p.tx * sign * lane * -DRIVE_SIDE,
+      };
+      if (this.sim.surfaceAt(pos.x, pos.z) !== 1) continue;
+      // Appearing in plain view is only acceptable a long way off.
+      if (this.inView(pos) && dist2(pos.x, pos.z, target.position.x, target.position.z) < 260) continue;
+      let occupied = false;
+      for (const v of this.vehicles) {
+        if (dist2(v.position.x, v.position.z, pos.x, pos.z) < 9) { occupied = true; break; }
+      }
+      if (occupied) continue;
+
+      const v = this.createVehicle('van', 'van', pos, heading, { police: true });
+      v.lampPhase = this.rng();
+      // Already rolling at them, so the whole run is spent accelerating rather
+      // than pulling away from a standstill.
+      v.setVelocity({ x: Math.sin(heading) * 16, y: 0, z: Math.cos(heading) * 16 });
+      return new Officer(this, v, { skill: SKILL.advanced, kind: 'van' });
+    }
+    return null;
+  }
+
   despawnPolice(officer) {
     this.removeVehicle(officer.vehicle);
   }

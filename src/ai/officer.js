@@ -38,6 +38,7 @@ export const ROLE = {
   PIT: 'pit',
   BOX: 'box',
   BLOCK: 'block',
+  RHINO: 'rhino',
   HOLD: 'hold',
   SEARCH: 'search',
   DISABLED: 'disabled',
@@ -121,7 +122,8 @@ export class Officer {
     // recovery check below, so a car that ends up on its roof mid-PIT stops
     // having everyone else defer to it.
     v.priority = !v.disabled
-      && (this.role === ROLE.PIT || this.role === ROLE.BOX || this.role === ROLE.BLOCK);
+      && (this.role === ROLE.PIT || this.role === ROLE.BOX || this.role === ROLE.BLOCK
+        || this.role === ROLE.RHINO);
 
     // A car on its roof, or wrecked, is out of the pursuit until it recovers.
     if (v.disabled || v.flippedFor > 2.2) {
@@ -151,9 +153,10 @@ export class Officer {
       return;
     }
 
-    // A unit chasing the player does not steer round the player: that is the car
-    // it is trying to hit. It still steers round everything else.
-    this.driver.avoid(this.game.vehicles, dt, this.role === ROLE.PURSUE && target ? target : null);
+    // A unit driving at the player does not steer round the player: that is
+    // the car it is trying to reach, or to hit.
+    const atTarget = this.role === ROLE.PURSUE || this.role === ROLE.RHINO;
+    this.driver.avoid(this.game.vehicles, dt, atTarget && target ? target : null);
     this.repathTimer -= dt;
     this._updateAssist(target);
 
@@ -205,6 +208,7 @@ export class Officer {
       case ROLE.PIT:       controls = this._pit(dt, target); break;
       case ROLE.BOX:       controls = this._box(dt, target); break;
       case ROLE.BLOCK:     controls = this._block(dt, target); break;
+      case ROLE.RHINO:     controls = this._rhino(dt, target); break;
       case ROLE.HOLD:      controls = this._hold(dt, target); break;
       case ROLE.RESPOND:   controls = this._goTo(dt, this.orders.point, 1.0); break;
       case ROLE.SEARCH:    controls = this._search(dt); break;
@@ -1117,6 +1121,72 @@ export class Officer {
    * What it does is scrub speed off a runner who would otherwise be gone, and
    * hand the units behind a chance to close.
    */
+  /**
+   * The head-on van.
+   *
+   * Put on the road a long way in front of the car and pointed back down it,
+   * an armoured van has one job: drive at the car, hard, and let three and a
+   * half tonnes settle the argument. It does not brake for the target, it does
+   * not steer round it, and it does not care what the contact does to the van.
+   *
+   * It is deliberately a blunt instrument and a rare one -- four stars and up,
+   * one at a time, only on a road the driver has committed to (see
+   * Dispatcher._trackCourse). Everything about it is meant to be visible
+   * coming: headlights, the wrong way up the road, and a radio call.
+   *
+   * The run ends when the car is past it, or when they touch. Then it is an
+   * ordinary pursuit unit again -- a very heavy one, facing the wrong way.
+   */
+  _rhino(dt, target) {
+    if (!target) return this._patrol(dt);
+    const v = this.vehicle;
+    const d = this.distanceTo(target.position);
+    const r = relativeTo(target, v);
+
+    // Contact, or they are past: either way the run is over. `r.long` is how
+    // far ahead of us they are along our own nose, so it goes negative the
+    // moment they are behind the van.
+    const touched = v.lastImpactAt && v.lastImpactAt !== this._rhinoHitAt && d < 9;
+    this._rhinoHitAt = v.lastImpactAt;
+    this._rhinoFor = (this._rhinoFor || 0) + dt;
+    if (touched || r.long < -4 || this._rhinoFor > 22) {
+      this._rhinoFor = 0;
+      this.game.dispatcher.onRhinoEnded(this, !!touched);
+      this.setRole(ROLE.PURSUE);
+      return this._pursue(dt, target);
+    }
+
+    // Down the road, not across the country. Driving the straight line at a
+    // car 250 m away means leaving the carriageway the moment the road bends:
+    // measured, the van ran onto a paved forecourt, found a wall, and stopped
+    // dead 136 m short of the meeting. So while the car is still a long way
+    // off it follows the road toward them -- on their side of it, which is
+    // what makes it a head-on rather than a car coming the other way.
+    if (d > 70) {
+      const g = this.game.graph;
+      // Aimed at a junction well beyond the car, not at the car's own: a path
+      // that ends where the meeting happens is a path the driver slows down to
+      // arrive at, and the van was coasting into the contact at 20 km/h.
+      const sp = Math.max(1, target.speed);
+      const goal = g.nearestNode(
+        target.position.x + (target.linvel.x / sp) * 160,
+        target.position.z + (target.linvel.z / sp) * 160,
+      );
+      if (this.repathTimer <= 0 || !this.driver.hasPath || this.goalNode !== goal.id) {
+        this._routeTo(goal.id, -2.4);
+        this.repathTimer = 1.0;
+      }
+      if (this.driver.hasPath) return this.driver.followPath(dt, this._chaseSpeed(), { lane: false });
+    }
+
+    // Close enough to aim: straight at where they will be by the time we get
+    // there. Both cars are closing, so the lead is over the combined speed.
+    const closing = Math.max(14, v.speed + Math.abs(target.forwardSpeed));
+    _aim.copy(target.position).addScaledVector(target.linvel, clamp(d / closing, 0, 0.9));
+    this.driver.setPath([]);
+    return this.driver.driveTo(_aim, this._chaseSpeed(), dt, { lane: false });
+  }
+
   _block(dt, target) {
     if (!target) return this._patrol(dt);
     const v = this.vehicle;
