@@ -35,7 +35,15 @@ import { makeRng, clamp, clamp01, dist2, lerp } from './util/math.js';
 
 const FIXED = 1 / 120;         // physics substep
 const MAX_SUBSTEPS = 5;
-const MAX_VEHICLES = 18;
+/**
+ * Every car in the world at once, the player included.
+ *
+ * The pursuit is allowed to grow to eighteen cars (Dispatcher.PACK_CAP) and is
+ * trimmed from the back beyond that, so this has to cover those plus the
+ * player plus whatever is standing on a roadblock at the time -- otherwise the
+ * roadblock is the thing that cannot be built.
+ */
+const MAX_VEHICLES = 24;
 
 /** Seconds between any two routine radio lines -- commentary, units en route. */
 const ROUTINE_GAP = 12;
@@ -389,7 +397,7 @@ class Game {
     // board on its own -- every block the player beats hands it three more
     // cars -- and when it does, `createVehicle` starts refusing, which shows
     // up as roadblocks that are called on the radio and then are not there.
-    if (this.vehicles.length >= MAX_VEHICLES - 4) return null;
+    if (this.vehicles.length >= this.vehicleLimit - 4) return null;
     const g = this.graph;
     const minD = tier === 0 ? 130 : 210;
     const maxD = tier === 0 ? 360 : 520;
@@ -430,7 +438,7 @@ class Game {
    * across a specific carriageway rather than anywhere convenient.
    */
   spawnPoliceAt(position, heading, tier) {
-    if (this.vehicles.length >= MAX_VEHICLES) return null;
+    if (this.vehicles.length >= this.vehicleLimit) return null;
     for (const other of this.vehicles) {
       if (dist2(other.position.x, other.position.z, position.x, position.z) < 4.2) return null;
     }
@@ -454,7 +462,7 @@ class Game {
    * rolling block is that it is there when you arrive.
    */
   spawnPoliceAhead(target, tier) {
-    if (this.vehicles.length >= MAX_VEHICLES) return null;
+    if (this.vehicles.length >= this.vehicleLimit) return null;
     const g = this.graph;
 
     let dx = target.linvel.x, dz = target.linvel.z;
@@ -552,7 +560,7 @@ class Game {
    * than a van appearing.
    */
   spawnRhino(target, tier) {
-    if (this.vehicles.length >= MAX_VEHICLES) return null;
+    if (this.vehicles.length >= this.vehicleLimit) return null;
     const g = this.graph;
 
     let dx = target.linvel.x, dz = target.linvel.z;
@@ -1098,6 +1106,13 @@ class Game {
           this.renderer.setPixelRatio(0.75);
           this._resize();
           this.radio('[graphics] reduced resolution to hold frame rate');
+          this.fpsTimer = 0;
+        } else if (this.fps < 26 && this.quality === 0 && this.vehicleLimit > 14) {
+          // Last resort, and the only one that touches the game rather than
+          // the picture: a smaller pursuit. Eighteen cars cost about twice the
+          // simulation time of nine, which a phone does not always have.
+          this.vehicleLimit = 14;
+          this.radio('[graphics] fewer units to hold frame rate');
           this.fpsTimer = 0;
         }
       }

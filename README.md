@@ -1490,7 +1490,8 @@ the shared model of where you are is thrown out — so a patrol that drives past
 you a minute later has to notice you again from scratch, exactly as it would
 have before any of it started. Drive badly in front of one and it will.
 
-The roster comes back down with it. A five-star response is nine cars and an
+The roster comes back down with it. A five-star response is fifteen cars sent,
+holding around eighteen on the board once the chase has collected a few, and an
 ambient patrol is three, and nothing used to reduce that except the rule that
 retires a unit 900 m away, so the town stayed full of police long after they
 had stopped looking for you. Surplus units are now retired furthest-first, and
@@ -1507,6 +1508,28 @@ limit is reached, nothing else can be built — including the next roadblock,
 which gets called on the radio and then simply is not there: *"I couldn't see
 half the roadblocks because there were too many police cars."* Four slots are
 now held back from pursuit spawns for exactly that reason.
+
+**How big the pack is allowed to be.** Trimming straight back to the number
+the tier says to *send* left the chase looking thin — *"there's almost too few
+units now"* — because a chase legitimately collects cars: the crews off every
+roadblock you beat. So there are two ceilings. The tier budget governs how many
+are dispatched; the pack may then keep what it has collected on top of that,
+three cars' worth, up to a hard cap of **18**, and past that the car furthest
+away drops off. It still never vanishes in view. Measured over a 90-second
+five-star chase: **18.0 average, 18 peak**. Below five stars the ceiling comes
+down with the wanted level, so dropping from five to three thins the pursuit
+rather than keeping eighteen cars on a three-car call:
+
+| wanted level | sent | ceiling on the board | measured, 60 s |
+|---|---|---|---|
+| 1 star | 2 | 5 | 2.0 |
+| 3 stars | 7 | 10 | 6.7 |
+| 5 stars | 15 | **18** | 12.7 rising to 18 |
+
+Eighteen cars cost about twice the simulation of nine — 8.2 ms a frame against
+3.9, out of the 16.7 ms a 60 fps frame has — so there is one more step on the
+end of the graphics ladder: a machine still under 26 fps with shadows off and
+the resolution reduced cuts the car limit too, and says so on the radio.
 
 **A roster that never let go.** Underneath all of that was a one-line bug of my
 own making: `retire` destroyed the car but never removed the officer from the

@@ -40,15 +40,28 @@ export const TRACK_SECONDS = 3;
  */
 const LOST_CONTACT_SECONDS = 5;
 
+/**
+ * How many cars the pursuit may have on the board at once, however they got
+ * there.
+ *
+ * The tier budget below says how many are *sent*; a chase collects cars beyond
+ * it, because every roadblock the player beats releases its crews into the
+ * pursuit. Trimming those straight back down to the tier budget left the chase
+ * looking thin -- "there's almost too few units now" -- so the pack is allowed
+ * to build up to this, and only past it does the car furthest away drop off.
+ * Eighteen is what the board used to hold, and it read well.
+ */
+export const PACK_CAP = 18;
+
 /** How many units of each role a given heat tier is allowed to run. */
 const TIER = [
   // Tier 0 still fields ambient patrols -- somebody has to notice you.
   { units: 3, pursue: 0, intercept: 0, pit: false, box: false },
   { units: 2, pursue: 2, intercept: 0, pit: false, box: false },
-  { units: 3, pursue: 2, intercept: 1, pit: false, box: false },
-  { units: 5, pursue: 2, intercept: 2, pit: true,  box: false },
-  { units: 7, pursue: 3, intercept: 3, pit: true,  box: true },
-  { units: 9, pursue: 3, intercept: 4, pit: true,  box: true },
+  { units: 4, pursue: 2, intercept: 1, pit: false, box: false },
+  { units: 7, pursue: 3, intercept: 3, pit: true,  box: false },
+  { units: 11, pursue: 4, intercept: 4, pit: true, box: true },
+  { units: 15, pursue: 5, intercept: 6, pit: true, box: true },
 ];
 
 export class Dispatcher {
@@ -339,7 +352,21 @@ export class Dispatcher {
     // only once far enough away or out of sight. What changes with the excess
     // is how often, and how close is close enough to count as gone.
     const live = this.units.filter((u) => !u.vehicle.disabled && u.role !== ROLE.HOLD);
-    const over = live.length - want;
+    // Two different ceilings. While a chase is on, the pack may keep whatever
+    // it has collected up to PACK_CAP and only sheds cars past that. Once the
+    // heat is off, the tier budget is the ceiling again and the force thins
+    // back to an ambient patrol -- otherwise eighteen cars would follow you
+    // around the town for the rest of the session.
+    // Never more than the board can hold, either: on a machine that has cut
+    // the vehicle limit to hold its frame rate, the pack comes down with it.
+    // Room for the cars the chase has collected on top of the ones it was
+    // sent -- a beaten roadblock's crews, mostly -- but still tied to the
+    // wanted level, so dropping from five stars to three thins the pursuit
+    // instead of keeping eighteen cars on a two-car call. Five stars reaches
+    // PACK_CAP; nothing below it does.
+    const room = Math.max(want, this.game.vehicleLimit - 6);
+    const ceiling = this.tier > 0 ? Math.min(want + 3, PACK_CAP, room) : want;
+    const over = live.length - ceiling;
     if (over > 0 && this.trimTimer <= 0) {
       let pick = null, pickD = 0;
       for (const u of live) {
