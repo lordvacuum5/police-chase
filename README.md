@@ -947,14 +947,30 @@ a housing estate.
 ### Following you, not the straight line
 
 *"If they are close behind me and in pursuit then just make them follow me."*
-The straight line is right on an open road and wrong everywhere else: you take
-a corner past a house, and the line from the car behind you to your car goes
-through the corner of the house. So the game keeps a breadcrumb trail of where
-you have actually driven — a point every 2.5 m, the last 400 m or so — and a
-pursuing unit that finds itself on it (within 9 m) drives it: through the same
-gap, round the same corner, at a speed the path planner works out from the
-trail's own bends. It stays on your line until it is close enough to ram, and
-leaves it only for the straight-line pursuit above when it has fallen off it.
+The straight line is right on an open road and wrong in one specific place:
+you put the car through a gap — between two buildings, between two trees —
+and the line from the car behind you to your car goes through the building.
+So the game keeps a breadcrumb trail of where you have actually driven, a
+point every 2.5 m, and a unit that is **right behind you with no clear line to
+you** drives your line instead: through the same gap, at a speed the path
+planner works out from the trail's own bends.
+
+All three conditions matter, and the first version of this had only the first:
+within 34 m, on the trail (within 7 m of it), and no line of sight. Following
+someone's exact line from a hundred metres back is not tracking them, it is
+copying them, and it copied every mistake — *"sometimes I might accidentally
+skid a bit off road, but then continue on, and then they would always all skid
+off road"*. With a clear view of the car they drive at the car, which is the
+ordinary pursuit above; the line is only ever a way through something.
+
+**A line that comes back on itself is thrown away.** Pulling into the repair
+bay and reversing straight out used to leave that detour in the trail, and the
+whole pursuit turned into the forecourt after you: *"I went into the repair
+station and I backed out, and then they all started trying to go into the
+repair station."* When the trail passes within 7 m of a point it already has,
+everything recorded between the two is dropped — it is somewhere you went and
+came out of again, so there is nothing there to follow. The same rule cleans
+up any doubling back, a three-point turn included.
 
 Everyone following the same line puts the whole pursuit in single file, and
 every car in the file closed on the one in front as if it were you: twenty

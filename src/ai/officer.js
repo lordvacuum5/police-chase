@@ -19,9 +19,16 @@ const _aim2 = new THREE.Vector3();
 const _dirTmp = new THREE.Vector3();
 const _origin2 = new THREE.Vector3();
 
-/** How close a unit must be to the player's trail to drive it, and to the player. */
-const TRAIL_JOIN = 9;
-const TRAIL_RANGE = 130;
+/**
+ * How close a unit must be to the player's trail to drive it, and to the
+ * player. Both are short on purpose: following someone's exact line from a
+ * hundred metres back is not tracking them, it is copying them, and it copied
+ * every mistake -- a skid onto the verge, a wrong turn into the garage
+ * forecourt -- for the whole pursuit. Anything further off, or anything with a
+ * clear line to the car, is ordinary pursuit.
+ */
+const TRAIL_JOIN = 7;
+const TRAIL_RANGE = 34;
 
 /** Longest a searching unit keeps trying to reach one spot, seconds. */
 const SPOT_PATIENCE = 28;
@@ -874,14 +881,7 @@ export class Officer {
     const d = this.distanceTo(target.position);
     const ram = this.ramAggression;
 
-    // Close behind, but not yet close enough to hit: drive where they drove.
     const ramRange = lerp(10, 26, ram);
-    const trail = this.game.playerTrail;
-    if (trail && trail.length > 3 && d > ramRange && d < TRAIL_RANGE && target === this.game.player) {
-      const follow = this._followTrail(dt, target, trail, d);
-      this._mode = follow ? 'trail' : this._mode;
-      if (follow) return follow;
-    }
 
     // Only chase the target's position directly when there is actually a clear
     // line to it. Driving at a car you cannot see means driving at whatever is
@@ -931,6 +931,18 @@ export class Officer {
     }
 
     if (!this._hasLos) {
+      // Right on their bumper with something solid between: they went through
+      // a gap -- two buildings, two trees -- and the way through is the way
+      // they went. Only then, and only from close enough that the line still
+      // means something: "they need to be right behind me if they're going to
+      // follow me exactly. But otherwise the old routing is good."
+      const trail = this.game.playerTrail;
+      if (trail && trail.length > 3 && d > 6 && d < TRAIL_RANGE
+          && target === this.game.player) {
+        const follow = this._followTrail(dt, target, trail, d);
+        if (follow) { this._mode = 'trail'; return follow; }
+      }
+
       // Something solid in the way -- which is a reason to look for the way
       // through, not a reason to give up and drive round by road. Falling
       // straight back to the network was why a target sitting in a courtyard,

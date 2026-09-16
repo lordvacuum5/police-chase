@@ -789,6 +789,15 @@ class Game {
       if (d > 30) t.length = 0;
       else if (d < 2.5) return;
     }
+    // Where the line comes back on itself, the loop between is thrown away:
+    // it is somewhere you went and came out of again, and driving it is
+    // pointless. Pulling into the repair bay and reversing out left the whole
+    // pursuit turning into the forecourt after you -- "I went into the repair
+    // station and backed out, and then they all started trying to go into the
+    // repair station" -- and so did any doubling back on yourself.
+    for (let i = 0; i < t.length - 2; i++) {
+      if (Math.hypot(t[i].x - p.x, t[i].z - p.z) < 7) { t.length = i + 1; break; }
+    }
     t.push({ x: p.x, z: p.z });
     if (t.length > 170) t.splice(0, t.length - 170);
   }
