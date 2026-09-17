@@ -6,7 +6,7 @@ as before.
 
 | file | replaces |
 |---|---|
-| `suv.glb` | the police SUV |
+| `police-suv.glb` | the police SUV |
 
 Other kinds can be added to `CAR_MODELS` in `src/game/carmodel.js`.
 
@@ -35,7 +35,7 @@ backwards, or one whose light bar is somewhere unusual. Those are settings in
 
 ```js
 suv: {
-  url: 'assets/models/suv.glb',
+  url: 'resources/models/suv.glb',
   yaw: 0,        // radians; Math.PI if the car faces the wrong way
   lift: 0,       // metres up or down, if the sills sink or float
   lamps: null,   // [[x,y,z],[x,y,z]] in body-local metres, to place the flashers by hand

@@ -2,7 +2,7 @@
 //
 // Every car in the game is generated geometry (see game/vehicles.js): boxes
 // assembled into a body, painted with vertex colours and a livery atlas. This
-// is the way in for a car that is not -- a .glb dropped into assets/models
+// is the way in for a car that is not -- a .glb dropped into resources/models
 // replaces the *body* of one kind of car and nothing else.
 //
 // What stays the game's:
@@ -35,7 +35,7 @@ import { GLTFLoader } from '../../vendor/addons/loaders/GLTFLoader.js';
  * bar is not where the fitted roof line suggests.
  */
 export const CAR_MODELS = {
-  suv: { url: 'assets/models/suv.glb', yaw: 0, lift: 0, lamps: null },
+  suv: { url: 'resources/models/police-suv.glb', yaw: 0, lift: 0, lamps: null },
 };
 
 const _box = new THREE.Box3();
@@ -116,10 +116,7 @@ export async function loadCarModel(url, targetGeometry, opts = {}) {
   _box.setFromObject(scene);
   const lamps = opts.lamps
     ? opts.lamps.map((p) => new THREE.Vector3(p[0], p[1], p[2]))
-    : [
-      new THREE.Vector3(+0.38, _box.max.y + 0.04, -0.14),
-      new THREE.Vector3(-0.38, _box.max.y + 0.04, -0.14),
-    ];
+    : findLightBar(scene, _box);
 
   // The fitted transform goes on a child, never on the root: the render loop
   // writes the physics position and rotation straight onto whatever it is
@@ -130,6 +127,63 @@ export async function loadCarModel(url, targetGeometry, opts = {}) {
   root.name = `model:${url}`;
   root.add(scene);
   return { scene: root, lamps, scale, url };
+}
+
+/**
+ * Where to put the flashing lights on a body nobody here modelled.
+ *
+ * Most police models come with a light bar on the roof already, and the game's
+ * flashers belong on it. "Just above the highest point of the car" sounds like
+ * the answer and is not: on the first real model the highest point was a
+ * spoiler over the tailgate, which put the flashers in the air behind the car.
+ *
+ * So the roof is found instead -- the front edge of the upper body, where the
+ * windscreen meets it -- and the lamps go a little way behind that edge, at
+ * the height of the roof *at that end*. That is where a crew fits a bar, and
+ * it is right whether or not the model has one.
+ */
+function findLightBar(scene, fitted) {
+  const top = fitted.max.y;
+  const p = new THREE.Vector3();
+  scene.updateMatrixWorld(true);
+
+  // Everything in the top half-metre of the car: the roof panel, and whatever
+  // stands on it. Measured on the first real model, the *highest* thing was a
+  // spoiler over the tailgate, so aiming at the highest point put the flashers
+  // out in the air behind the car. The roof panel is the thing to find.
+  const upper = [];
+  scene.traverse((o) => {
+    if (!o.isMesh || !o.geometry || !o.geometry.attributes.position) return;
+    const pos = o.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      p.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+      if (p.y >= top - 0.5) upper.push(p.clone());
+    }
+  });
+  if (!upper.length) {
+    return [
+      new THREE.Vector3(+0.38, top + 0.04, -0.14),
+      new THREE.Vector3(-0.38, top + 0.04, -0.14),
+    ];
+  }
+
+  // The front edge of the roof is where the windscreen meets it: the furthest
+  // forward the upper body reaches along the car's centre.
+  let zFront = -Infinity;
+  for (const q of upper) if (Math.abs(q.x) < 0.6 && q.z > zFront) zFront = q.z;
+  if (!isFinite(zFront)) zFront = 0;
+
+  // How high the roof is at that end -- not at the back, where the spoiler is.
+  let roofY = -Infinity;
+  for (const q of upper) if (q.z > zFront - 0.9 && q.z <= zFront + 0.05 && q.y > roofY) roofY = q.y;
+  if (!isFinite(roofY)) roofY = top;
+
+  // A bar sits just behind the windscreen, which is where a crew would fit one.
+  const z = zFront - 0.3;
+  return [
+    new THREE.Vector3(+0.34, roofY + 0.03, z),
+    new THREE.Vector3(-0.34, roofY + 0.03, z),
+  ];
 }
 
 /**

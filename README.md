@@ -2023,8 +2023,8 @@ four, and the recording underneath it is pitched to match.
 ## Bringing in a model
 
 Every car here is generated geometry, and does not have to be. Drop a `.glb`
-into `assets/models` and it replaces the body of one kind of car — `suv.glb`
-takes the police SUV; other kinds are a line in `CAR_MODELS`
+into `resources/models` and it replaces the body of one kind of car —
+`police-suv.glb` takes the police SUV; other kinds are a line in `CAR_MODELS`
 (`src/game/carmodel.js`). With no file there, nothing changes, which is the
 normal case: a missing model is not an error.
 
@@ -2047,12 +2047,13 @@ and lights within four centimetres of where the generated body puts them). What
 it cannot infer is a car modelled facing backwards — that is `yaw` in the table
 — or a light bar in an unusual place, which is `lamps`.
 
-The awkward one is livery. Marked cars are painted from a texture atlas keyed to
+The awkward one is livery (your SUV has its markings baked in already, which is
+exactly right). Marked cars are painted from a texture atlas keyed to
 UVs the geometry builder generates, and an imported model arrives with its own,
 so its markings have to be baked into its own texture. There is a per-car cost
 argument too: at five stars there may be eighteen police cars on screen and they
 are all this model, so one material and 5–15k triangles is the budget. See
-`assets/models/README.md`, and `tests/carmodel.js` for the fitting test.
+`resources/models/README.md`, and `tests/carmodel.js` for the fitting test.
 
 ## Police livery
 
