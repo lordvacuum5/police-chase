@@ -39,6 +39,7 @@ import { SPECS } from './vehicles.js';
  */
 export const CAR_MODELS = {
   patrol: { url: 'resources/models/police-patrol.glb', yaw: 0, lift: 0, lamps: null },
+  interceptor: { url: 'resources/models/police-interceptor.glb', yaw: 0, lift: 0, lamps: null },
   suv: { url: 'resources/models/police-suv.glb', yaw: 0, lift: 0, lamps: null },
 };
 

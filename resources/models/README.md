@@ -7,6 +7,7 @@ as before.
 | file | replaces |
 |---|---|
 | `police-patrol.glb` | the patrol car — the white one you meet first |
+| `police-interceptor.glb` | the interceptor, from three stars |
 | `police-suv.glb` | the police SUV |
 
 Other kinds can be added to `CAR_MODELS` in `src/game/carmodel.js`.
