@@ -2039,13 +2039,23 @@ What stays the game's, whatever the file contains:
   offsets. The model can keep its own light bar as unlit plastic and the
   flashers sit on top of it.
 
-The fitting is done against the bounding box of the generated body being
-replaced: scaled by length, held to that body's width, centred, and stood on
-the same plane. A model in centimetres at three times life size lands correctly
-(measured: scale 0.0101, fitted to 5.15 m against the SUV body's 5.15 m, sills
-and lights within four centimetres of where the generated body puts them). What
-it cannot infer is a car modelled facing backwards — that is `yaw` in the table
-— or a light bar in an unusual place, which is `lamps`.
+**Fitting is done by the model's own wheels.** The game knows exactly where it
+will put this car's wheels — the spec's wheelbase and weight split fix the
+axles, and the suspension's static sag fixes the height (`wheelLayout`, which
+agrees with a car parked in the game to a centimetre). So a model that comes
+with four wheels is scaled until its wheelbase is the game's, slid until its
+axles are the game's, and stood on its own tyres; then its wheels are thrown
+away, and the game's land exactly in the arches the modeller cut.
+
+The first fit matched the old generated body's bounding box instead, lining up
+lowest points. That happened to look right on the SUV and was plainly wrong on
+the patrol car, whose sills ended up two centimetres off the road with the
+wheels half-buried in the flanks. By its wheels, the patrol car comes out at a
+scale of exactly 1.00 and 4.92 m long — the modeller hit the brief — with the
+sills 24 cm up. A model with no wheels in it still falls back to the box fit:
+right size, right place, arches not guaranteed. What neither can infer is a car
+modelled facing backwards — that is `yaw` in the table — or a light bar in an
+unusual place, which is `lamps`.
 
 The awkward one is livery (your SUV has its markings baked in already, which is
 exactly right). Marked cars are painted from a texture atlas keyed to

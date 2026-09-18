@@ -14,16 +14,19 @@
 //     body-local offsets (see effects.js, LightBars) -- the model may keep its
 //     own light bar as unlit plastic and the flashers sit on top of it.
 //
-// The model is fitted to the box the generated body occupies, so a file that
-// is in centimetres, or is modelled nose-up-the-Z-axis at twice life size,
-// still lands on the road at the right size. What it cannot fix is a car
-// modelled facing backwards: set `yaw` for that.
+// The model is fitted by its own wheels when it has them -- wheelbase to the
+// game's wheelbase, axles to the game's axles, tyres on the game's ground --
+// and to the box the generated body occupies when it does not. Either way a
+// file in centimetres, or at twice life size, still lands on the road at the
+// right size. What it cannot fix is a car modelled facing backwards: set `yaw`
+// for that.
 //
 // Nothing here is required. A missing file is not an error -- the generated
 // body is used, exactly as before.
 
 import * as THREE from 'three';
 import { GLTFLoader } from '../../vendor/addons/loaders/GLTFLoader.js';
+import { SPECS } from './vehicles.js';
 
 /**
  * Which kinds of car may be replaced, and by what.
@@ -35,6 +38,7 @@ import { GLTFLoader } from '../../vendor/addons/loaders/GLTFLoader.js';
  * bar is not where the fitted roof line suggests.
  */
 export const CAR_MODELS = {
+  patrol: { url: 'resources/models/police-patrol.glb', yaw: 0, lift: 0, lamps: null },
   suv: { url: 'resources/models/police-suv.glb', yaw: 0, lift: 0, lamps: null },
 };
 
@@ -49,7 +53,7 @@ const WHEEL_NAME = /wheel|tyre|tire|rim|hubcap/i;
  * Load one model and fit it to the car it replaces. Returns null if there is
  * no file there, which is the normal case.
  */
-export async function loadCarModel(url, targetGeometry, opts = {}) {
+export async function loadCarModel(url, targetGeometry, opts = {}, spec = null) {
   // Fetched here rather than handed to the loader, so that "there is no file"
   // is an ordinary answer instead of an exception -- and with GET, because the
   // little PowerShell dev server answers HEAD with a 500.
@@ -66,42 +70,28 @@ export async function loadCarModel(url, targetGeometry, opts = {}) {
   const gltf = await new GLTFLoader().parseAsync(buf, base);
   const scene = gltf.scene;
 
-  // ---- the game's own wheels are the only wheels ----
-  const spare = [];
-  scene.traverse((o) => { if (o.name && WHEEL_NAME.test(o.name)) spare.push(o); });
-  for (const o of spare) if (o.parent) o.parent.remove(o);
-
-  // ---- face the right way, then fit ----
+  // ---- face the right way ----
   if (opts.yaw) scene.rotateY(opts.yaw);
   scene.updateMatrixWorld(true);
 
-  targetGeometry.computeBoundingBox();
-  const want = targetGeometry.boundingBox;
-  want.getSize(_size);
-  const wantLen = _size.z, wantWide = _size.x, wantLow = want.min.y;
-  const wantMidX = (want.min.x + want.max.x) * 0.5;
-  const wantMidZ = (want.min.z + want.max.z) * 0.5;
+  const wheels = [];
+  scene.traverse((o) => { if (o.name && WHEEL_NAME.test(o.name)) wheels.push(o); });
 
-  _box.setFromObject(scene);
-  _box.getSize(_size);
-  if (!(_size.x > 0 && _size.z > 0)) return null;
-
-  // Length decides the scale -- it is the dimension a car is judged by -- but
-  // never at the cost of a body wider than the one it replaces by more than a
-  // few per cent, which would put the flanks through the kerb.
-  let scale = wantLen / _size.z;
-  if (_size.x * scale > wantWide * 1.06) scale = (wantWide * 1.06) / _size.x;
-  scene.scale.setScalar(scale);
+  // ---- fit ----
+  // By its own wheels if it has them and the spec is known: that is the only
+  // fit that puts the game's wheels in the arches the modeller cut. Otherwise
+  // by the box of the generated body it replaces.
+  const fit = (spec && wheels.length >= 4 && fitByWheels(scene, wheels, spec, targetGeometry))
+    || fitByBox(scene, targetGeometry);
+  if (!fit) return null;
+  if (opts.lift) scene.position.y += opts.lift;
   scene.updateMatrixWorld(true);
 
-  // Sit it where the generated body sits: centred across and along, and
-  // standing on the same plane, so the wheels meet the arches.
-  _box.setFromObject(scene);
-  _box.getCenter(_centre);
-  scene.position.x += wantMidX - _centre.x;
-  scene.position.z += wantMidZ - _centre.z;
-  scene.position.y += wantLow - _box.min.y + (opts.lift || 0);
+  // ---- the game's own wheels are the only wheels ----
+  // Only now: the fit above needed them.
+  for (const o of wheels) if (o.parent) o.parent.remove(o);
   scene.updateMatrixWorld(true);
+  const scale = scene.scale.x;
 
   scene.traverse((o) => {
     if (!o.isMesh) return;
@@ -126,7 +116,112 @@ export async function loadCarModel(url, targetGeometry, opts = {}) {
   const root = new THREE.Group();
   root.name = `model:${url}`;
   root.add(scene);
-  return { scene: root, lamps, scale, url };
+  return { scene: root, lamps, scale, url, fit };
+}
+
+/**
+ * Where the game will put this car's wheels, in body-local metres, with the
+ * car sitting still on level ground -- the same numbers Vehicle._buildWheels
+ * and the suspension settle to. The sag is the static load over the spring
+ * rate; checked against a patrol car parked in the game, it agrees to a
+ * centimetre.
+ */
+export function wheelLayout(spec) {
+  const sus = spec.suspension;
+  const g = 9.81;
+  const front = spec.wheelbase * (1 - spec.frontWeight);
+  const rear = -spec.wheelbase * spec.frontWeight;
+  const sagF = Math.min(sus.travel, (spec.mass * g * spec.frontWeight * 0.5) / sus.stiffness);
+  const sagR = Math.min(sus.travel, (spec.mass * g * (1 - spec.frontWeight) * 0.5) / sus.stiffness);
+  const centreY = sus.mountY - sus.rest + (sagF + sagR) * 0.5;
+  return { front, rear, centreY, ground: centreY - spec.wheelRadius };
+}
+
+/**
+ * Fit by the model's own wheels: scale so its wheelbase is the game's, slide it
+ * so its axles are where the game's are, and stand its tyres on the game's
+ * ground. Returns false -- leaving the box fit to do it -- if the wheels do
+ * not look like a car's wheels, rather than trusting a badly named node.
+ */
+function fitByWheels(scene, wheels, spec, targetGeometry) {
+  const measure = () => {
+    scene.updateMatrixWorld(true);
+    const out = [];
+    for (const w of wheels) {
+      _box.setFromObject(w);
+      const c = new THREE.Vector3();
+      _box.getCenter(c);
+      out.push({ c, low: _box.min.y });
+    }
+    out.sort((a, b) => b.c.z - a.c.z);          // +Z is the front
+    const n = out.length;
+    return {
+      front: (out[0].c.z + out[1].c.z) * 0.5,
+      rear: (out[n - 1].c.z + out[n - 2].c.z) * 0.5,
+      midX: out.reduce((s, w) => s + w.c.x, 0) / n,
+      low: Math.min(...out.map((w) => w.low)),
+    };
+  };
+
+  let m = measure();
+  const modelBase = m.front - m.rear;
+  if (!(modelBase > 0.1)) return false;
+  const scale = spec.wheelbase / modelBase;
+  scene.scale.multiplyScalar(scale);
+
+  // Sanity: the car that comes out has to be roughly the size of the car it
+  // replaces. A model whose "wheels" are something else ends up absurd here,
+  // and the box fit is the better answer for it.
+  scene.updateMatrixWorld(true);
+  _box.setFromObject(scene);
+  _box.getSize(_size);
+  targetGeometry.computeBoundingBox();
+  const wantLen = targetGeometry.boundingBox.max.z - targetGeometry.boundingBox.min.z;
+  if (_size.z < wantLen * 0.8 || _size.z > wantLen * 1.2) {
+    scene.scale.multiplyScalar(1 / scale);
+    return false;
+  }
+
+  const game = wheelLayout(spec);
+  m = measure();
+  scene.position.x -= m.midX;
+  scene.position.z += (game.front + game.rear) * 0.5 - (m.front + m.rear) * 0.5;
+  scene.position.y += game.ground - m.low;
+  return 'wheels';
+}
+
+/**
+ * Fit by the box of the generated body: scaled by length, held to its width,
+ * centred, and stood on the same plane. For a model that has no wheels to go
+ * by -- it gets the right size and place, but nothing lines up the arches.
+ */
+function fitByBox(scene, targetGeometry) {
+  targetGeometry.computeBoundingBox();
+  const want = targetGeometry.boundingBox;
+  want.getSize(_size);
+  const wantLen = _size.z, wantWide = _size.x, wantLow = want.min.y;
+  const wantMidX = (want.min.x + want.max.x) * 0.5;
+  const wantMidZ = (want.min.z + want.max.z) * 0.5;
+
+  scene.updateMatrixWorld(true);
+  _box.setFromObject(scene);
+  _box.getSize(_size);
+  if (!(_size.x > 0 && _size.z > 0)) return false;
+
+  // Length decides the scale -- it is the dimension a car is judged by -- but
+  // never at the cost of a body wider than the one it replaces by more than a
+  // few per cent, which would put the flanks through the kerb.
+  let scale = wantLen / _size.z;
+  if (_size.x * scale > wantWide * 1.06) scale = (wantWide * 1.06) / _size.x;
+  scene.scale.multiplyScalar(scale);
+  scene.updateMatrixWorld(true);
+
+  _box.setFromObject(scene);
+  _box.getCenter(_centre);
+  scene.position.x += wantMidX - _centre.x;
+  scene.position.z += wantMidZ - _centre.z;
+  scene.position.y += wantLow - _box.min.y;
+  return 'box';
 }
 
 /**
@@ -196,7 +291,7 @@ export async function loadCarModels(game, table = CAR_MODELS) {
   for (const [specKey, opts] of Object.entries(table)) {
     try {
       const target = game._geometryFor(specKey, specKey, true, false);
-      const model = await loadCarModel(opts.url, target, opts);
+      const model = await loadCarModel(opts.url, target, opts, SPECS[specKey]);
       if (model) out[specKey] = model;
     } catch (e) {
       console.warn(`[carmodel] ${specKey}: ${opts.url} failed to load --`, e.message);

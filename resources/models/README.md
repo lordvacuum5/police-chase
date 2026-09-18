@@ -6,6 +6,7 @@ as before.
 
 | file | replaces |
 |---|---|
+| `police-patrol.glb` | the patrol car — the white one you meet first |
 | `police-suv.glb` | the police SUV |
 
 Other kinds can be added to `CAR_MODELS` in `src/game/carmodel.js`.
@@ -14,8 +15,13 @@ Other kinds can be added to `CAR_MODELS` in `src/game/carmodel.js`.
 
 * **glTF 2.0 binary (`.glb`)**, uncompressed. Draco and meshopt compression
   and KTX2 textures are not handled — export with those off.
-* **The body only.** Anything named `wheel`, `tyre`, `tire`, `rim` or `hubcap`
-  is dropped: the game supplies and steers its own wheels.
+* **Four wheels, named `wheel_fl`, `wheel_fr`, `wheel_rl`, `wheel_rr`.** They
+  are measured and then thrown away: the game uses its own wheels, which turn
+  and steer. Measuring them is how the body is fitted — scaled so its wheelbase
+  is the game's, slid so its axles are where the game's are, and stood on its
+  own tyres — which puts the game's wheels exactly in the arches you modelled.
+  Without wheels in the file it still works, but only by matching the overall
+  size, and the arches may not line up.
 * **The livery baked into the texture.** The generated cars are painted from a
   texture atlas keyed to their own UVs, and an imported model has its own — so
   its markings have to be in its own texture.
