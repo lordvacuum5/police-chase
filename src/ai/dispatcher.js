@@ -383,6 +383,25 @@ export class Dispatcher {
         this.retire(pick);
       }
     }
+
+    // At four stars and up the fleet is interceptors and SUVs, but the patrol
+    // cars that were already out when the heat went up would otherwise stay
+    // for the rest of the chase. So they are stood down one at a time --
+    // furthest first, never where you can see it happen, never mid-manoeuvre
+    // -- and the spawner above fills each gap with a car from the higher tiers.
+    if (this.tier >= 4 && this.trimTimer <= 0) {
+      let pick = null, pickD = 0;
+      for (const u of live) {
+        if (u.vehicle.specKey !== 'patrol') continue;
+        if (u.role === ROLE.BOX || u.role === ROLE.PIT || u.role === ROLE.BLOCK) continue;
+        const d = u.distanceTo(target.position);
+        if (d > pickD) { pick = u; pickD = d; }
+      }
+      if (pick && (pickD > 160 || (pickD > 70 && !this._visibleTo(pick, target)))) {
+        this.trimTimer = 3;
+        this.retire(pick);
+      }
+    }
   }
 
   /**

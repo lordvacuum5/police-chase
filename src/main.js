@@ -52,18 +52,20 @@ const ROUTINE_GAP = 12;
 /**
  * Which kind of car answers a call, by wanted level.
  *
- * Patrol cars all the way up; interceptors from three stars, and unmarked
- * cars at the top. The SUV joins from two stars. The armoured van only comes
- * out at five, and only one at a time: it is slow, and a pursuit made of vans
- * is a traffic jam.
+ * Patrol cars at the low end, with SUVs joining from two stars and
+ * interceptors from three. At four and five the patrol car is gone: "when it
+ * gets to wanted level four and five, can you make it so patrol cars stop
+ * spawning... just interceptor cars and SUVs." The armoured van still comes
+ * out at five, rarely and only one at a time -- it is slow, and a pursuit made
+ * of vans is a traffic jam.
  */
 function policeKindFor(tier, roll, vehicles) {
   if (tier >= 5) {
     const vanOut = vehicles.some((v) => v.specKey === 'van');
-    if (!vanOut && roll < 0.14) return 'van';
-    return roll < 0.36 ? 'unmarked' : roll < 0.68 ? 'interceptor' : roll < 0.88 ? 'suv' : 'patrol';
+    if (!vanOut && roll < 0.06) return 'van';
+    return roll < 0.55 ? 'interceptor' : 'suv';
   }
-  if (tier === 4) return roll < 0.1 ? 'unmarked' : roll < 0.5 ? 'interceptor' : roll < 0.78 ? 'suv' : 'patrol';
+  if (tier === 4) return roll < 0.55 ? 'interceptor' : 'suv';
   if (tier === 3) return roll < 0.35 ? 'interceptor' : roll < 0.6 ? 'suv' : 'patrol';
   if (tier === 2) return roll < 0.25 ? 'suv' : 'patrol';
   return 'patrol';
@@ -461,8 +463,10 @@ class Game {
       if (dist2(other.position.x, other.position.z, position.x, position.z) < 4.2) return null;
     }
     const r = this.rng();
-    // SUVs make a good wall: the widest, heaviest thing the fleet has short of the van.
-    const kind = tier >= 4 ? (r < 0.4 ? 'interceptor' : r < 0.75 ? 'suv' : 'patrol')
+    // SUVs make a good wall: the widest, heaviest thing the fleet has short of
+    // the van. No patrol cars on a block at four stars and up, same as the
+    // pursuit.
+    const kind = tier >= 4 ? (r < 0.45 ? 'interceptor' : 'suv')
       : tier >= 3 && r < 0.4 ? 'suv' : 'patrol';
     const v = this.createVehicle(kind, kind, position, heading, { police: true });
     v.lampPhase = this.rng();

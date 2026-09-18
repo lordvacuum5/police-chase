@@ -2098,11 +2098,22 @@ calls rather than a separate mesh per marking.
 
 | | from | 0–100 | top speed | grip | hits to wreck | |
 |---|---|---|---|---|---|---|
-| Patrol | 0 stars | 6.4 s | 230 km/h | — | — | the saloon everything starts with |
+| Patrol | 0 stars, **gone at 4** | 6.4 s | 230 km/h | — | — | the saloon everything starts with |
 | **SUV** | 2 stars | 7.5 s | 230 km/h | 1.25 g | 17 | tall, heavy, four-wheel drive, best on grass |
 | Interceptor | 3 stars | 5.9 s | 241 km/h | — | — | more engine than the patrol car |
-| Unmarked | 4 stars | 5.5 s | 247 km/h | — | — | the quickest thing they have |
-| **Armoured van** | 5 stars | 10.5 s | 167 km/h | 0.96 g | 67 | one at a time, and there to be in the way |
+| Unmarked | — | 5.5 s | 247 km/h | — | — | the quickest thing they have; not currently fielded |
+| **Armoured van** | 5 stars | 10.5 s | 167 km/h | 0.96 g | 67 | one at a time, rarely, and there to be in the way |
+
+**Four stars and up is interceptors and SUVs** — about 55/45 in pursuit and
+45/55 on roadblocks, where the wider SUV makes the better wall — with the
+occasional van at five. *"When it gets to wanted level four and five, can you
+make it so patrol cars stop spawning... just interceptor cars and SUVs."* Patrol
+cars still out when the heat rises are stood down one at a time, furthest first
+and only where you cannot see it happen, and the gap each leaves is filled from
+the higher tiers. Measured, a two-star chase of five patrol cars and one SUV was,
+fifteen seconds after going to five stars, seven SUVs, five interceptors, a van
+and two patrol cars — the two that stayed were close behind the car the whole
+time, where standing them down would have been visible.
 
 The SUV and the van are new bodies (`bodies.js`), built like the Stiletto from
 lofted cross-sections with round wheel arches rather than stacked boxes, with
