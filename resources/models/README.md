@@ -9,6 +9,7 @@ as before.
 | `police-patrol.glb` | the patrol car — the white one you meet first |
 | `police-interceptor.glb` | the interceptor, from three stars |
 | `police-suv.glb` | the police SUV |
+| `police-van.glb` | the armoured van, including the head-on one |
 
 Other kinds can be added to `CAR_MODELS` in `src/game/carmodel.js`.
 
