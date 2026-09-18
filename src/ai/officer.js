@@ -197,7 +197,7 @@ export class Officer {
     // A car on its beat goes round the player parked in its way, instead of
     // into them. Only on patrol: a unit that is after you has no reason to
     // pull out round you politely.
-    this.driver.planPass(this.role === ROLE.PATROL ? this.game.player : null);
+    this.driver.planPass(this.role === ROLE.PATROL ? this.game.player : null, dt);
     this.repathTimer -= dt;
     this._updateAssist(target);
 

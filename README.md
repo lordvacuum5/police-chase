@@ -860,6 +860,45 @@ the whole road, it stops behind you rather than into you. Only patrolling cars
 do any of this — a unit that is after you has no reason to go round you
 politely.
 
+#### If you move
+
+*"They still keep crashing into you, especially if you kind of try to then
+move… make them stop and then maybe back up and go around."* Going round a
+parked car is a plan made on the assumption that it stays parked. Three things
+now cover the times it does not:
+
+* **Never into you.** Whatever the plan says, every frame the patrol car works
+  out how long until it touches you if you both carry on as you are — each car
+  as three circles down its length — and if that is inside three seconds it
+  brakes so as to stop two metres short, on gentle braking so it starts early.
+  Pull out in front of it, swerve into the gap it was aiming for, reverse at
+  it: it stops.
+* **Moving, it follows.** A car rolling along in its lane is not overtaken; the
+  patrol car hangs back behind it at a following distance. Overtaking a moving
+  car is how the contacts happened — it drifts into the gap being aimed for.
+* **Stopped short, it backs up and tries again.** Held up by that brake for a
+  second, or stopped right behind you, it reverses a few metres with opposite
+  lock so the nose swings out toward the side it is going round, and has
+  another go already pointed at the gap. This is mostly corners: a patrol car
+  turning into a street where you are stopped just past the junction comes out
+  of the turn nose-on to you and too close to steer round from a standstill,
+  and before this it sat there — each time it crept forward it was heading for
+  you again, so the brake held it. Round a corner, too, "in front" and "in my
+  lane" are measured along the route rather than in a straight line from the
+  car, so a car parked twelve metres past a junction is recognised as in the
+  way from the far side of it, not fifteen metres out mid-turn.
+
+Measured (`tests/pass.js`) with you driving the other car:
+
+| you | contacts | |
+|---|---|---|
+| parked just past a corner, 6 corners × 2 distances × 43 and 60 km/h | **0** | all 24 get past (8 used to sit behind you for good) |
+| creep along the lane at walking pace | **0** | it follows |
+| pull out from the kerb in front of it | **0** | |
+| swerve into its passing line at 14 m, 7 m, alongside | **0** | |
+| drive off, then stand on the brakes 12 m ahead of it | **0** | |
+| reverse at it | **0** | |
+
 ### Street furniture
 
 Lamp posts, bollards, bins and signs along the kerbs — 1608 of them on the city
@@ -1120,7 +1159,7 @@ quietly holding units on the tarmac:
   allowed off-road keeps only a quarter of it — enough not to wander.
 * **Running out of road stops being a wall.** For these units it is a change of
   surface: the speed check brakes toward a pace the verge can hold rather than
-  toward a stop.
+  toward a stop — on the way *to* the verge, and only then (see below).
 * **The direct-pursuit test no longer requires the line to be road.** Driving
   at the target across whatever lies between *is* the corner cutting.
 * **"Get back on the road" became a rescue, not a rule** — it now fires only
@@ -1132,6 +1171,33 @@ police car is no better on tarmac — it is simply less helpless the moment it
 leaves it. Grass mu goes 0.62 to about 0.96. Before, a unit that cut a corner
 crawled at 6–10 km/h on the other side, which is not a shortcut; it now carries
 about 42 km/h off-road.
+
+#### Flat out across a field
+
+*"Is there any reason that when I go off-road, the police cars suddenly slow
+down a lot?"* There was. The pace-for-the-verge check assumed a unit might have
+to turn through a 45 m arc on grass, and slowed it to what the grass could hold
+for that — about 75 km/h. That is right for a car *arriving* at the verge. But
+the check works from how much road is left ahead, and once the car is out on
+the grass there is none left in any direction, so the same figure became a
+flat speed limit for as long as it stayed there: every unit held at 75 km/h
+across open fields while you went across them at 190.
+
+It now applies only while the car still has wheels on the road. With three on
+the grass it stops, and the limits that remain are the ones that were always
+there and already know they are on grass: how far it can see to stop in, on
+the grass's own grip, and how fast it can take the turn it is actually making.
+
+`tests/offroad.js` — the longest straight run of open grass on the city map,
+490 m, you at 145 km/h, one unit forty metres back; and `tests/straightline.js`
+on a grass plate with nothing on it at all:
+
+| | before | now |
+|---|---|---|
+| on the map: unit's speed on the grass | 74–78 km/h | **135–138 km/h** |
+| on the map: gap after 12 s (from 40 m) | 255–266 m | **54–65 m** |
+| open grass plate, you at 190: gap after 20 s | ~500 m, and growing | **13–36 m** |
+| crashes, either test | 0 | 0 |
 
 ### Not driving into buildings
 
@@ -1211,6 +1277,14 @@ A unit that has buried itself in something stops, selects reverse, backs out
 with opposite lock so the nose swings toward where it wanted to go, and then
 throws away its route — otherwise it drives straight back into whatever it just
 left. It gives up early once it has made seven metres of room.
+
+And then it stops going backwards. In reverse the pedals swap — the brake is
+what drives the car backwards — and the speed control, which works on the size
+of the speed, read a car still backing off faster than its target as "too
+fast, brake" and sent it off backwards harder: a patrol car finished backing
+away from a parked car at 26 km/h and was doing 29 and climbing ten metres
+later. Still rolling backwards in reverse gear, the throttle is now always
+what it gets — which stops it, and selects forward.
 
 The detection has to work off the speed the *caller asked for*, not the speed
 the safety limiter allowed. A car pinned against a wall is correctly told to

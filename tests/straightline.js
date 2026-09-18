@@ -7,10 +7,13 @@
 // as long as it likes without either car meeting a corner. What is left is
 // pace: engine, gearing, drag, and whatever the driver's own speed limits do.
 //
+// `surface` 0 runs the same thing on grass: "when I go off-road, the police
+// cars suddenly slow down a lot".
+//
 //   gap_m       distance from the player to the police car, at 5/10/20/30 s
 //   playerKph   what the player settles at
 //   policeKph   what the police car settles at
-window.__runStraight = async function (kind = 'interceptor', tier = 5, seconds = 30) {
+window.__runStraight = async function (kind = 'interceptor', tier = 5, seconds = 30, surface = 1) {
   try {
     for (let i = 0; i < 200 && !(window.__game && window.__game.player); i++) {
       await new Promise((r) => setTimeout(r, 100));
@@ -23,7 +26,7 @@ window.__runStraight = async function (kind = 'interceptor', tier = 5, seconds =
     g.onEscaped = () => { g.outcome = null; };
 
     const realSurface = g.sim.surfaceAt, realHeight = g.sim.heightAt;
-    g.sim.surfaceAt = () => 1;
+    g.sim.surfaceAt = () => surface;
     g.sim.heightAt = () => 0;
     const LANE_X = 1100, Z0 = -1150, Z1 = 1150;
 
@@ -100,7 +103,7 @@ window.__runStraight = async function (kind = 'interceptor', tier = 5, seconds =
     g.sim.heightAt = realHeight;
     g.paused = wasPaused;
     g.dispatcher.retire(u);
-    return { car: p.spec.name, kind, tier, marks, askedCap: +(u.driver.speedTarget || 0).toFixed(1) };
+    return { car: p.spec.name, kind, tier, surface, marks, askedCap: +(u.driver.speedTarget || 0).toFixed(1) };
   } catch (e) {
     return 'EX ' + e.message + ' ' + String(e.stack).slice(0, 300);
   }
