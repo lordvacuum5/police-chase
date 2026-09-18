@@ -194,6 +194,10 @@ export class Officer {
     // the car it is trying to reach, or to hit.
     const atTarget = this.role === ROLE.PURSUE || this.role === ROLE.RHINO;
     this.driver.avoid(this.game.vehicles, dt, atTarget && target ? target : null);
+    // A car on its beat goes round the player parked in its way, instead of
+    // into them. Only on patrol: a unit that is after you has no reason to
+    // pull out round you politely.
+    this.driver.planPass(this.role === ROLE.PATROL ? this.game.player : null);
     this.repathTimer -= dt;
     this._updateAssist(target);
 

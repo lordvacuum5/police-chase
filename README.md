@@ -826,6 +826,40 @@ the unlit ones scaled to nothing rather than packed out of the list. A signal
 changing writes three matrices. 702 heads on the city map come to about
 0.16 ms a frame and three draw calls.
 
+### Going round a parked car
+
+*"When the police are patrolling, make it so if I'm not stopped in the middle
+of the road, they go around me."* They did not: a patrol car's only answer to a
+car in its lane was a steering nudge that lost to its own lane keeping, and
+nothing made it brake for a car at all. Measured with you stopped in its lane
+on a 20 m road, it drove into the back of you at 43 km/h and shoved your car
+seventeen metres down the street — the same facing either way.
+
+Now a car on its beat that finds you stopped in its way (`Driver.planPass`)
+measures how much tarmac there is either side of you, pulls out round the side
+with room for it — slowing to a passing speed and holding a line parallel to
+its route rather than weaving — and pulls back in once past. The first version
+measured where you were against the patrol car's own sideways axis, which
+swings the moment it starts to turn: at forty metres a few degrees reads as you
+jumping three metres across, and it changed its mind half way out and hit you
+anyway. Against the road instead, it is steady.
+
+`tests/pass.js`, parked four ways on a 20 m and a 9 m road, the patrol car
+arriving at 43 km/h:
+
+| parked | before | now |
+|---|---|---|
+| at the kerb | passes | passes, no contact |
+| in its lane | **hits you, 17 m shove** | goes round, 0.8 m to spare |
+| in its lane, facing it | **hits you, 18 m shove** | goes round, 0.8 m to spare |
+| on the centre line | passes | passes in its own lane |
+
+Stopped on the centre line, you leave the lane beside you clear on every road
+here, so a patrol car simply drives past in its own lane; if you ever do block
+the whole road, it stops behind you rather than into you. Only patrolling cars
+do any of this — a unit that is after you has no reason to go round you
+politely.
+
 ### Street furniture
 
 Lamp posts, bollards, bins and signs along the kerbs — 1608 of them on the city
