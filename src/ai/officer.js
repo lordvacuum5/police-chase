@@ -28,11 +28,14 @@ const SEARCH_OFF_ROAD = 10;
 /**
  * A patrol car stuck behind the player's car sitting in the road (see
  * _warnIfBlocked): seconds before the first blip of lights and siren, seconds
- * between later ones, and how long each blip lasts.
+ * between blips, how long each lasts, how many warnings it gives, and seconds
+ * after the last one before it starts a chase.
  */
 const BLOCK_WARN_AFTER = 5;
 const BLOCK_WARN_EVERY = 10;
 const BLIP_SECONDS = 1.0;
+const BLOCK_WARNINGS = 2;
+const BLOCK_PURSUE_AFTER = 3;
 /** What a search spot has to be clear of, tested straight down at its middle and a car's length round it. */
 const SPOT_SOLID = groups(0xFFFF, GROUP.BUILDING | GROUP.PROP);
 const SPOT_PROBES = [[0, 0], [3, 0], [-3, 0], [0, 3], [0, -3]];
@@ -314,10 +317,10 @@ export class Officer {
   /**
    * Sitting behind the player's car, stopped in the road in front of it: after
    * a few seconds, a blip of the lights and the siren -- "move along" -- and a
-   * word on the radio, and again every so often for as long as it stays.
-   * "After, say, five seconds... they flash their lights for a second and turn
-   * on their sirens for a second." Blocking a police car is not an offence
-   * here; this is only ever a warning, and nobody's wanted level changes.
+   * word on the radio. "After, say, five seconds... they flash their lights
+   * for a second and turn on their sirens for a second." Ten seconds later a
+   * second, last warning; still there three seconds after that, it is
+   * obstruction, and this car starts a one-star chase.
    *
    * `vehicle.blipFor` is the seconds of blip left; the lamps (Game._render)
    * and the siren (Audio) both read it, without anybody being wanted.
@@ -348,14 +351,37 @@ export class Officer {
       return;
     }
 
-    const due = BLOCK_WARN_AFTER + (this._warnings || 0) * BLOCK_WARN_EVERY;
-    if (this._blockedFor < due) return;
-    this._warnings = (this._warnings || 0) + 1;
-    v.blipFor = BLIP_SECONDS;
-
     const vars = { cs: this.callsign, road: this.game.roadName(p.position) };
     // `road` reads "on Cold Harbour" or "in the city", so nothing may end with
     // a preposition of its own before it.
+
+    // Warned twice and still sitting there: that is obstruction, and three
+    // seconds after the second warning the car that gave them starts a chase
+    // over it -- "after the police say two things... wait three seconds...
+    // then just begin a one star pursuit." It says why first, the way the
+    // unit that sees you run a red does; the heat's own "all units" call
+    // follows.
+    const warnings = this._warnings || 0;
+    if (warnings >= BLOCK_WARNINGS) {
+      const last = BLOCK_WARN_AFTER + (BLOCK_WARNINGS - 1) * BLOCK_WARN_EVERY;
+      if (this._blockedFor < last + BLOCK_PURSUE_AFTER || this.game.heat.value > 0) return;
+      this.game.say('blocked-chase', [
+        (x) => `${x.cs}, two warnings and they still won't move. Lights on, I'm stopping them.`,
+        (x) => `${x.cs}, driver's refusing to move ${x.road}. Initiating a stop.`,
+        (x) => `${x.cs}, they've been told twice. Pulling them over ${x.road}.`,
+        (x) => `${x.cs}, vehicle still obstructing after two warnings. Going for a stop.`,
+      ], vars, true);
+      this.game.heat.bump(1, 'obstructing a police officer');
+      this._blockedFor = 0;
+      this._warnings = 0;
+      return;
+    }
+
+    const due = BLOCK_WARN_AFTER + warnings * BLOCK_WARN_EVERY;
+    if (this._blockedFor < due) return;
+    this._warnings = warnings + 1;
+    v.blipFor = BLIP_SECONDS;
+
     if (this._warnings === 1) {
       this.game.say('blocked', [
         (x) => `${x.cs}, vehicle stopped in the road ${x.road}, blocking me. Giving them a blip.`,
@@ -365,13 +391,14 @@ export class Officer {
         (x) => `${x.cs}, car stopped dead in front of me ${x.road}. Moving them on.`,
       ], vars, false, { every: 8 });
     } else {
+      // The last warning: a chase follows three seconds after it.
       this.game.say('blocked-again', [
         (x) => `${x.cs}, they're still not moving. If they don't shift, I'll have to pull them over.`,
-        (x) => `${x.cs}, driver's ignoring me ${x.road}. Might have to have a word.`,
-        (x) => `${x.cs}, still blocking the road. One more, then I'm stopping them.`,
+        (x) => `${x.cs}, driver's ignoring me ${x.road}. Last warning.`,
+        (x) => `${x.cs}, still blocking the road. Last chance, then I'm stopping them.`,
         (x) => `${x.cs}, vehicle still obstructing ${x.road}. Control, may need to pull this one over.`,
-        (x) => `${x.cs}, not budging. Giving them another blip.`,
-      ], vars, false, { every: 18 });
+        (x) => `${x.cs}, not budging. Final warning.`,
+      ], vars, false, { every: 12 });
     }
   }
 

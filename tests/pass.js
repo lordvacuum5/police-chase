@@ -21,6 +21,8 @@
 //   backUp   reverses toward the patrol car when it is 10 m behind
 //   leave    stays put until the patrol car has blipped its lights, then
 //            drives off
+//   leaveLate  the same, after the second (last) warning -- inside the three
+//            seconds before it would start a chase
 //
 //   passed     the patrol car got by
 //   contacts   times it touched the player's car
@@ -28,6 +30,9 @@
 //   stopGap    bumper to bumper when it first came to a stand behind you (m)
 //   firstBlip  seconds from coming to a stand to the first blip of lights and
 //              siren; blips, how many in the run
+//   chaseAt    seconds from coming to a stand to it starting a chase over the
+//              obstruction (null: it did not); then, the wanted level and its
+//              role a few seconds later
 //   radio      what it said
 //   shoved     how far the player's car was pushed (m) -- only meaningful
 //              when the player stays put; anything but ~0 is the patrol car
@@ -38,17 +43,23 @@
  * at, its blips, and the radio lines about being blocked.
  */
 function holdWatch(g, v, p) {
-  const out = { stoppedAt: null, stopGap: null, firstBlip: null, blips: 0, radio: [] };
-  let was = false;
+  const out = { stoppedAt: null, stopGap: null, firstBlip: null, blips: 0, chaseAt: null, radio: [] };
+  let was = false, now = 0;
   const realSay = g.say;
   g.say = function (key, ...rest) {
     const text = realSay.call(g, key, ...rest);
-    if (text && /blocked/.test(key)) out.radio.push(`[${key} ${g.clock.toFixed(1)}] ${text}`);
+    if (text && /blocked|chase-start/.test(key)) out.radio.push(`[${key} +${(now - (out.stoppedAt ?? 0)).toFixed(1)}s] ${text}`);
     return text;
+  };
+  const realBump = g.heat.bump;
+  g.heat.bump = function (amount, reason) {
+    if (out.chaseAt === null && /obstruct/.test(reason)) out.chaseAt = +(now - (out.stoppedAt ?? 0)).toFixed(1);
+    return realBump.call(g.heat, amount, reason);
   };
   return {
     out,
     step(t) {
+      now = t;
       if (out.stoppedAt === null && t > 1 && v.speed < 0.3) {
         const ahead = (p.position.x - v.position.x) * v.forward.x + (p.position.z - v.position.z) * v.forward.z;
         const lengths = (v.spec.dims.l + p.spec.dims.l) * 0.5;
@@ -64,7 +75,7 @@ function holdWatch(g, v, p) {
       }
       was = b;
     },
-    done() { g.say = realSay; },
+    done() { g.say = realSay; g.heat.bump = realBump; },
   };
 }
 
@@ -135,7 +146,7 @@ window.__runPassCorner = async function (after = 18, kph = 43, seconds = 16, see
     };
     const origU = g._update.bind(g);
     g._update = (dt) => {
-      g.heat.value = 0;
+      if (w.out.chaseAt === null) g.heat.value = 0;
       g.forceControls = { throttle: 0, brake: 1, steer: 0, handbrake: 1 };
       origU(dt);
     };
@@ -231,7 +242,7 @@ window.__runPass = async function (where = 'inLane', width = 20, kph = 43, secon
 
     const origU = g._update.bind(g);
     g._update = (dt) => {
-      g.heat.value = 0;
+      if (w.out.chaseAt === null) g.heat.value = 0;
       const pa = alongOf(p.position.x, p.position.z), va = alongOf(v.position.x, v.position.z);
       if (!plan && move === 'pullOut' && pa - va < 26) {
         const q = at(pa + 22, laneLat); plan = { x: q.x, z: q.z, speed: 5 };
@@ -239,7 +250,8 @@ window.__runPass = async function (where = 'inLane', width = 20, kph = 43, secon
       if (!plan && swerveAt !== undefined && pa - va < swerveAt) {
         const q = at(pa + 14, -laneLat); plan = { x: q.x, z: q.z, speed: 5 };
       }
-      if (!plan && move === 'leave' && w.out.blips > 0 && !(v.blipFor > 0)) {
+      const leaveAfter = { leave: 1, leaveLate: 2 }[move];
+      if (!plan && leaveAfter && w.out.blips >= leaveAfter && !(v.blipFor > 0)) {
         const q = at(e.length - 10, lat); plan = { x: q.x, z: q.z, speed: 8 };
       }
       if (move === 'stopGo' && !stopped && pa - va < 12) { stopped = true; held = 2.0; }
@@ -279,9 +291,12 @@ window.__runPass = async function (where = 'inLane', width = 20, kph = 43, secon
         }
       }
       if (Math.floor(t * 30) % 90 === 0) await new Promise((r) => setTimeout(r, 0));
+      // A few seconds of the chase it started is enough to see it is one.
+      if (w.out.chaseAt !== null && t - (w.out.stoppedAt ?? 0) > w.out.chaseAt + 4) break;
     }
 
     w.done();
+    const after = { tier: g.heat.tier, role: u.role };
     g._update = origU;
     g.forceControls = null;
     g.paused = wasPaused;
@@ -290,6 +305,7 @@ window.__runPass = async function (where = 'inLane', width = 20, kph = 43, secon
     return {
       where, move, width, kph, passed, contacts: hits, theirFault: ours,
       stopGap: w.out.stopGap, firstBlip: w.out.firstBlip, blips: w.out.blips,
+      chaseAt: w.out.chaseAt, then: after,
       shoved: +shoved.toFixed(2), radio: w.out.radio,
     };
   } catch (err) {

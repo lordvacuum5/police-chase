@@ -830,12 +830,15 @@ changing writes three matrices. 702 heads on the city map come to about
 
 A patrol car that finds your car stopped in its way pulls up close behind you
 and waits. After five seconds it gives you a one-second blip of the lights and
-the siren — move along — and says so on the radio; if you still have not
-moved, it does it again every ten seconds, less patiently each time. Drive off
-and it follows you, and reports that you have moved on. Nobody's wanted level
-changes: blocking a police car is not an offence here, and this is only ever a
-warning. Only patrolling cars do any of it — a unit that is after you has no
-reason to wait politely.
+the siren — move along — and says so on the radio. Ten seconds later, a second
+blip and a last warning. Still there three seconds after that, and it is
+obstruction: the car says so ("Two warnings and they still won't move. Lights
+on, I'm stopping them."), Control puts out the call ("vehicle obstructing a
+police officer"), and you are in a one-star chase with that car on your tail.
+*"After the police say two things... wait three seconds... then just begin a
+one star pursuit."* Drive off at any point before then and it follows you,
+reports that you have moved on, and nothing comes of it. Only patrolling cars
+do any of this — a unit that is after you has no reason to wait politely.
 
 It used to drive into you. A patrol car's only answer to a car in its lane was a
 steering nudge that lost to its own lane keeping, and nothing made it brake for
@@ -880,10 +883,10 @@ time from each set so they do not repeat.
 
 | you | what it does | contacts |
 |---|---|---|
-| stopped in its lane | stops 1.8 m behind; blips at 5 s and 15 s | **0** |
-| stopped in its lane, facing it | stops 1.9 m from your bonnet; blips | **0** |
+| stopped in its lane | stops 1.8 m behind; blips at 5 s and 15 s; one-star chase at 18 s | **0** |
+| stopped, then drive off after the first warning, or in the 3 s after the last | follows; "vehicle's moved on"; no chase | **0** |
+| stopped in its lane, facing it | stops 1.9 m from your bonnet; the same warnings and chase | **0** |
 | at the kerb, or on the centre line | drives past in its lane | **0** |
-| stopped, then drive off after the blip | follows; "vehicle's moved on" | **0** |
 | creeping along its lane | follows about 5 m back | **0** |
 | pull out from the kerb in front of it | brakes, follows | **0** |
 | swerve across it at 14 m, 7 m, alongside | stops | **0** |
