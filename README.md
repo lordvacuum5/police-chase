@@ -593,7 +593,7 @@ more scenery contacts (0.6 per minute) and no change in frame time — nine
 units at five stars cost 3.85 ms a frame with the long probes against 4.15 ms
 with the old ones, which is to say the rays are free and the braking was not.
 
-What the Stiletto keeps is cornering: 1.57 g at 60 km/h and 1.91 g at 170,
+What the Stiletto keeps is cornering: 1.50 g at 60 km/h and 1.64 g at 170,
 against a police car's 1.30. It is no longer a car you escape in a straight
 line; it is a car you escape in the bends.
 
@@ -1930,14 +1930,14 @@ or a verge — only against the other car. These are the figures on the menu:
 
 | | Runner | Stiletto |
 |---|---|---|
-| 0–100 km/h | 7.37 s | **5.05 s** |
+| 0–100 km/h | 7.37 s | **5.0 s** |
 | 0–160 km/h | 15.3 s | **8.23 s** |
 | 0–200 km/h | 28.0 s | **12.2 s** |
 | top speed | 215 km/h, on the limiter in 6th | **240 km/h**, on the limiter in 7th |
-| peak steady grip, 60 km/h | 1.28 g | **1.57 g** |
-| peak steady grip, 120 km/h | 1.40 g | **1.77 g** |
-| peak steady grip, 170 km/h | cannot hold the speed | **1.91 g** |
-| braking from 100 km/h | 31.8 m | **26.1 m** |
+| peak steady grip, 60 km/h | 1.28 g | **1.50 g** |
+| peak steady grip, 120 km/h | 1.40 g | **1.58 g** |
+| peak steady grip, 170 km/h | cannot hold the speed | **1.64 g** |
+| braking from 100 km/h | 31.8 m | **27.0 m** |
 | damage from one 50 km/h shunt | 8.5% | **20%** |
 | shunts until the engine starts to fade | 4 | **2** |
 | shunts to a wreck | 11 | **5** |
@@ -1968,7 +1968,7 @@ Still far quicker than the Runner and still faster than the fleet flat out, but
 a pursuit car closing on the rubber band can live with it, and the helicopter
 can now outfly it (see Air support).
 
-Grip rises with speed on the Stiletto and not on the Runner: that is 0.95 m²
+Grip rises with speed on the Stiletto and not on the Runner: that is 0.60 m²
 of downforce against 0.42. And every police car still out-brakes both, because
 they keep the anti-lock system neither player car has.
 
@@ -2015,7 +2015,7 @@ the shortcut across the park that bogs everyone else down is yours.
 |---|---|---|---|
 | 0–100 km/h | 7.4 s | 5.1 s | **10.0 s** |
 | top speed | 215 km/h | 240 km/h | **190 km/h** |
-| peak steady grip, 120 km/h | 1.40 g | 1.77 g | **1.08 g** |
+| peak steady grip, 120 km/h | 1.40 g | 1.58 g | **1.08 g** |
 | shunts to a wreck | 11 | 5 | **19** |
 
 The body is lofted the same way as the police SUV and van (`bodies.js`): flat
@@ -2057,6 +2057,38 @@ Peak steady cornering grip (`tests/gripsweep.js`): the Runner is unchanged at
 60 km/h (1.28 g) and goes from 1.29 g to 1.40 g at 120 and 1.50 g at 170; the
 Stiletto is unchanged at 60 km/h (1.51 g) and goes from 1.58 g to 1.89 g at 120
 and 1.62 g to 2.02 g at 170. The police cars do not have it.
+
+#### Too much, on the Stiletto
+
+*"The really fast car seems to have too much grip, especially at high speeds.
+You can steer full lock and it will still remain stable."* It could. Its
+high-speed grip had been weighted so hard to the rear — ×1.40 grip and ×2.4
+stiffness at the back against ×1.16 and ×1.4 at the front — that the tail could
+never let go. Held at full lock at any speed, the front tyres gave up first and
+the car simply ran wide at up to 2 g with the body pointing dead straight:
+under a degree of slip. A keyboard is always at full lock when it steers, so
+that was every high-speed corner.
+
+Now the fronts are only a little stiffer and grippier than the rears at speed
+(×1.2 and ×1.05 stiffness, ×1.05 and ×0.97 grip), downforce is 0.60 m² instead
+of 0.95, and overall grip is down a touch (`gripScale` 1.18 → 1.12). Held at
+full lock above about 140 km/h the tail comes round and the car sheds speed;
+let go and it is straight again within a fraction of a second. It does not spin
+and it does not lift a wheel (`tests/rollover.js`), and below about 130 km/h it
+is still planted — under 3° of slip at full lock.
+
+Full lock held for two seconds, throttle holding the speed (`tests/highspeed.js`):
+
+| Stiletto | before | after |
+|---|---|---|
+| 140 km/h | 0.3° / 0.9° slip, 1.61 g | **3.3° / 7.0°, 1.41 g** |
+| 180 km/h | 0.4° / 0.8°, 1.80 g, down to 166 km/h | **6.9° / 14.2°, 1.43 g, down to 155** |
+| 220 km/h | 0.6° / 1.2°, 1.96 g | **8.3° / 15.4°, 1.46 g** |
+| 180 km/h, off the throttle | 0.6° / 0.9°, 2.03 g | **10.2° / 17.0°, 1.52 g** |
+| steady grip, 60 / 120 / 170 km/h | 1.57 / 1.77 / 1.91 g | **1.50 / 1.58 / 1.64 g** |
+
+Still the grippiest thing on the road — the Runner does 1.28 / 1.40 / 1.50 g —
+and acceleration and top speed are unchanged.
 
 ### Keeping the Stiletto on its wheels
 

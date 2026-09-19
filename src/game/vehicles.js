@@ -260,12 +260,16 @@ export const SPECS = {
       rate: 2.95,
       returnRate: 4.4,
     },
-    // Slipperier than the saloons, with more than twice the Runner's downforce:
-    // 0.95 m^2 is about 3 kN of extra load at 200 km/h.
-    aero: { dragArea: 0.62, downforce: 0.95 },
+    // Slipperier than the saloons, with more downforce than the Runner's 0.42:
+    // 0.6 m^2 is about 1.9 kN of extra load at 200 km/h. It was 0.95, and with
+    // the rest of the grip that went with it (see highSpeedTyre) the car
+    // cornered at 2 g at 220 km/h.
+    aero: { dragArea: 0.62, downforce: 0.60 },
     tractionControl: 0.90,
     tcSlipThreshold: 0.13,
-    gripScale: 1.18,
+    // 1.18 until the car was found to have too much grip everywhere, not only
+    // at speed: 1.57 g at 60 km/h, now 1.50 -- still well past the Runner's 1.28.
+    gripScale: 1.12,
     // Wider rears carry the traction; the fronts are trimmed to match, so the
     // extra grip does not simply turn into extra understeer.
     gripBias: { front: 1.10, rear: 1.13 },
@@ -277,16 +281,22 @@ export const SPECS = {
     // ones and it is already down on the car it was.
     durability: 1.40,
     topSpeedHint: 72,
-    // Grip at speed, as on the Runner but weighted harder to the rear. With
-    // 58% of the weight at the back, stiffening the fronts as much as the
-    // rears -- or adding grip evenly -- made the nose bite harder than the tail
-    // could follow, and it spun at 140 km/h. Measured at full lock: 180 km/h
-    // went from 9 degrees of body slip (17 at worst) to 1 (4); steady grip at
-    // 120 km/h from 1.58 g to 1.89, and at 170 from 1.62 to 2.02.
+    // Grip at speed. The first setting was weighted hard to the rear (grip
+    // x1.16 front, x1.40 rear; stiffness x1.4, x2.4), because with 58% of the
+    // weight at the back an even one spun it at 140 km/h. It overdid it: the
+    // tail could never let go, so full lock at any speed just pushed the nose
+    // wide at up to 2 g with the body dead straight -- 0.4 degrees of slip at
+    // 180 km/h. "You can steer full lock and it will still remain stable."
+    //
+    // Now the fronts are a touch stiffer and grippier than the rears at speed,
+    // so held at full lock the tail comes round: 7 degrees on average at
+    // 180 km/h, 14 at worst, shedding speed, and straight again within a
+    // fraction of a second of letting go. It does not spin. A gentle input
+    // still holds its line (tests/highspeed.js; README, "Grip at speed").
     highSpeedTyre: {
       from: 20, to: 42,
-      stiffness: { front: 1.4, rear: 2.4 },
-      grip: { front: 1.16, rear: 1.40 },
+      stiffness: { front: 1.2, rear: 1.05 },
+      grip: { front: 1.05, rear: 0.97 },
     },
   }),
 

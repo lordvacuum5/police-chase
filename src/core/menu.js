@@ -45,8 +45,8 @@ export const CARS = [
     shape: 'wedge',
     stats: [
       ['Top speed', 240, 'km/h'],
-      ['0-100', 5.1, 's', true],
-      ['Grip', 1.77, 'g'],
+      ['0-100', 5.0, 's', true],
+      ['Grip', 1.58, 'g'],
       ['Toughness', 5, 'hits'],
     ],
   },
