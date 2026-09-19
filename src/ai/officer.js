@@ -25,6 +25,14 @@ const SPOT_PATIENCE = 28;
 const SEARCH_PACE = 22;
 /** Top speed off it, m/s: about 36 km/h. A garden is not a place to be quick. */
 const SEARCH_OFF_ROAD = 10;
+/**
+ * A patrol car stuck behind the player's car sitting in the road (see
+ * _warnIfBlocked): seconds before the first blip of lights and siren, seconds
+ * between later ones, and how long each blip lasts.
+ */
+const BLOCK_WARN_AFTER = 5;
+const BLOCK_WARN_EVERY = 10;
+const BLIP_SECONDS = 1.0;
 /** What a search spot has to be clear of, tested straight down at its middle and a car's length round it. */
 const SPOT_SOLID = groups(0xFFFF, GROUP.BUILDING | GROUP.PROP);
 const SPOT_PROBES = [[0, 0], [3, 0], [-3, 0], [0, 3], [0, -3]];
@@ -144,6 +152,9 @@ export class Officer {
 
   update(dt, target) {
     const v = this.vehicle;
+    // A "move along" blip of lights and siren runs down whatever else happens
+    // (see _warnIfBlocked).
+    if (v.blipFor > 0) v.blipFor = Math.max(0, v.blipFor - dt);
 
     // A unit running a manoeuvre has right of way over the rest of the pack.
     // The flag lives on the vehicle because that is all the Driver can see of
@@ -194,10 +205,12 @@ export class Officer {
     // the car it is trying to reach, or to hit.
     const atTarget = this.role === ROLE.PURSUE || this.role === ROLE.RHINO;
     this.driver.avoid(this.game.vehicles, dt, atTarget && target ? target : null);
-    // A car on its beat goes round the player parked in its way, instead of
-    // into them. Only on patrol: a unit that is after you has no reason to
-    // pull out round you politely.
-    this.driver.planPass(this.role === ROLE.PATROL ? this.game.player : null, dt);
+    // A car on its beat waits behind the player's car if it is in the way,
+    // rather than driving into it -- and after a while, tells them to move.
+    // Only on patrol: a unit that is after you has no reason to wait politely.
+    const patrolling = this.role === ROLE.PATROL;
+    this.driver.holdBehind(patrolling ? this.game.player : null, dt);
+    this._warnIfBlocked(dt, patrolling);
     this.repathTimer -= dt;
     this._updateAssist(target);
 
@@ -296,6 +309,82 @@ export class Officer {
     // They obey the signals too, and only they do: a unit running to a shout
     // or already in a pursuit has blue lights on and goes through.
     return this.driver.followPath(dt, Math.min(22, this._signalCap()));
+  }
+
+  /**
+   * Sitting behind the player's car, stopped in the road in front of it: after
+   * a few seconds, a blip of the lights and the siren -- "move along" -- and a
+   * word on the radio, and again every so often for as long as it stays.
+   * "After, say, five seconds... they flash their lights for a second and turn
+   * on their sirens for a second." Blocking a police car is not an offence
+   * here; this is only ever a warning, and nobody's wanted level changes.
+   *
+   * `vehicle.blipFor` is the seconds of blip left; the lamps (Game._render)
+   * and the siren (Audio) both read it, without anybody being wanted.
+   */
+  _warnIfBlocked(dt, patrolling) {
+    const v = this.vehicle, p = this.game.player;
+    if (!p) return;
+
+    const held = patrolling && this.driver.heldBy && !this._queueingAtLights(p);
+    if (held) {
+      this._blockedFor = (this._blockedFor || 0) + dt;
+      this._unblockedFor = 0;
+    } else {
+      // Not the moment it creeps forward a metre: properly moving again.
+      this._unblockedFor = (this._unblockedFor || 0) + dt;
+      if (this._unblockedFor > 2 && this._blockedFor) {
+        if (this._warnings && p.speed > 3 && this.distanceTo(p.position) < 60) {
+          this.game.say('unblocked', [
+            (x) => `${x.cs}, they've moved. Resuming patrol.`,
+            (x) => `${x.cs}, vehicle's moved on. Back on patrol.`,
+            (x) => `${x.cs}, road's clear, carrying on.`,
+            (x) => `${x.cs}, that's got them moving.`,
+          ], { cs: this.callsign }, false, { low: true, every: 20 });
+        }
+        this._blockedFor = 0;
+        this._warnings = 0;
+      }
+      return;
+    }
+
+    const due = BLOCK_WARN_AFTER + (this._warnings || 0) * BLOCK_WARN_EVERY;
+    if (this._blockedFor < due) return;
+    this._warnings = (this._warnings || 0) + 1;
+    v.blipFor = BLIP_SECONDS;
+
+    const vars = { cs: this.callsign, road: this.game.roadName(p.position) };
+    // `road` reads "on Cold Harbour" or "in the city", so nothing may end with
+    // a preposition of its own before it.
+    if (this._warnings === 1) {
+      this.game.say('blocked', [
+        (x) => `${x.cs}, vehicle stopped in the road ${x.road}, blocking me. Giving them a blip.`,
+        (x) => `${x.cs}, got a motorist sat in the carriageway ${x.road}. Letting them know I'm here.`,
+        (x) => `${x.cs}, obstruction ${x.road}. Stationary vehicle, won't shift. Quick blast on the twos.`,
+        (x) => `${x.cs}, road user parked across my lane ${x.road}. Just a warning for now.`,
+        (x) => `${x.cs}, car stopped dead in front of me ${x.road}. Moving them on.`,
+      ], vars, false, { every: 8 });
+    } else {
+      this.game.say('blocked-again', [
+        (x) => `${x.cs}, they're still not moving. If they don't shift, I'll have to pull them over.`,
+        (x) => `${x.cs}, driver's ignoring me ${x.road}. Might have to have a word.`,
+        (x) => `${x.cs}, still blocking the road. One more, then I'm stopping them.`,
+        (x) => `${x.cs}, vehicle still obstructing ${x.road}. Control, may need to pull this one over.`,
+        (x) => `${x.cs}, not budging. Giving them another blip.`,
+      ], vars, false, { every: 18 });
+    }
+  }
+
+  /**
+   * Waiting behind the player at a red light is not being blocked by them: the
+   * signal ahead is against this car, and its stop line is just past theirs.
+   */
+  _queueingAtLights(p) {
+    const lights = this.game.signals;
+    if (!lights) return false;
+    const v = this.vehicle;
+    const d = lights.stopDistanceAt(v.position.x, v.position.z, v.forward.x, v.forward.z, v.speed);
+    return isFinite(d) && d < this.distanceTo(p.position) + 12;
   }
 
   /**

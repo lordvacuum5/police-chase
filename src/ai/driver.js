@@ -37,6 +37,12 @@ const RUNOUT_STEP = 2.5;
 const OFF_ROAD_ARC = 45;
 
 /**
+ * Bumper-to-bumper gap a patrol car stops at behind a car stopped in its way
+ * (see holdBehind). Close enough that it is plainly waiting on you.
+ */
+const HOLD_GAP = 2.0;
+
+/**
  * Headings tried when looking for a way through, as offsets from the straight
  * line to the goal. Straight on first so a clear line always wins ties.
  */
@@ -71,7 +77,6 @@ export class Driver {
     this._laneKeep = false;
     this.needsRepath = false;
     this.reverseFrom = null;
-    this._passReverse = 0;         // -1/+1 while backing off to go round a car
     this.steerHold = 0;
     this.speedTarget = 0;
     this.avoidBias = 0;
@@ -708,7 +713,6 @@ export class Driver {
       this.reverseTimer = 2.6;
       this.reverseFrom = v.position.clone();
       this.stuckTimer = 0;
-      this._passReverse = 0;
     }
     if (this.reverseTimer > 0) {
       this.reverseTimer -= dt;
@@ -721,23 +725,13 @@ export class Driver {
       out.brake = 1;
       out.steer = clamp(-s.alpha * 1.2, -0.9, 0.9);
       out.handbrake = 0;
-      // Backing off to go round a stopped car (see planPass): swing the nose
-      // out toward the side it is going round, to about 25 degrees off the
-      // road, so the next go starts already pointing at the gap. Backing
-      // straight off along its own nose took it further from the passing line.
-      let far = 7;
-      if (this._passReverse) {
-        const want = this._passReverse * 0.45;
-        out.steer = clamp(-(want - this._pathHeading()) * 2.0, -0.8, 0.8);
-        far = 4.5;
-      }
 
       // Stop early once we have actually made room, and force a fresh route --
       // otherwise the unit drives straight back into whatever it just left.
-      if (this.reverseFrom && v.position.distanceTo(this.reverseFrom) > far) {
+      if (this.reverseFrom && v.position.distanceTo(this.reverseFrom) > 7) {
         this.reverseTimer = 0;
       }
-      if (this.reverseTimer <= 0) { this.needsRepath = true; this._passReverse = 0; }
+      if (this.reverseTimer <= 0) this.needsRepath = true;
       return out;
     }
 
@@ -795,71 +789,48 @@ export class Driver {
     }
     this._trackPath();
 
-    // Passing a stopped car (see planPass): drive a line parallel to the route,
-    // eased in and out over about a second, and hold that line -- the lane
-    // keeping is told the offset line is the lane.
-    const passTo = this._passTarget || 0;
-    this.passOffset = lerp(this.passOffset || 0, passTo, 1 - Math.exp(-2.4 * dt));
-    if (Math.abs(this.passOffset) < 0.01 && passTo === 0) this.passOffset = 0;
-    if (this.passOffset) this.crossTrack -= this.passOffset;
-
     const here = this.path[this.pathIndex];
     const roadCap = (here && here.speed ? here.speed : 20)
       * this.limitScale * lerp(1.0, 1.3, this.skill.aggression - 0.7);
-    const planned = Math.min(this.planSpeed(roadCap), speedCap, this.passCap ?? Infinity);
+    const planned = Math.min(this.planSpeed(roadCap), speedCap, this.holdCap ?? Infinity);
 
     // Aim from the speed we are *about* to be doing, not the speed we are doing
     // now. Otherwise a car braking hard for a junction still aims 30 m past it
     // and cuts the corner it was slowing down for.
     const ref = Math.min(this.v.speed, planned + 4);
     const look = clamp(4.5 + ref * 0.55 * this.skill.look, 5.5, 26);
-    let aim = this._pointAhead(look) || this.path[this.path.length - 1];
-    if (this.passOffset && aim && aim.index !== undefined) {
-      const a = this.path[aim.index], b = this.path[Math.min(aim.index + 1, this.path.length - 1)];
-      let dx = b.x - a.x, dz = b.z - a.z;
-      const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
-      aim = { x: aim.x + dz * this.passOffset, z: aim.z - dx * this.passOffset, speed: aim.speed, index: aim.index };
-    }
+    const aim = this._pointAhead(look) || this.path[this.path.length - 1];
     return this.driveTo(aim, planned, dt, Object.assign({ lane: true }, opts));
   }
 
   /**
-   * Go round a stopped car rather than into it.
+   * Wait behind a car in the way rather than drive into it.
    *
-   * A patrol car used to meet the player parked in its lane with a steering
-   * nudge that lost to its own lane keeping, and nothing that braked for a
-   * car at all: measured, it drove into the back of a stopped car at 43 km/h
-   * and shoved it eighteen metres down the road. "When the police are
-   * patrolling, make it so if I'm not stopped in the middle of the road, they
-   * go around me."
-   *
-   * So: find the stopped car, if it is in the way of the route; measure how
-   * much road there is either side of it; pull out round whichever side has
-   * room for this car, slowing to a sensible passing speed; and pull back in
-   * once past. If neither side has room -- stopped across the middle of a road
-   * too narrow to get by -- stop behind it and wait.
+   * A patrol car used to meet the player stopped in its lane with a steering
+   * nudge that lost to its own lane keeping, and nothing that braked for a car
+   * at all: measured, it drove into the back of a stopped car at 43 km/h and
+   * shoved it eighteen metres down the road. Going round was tried next and
+   * taken out again (see README, "Stuck behind you"); what is left is simpler.
+   * If the car is in the way, close up to a couple of metres behind it and
+   * stop -- or, if it is moving, follow it at a gap that grows with speed.
+   * `heldBy` says it is sitting behind a stopped car because of it, which is
+   * what the officer's warning (lights, siren, radio) waits on.
    *
    * Only for the one car it is given, so a patrol queueing at a red light does
-   * not overtake the car in front of it.
+   * not treat the car in front of it as an obstruction.
    */
-  planPass(obstacle, dt = 1 / 60) {
-    this._passTarget = 0;
-    this.passCap = Infinity;
+  holdBehind(obstacle, dt = 1 / 60) {
+    this.holdCap = Infinity;
+    this.heldBy = false;
     const v = this.v, o = obstacle;
-    if (!o || o === v) { this._passSide = 0; this._blockedFor = 0; return; }
-
-    const rx = o.position.x - v.position.x, rz = o.position.z - v.position.z;
-    const aheadNow = rx * v.forward.x + rz * v.forward.z;   // straight line, for the close-in checks
-    const lengths = (v.spec.dims.l + o.spec.dims.l) * 0.5;
-    const hw = this.halfWidth, ho = o.spec.dims.w * 0.5;
+    if (!o || o === v) { this._guardRecent = 0; return; }
 
     // ---- never into them ----
     // Whatever else happens below, if carrying on means touching the car in
     // the next couple of seconds, brake so as to stop short of it. This is the
-    // part that holds when the player does something the plan did not expect
-    // -- pulls out while being passed, creeps forward, swerves across: "they
-    // still keep crashing into you, especially if you kind of try to then
-    // move."
+    // part that holds when the player does something unexpected -- pulls out,
+    // swerves across, reverses at it: "they still keep crashing into you,
+    // especially if you kind of try to then move."
     //
     // Planned on gentle braking with two metres in hand, so it starts slowing
     // early rather than waiting for the last moment and then asking for more
@@ -867,105 +838,37 @@ export class Driver {
     // and still touched at walking pace.
     const tc = this._timeToContact(o, 3.0);
     const guard = tc < 3.0 ? Math.sqrt(2 * 3.5 * Math.max(0, v.speed * tc - 2.0)) : Infinity;
-    const finish = () => { this.passCap = Math.min(this.passCap, guard); };
-
-    // ---- stopped short of it: back up and try again ----
-    // Held up by the guard, or stopped right behind it, means the pass did
-    // not have room to start -- typically just round a corner, where the car
-    // comes out of the turn nose-on to it and too close to steer round from a
-    // standstill. The guard alone just holds it there: every time it creeps
-    // forward it is heading for the car again. Back off a few metres -- the
-    // driver's own reverse, which swings the nose toward the passing line and
-    // then asks for a fresh route -- so there is room to pull out round it.
+    this.holdCap = guard;
+    // Held up by that alone -- the player half in the lane, say -- counts as
+    // being held up too. At a crawl it flickers (moving, contact is ahead;
+    // stopped, it is not), hence the memory.
     this._guardRecent = guard < 1.5 ? 0.6 : Math.max(0, (this._guardRecent || 0) - dt);
-    const alongside = Math.abs(rx * v.left.x + rz * v.left.z) < hw + ho + 0.4;
-    const noseToTail = aheadNow > 0 && aheadNow - lengths < 2.5 && alongside;
-    if (v.speed < 1.2 && o.speed < 2.5 && (this._guardRecent > 0 || noseToTail)) {
-      this._blockedFor = (this._blockedFor || 0) + dt;
-      // Backing off with the nose swinging out toward the side it is going
-      // round (see the reverse in driveTo). The first version backed straight
-      // off for two metres and came straight back to the same place.
-      if (this._blockedFor > 1.0 && !(this.reverseTimer > 0)) {
-        this.reverseTimer = 3.0;
-        this.reverseFrom = v.position.clone();
-        this._passReverse = this._passSide || 0;
-        this._blockedFor = 0;
-      }
-    } else {
-      this._blockedFor = 0;
-    }
+    const still = v.speed < 0.8 && o.speed < 1.0;
+    if (still && this._guardRecent > 0) this.heldBy = true;
 
-    if (!this.hasPath) { this._passSide = 0; finish(); return; }
+    if (!this.hasPath) return;
+    // Where it is along the route, and across it -- measured along the road,
+    // not in a straight line. Just round a corner "in front of me" and "in my
+    // lane" stop being the same thing: measured straight, a car parked twelve
+    // metres past a junction was only recognised as in the way fifteen metres
+    // out, with the patrol car still turning at 40 km/h.
+    const rel = this._pathRelative(o.position.x, o.position.z, 50);
+    if (!rel || rel.along < 0) return;
+    // Not in the way: carry on past it in lane.
+    if (Math.abs(rel.off) > this.halfWidth + o.spec.dims.w * 0.5 + 0.6) return;
+    const gap = rel.along - (v.spec.dims.l + o.spec.dims.l) * 0.5;   // bumper to bumper
+    if (gap > 45) return;
 
-    // Where it is along the route, and across it, measured *at the car* --
-    // along the road, not in a straight line. Just round a corner, "in front
-    // of me" and "in my lane" stop being the same thing: measured straight,
-    // a car parked twelve metres past a junction was only recognised as in
-    // the way fifteen metres out, with the patrol car still turning at 40 km/h,
-    // and it scraped the car it was trying to go round. Measured against the
-    // route itself it is seen from the far side of the junction. Across the
-    // route, too, it is measured against the road rather than this car's own
-    // sideways axis, which swings as it starts pulling out -- measured that
-    // way the first version changed its mind half way out and hit the car.
-    const rel = this._pathRelative(o.position.x, o.position.z, 55);
-    // Not near our route at all, or behind us and clear, or too far on.
-    if (!rel || rel.along < -lengths - 1 || rel.along > 50) { this._passSide = 0; finish(); return; }
-    const ahead = rel.along, off = rel.off, nx = rel.nx, nz = rel.nz;
-
-    // ---- moving: follow, don't overtake ----
-    // Going round a car that is itself moving is how the contacts happened --
-    // it drifts across into the gap being aimed for. A car on its beat just
-    // hangs back behind one that is in its way and going slower.
-    if (o.speed > 2.5) {
-      this._passSide = 0;
-      if (ahead > 0 && Math.abs(off) < hw + ho + 0.9) {
-        const theirs = o.linvel.x * v.forward.x + o.linvel.z * v.forward.z;
-        const want = 7 + v.speed * 0.6;
-        this.passCap = Math.max(0, theirs + (ahead - lengths - want) * 0.8);
-      }
-      finish();
-      return;
-    }
-
-    // Stopped: go round it, with room to spare -- more than the guard above
-    // needs, so passing does not trip it.
-    const need = hw + ho + 0.9;
-    if (Math.abs(off) >= need && !this._passSide) { finish(); return; }   // not in the way
-
-    // How much road there is either side of it. Tarmac only: a patrol car
-    // goes round on the carriageway, not over the pavement.
-    const roomL = this._roadTo(o.position.x, o.position.z, nx, nz) - ho;
-    const roomR = this._roadTo(o.position.x, o.position.z, -nx, -nz) - ho;
-    const fits = 2 * hw + 0.5;
-    const left = roomL >= fits ? off + need : null;
-    const right = roomR >= fits ? off - need : null;
-
-    // Keep to the side already chosen, so it does not change its mind half way
-    // past; otherwise the side that needs the smaller swerve.
-    let target = null;
-    if (this._passSide > 0 && left !== null) target = left;
-    else if (this._passSide < 0 && right !== null) target = right;
-    else if (left !== null && right !== null) target = Math.abs(left) <= Math.abs(right) ? left : right;
-    else target = left ?? right;
-
-    const gap = ahead - lengths;
-    if (target === null) {
-      // No way by -- across a road too narrow to get round, say: stop behind it
-      // rather than into it. (A car stopped on the centre line of any road on
-      // these maps leaves the lane beside it clear, so a patrol simply drives
-      // past in its own lane; that case never reaches here.)
-      this._passSide = 0;
-      this.passCap = Math.sqrt(2 * 3.5 * Math.max(0, gap - 2.5));
-      finish();
-      return;
-    }
-    this._passSide = Math.sign(target);
-    this._passTarget = target;
-    // Slow enough to be going round a car rather than past one on a motorway,
-    // and slowing from well back, so the swing out is done by the time it
-    // gets there.
-    this.passCap = clamp(4 + Math.max(0, gap) * 0.25, 6, 12);
-    finish();
+    // Brake so as to arrive at their speed a couple of metres behind them
+    // (plus a little for each m/s they are doing), on gentle braking.
+    // Closer than that, ease off in proportion.
+    const theirs = Math.max(0, o.linvel.x * v.forward.x + o.linvel.z * v.forward.z);
+    const want = HOLD_GAP + theirs * 0.8;
+    const cap = gap >= want
+      ? Math.sqrt(theirs * theirs + 2 * 2.5 * (gap - want))
+      : Math.max(0, theirs + (gap - want) * 0.8);
+    this.holdCap = Math.min(this.holdCap, cap);
+    if (still && gap < want + 3) this.heldBy = true;
   }
 
   /**
@@ -1002,15 +905,6 @@ export class Driver {
     return it;
   }
 
-  /** Angle of this car's nose off the route where it is, radians, + to the left. */
-  _pathHeading() {
-    const v = this.v, i = Math.min(this.pathIndex, this.path.length - 2);
-    if (i < 0) return 0;
-    const a = this.path[Math.max(0, i - 1)], b = this.path[i + 1];
-    const dx = b.x - a.x, dz = b.z - a.z;
-    return Math.atan2(v.forward.x * dz - v.forward.z * dx, v.forward.x * dx + v.forward.z * dz);
-  }
-
   /**
    * Seconds until this car touches `o`, both carrying on exactly as they are,
    * looking `horizon` seconds ahead; Infinity if they do not. Each car is three
@@ -1035,16 +929,6 @@ export class Driver {
       }
     }
     return Infinity;
-  }
-
-  /** How far from (x, z) the road goes in the direction (dx, dz), up to 12 m. */
-  _roadTo(x, z, dx, dz) {
-    const sim = this.v.sim;
-    if (!sim || !sim.surfaceAt) return 12;
-    for (let s = 0.5; s <= 12; s += 0.5) {
-      if (sim.surfaceAt(x + dx * s, z + dz * s) !== 1) return s - 0.5;
-    }
-    return 12;
   }
 
   /**

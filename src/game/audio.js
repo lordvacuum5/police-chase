@@ -1256,12 +1256,17 @@ export class GameAudio {
     this.windFilter.frequency.setTargetAtTime(400 + player.speed * 14, t, 0.12);
 
     // ---- siren -----------------------------------------------------------
-    let nearest = Infinity;
-    if (heat.tier > 0 && dispatcher) {
+    // In a chase, the nearest marked car. Out of one, only a car giving you a
+    // one-second "move along" blip (Officer._warnIfBlocked) -- which is always
+    // the yelp: a couple of whoops, not a wail starting up.
+    let nearest = Infinity, blip = false;
+    if (dispatcher) {
       for (const u of dispatcher.units) {
-        if (u.vehicle.disabled || u.vehicle.unmarked) continue;
+        const blipping = u.vehicle.blipFor > 0;
+        if (!blipping && (heat.tier === 0 || u.vehicle.unmarked)) continue;
+        if (u.vehicle.disabled) continue;
         const d = u.distanceTo(player.position);
-        if (d < nearest) nearest = d;
+        if (d < nearest) { nearest = d; blip = blipping && heat.tier === 0; }
       }
     }
     if (nearest < 190) {
@@ -1271,7 +1276,7 @@ export class GameAudio {
       // on you. Same two modes a real crew switches between, and the switch
       // itself is information: the pattern changing is how you know the car
       // behind has closed without taking your eyes off the road.
-      const yelp = nearest < 55;
+      const yelp = nearest < 55 || blip;
       const period = yelp ? 0.32 : 3.1;
       const ph = (this.sirenPhase % period) / period;
       // The yelp is a sawtooth in frequency -- fast up, snap back. The wail is

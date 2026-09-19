@@ -826,78 +826,70 @@ the unlit ones scaled to nothing rather than packed out of the list. A signal
 changing writes three matrices. 702 heads on the city map come to about
 0.16 ms a frame and three draw calls.
 
-### Going round a parked car
+### Stuck behind you
 
-*"When the police are patrolling, make it so if I'm not stopped in the middle
-of the road, they go around me."* They did not: a patrol car's only answer to a
-car in its lane was a steering nudge that lost to its own lane keeping, and
-nothing made it brake for a car at all. Measured with you stopped in its lane
-on a 20 m road, it drove into the back of you at 43 km/h and shoved your car
-seventeen metres down the street — the same facing either way.
+A patrol car that finds your car stopped in its way pulls up close behind you
+and waits. After five seconds it gives you a one-second blip of the lights and
+the siren — move along — and says so on the radio; if you still have not
+moved, it does it again every ten seconds, less patiently each time. Drive off
+and it follows you, and reports that you have moved on. Nobody's wanted level
+changes: blocking a police car is not an offence here, and this is only ever a
+warning. Only patrolling cars do any of it — a unit that is after you has no
+reason to wait politely.
 
-Now a car on its beat that finds you stopped in its way (`Driver.planPass`)
-measures how much tarmac there is either side of you, pulls out round the side
-with room for it — slowing to a passing speed and holding a line parallel to
-its route rather than weaving — and pulls back in once past. The first version
-measured where you were against the patrol car's own sideways axis, which
-swings the moment it starts to turn: at forty metres a few degrees reads as you
-jumping three metres across, and it changed its mind half way out and hit you
-anyway. Against the road instead, it is steady.
+It used to drive into you. A patrol car's only answer to a car in its lane was a
+steering nudge that lost to its own lane keeping, and nothing made it brake for
+a car at all: measured with you stopped in its lane on a 20 m road, it drove
+into the back of you at 43 km/h and shoved your car seventeen metres down the
+street.
 
-`tests/pass.js`, parked four ways on a 20 m and a 9 m road, the patrol car
-arriving at 43 km/h:
+**Going round you — tried, removed.** *"Make it so if I'm not stopped in the
+middle of the road, they go around me."* The first answer measured the tarmac
+either side of you and pulled out round whichever side had room. In tests it
+did go round, but it needed a guard against you moving, a follow mode for when
+you rolled along, and a reverse-and-swing-out for corners, where it came out of
+the turn nose-on to you and too close to steer round. *"Get rid of the trying to
+go around me bit... just make it so the police guys just kind of get really
+close to me and just stop."* What is left is the parts that were about not
+hitting you:
 
-| parked | before | now |
-|---|---|---|
-| at the kerb | passes | passes, no contact |
-| in its lane | **hits you, 17 m shove** | goes round, 0.8 m to spare |
-| in its lane, facing it | **hits you, 18 m shove** | goes round, 0.8 m to spare |
-| on the centre line | passes | passes in its own lane |
-
-Stopped on the centre line, you leave the lane beside you clear on every road
-here, so a patrol car simply drives past in its own lane; if you ever do block
-the whole road, it stops behind you rather than into you. Only patrolling cars
-do any of this — a unit that is after you has no reason to go round you
-politely.
-
-#### If you move
-
-*"They still keep crashing into you, especially if you kind of try to then
-move… make them stop and then maybe back up and go around."* Going round a
-parked car is a plan made on the assumption that it stays parked. Three things
-now cover the times it does not:
-
-* **Never into you.** Whatever the plan says, every frame the patrol car works
+* **Never into you** (`Driver.holdBehind`). Every frame the patrol car works
   out how long until it touches you if you both carry on as you are — each car
   as three circles down its length — and if that is inside three seconds it
   brakes so as to stop two metres short, on gentle braking so it starts early.
-  Pull out in front of it, swerve into the gap it was aiming for, reverse at
-  it: it stops.
-* **Moving, it follows.** A car rolling along in its lane is not overtaken; the
-  patrol car hangs back behind it at a following distance. Overtaking a moving
-  car is how the contacts happened — it drifts into the gap being aimed for.
-* **Stopped short, it backs up and tries again.** Held up by that brake for a
-  second, or stopped right behind you, it reverses a few metres with opposite
-  lock so the nose swings out toward the side it is going round, and has
-  another go already pointed at the gap. This is mostly corners: a patrol car
-  turning into a street where you are stopped just past the junction comes out
-  of the turn nose-on to you and too close to steer round from a standstill,
-  and before this it sat there — each time it crept forward it was heading for
-  you again, so the brake held it. Round a corner, too, "in front" and "in my
-  lane" are measured along the route rather than in a straight line from the
-  car, so a car parked twelve metres past a junction is recognised as in the
-  way from the far side of it, not fifteen metres out mid-turn.
+  Pull out in front of it, swerve across it, reverse at it: it stops.
+* **In the way, it closes up and stops.** Your car in its line — measured along
+  its route, not in a straight line, so a car parked just past a junction is
+  seen from the far side of it rather than mid-turn — and it brakes to arrive
+  two metres behind you. Moving, it follows instead, a couple of metres back
+  plus a little for every metre a second you are doing.
+* **Not in the way, it carries on.** Parked at the kerb or across the centre
+  line leaves its lane clear, and it drives past in it.
+* **Waiting at the lights is not blocking.** Stopped behind you at a red, with
+  the stop line just past you, it queues and says nothing
+  (`Officer._queueingAtLights`).
 
-Measured (`tests/pass.js`) with you driving the other car:
+The blip is `vehicle.blipFor`: the lamps and the siren read it as well as the
+wanted level, so one car can light up with nobody wanted. The siren is always
+the yelp for it — a couple of whoops, not a wail starting up. The calls are
+British traffic-officer patter ("Stationary vehicle, won't shift. Quick blast on
+the twos.", "Driver's ignoring me. Might have to have a word."), a wording at a
+time from each set so they do not repeat.
 
-| you | contacts | |
+`tests/pass.js`, the patrol car arriving at 43 and 60 km/h:
+
+| you | what it does | contacts |
 |---|---|---|
-| parked just past a corner, 6 corners × 2 distances × 43 and 60 km/h | **0** | all 24 get past (8 used to sit behind you for good) |
-| creep along the lane at walking pace | **0** | it follows |
-| pull out from the kerb in front of it | **0** | |
-| swerve into its passing line at 14 m, 7 m, alongside | **0** | |
-| drive off, then stand on the brakes 12 m ahead of it | **0** | |
-| reverse at it | **0** | |
+| stopped in its lane | stops 1.8 m behind; blips at 5 s and 15 s | **0** |
+| stopped in its lane, facing it | stops 1.9 m from your bonnet; blips | **0** |
+| at the kerb, or on the centre line | drives past in its lane | **0** |
+| stopped, then drive off after the blip | follows; "vehicle's moved on" | **0** |
+| creeping along its lane | follows about 5 m back | **0** |
+| pull out from the kerb in front of it | brakes, follows | **0** |
+| swerve across it at 14 m, 7 m, alongside | stops | **0** |
+| drive off, then stand on the brakes in front of it | stops 1.7–3.3 m back | **0** |
+| stopped just past a corner, 6 corners × 2 distances | stops about 2 m back, blips at 5 s (10 of 12; in the other 2 its route goes straight on at the junction instead of down your street) | **0** |
+| waiting at a red light | queues behind you, says nothing; blips 5 s after it goes green if you don't | **0** |
 
 ### Street furniture
 

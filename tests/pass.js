@@ -1,33 +1,73 @@
-// Does a patrol car go round you, or into you?
+// Does a patrol car wait behind you, or drive into you?
 //
-// The player's car is parked on a straight road with no chase on, and a patrol
-// car comes up behind it along the same road, on its beat. Where the player is
-// parked is the variable:
+// The player's car is on a straight road with no chase on, and a patrol car
+// comes up behind it along the same road, on its beat. Where the player is
+// stopped is the variable:
 //
-//   kerb     pulled in at the side of the patrol's lane
-//   inLane   stopped square in the patrol's lane
-//   headOn   in the patrol's lane, facing it
-//   middle   across the centre of the road
+//   kerb     pulled in at the side of the patrol's lane   -- it drives past
+//   inLane   stopped square in the patrol's lane         -- it waits
+//   headOn   in the patrol's lane, facing it             -- it waits
+//   middle   across the centre of the road               -- it drives past
 //
 // and what the player then does, which is where the contacts actually happen:
 //
 //   none     stays put
 //   creep    rolls along its lane at walking-to-jogging pace the whole time
 //   pullOut  parked at the kerb, pulls out in front of the patrol car late
-//   swerve   stopped in the lane, swerves out into the passing line just as
-//            the patrol car comes by
+//   swerve   stopped in the lane, swerves across just as the patrol car arrives
 //   swerveEarly / swerveLate   the same, when it is 14 m behind, or alongside
 //   stopGo   drives off at 20 km/h and stands on the brakes when the patrol
 //            car is 12 m behind, then goes again
 //   backUp   reverses toward the patrol car when it is 10 m behind
+//   leave    stays put until the patrol car has blipped its lights, then
+//            drives off
 //
 //   passed     the patrol car got by
 //   contacts   times it touched the player's car
 //   theirFault of those, the ones where the patrol car was the one moving in
-//   sideGap    closest the two came side by side, centre to centre (m)
-//   waited     seconds the patrol car sat stopped behind, not getting by
-//   shoved     how far the player's car was pushed (m) -- anything but ~0 is
-//              the patrol car driving into it
+//   stopGap    bumper to bumper when it first came to a stand behind you (m)
+//   firstBlip  seconds from coming to a stand to the first blip of lights and
+//              siren; blips, how many in the run
+//   radio      what it said
+//   shoved     how far the player's car was pushed (m) -- only meaningful
+//              when the player stays put; anything but ~0 is the patrol car
+//              driving into it
+
+/**
+ * Watches one patrol car behind the player: when it stops, the gap it stops
+ * at, its blips, and the radio lines about being blocked.
+ */
+function holdWatch(g, v, p) {
+  const out = { stoppedAt: null, stopGap: null, firstBlip: null, blips: 0, radio: [] };
+  let was = false;
+  const realSay = g.say;
+  g.say = function (key, ...rest) {
+    const text = realSay.call(g, key, ...rest);
+    if (text && /blocked/.test(key)) out.radio.push(`[${key} ${g.clock.toFixed(1)}] ${text}`);
+    return text;
+  };
+  return {
+    out,
+    step(t) {
+      if (out.stoppedAt === null && t > 1 && v.speed < 0.3) {
+        const ahead = (p.position.x - v.position.x) * v.forward.x + (p.position.z - v.position.z) * v.forward.z;
+        const lengths = (v.spec.dims.l + p.spec.dims.l) * 0.5;
+        if (ahead > 0 && ahead - lengths < 15) {
+          out.stoppedAt = t;
+          out.stopGap = +(ahead - lengths).toFixed(1);
+        }
+      }
+      const b = v.blipFor > 0;
+      if (b && !was) {
+        out.blips++;
+        if (out.firstBlip === null && out.stoppedAt !== null) out.firstBlip = +(t - out.stoppedAt).toFixed(1);
+      }
+      was = b;
+    },
+    done() { g.say = realSay; },
+  };
+}
+
 /**
  * The same thing round a corner: the patrol car comes up to a junction and
  * turns, and the player is stopped in its lane just past the turn -- the case a
@@ -75,6 +115,7 @@ window.__runPassCorner = async function (after = 18, kph = 43, seconds = 16, see
     const pp = fromNode(e2, after, lane(e2));
     p.repair();
     p.teleport({ x: pp.x, y: 0.95, z: pp.z }, pp.h);
+    p._readState();
     p.setVelocity({ x: 0, y: 0, z: 0 });
     p._readState();
     // Patrol: on e1, 60 m out, driving toward the junction (so the opposite
@@ -98,25 +139,27 @@ window.__runPassCorner = async function (after = 18, kph = 43, seconds = 16, see
       g.forceControls = { throttle: 0, brake: 1, steer: 0, handbrake: 1 };
       origU(dt);
     };
+    const w = holdWatch(g, v, p);
     let t = 0, hits = 0, pAt = p.lastImpactAt || 0, closest = 99;
     while (t < seconds) {
       g.stepHeadless(1 / 30, null, 1 / 30);
       t += 1 / 30;
+      w.step(t);
       const d = Math.hypot(v.position.x - p.position.x, v.position.z - p.position.z);
       closest = Math.min(closest, d);
       if (p.lastImpactAt && p.lastImpactAt !== pAt) { pAt = p.lastImpactAt; if (d < 7) hits++; }
       if (Math.floor(t * 30) % 90 === 0) await new Promise((r) => setTimeout(r, 0));
     }
+    w.done();
     g._update = origU;
     g.forceControls = null;
     g.paused = wasPaused;
     const shoved = Math.hypot(p.position.x - pp.x, p.position.z - pp.z);
-    const pastIt = (() => {
-      const dx = v.position.x - pp.x, dz = v.position.z - pp.z;
-      return dx * Math.sin(pp.h) + dz * Math.cos(pp.h) > 6;
-    })();
     g.dispatcher.retire(u);
-    return { corner: seed, after, contacts: hits, shoved: +shoved.toFixed(2), closest: +closest.toFixed(1), passed: pastIt };
+    return {
+      corner: seed, after, contacts: hits, shoved: +shoved.toFixed(2), closest: +closest.toFixed(1),
+      stopGap: w.out.stopGap, firstBlip: w.out.firstBlip, blips: w.out.blips, radio: w.out.radio,
+    };
   } catch (err) {
     return 'EX ' + err.message + ' ' + String(err.stack).slice(0, 300);
   }
@@ -155,6 +198,7 @@ window.__runPass = async function (where = 'inLane', width = 20, kph = 43, secon
     const pp = at(80, lat);
     p.repair();
     p.teleport({ x: pp.x, y: 0.95, z: pp.z }, pp.h + face);
+    p._readState();
     p.setVelocity({ x: 0, y: 0, z: 0 });
     p._readState();
 
@@ -195,6 +239,9 @@ window.__runPass = async function (where = 'inLane', width = 20, kph = 43, secon
       if (!plan && swerveAt !== undefined && pa - va < swerveAt) {
         const q = at(pa + 14, -laneLat); plan = { x: q.x, z: q.z, speed: 5 };
       }
+      if (!plan && move === 'leave' && w.out.blips > 0 && !(v.blipFor > 0)) {
+        const q = at(e.length - 10, lat); plan = { x: q.x, z: q.z, speed: 8 };
+      }
       if (move === 'stopGo' && !stopped && pa - va < 12) { stopped = true; held = 2.0; }
       if (move === 'backUp' && !backing && pa - va < 10) backing = true;
       if (held > 0) {
@@ -211,16 +258,15 @@ window.__runPass = async function (where = 'inLane', width = 20, kph = 43, secon
       origU(dt);
     };
 
-    const pf = { x: Math.sin(pp.h), z: Math.cos(pp.h) }, pl = { x: -pf.z, z: pf.x };
-    let t = 0, hits = 0, ours = 0, pAt = p.lastImpactAt || 0, passed = false, sideGap = null, waited = 0;
+    const w = holdWatch(g, v, p);
+    const pf = { x: Math.sin(pp.h), z: Math.cos(pp.h) };
+    let t = 0, hits = 0, ours = 0, pAt = p.lastImpactAt || 0, passed = false;
     while (t < seconds) {
       g.stepHeadless(1 / 30, null, 1 / 30);
       t += 1 / 30;
+      w.step(t);
       const dx = v.position.x - pp.x, dz = v.position.z - pp.z;
-      const along = dx * pf.x + dz * pf.z;
-      if (Math.abs(along) < 2.5) sideGap = Math.min(sideGap ?? 99, Math.abs(dx * pl.x + dz * pl.z));
-      if (along > 6) passed = true;
-      if (!passed && v.speed < 0.5) waited += 1 / 30;
+      if (dx * pf.x + dz * pf.z > 6) passed = true;
       const d = Math.hypot(v.position.x - p.position.x, v.position.z - p.position.z);
       if (p.lastImpactAt && p.lastImpactAt !== pAt) {
         pAt = p.lastImpactAt;
@@ -235,6 +281,7 @@ window.__runPass = async function (where = 'inLane', width = 20, kph = 43, secon
       if (Math.floor(t * 30) % 90 === 0) await new Promise((r) => setTimeout(r, 0));
     }
 
+    w.done();
     g._update = origU;
     g.forceControls = null;
     g.paused = wasPaused;
@@ -242,8 +289,8 @@ window.__runPass = async function (where = 'inLane', width = 20, kph = 43, secon
     g.dispatcher.retire(u);
     return {
       where, move, width, kph, passed, contacts: hits, theirFault: ours,
-      sideGap: sideGap === null ? null : +sideGap.toFixed(2),
-      waited: +waited.toFixed(1), shoved: +shoved.toFixed(2),
+      stopGap: w.out.stopGap, firstBlip: w.out.firstBlip, blips: w.out.blips,
+      shoved: +shoved.toFixed(2), radio: w.out.radio,
     };
   } catch (err) {
     return 'EX ' + err.message + ' ' + String(err.stack).slice(0, 300);

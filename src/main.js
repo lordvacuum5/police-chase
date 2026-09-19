@@ -1080,7 +1080,9 @@ class Game {
         this.wheelMesh.setMatrixAt(wi++, _m);
       }
 
-      if (v.isPolice && !v.unmarked && this.heat.tier > 0) {
+      // Lit in a chase, or for the second of a "move along" blip from a patrol
+      // car you are sitting in front of (Officer._warnIfBlocked).
+      if (v.isPolice && !v.unmarked && (this.heat.tier > 0 || v.blipFor > 0)) {
         // Each body puts its bar somewhere different; the body says where. An
         // imported one carries the offsets on the object (it is a whole scene,
         // not one geometry), a generated one on its geometry.
