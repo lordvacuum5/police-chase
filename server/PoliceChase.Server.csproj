@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    The web server that hosts the game on Azure App Service.
+
+    It serves static files and nothing else: the game is all client side. The
+    reason it exists at all is that the App Service plan runs DOTNETCORE|10.0,
+    so something .NET has to be the process that answers requests.
+
+    The game's own files are not in this project. deploy-azure.ps1 copies
+    index.html, src, vendor and resources into wwwroot when it stages a build,
+    so the repository keeps one copy of them and the site is never out of date
+    with the game.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>PoliceChase.Server</AssemblyName>
+    <RootNamespace>PoliceChase.Server</RootNamespace>
+    <!-- Nothing here formats a date or sorts in a culture's order. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+</Project>

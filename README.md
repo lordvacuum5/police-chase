@@ -33,6 +33,58 @@ Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 ```
 
+## Putting it on the web
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\deploy-azure.ps1
+```
+
+That publishes the game, and the small ASP.NET server in `server/` that hosts
+it, to the Azure Web App — a Free (F1) Linux plan running `DOTNETCORE|10.0`.
+`az login` first; everything else has a default (subscription, resource group
+and app name are the ones the site was created with, and can be overridden).
+
+The server is `server/Program.cs`: about sixty lines of static file hosting,
+because the game is entirely client side. What it is there for is the things a
+naive file server gets wrong:
+
+* **Content types.** A module served as `text/plain` is a blank screen, and
+  Rapier's WebAssembly needs `application/wasm` to stream-compile. `.glb` for
+  the car models is not in .NET's default list either.
+* **Compression.** App Service does not compress for you, and three.js alone is
+  3.7 MB of JavaScript. Brotli and gzip, at the fastest setting — CPU is the
+  scarce thing on a free plan.
+* **Caching.** `vendor/` and `resources/` for a week; the game's own code and
+  page revalidate every time, so a deploy is live at once.
+* **The port.** App Service tells the container which port to answer on with
+  `PORT`. Ignore it and the platform's health check never gets a reply, which
+  shows up as "Application Error" with an empty log.
+
+### How it deploys, and why not the usual way
+
+The site has basic publishing credentials switched off (`/ftp` and `/scm` both
+`allow: false`), which is the sensible setting and rules out FTP, the publish
+profile, and every "deployment password" path — including `az webapp
+deployment source config-zip`. The free plan has no Git integration either.
+
+So the script posts a zip to Kudu with a **Microsoft Entra** token from the
+Azure CLI: `az account get-access-token`, then `POST /api/publish?type=zip`
+with `Authorization: Bearer`. It asks Azure for the SCM host name rather than
+assuming it, because a modern site's is `police-chase-c8c8bbdrbeg8cfcx.scm.
+ukwest-01.azurewebsites.net` — the unique suffix and the region cannot be
+guessed from the app name.
+
+With a .NET 10 SDK installed it runs `dotnet publish` here and ships the
+output. Without one it ships the sources and lets Azure's own build (Oryx)
+compile them, which needs nothing installed locally — `-ServerBuild` forces
+that either way. The upload is `clean=true`, so files deleted from the
+repository disappear from the site instead of lingering, and the script waits
+for the deployment to finish and then for the site to answer before it says it
+is done.
+
+`-IncludeTests` also publishes `tests/`, so the browser-console harnesses can
+be run against the deployed site; they are left out by default.
+
 ## Controls
 
 | Key | Action |
@@ -2801,6 +2853,10 @@ way. If the frame rate does drop the game degrades itself: shadows off below
 
 ```
 serve.ps1              dev server (also accepts POSTed screenshots to shots/)
+deploy-azure.ps1       publish the game and its server to the Azure Web App
+server/
+  PoliceChase.Server.csproj
+  Program.cs           the ASP.NET host: static files, types, compression
 index.html             canvas, HUD markup, import map
 src/
   main.js              boot, fixed-timestep loop, rendering, spawning
