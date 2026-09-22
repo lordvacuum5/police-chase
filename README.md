@@ -33,6 +33,80 @@ Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 ```
 
+## Multiplayer
+
+One player runs; everyone else is a police car, alongside the AI.
+
+On the menu, **MULTIPLAYER** asks for a game name. Whoever **creates** a game
+is the escapee: they pick the car, the map and the conditions, and picking the
+map is what starts it. Anyone who types that same name and **joins** arrives as
+a police unit on the same map. There is no lobby to browse and nothing to sign
+into — the name is the whole of it.
+
+A human police player drives an **interceptor from the first star**, which an
+AI unit would not get until three. They are a real unit as far as the rest of
+the game is concerned: the siren picks them up, they show on the radar, and
+**they can make the arrest** — the bust clock is heat.js measuring the gap to
+the nearest unit, and a human in an interceptor is a unit like any other. Their
+own radar shows the suspect for as long as the pursuit has eyes on the car.
+
+### How it is put together
+
+There is no server-side simulation. Every client runs the whole game, and each
+one owns exactly the cars it drives:
+
+* the **escapee owns the chase** — their machine runs the dispatcher, the AI
+  cars, the heat, the roadblocks and the helicopter, because all of that is
+  built around the car being chased, and broadcasts the result twenty times a
+  second;
+* each **police player owns their own interceptor** and broadcasts that.
+
+Everything a client does not own arrives as packets and is driven as a
+**kinematic body**: it shoves the cars around it and cannot be shoved back by
+somebody else's stale packet. The player who hits somebody is the one whose
+physics decides what the hit felt like, so both cars bounce on both screens
+without either side being able to push the other around. Remote cars are drawn
+120 ms behind the newest packet and interpolated between the two either side of
+it — extrapolating reads beautifully on a straight and badly everywhere else,
+because a car that brakes hard carries on into the junction and is then yanked
+back.
+
+Cars on the wire are a list of numbers, not objects: position, rotation,
+velocity, steering, speed, damage and a flags byte, rounded to centimetres.
+Eighteen police cars and an escapee come to about 1.6 KB a packet.
+
+`RemoteUnit` (in `main.js`) is what makes the rest of the game work without
+knowing any of this: a police car somebody else drives is registered with the
+dispatcher as a unit that takes no orders, so the siren, the radar and the
+arrest all read it the way they read an AI one. The dispatcher skips `human`
+units when it hands out roles and when it thins the roster, so a player is
+never told to run a PIT or despawned for being too far away.
+
+### The server, and testing it without one
+
+`server/Program.cs` serves the game and relays packets at `/ws`; `Rooms.cs` is
+the room list. It never looks inside a packet — it remembers who is in which
+game, tells a newcomer which map is being played, and passes bytes on. A relay
+is about all a Free plan's CPU quota would thank you for anyway, and WebSockets
+have to be switched on for the site (the deploy script does it; it is a setting,
+not a tier).
+
+Multiplayer can also be played, and tested, with **no server at all**: with
+`?net=local` the transport is a `BroadcastChannel` instead of a WebSocket, so
+two tabs of the same browser are two players, against the static dev server.
+The protocol above it is identical, which is how the whole of it — create,
+join, world sync, an arrest by a human police car — was tested before it was
+ever deployed.
+
+### What it does not do
+
+Nothing is smoothed over if the network stalls; a packet that does not arrive
+means a car that holds its last known line. There is no reconnection: a refresh
+is a new player. If the escapee leaves, the game is over for everyone in it,
+which is said on screen rather than left to guess at. And the free plan allows
+only a handful of WebSockets at once, so this is a game for a few friends, not
+a public server.
+
 ## Putting it on the web
 
 ```powershell

@@ -4,7 +4,8 @@
 // real map -- generating a map costs a second or so, and the whole point of the
 // menu is to appear instantly.
 
-import { MAPS } from '../world/maps.js';
+import { MAPS, mapById } from '../world/maps.js';
+import { session } from '../net/session.js';
 import { prefersTouch } from './touch.js';
 import { bestScores } from '../game/score.js';
 import { chosenConditions, setConditions } from '../game/weather.js';
@@ -85,6 +86,7 @@ export function showMenu(onPick) {
   holder.innerHTML = '';
   menu.classList.remove('gone');
   buildCarCards();
+  buildMultiplayer(onPick);
   buildConditions();
   buildBestScores();
   buildVoicePicker();
@@ -117,7 +119,24 @@ export function showMenu(onPick) {
 
     if (m.id === 'wexbury') drawTown(canvas); else drawCity(canvas);
 
-    const pick = () => { menu.classList.add('gone'); onPick(m); };
+    // In a single-player game, or as the host of a new multiplayer one,
+    // picking the ground is what starts everything. A player joining somebody
+    // else's game never gets here: the host has already chosen.
+    const pick = async () => {
+      if (netMode === 'create') {
+        const room = gameName();
+        if (!room) { netStatus('Give the game a name first.', 'bad'); return; }
+        netStatus(`Creating "${room}"…`);
+        try {
+          await session.connect({ room, name: 'Escapee', map: m.id, create: true });
+        } catch (err) {
+          netStatus(err.message, 'bad');
+          return;
+        }
+      }
+      menu.classList.add('gone');
+      onPick(m);
+    };
     card.addEventListener('click', pick);
     card.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); }
@@ -200,6 +219,101 @@ function buildCarCards() {
 }
 
 /** Day or night, dry or rain: two switches, remembered for next time. */
+/**
+ * Single player, or a game with other people in it.
+ *
+ * Multiplayer is one escapee and any number of police cars, and a game is just
+ * a name: whoever creates it is the one being chased and picks the ground,
+ * and anyone who types the same name joins as a police unit on that map. The
+ * name is the whole of the lobby -- there is no list of games to browse and
+ * nothing to sign into.
+ */
+let netMode = 'single';       // 'single' | 'create' | 'join'
+
+function gameName() {
+  const el = document.getElementById('gamename');
+  return el ? el.value.trim().toUpperCase().replace(/\s+/g, ' ') : '';
+}
+
+function netStatus(text, kind) {
+  const el = document.getElementById('netstatus');
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = kind || '';
+}
+
+function buildMultiplayer(onPick) {
+  const holder = document.getElementById('mode');
+  const panel = document.getElementById('netpanel');
+  const menu = document.getElementById('menu');
+  if (!holder || !panel) return;
+  holder.innerHTML = '';
+  netMode = 'single';
+  netStatus('');
+  menu.classList.remove('joining');
+
+  const create = document.getElementById('netcreate');
+  const join = document.getElementById('netjoin');
+  const sub = document.getElementById('menusub');
+
+  const setMode = (mode) => {
+    netMode = mode;
+    create.classList.toggle('on', mode === 'create');
+    join.classList.toggle('on', mode === 'join');
+    menu.classList.toggle('joining', mode === 'join');
+    if (sub) {
+      sub.textContent = mode === 'create' ? 'CHOOSE YOUR GROUND — THIS STARTS THE GAME' : 'CHOOSE YOUR GROUND';
+    }
+    if (mode === 'create') netStatus('You are the escapee. Pick a map to start; others join by name.');
+    else if (mode === 'join') netStatus('You drive an interceptor. The host picks the map and car.');
+    else netStatus('');
+  };
+
+  const seg = document.createElement('div');
+  seg.className = 'seg';
+  const buttons = [['SINGLE PLAYER', 'single'], ['MULTIPLAYER', 'multi']].map(([label, value]) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    b.classList.toggle('on', value === 'single');
+    b.addEventListener('click', () => {
+      for (const x of buttons) x.classList.toggle('on', x === b);
+      panel.hidden = value !== 'multi';
+      setMode(value === 'multi' ? 'create' : 'single');
+    });
+    seg.appendChild(b);
+    return b;
+  });
+  holder.appendChild(seg);
+  panel.hidden = true;
+
+  create.onclick = () => setMode('create');
+  join.onclick = async () => {
+    setMode('join');
+    const room = gameName();
+    if (!room) { netStatus('Type the name of the game to join.', 'bad'); return; }
+    netStatus(`Joining "${room}"…`);
+    try {
+      await session.connect({ room, name: 'Unit', create: false });
+    } catch (err) {
+      netStatus(err.message, 'bad');
+      return;
+    }
+    netStatus('In. Starting…', 'good');
+    const map = mapById(session.map) || MAPS[0];
+    document.getElementById('menu').classList.add('gone');
+    onPick(map);
+  };
+  const nameBox = document.getElementById('gamename');
+  if (nameBox) {
+    nameBox.onkeydown = (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      if (netMode === 'join') join.onclick();
+    };
+  }
+}
+
 function buildConditions() {
   const holder = document.getElementById('conditions');
   if (!holder) return;

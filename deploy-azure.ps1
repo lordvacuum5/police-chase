@@ -167,11 +167,12 @@ $webRoot = Join-Path $srcDir 'wwwroot'
 New-Item -ItemType Directory -Path $webRoot -Force | Out-Null
 
 Write-Step 'Staging the site'
-foreach ($file in @('PoliceChase.Server.csproj', 'Program.cs')) {
-    $from = Join-Path $GameRoot "server\$file"
-    if (-not (Test-Path $from)) { throw "Missing $from. Run this from the repository, or pass -GameRoot." }
-    Copy-Item $from -Destination $srcDir
+$serverDir = Join-Path $GameRoot 'server'
+if (-not (Test-Path (Join-Path $serverDir 'PoliceChase.Server.csproj'))) {
+    throw "No server project in $serverDir. Run this from the repository, or pass -GameRoot."
 }
+Copy-Item (Join-Path $serverDir '*.csproj') -Destination $srcDir
+Copy-Item (Join-Path $serverDir '*.cs') -Destination $srcDir
 
 $payload = @('index.html', 'src', 'vendor', 'resources')
 if ($IncludeTests) { $payload += 'tests' }
@@ -250,6 +251,15 @@ if ($config.appCommandLine -ne $wantStartup) {
     Write-Step 'Setting the startup command'
     Invoke-Az @('webapp', 'config', 'set', '-g', $ResourceGroup, '-n', $AppName,
         '--startup-file', $wantStartup, '-o', 'none') | Out-Null
+}
+
+# Multiplayer is a WebSocket to /ws, and the platform will not upgrade the
+# connection unless this is on. It is a setting, not a tier: no cost, though a
+# free plan allows only a handful of sockets at once.
+if (-not $config.webSocketsEnabled) {
+    Write-Step 'Enabling WebSockets'
+    Invoke-Az @('webapp', 'config', 'set', '-g', $ResourceGroup, '-n', $AppName,
+        '--web-sockets-enabled', 'true', '-o', 'none') | Out-Null
 }
 
 # ---------------------------------------------------------------- deploy

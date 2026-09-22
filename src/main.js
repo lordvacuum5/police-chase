@@ -28,6 +28,7 @@ import { Hud } from './game/hud.js';
 import { Input } from './core/input.js';
 import { TouchControls } from './core/touch.js';
 import { SkidMarks, LightBars } from './game/effects.js';
+import { session, packCar, FLAG } from './net/session.js';
 import { GameAudio } from './game/audio.js';
 import { Commentary } from './game/commentary.js';
 import { Phrasebook } from './game/phrases.js';
@@ -98,6 +99,35 @@ const boot = {
   },
   hide() { if (this.root) this.root.classList.remove('on'); },
 };
+
+/**
+ * A police car this client does not drive: an AI car belonging to the
+ * escapee's machine, or another player's.
+ *
+ * It stands in for an Officer in the dispatcher's list, which is what the rest
+ * of the game reads when it asks "where are the police". That is how the
+ * siren, the radar blips and the arrest clock keep working in a multiplayer
+ * game without any of them knowing there is a network: the arrest, in
+ * particular, is just heat.js measuring the gap to the nearest unit, and a
+ * human in an interceptor is a unit like any other. It drives nothing -- its
+ * update is deliberately empty -- and `human` keeps the dispatcher from
+ * handing it orders it cannot carry out.
+ */
+class RemoteUnit {
+  constructor(vehicle, id) {
+    this.vehicle = vehicle;
+    this.netId = id;
+    this.human = true;
+    this.role = ROLE.PURSUE;
+    this.callsign = String(id).startsWith('a') ? String(id).slice(1) : 'M' + String(id).slice(0, 2);
+    this.orders = {};
+  }
+
+  get position() { return this.vehicle.position; }
+  distanceTo(p) { return dist2(this.vehicle.position.x, this.vehicle.position.z, p.x, p.z); }
+  update() { /* its owner drives it */ }
+  setRole() { /* not ours to give */ }
+}
 
 class Game {
   constructor() {
@@ -269,6 +299,17 @@ class Game {
         : this.graph.randomNode(this.rng, 'street');
       place = this._placeOnRoad(node);
     }
+    // A human police player drives an interceptor whatever the wanted level
+    // is: they are not an ambient patrol car that happened to be nearby, they
+    // are a unit that has been sent. The car cards on the menu are the
+    // escapee's choice; this side does not get one.
+    if (session.active && session.role === 'police') {
+      this.player = this.createVehicle('interceptor', 'interceptor',
+        place.position, place.heading, { police: true });
+      this.player.lampPhase = this.rng();
+      this.startPlace = place;
+      return;
+    }
     // Whichever car was picked on the menu. Remembered in localStorage, so a
     // refresh or a trip back through M keeps it.
     const car = SPECS[chosenCar()] ? chosenCar() : 'runner';
@@ -300,8 +341,14 @@ class Game {
   createVehicle(specKey, liveryKey, position, heading, opts = {}) {
     const spec = SPECS[specKey];
     const v = new Vehicle(this.sim, spec, {
-      position, heading, id: this.vehicles.length + 1,
+      position, heading, id: this.vehicles.length + 1, kinematic: !!opts.remote,
     });
+    v.remote = !!opts.remote;
+    if (v.remote) {
+      // Nothing simulates its suspension, so sit the wheels where a laden car
+      // carries them instead of leaving them hanging at full droop.
+      for (const w of v.wheels) w.compression = spec.suspension.rest * 0.6;
+    }
     v.specKey = specKey;
     v.isPolice = !!opts.police;
     v.unmarked = !!opts.unmarked;
@@ -751,6 +798,7 @@ class Game {
     ].join(' &nbsp;·&nbsp; '));
     this.commentary.onBusted();
     this.radio('Control, received. All units, stand down.', true, { final: true });
+    if (session.active && session.isHost) session.sendEvent('busted');
   }
 
   /**
@@ -780,11 +828,13 @@ class Game {
       'Control, nothing further. Back to patrol.',
     ], {}, true);
     this.score.onEscaped(this.heat.peak);
+    if (session.active && session.isHost) session.sendEvent('escaped');
     this.dispatcher.standDown();
     this.heat.reset();
   }
 
   restart() {
+    if (session.active && session.isHost) session.sendEvent('restart');
     this.outcome = null;
     this.score.reset();
     this.hud.hideOverlay();
@@ -882,12 +932,169 @@ class Game {
       this.debugEl.style.display = this.debug ? 'block' : 'none';
     }
     if (i.tapped('KeyR')) {
-      if (this.outcome) this.restart();
+      // Starting again is the escapee's call: there is one chase, and a police
+      // player restarting their own copy of it would only desynchronise them.
+      // Righting an upside-down car is still theirs to do.
+      const guest = session.active && !session.isHost;
+      if (this.outcome) { if (!guest) this.restart(); }
       else if (this.player.flippedFor > 0.3 || this.player.speed < 2) {
         // Flip upright in place rather than teleporting across the map.
         _v.copy(this.player.position); _v.y += 1.4;
         this.player.teleport(_v, Math.atan2(this.player.forward.x, this.player.forward.z));
       }
+    }
+  }
+
+  // ============================================================ multiplayer
+
+  /**
+   * One frame of network play: move everyone else's cars, act on what the
+   * host has announced, and send this client's own.
+   */
+  _netUpdate(dt) {
+    this._netApplyCars(dt);
+    this._netHandleEvents();
+    if (session.dueToSend()) this._netSend();
+    if (session.closed && !this.netOver) {
+      this.netOver = true;
+      this.hud.showOverlay('GAME OVER', session.error || 'The game ended.', { canRestart: false });
+    }
+  }
+
+  /**
+   * Create, move and retire the cars this client does not own.
+   *
+   * They are kinematic bodies: put where the packets say, a tenth of a second
+   * behind the newest one so the line between packets can be interpolated
+   * rather than guessed at. Police cars among them are also registered with
+   * the dispatcher, which is what makes the siren, the radar blips and -- on
+   * the escapee's machine -- the arrest work without knowing about any of this.
+   */
+  _netApplyCars(dt) {
+    if (!this.netCars) { this.netCars = new Map(); this.netUnits = new Map(); }
+    const seen = new Set();
+    for (const car of session.sample()) {
+      if (car.id === session.id) continue;                 // our own, echoed
+      seen.add(car.id);
+      let v = this.netCars.get(car.id);
+      if (!v) {
+        const police = (car.flags & FLAG.POLICE) !== 0;
+        v = this.createVehicle(car.kind, car.kind, { x: car.x, y: car.y, z: car.z }, 0, {
+          police, unmarked: (car.flags & FLAG.UNMARKED) !== 0, remote: true,
+        });
+        v.lampPhase = this.rng();
+        v.netId = car.id;
+        this.netCars.set(car.id, v);
+        if (police) {
+          const unit = new RemoteUnit(v, car.id);
+          this.netUnits.set(car.id, unit);
+          this.dispatcher.units.push(unit);
+        }
+      }
+      v.body.setNextKinematicTranslation({ x: car.x, y: car.y, z: car.z });
+      v.body.setNextKinematicRotation({ x: car.qx, y: car.qy, z: car.qz, w: car.qw });
+      if (!v.netVel) v.netVel = new THREE.Vector3();
+      v.netVel.set(car.vx, car.vy, car.vz);
+      v.damage = car.damage;
+      v.disabled = (car.flags & FLAG.DISABLED) !== 0;
+      v.blipFor = (car.flags & FLAG.BLIP) !== 0 ? 0.2 : 0;
+      // Wheels are cosmetic on a car nobody here is driving: point the front
+      // pair where the packet says and roll all four at road speed.
+      const radius = v.spec.wheelRadius || 0.34;
+      for (let i = 0; i < v.wheels.length; i++) {
+        const w = v.wheels[i];
+        w.steer = w.front ? car.steer : 0;
+        w.spin = (w.spin || 0) + (car.speed / radius) * dt;
+      }
+      if (car.id === session.escapeeId) this.netSuspect = v;
+    }
+
+    // Gone: a despawned AI car, or a player who left.
+    for (const id of session.prune()) seen.delete(id);
+    for (const [id, v] of [...this.netCars]) {
+      if (seen.has(id) || session.tracks.has(id)) continue;
+      this.netCars.delete(id);
+      const unit = this.netUnits.get(id);
+      if (unit) {
+        const i = this.dispatcher.units.indexOf(unit);
+        if (i >= 0) this.dispatcher.units.splice(i, 1);
+        this.netUnits.delete(id);
+      }
+      if (this.netSuspect === v) this.netSuspect = null;
+      this.removeVehicle(v);
+    }
+
+    // A police player joins wherever the world put them; once the suspect's
+    // position is known, start them a couple of streets away from it instead.
+    if (session.role === 'police' && this.netSuspect && !this.netPlaced) {
+      this.netPlaced = true;
+      this._netPlaceNearSuspect();
+    }
+
+    // What the rest of the game asks the dispatcher for. On a police player's
+    // machine nothing has updated it, so the suspect's own car is the answer.
+    if (session.role === 'police' && this.netSuspect) {
+      const k = this.dispatcher.knowledge;
+      k.position.copy(this.netSuspect.position);
+      k.velocity.copy(this.netSuspect.linvel);
+      k.seen = session.seen;
+      k.timeSinceSeen = session.seen ? 0 : k.timeSinceSeen + dt;
+      k.confidence = 1;
+      this.dispatcher.inContact = session.seen;
+      this.hud.suspect = this.netSuspect.position;
+    }
+  }
+
+  /** Put this police car on a road a few hundred metres from the suspect. */
+  _netPlaceNearSuspect() {
+    const s = this.netSuspect;
+    if (!s) return;
+    let best = null;
+    for (let i = 0; i < 60; i++) {
+      const node = this.graph.randomNode(this.rng, 'street');
+      const d = dist2(node.x, node.z, s.position.x, s.position.z);
+      if (d < 90 || d > 260) continue;
+      const place = this._placeOnRoad(node);
+      if (place) { best = place; break; }
+    }
+    if (!best) return;
+    this.player.repair();
+    this.player.teleport(best.position, best.heading);
+    this.player._readState();
+    this.player.setVelocity({ x: 0, y: 0, z: 0 });
+    this.player._readState();
+    this.startPlace = best;
+  }
+
+  /** Busted, got away, or started again -- announced by the escapee's machine. */
+  _netHandleEvents() {
+    for (const msg of session.takeEvents()) {
+      if (session.isHost) continue;                        // its own doing
+      if (msg.e === 'busted') {
+        this.hud.showOverlay('SUSPECT ARRESTED', 'Waiting for the escapee to run again…', { canRestart: false });
+        this.outcome = 'busted';
+      } else if (msg.e === 'escaped') {
+        this.hud.showOverlay('SUSPECT LOST', 'They got away.', { canRestart: false });
+        this.outcome = 'escaped';
+      } else if (msg.e === 'restart') {
+        this.outcome = null;
+        this.hud.hideOverlay();
+        this.netPlaced = false;
+      }
+    }
+  }
+
+  /** This client's own cars, twenty times a second. */
+  _netSend() {
+    if (session.isHost) {
+      const cars = [packCar(session.id, this.player)];
+      for (const u of this.dispatcher.units) {
+        if (u.human || !u.vehicle || u.vehicle.remote) continue;
+        cars.push(packCar('a' + (u.callsignId || u.vehicle.id), u.vehicle));
+      }
+      session.sendWorld(cars, this.heat.value, this.dispatcher.inContact);
+    } else {
+      session.sendCar(packCar(session.id, this.player));
     }
   }
 
@@ -906,17 +1113,28 @@ class Game {
     }
 
     // ---- AI, then heat ----
-    this.dispatcher.update(dt, player);
-    this.roadblocks.update(dt, player);
-    this.helicopter.update(dt, player);
-    this.props.update(dt);
-    this.garage.update(dt);
-    this.score.update(dt);
-    this.signals.update(dt);
-    this.heat.update(dt, player, this.dispatcher);
-    this.commentary.update(dt);
-    this._checkProvocation(dt);
-    this._checkRedLight();
+    // In a multiplayer game only the escapee's machine runs any of this: the
+    // chase, the heat and every AI car belong to one client, and the others
+    // are told what it decided (see net/session.js).
+    const guest = session.active && !session.isHost;
+    if (!guest) {
+      this.dispatcher.update(dt, player);
+      this.roadblocks.update(dt, player);
+      this.helicopter.update(dt, player);
+      this.props.update(dt);
+      this.garage.update(dt);
+      this.score.update(dt);
+      this.signals.update(dt);
+      this.heat.update(dt, player, this.dispatcher);
+      this.commentary.update(dt);
+      this._checkProvocation(dt);
+      this._checkRedLight();
+    } else {
+      this.props.update(dt);
+      this.signals.update(dt);
+      this.heat.value = session.heat;
+    }
+    if (session.active) this._netUpdate(dt);
 
     // ---- physics ----
     this.accumulator += dt;
@@ -924,9 +1142,28 @@ class Game {
     this.world.timestep = FIXED;
     this.world.integrationParameters.dt = FIXED;
     while (this.accumulator >= FIXED && steps < MAX_SUBSTEPS) {
-      for (const v of this.vehicles) v.prepare(FIXED);
+      for (const v of this.vehicles) { if (!v.remote) v.prepare(FIXED); }
       this.world.step();
-      for (const v of this.vehicles) v.postStep(FIXED);
+      for (const v of this.vehicles) {
+        // A car somebody else owns has no engine, tyres or damage of its own
+        // here; it only needs its pose read back for drawing and for the AI
+        // to see it.
+        if (v.remote) {
+          v._readState();
+          // A kinematic body reports no velocity of its own, and half the game
+          // asks cars how fast they are going -- closing speed for avoidance,
+          // the tails on the radar, whether a car counts as moving. Use the
+          // velocity its owner sent instead.
+          if (v.netVel) {
+            v.linvel.copy(v.netVel);
+            v.speed = v.linvel.length();
+            v.forwardSpeed = v.linvel.dot(v.forward);
+            v.lateralSpeed = v.linvel.dot(v.left);
+          }
+        } else {
+          v.postStep(FIXED);
+        }
+      }
       this.accumulator -= FIXED;
       steps++;
     }
@@ -1189,7 +1426,11 @@ window.__game = game;
  * into the map you were playing.
  */
 function launch(mapDef) {
-  sessionStorage.setItem('pc.map', mapDef.id);
+  // Remembering the map is what makes a refresh drop you back into the game
+  // instead of the menu -- but a multiplayer game cannot be rejoined that way,
+  // because the connection went with the page. Send those back to the menu.
+  if (session.active) sessionStorage.removeItem('pc.map');
+  else sessionStorage.setItem('pc.map', mapDef.id);
   game.mapDef = mapDef;
   // The menu is in the page from the start and only hid itself when a map card
   // was clicked, so a refresh straight back into a map left its headings drawn

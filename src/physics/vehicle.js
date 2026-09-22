@@ -94,11 +94,16 @@ export class Vehicle {
    * @param sim  { world, surfaceAt(x,z) }
    * @param spec vehicle definition from game/vehicles.js
    */
-  constructor(sim, spec, { position = { x: 0, y: 1, z: 0 }, heading = 0, id = 0 } = {}) {
+  constructor(sim, spec, { position = { x: 0, y: 1, z: 0 }, heading = 0, id = 0, kinematic = false } = {}) {
     this.sim = sim;
     this.world = sim.world;
     this.spec = spec;
     this.id = id;
+    // Somebody else's car in a multiplayer game: its owner's machine decides
+    // where it is, and this one only moves it there (see net/session.js and
+    // Game._netApplyCars). Kinematic, so it shoves the cars around it without
+    // being shoved itself by a client that does not own it.
+    this.kinematic = kinematic;
 
     // ---- control inputs, 0..1 except steer which is -1..1 ----
     this.controls = { throttle: 0, brake: 0, steer: 0, handbrake: 0, clutchKick: false };
@@ -183,7 +188,9 @@ export class Vehicle {
     const { w, h, l } = s.dims;
 
     const half = heading * 0.5;
-    const desc = RAPIER.RigidBodyDesc.dynamic()
+    const desc = (this.kinematic
+      ? RAPIER.RigidBodyDesc.kinematicPositionBased()
+      : RAPIER.RigidBodyDesc.dynamic())
       .setTranslation(position.x, position.y, position.z)
       .setRotation({ x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) })
       .setLinearDamping(0.02)

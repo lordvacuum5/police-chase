@@ -273,7 +273,9 @@ export class Dispatcher {
     // are not the roster's to retire. They are standing in a road on purpose;
     // counting them as active pursuers would quietly starve the chase of the
     // cars that are actually chasing.
-    const alive = this.units.filter((u) => !u.vehicle.disabled && u.role !== ROLE.HOLD);
+    // Human-driven police cars in a multiplayer game are units for counting,
+    // sirens and the arrest, but they take no orders: see RemoteUnit in main.js.
+    const alive = this.units.filter((u) => !u.human && !u.vehicle.disabled && u.role !== ROLE.HOLD);
 
     if (alive.length < want && this.spawnTimer <= 0) {
       this.spawnTimer = 1.6;
@@ -310,6 +312,7 @@ export class Dispatcher {
     // still counts as active would quietly starve the pursuit of cars.
     for (let i = this.units.length - 1; i >= 0; i--) {
       const u = this.units[i];
+      if (u.human) continue;                // somebody else is driving it
       if (u.role === ROLE.HOLD) continue;   // the roadblock owns its own cars
       const d = u.distanceTo(target.position);
       const far = d > 900;
@@ -351,7 +354,7 @@ export class Dispatcher {
     // They are still never deleted in front of the player: furthest first, and
     // only once far enough away or out of sight. What changes with the excess
     // is how often, and how close is close enough to count as gone.
-    const live = this.units.filter((u) => !u.vehicle.disabled && u.role !== ROLE.HOLD);
+    const live = this.units.filter((u) => !u.human && !u.vehicle.disabled && u.role !== ROLE.HOLD);
     // Two different ceilings. While a chase is on, the pack may keep whatever
     // it has collected up to PACK_CAP and only sheds cars past that. Once the
     // heat is off, the tier budget is the ceiling again and the force thins
@@ -457,7 +460,7 @@ export class Dispatcher {
 
     // Cars manning a roadblock are not available for anything: they are where
     // they are meant to be, and they decide for themselves when to leave.
-    const available = this.units.filter((u) => !u.vehicle.disabled && u.role !== ROLE.HOLD);
+    const available = this.units.filter((u) => !u.human && !u.vehicle.disabled && u.role !== ROLE.HOLD);
     available.sort((a, b) => a.distanceTo(k.position) - b.distanceTo(k.position));
 
     const assigned = new Set();
@@ -941,8 +944,8 @@ export class Dispatcher {
   }
 
   reset() {
-    for (const u of this.units) this.game.despawnPolice(u);
-    this.units.length = 0;
+    for (const u of this.units) { if (!u.human) this.game.despawnPolice(u); }
+    this.units = this.units.filter((u) => u.human);
     this.activePit = null;
     this.boxAssignment = null;
     this.knowledge.confidence = 0;

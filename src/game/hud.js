@@ -16,6 +16,9 @@ const MAP_SPAN = 470;         // metres visible on the minimap
 export class Hud {
   constructor(game) {
     this.game = game;
+    // Set by the game when this client is a police player in a multiplayer
+    // game: where the car everyone is after is, for the radar.
+    this.suspect = null;
 
     this.starsEl = document.getElementById('stars');
     this.heatFill = document.getElementById('heatfill');
@@ -453,6 +456,23 @@ export class Hud {
       ctx.restore();
     }
 
+    // ---- the suspect, when you are the one chasing them ----
+    // A police player is told where the car is for as long as the pursuit has
+    // eyes on it, the way the rest of the force is; the marker is the same
+    // orange as the car's own blip on the escapee's map.
+    if (this.suspect) {
+      const p = toMap(this.suspect.x, this.suspect.z);
+      if (p.x > -20 && p.y > -20 && p.x < W + 20 && p.y < W + 20) {
+        ctx.fillStyle = '#ff7a1a';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      }
+    }
+
     // ---- police ----
     for (const u of dispatcher.units) {
       // A wrecked unit is out of the pursuit; leaving it on the map just
@@ -510,9 +530,13 @@ export class Hud {
 
   // ---------------------------------------------------------------- overlay
 
-  showOverlay(title, sub) {
+  showOverlay(title, sub, { canRestart = true } = {}) {
     this.otitle.textContent = title;
     this.osub.innerHTML = sub;
+    // A police player in a multiplayer game cannot start the chase again --
+    // that is the escapee's to do -- so do not tell them to press R.
+    const hint = document.getElementById('ohint');
+    if (hint) hint.hidden = !canRestart;
     this.overlay.classList.add('show');
   }
 
