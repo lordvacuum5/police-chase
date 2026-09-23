@@ -243,6 +243,24 @@ az role assignment create --assignee <appId> --role "Website Contributor" --scop
 az ad app federated-credential create --id <appId> --parameters '{"name":"github-master","issuer":"https://token.actions.githubusercontent.com","subject":"repo:lordvacuum5/police-chase:ref:refs/heads/master","audiences":["api://AzureADTokenExchange"]}'
 ```
 
+**GitHub may present an immutable subject instead**, with the numeric owner and
+repository ids in it rather than their names — which is the same identity said
+a different way, and does not match the credential above. The first run said
+so, at length:
+
+```
+AADSTS700213: No matching federated identity record found for presented
+assertion subject 'repo:lordvacuum5@329247604/police-chase@1370451181:ref:refs/heads/master'
+```
+
+The fix is a second credential carrying exactly that subject; the two sit side
+by side and whichever form a run presents, one of them matches. The ids are in
+the error, so the quickest way to get them is to let a run fail once:
+
+```bash
+az ad app federated-credential create --id <appId> --parameters '{"name":"github-master-immutable","issuer":"https://token.actions.githubusercontent.com","subject":"repo:OWNER@OWNER_ID/REPO@REPO_ID:ref:refs/heads/master","audiences":["api://AzureADTokenExchange"]}'
+```
+
 Then three repository secrets (Settings → Secrets and variables → Actions):
 `AZURE_CLIENT_ID` (the `appId`), `AZURE_TENANT_ID` and
 `AZURE_SUBSCRIPTION_ID`.
