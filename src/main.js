@@ -60,6 +60,8 @@ const NET_PULL = 10;     // m/s
 const NET_SPIN = 6;      // rad/s
 /** How near a human a car has to be for the host to bother sending it. */
 const NET_RANGE = 400;   // m
+/** Within this of your own car, a followed car is treated as in contact. */
+const NET_CONTACT = 6;   // m
 
 /** Seconds between any two routine radio lines -- commentary, units en route. */
 const ROUTINE_GAP = 12;
@@ -343,11 +345,11 @@ class Game {
     // are a unit that has been sent. The car cards on the menu are the
     // escapee's choice; this side does not get one.
     if (session.active && session.role === 'police') {
+      // Driveable by a person rather than by the speed planner, and heavy
+      // enough to shove with: see drivablePoliceSpec. Only this car, and only
+      // on this machine.
       this.player = this.createVehicle('interceptor', 'interceptor',
-        place.position, place.heading, { police: true });
-      // Driveable by a person rather than by the speed planner: see
-      // drivablePoliceSpec. Only this car, and only on this machine.
-      this.player.spec = drivablePoliceSpec('interceptor');
+        place.position, place.heading, { police: true, spec: drivablePoliceSpec('interceptor') });
       this.player.lampPhase = this.rng();
       this.startPlace = place;
       return;
@@ -381,7 +383,13 @@ class Game {
   }
 
   createVehicle(specKey, liveryKey, position, heading, opts = {}) {
-    const spec = SPECS[specKey];
+    // `opts.spec` is a car of this kind with something changed -- the police
+    // car a person drives. It has to be given here rather than assigned to
+    // the vehicle afterwards, because mass and inertia are built into the
+    // rigid body once and never read again: setting them later looks like it
+    // works and does nothing at all. The kind still decides the bodywork and
+    // the imported model.
+    const spec = opts.spec || SPECS[specKey];
     // A car somebody else owns is an ordinary dynamic body, not a kinematic
     // one: it has to be able to take a share of a collision rather than
     // handing all of it to whoever touched it. See _netDriveRemote.
@@ -781,6 +789,16 @@ class Game {
     // point for both, so the two can never drift apart. `opts.low` marks
     // running commentary, which the audio side may skip when the net is busy.
     if (this.audio) this.audio.radio(text, hot, opts);
+
+    // And in a multiplayer game it is one radio net, not one each. The chase
+    // is run on the escapee's machine, so every line was said there and
+    // nowhere else: a police player heard their own siren and silence, which
+    // is most of the radio missing. The text goes out with it; a police
+    // player's machine says the same words at the same moment, and never
+    // sends one on, so a line cannot echo round the room.
+    if (session.active && session.isHost && !opts.fromNet) {
+      session.sendEvent('radio', { text, hot: hot ? 1 : 0, low: opts.low ? 1 : 0 });
+    }
   }
 
   /**
@@ -1102,8 +1120,15 @@ class Game {
       k.seen = session.seen;
       k.confidence = session.seen ? 1 : clamp01(1 - (this.netLostFor || 0) / SEARCH_SECONDS);
       this.dispatcher.inContact = session.seen;
-      this.hud.suspect = session.seen ? this.netSuspect.position
-        : ((this.netLostFor || 0) < SEARCH_SECONDS ? this.netLastSeen : null);
+      // Only while there is a chase on. With nobody wanted, the pair of you
+      // are two cars driving around a city and the force has no business
+      // knowing where the other one is: the marker used to appear the moment
+      // they came into view of anything, which gave away a car that had done
+      // nothing and was not being looked for.
+      const chaseOn = this.heat.value > 0;
+      this.hud.suspect = !chaseOn ? null
+        : (session.seen ? this.netSuspect.position
+          : ((this.netLostFor || 0) < SEARCH_SECONDS ? this.netLastSeen : null));
       this.hud.suspectStale = !session.seen;
     }
   }
@@ -1141,11 +1166,19 @@ class Game {
       return;
     }
 
+    // Close enough to be touching, the pull gives way. Holding a car on its
+    // line while somebody leans on it is what made a hit feel wrong: the car
+    // you hit carried on as though nothing had happened and pushed you along
+    // with it. Let it be shoved for the moment of the contact and catch up
+    // afterwards, which is what a car does.
+    const contact = dist2(v.position.x, v.position.z,
+      this.player.position.x, this.player.position.z) < NET_CONTACT;
+    const pull = contact ? NET_PULL * 0.3 : NET_PULL;
     const gain = 0.5 / step;
     body.setLinvel({
-      x: car.vx + clamp(dx * gain, -NET_PULL, NET_PULL),
-      y: car.vy + clamp(dy * gain, -NET_PULL, NET_PULL),
-      z: car.vz + clamp(dz * gain, -NET_PULL, NET_PULL),
+      x: car.vx + clamp(dx * gain, -pull, pull),
+      y: car.vy + clamp(dy * gain, -pull, pull),
+      z: car.vz + clamp(dz * gain, -pull, pull),
     }, true);
 
     // The same for the facing: the shortest arc from where it is to where it
@@ -1189,7 +1222,11 @@ class Game {
   _netHandleEvents() {
     for (const msg of session.takeEvents()) {
       if (session.isHost) continue;                        // its own doing
-      if (msg.e === 'busted') {
+      if (msg.e === 'radio') {
+        // Said on the escapee's machine; heard on this one too, in the same
+        // voice it would have used, and marked so it is not sent back.
+        this.radio(msg.text, !!msg.hot, { low: !!msg.low, fromNet: true });
+      } else if (msg.e === 'busted') {
         // An arrest is an ending for the escapee, who gets the full curtain
         // and a score. For a police player it is news: the overlay says so and
         // clears when they set off again, and the car is still theirs to drive

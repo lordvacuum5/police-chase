@@ -63,6 +63,22 @@ to be read from each machine separately, so the escapee could be out in the
 rain at night while the police had a dry afternoon — and rain takes grip down
 to 0.8 of dry, so the two of them were not even driving on the same roads.
 
+**One radio net, not one each.** The chase is run on the escapee's machine, so
+every line was said there and nowhere else: a police player heard their own
+siren and silence, which is most of the radio missing. Lines now go out with
+the rest of the traffic and are spoken on every machine at the same moment, in
+the same voice each would have used. They are sent from the one place every
+line already passes through, and a line that arrives is never sent on, so
+nothing can echo round the room.
+
+**The car is heavier than anything on the other side.** A quarter of a tonne
+over the Runner was not enough to feel, because what moves a car in a contact
+is momentum: it is now 1938 kg against the Runner's 1425, with the engine up
+12% so the weight is not paid for in acceleration. Measured, pushing a Runner
+that is standing on its brakes: 12.0 m in five seconds against the fleet car's
+9.7, and it leaves them doing 17 km/h rather than 13. The handling is unchanged
+— the numbers in the table above were re-measured with the extra weight.
+
 ### The car a person drives
 
 Police cars are tuned for the AI, which plans its speed into a corner before it
@@ -135,6 +151,17 @@ somebody has eyes on the car, then frozen at the last place it was seen and
 thing — range, and a line that a building blocks — and a human unit counts as a
 spotter like any other, so driving closer is what brings the dot back.
 
+**And only while there is a chase on.** With nobody wanted, the two of you are
+just cars driving around a city and the force has no business knowing where the
+other one is; the marker used to appear the moment the car came into view of
+anything, which gave away somebody who had done nothing and was not being
+looked for.
+
+When they are past the edge of what the map shows — which in a chase is most of
+the time — the marker is held against the rim as an **arrow pointing the way
+they went**, so the map still answers "which way", and it flashes there too
+once sight is lost.
+
 ### How it is put together
 
 There is no server-side simulation. Every client runs the whole game, and each
@@ -162,7 +189,11 @@ car carries its real 1.7 tonnes into the contact and takes its share. Being
 shoved off the line is allowed, and the pull that brings it back is capped
 (10 m/s, 6 rad/s) precisely so that a car being leaned on gives way instead of
 becoming a battering ram; more than five metres out and it is simply put where
-it belongs. Remote cars are drawn
+it belongs. Within six metres of your own car the pull drops to a third of
+that, because holding a car on its line while somebody leans on it is what made
+a hit feel wrong — the car you hit carried on as though nothing had happened.
+It gives way for the contact and catches up afterwards, which is what a car
+does. Remote cars are drawn
 90 ms behind the newest packet and interpolated between the two either side of
 it — extrapolating reads beautifully on a straight and badly everywhere else,
 because a car that brakes hard carries on into the junction and is then yanked

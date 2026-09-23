@@ -572,6 +572,17 @@ export function drivablePoliceSpec(key = 'interceptor') {
     // A shade more bite at the back than the fleet setting, for the same
     // reason: the tail stepping out is what a person cannot catch.
     gripBias: { front: base.gripBias.front, rear: base.gripBias.rear + 0.04 },
+
+    // Heavier and stronger than anything the other side can be driving, so a
+    // shove is a shove: "my police car should have more power than any of the
+    // criminal cars... you should be able to shove him." A quarter of a tonne
+    // over the Runner was not enough to feel, because what moves a car in a
+    // contact is momentum, and half a tonne is. The engine goes up with it so
+    // the extra mass is not paid for in acceleration.
+    mass: Math.round(base.mass * 1.14),
+    engine: Object.assign({}, base.engine, {
+      torqueCurve: base.engine.torqueCurve.map(([rpm, nm]) => [rpm, Math.round(nm * 1.12)]),
+    }),
   });
 }
 

@@ -461,14 +461,39 @@ export class Hud {
     // eyes on it, the way the rest of the force is; the marker is the same
     // orange as the car's own blip on the escapee's map.
     if (this.suspect) {
-      const p = toMap(this.suspect.x, this.suspect.z);
-      if (p.x > -20 && p.y > -20 && p.x < W + 20 && p.y < W + 20) {
-        // Seen: a solid dot where they are. Lost: the last place anybody saw
-        // them, flashing, so it reads as a memory rather than a position.
-        const blink = this.suspectStale ? (Math.floor(performance.now() / 380) % 2 === 0) : true;
-        if (blink) {
-          ctx.globalAlpha = this.suspectStale ? 0.75 : 1;
-          ctx.fillStyle = '#ff7a1a';
+      // Seen: a solid dot where they are. Lost: the last place anybody saw
+      // them, flashing, so it reads as a memory rather than a position.
+      const blink = this.suspectStale ? (Math.floor(performance.now() / 380) % 2 === 0) : true;
+      if (blink) {
+        const p = toMap(this.suspect.x, this.suspect.z);
+        const edge = 11;
+        const off = p.x < edge || p.y < edge || p.x > W - edge || p.y > W - edge;
+        ctx.globalAlpha = this.suspectStale ? 0.75 : 1;
+        ctx.fillStyle = '#ff7a1a';
+        if (off) {
+          // Past the edge of what the map shows, which in a chase is most of
+          // the time: hold the marker against the rim as an arrow pointing
+          // the way they went, so the map still answers "which way".
+          const cx = W / 2, cy = W / 2;
+          let dx = p.x - cx, dy = p.y - cy;
+          const len = Math.hypot(dx, dy) || 1;
+          dx /= len; dy /= len;
+          const r = W / 2 - edge;
+          const ax = cx + dx * r, ay = cy + dy * r;
+          ctx.save();
+          ctx.translate(ax, ay);
+          ctx.rotate(Math.atan2(dy, dx));
+          ctx.beginPath();
+          ctx.moveTo(8, 0);
+          ctx.lineTo(-5, 5.5);
+          ctx.lineTo(-5, -5.5);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.restore();
+        } else {
           ctx.beginPath();
           ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
           if (this.suspectStale) {
@@ -481,8 +506,8 @@ export class Hud {
             ctx.lineWidth = 2.5;
             ctx.stroke();
           }
-          ctx.globalAlpha = 1;
         }
+        ctx.globalAlpha = 1;
       }
     }
 
