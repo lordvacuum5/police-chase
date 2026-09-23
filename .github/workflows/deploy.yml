@@ -78,17 +78,57 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       # Settings, not tiers: none of this costs anything or leaves the free
-      # plan. Idempotent, so it is cheap to assert on every run.
+      # plan.
       #   * the build already happened here, so Oryx must not run again on the
       #     published output;
       #   * name the DLL to run rather than leaving the platform to find it;
       #   * multiplayer needs the WebSocket upgrade to be allowed.
+      #
+      # Only written when it is actually wrong, because writing restarts the
+      # app -- and then waited for, because ARM returns long before Kudu sees
+      # the change. Measured on this app: `az` came back in 8 seconds and Kudu
+      # was still reporting the old value 34 seconds in. Deploying inside that
+      # window is exactly how a deploy of an already-built package ends up
+      # being handed to Oryx, which then fails with "Couldn't detect a version
+      # for the platform 'dotnet'".
       - name: Make sure the app is configured for this build
         run: |
-          az webapp config appsettings set -g "$RESOURCE_GROUP" -n "$APP_NAME" \
-            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false -o none
-          az webapp config set -g "$RESOURCE_GROUP" -n "$APP_NAME" \
-            --startup-file "dotnet PoliceChase.Server.dll" --web-sockets-enabled true -o none
+          set -euo pipefail
+          scm=$(az webapp show -g "$RESOURCE_GROUP" -n "$APP_NAME" \
+            --query "hostNameSslStates[?hostType=='Repository'].name | [0]" -o tsv)
+          echo "SCM_HOST=$scm" >> "$GITHUB_ENV"
+
+          build=$(az webapp config appsettings list -g "$RESOURCE_GROUP" -n "$APP_NAME" \
+            --query "[?name=='SCM_DO_BUILD_DURING_DEPLOYMENT'].value | [0]" -o tsv)
+          if [ "$build" != "false" ]; then
+            echo "build flag is '$build'; turning it off"
+            az webapp config appsettings set -g "$RESOURCE_GROUP" -n "$APP_NAME" \
+              --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false -o none
+          fi
+
+          startup=$(az webapp config show -g "$RESOURCE_GROUP" -n "$APP_NAME" \
+            --query appCommandLine -o tsv)
+          sockets=$(az webapp config show -g "$RESOURCE_GROUP" -n "$APP_NAME" \
+            --query webSocketsEnabled -o tsv)
+          if [ "$startup" != "dotnet PoliceChase.Server.dll" ] || [ "$sockets" != "true" ]; then
+            echo "fixing startup command / websockets"
+            az webapp config set -g "$RESOURCE_GROUP" -n "$APP_NAME" \
+              --startup-file "dotnet PoliceChase.Server.dll" --web-sockets-enabled true -o none
+          fi
+
+          token=$(az account get-access-token --query accessToken -o tsv)
+          seen=""
+          for _ in $(seq 1 24); do
+            seen=$(curl -sS -H "Authorization: Bearer $token" "https://$scm/api/settings" \
+              | jq -r '.SCM_DO_BUILD_DURING_DEPLOYMENT // "unset"')
+            if [ "$seen" = "false" ]; then echo "Kudu agrees: build=false"; break; fi
+            echo "Kudu still says build=$seen; waiting"
+            sleep 5
+          done
+          if [ "$seen" != "false" ]; then
+            echo "Kudu never picked up the setting (last saw '$seen')"
+            exit 1
+          fi
 
       # Deployed by hand rather than with azure/webapps-deploy, because that
       # action asks App Service to build the package on the server: it ran
@@ -105,8 +145,7 @@ jobs:
         run: |
           set -euo pipefail
           (cd publish && zip -qr ../package.zip .)
-          scm=$(az webapp show -g "$RESOURCE_GROUP" -n "$APP_NAME" \
-            --query "hostNameSslStates[?hostType=='Repository'].name | [0]" -o tsv)
+          scm="$SCM_HOST"
           token=$(az account get-access-token --query accessToken -o tsv)
           echo "sending $(du -h package.zip | cut -f1) to $scm"
           code=$(curl -sS -o deploy.json -w '%{http_code}' -X POST \

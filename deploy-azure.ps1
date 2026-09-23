@@ -241,6 +241,33 @@ if (-not $current -or $current.value -ne $wantBuild) {
     Write-Step "Setting SCM_DO_BUILD_DURING_DEPLOYMENT=$wantBuild"
     Invoke-Az @('webapp', 'config', 'appsettings', 'set', '-g', $ResourceGroup, '-n', $AppName,
         '--settings', "SCM_DO_BUILD_DURING_DEPLOYMENT=$wantBuild", '-o', 'none') | Out-Null
+
+    # And then wait for Kudu to believe it. Azure Resource Manager returns as
+    # soon as it has written the setting, but the deployment service reads its
+    # own copy and picks the change up about half a minute later -- measured
+    # here, `az` back in 8 seconds and Kudu still reporting the old value at
+    # 34. Deploying inside that window is how a build lands on the wrong side
+    # of this switch: a built package handed to Oryx, or sources not built at
+    # all. Kudu will say what it currently thinks.
+    Write-Step 'Waiting for the deployment service to see it'
+    $token = Invoke-Az @('account', 'get-access-token', '--query', 'accessToken', '-o', 'tsv') -Raw
+    $deadline = (Get-Date).AddMinutes(2)
+    $seen = ''
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $live = Invoke-RestMethod -Uri "https://$scmHost/api/settings" `
+                -Headers @{ Authorization = "Bearer $token" } -UseBasicParsing -TimeoutSec 60
+            $seen = [string] $live.SCM_DO_BUILD_DURING_DEPLOYMENT
+        } catch {
+            $seen = ''
+        }
+        if ($seen -eq $wantBuild) { break }
+        Start-Sleep -Seconds 5
+    }
+    if ($seen -ne $wantBuild) {
+        throw "The deployment service is still reporting SCM_DO_BUILD_DURING_DEPLOYMENT='$seen'. Try again in a minute."
+    }
+    Write-Note "it agrees: build=$seen"
 }
 
 # On Linux the platform picks the .dll to run by looking for one; saying so
