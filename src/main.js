@@ -47,6 +47,16 @@ const MAX_SUBSTEPS = 5;
  */
 const MAX_VEHICLES = 24;
 
+/**
+ * Following somebody else's car (see Game._netDriveRemote): how far out of
+ * place it may drift before it is simply put where it belongs, and how much
+ * speed and spin the correction is allowed to use to get it back there. The
+ * caps are what stop a car being leaned on from becoming a battering ram.
+ */
+const NET_SNAP = 5;      // m
+const NET_PULL = 10;     // m/s
+const NET_SPIN = 6;      // rad/s
+
 /** Seconds between any two routine radio lines -- commentary, units en route. */
 const ROUTINE_GAP = 12;
 
@@ -359,8 +369,11 @@ class Game {
 
   createVehicle(specKey, liveryKey, position, heading, opts = {}) {
     const spec = SPECS[specKey];
+    // A car somebody else owns is an ordinary dynamic body, not a kinematic
+    // one: it has to be able to take a share of a collision rather than
+    // handing all of it to whoever touched it. See _netDriveRemote.
     const v = new Vehicle(this.sim, spec, {
-      position, heading, id: this.vehicles.length + 1, kinematic: !!opts.remote,
+      position, heading, id: this.vehicles.length + 1,
     });
     v.remote = !!opts.remote;
     if (v.remote) {
@@ -983,9 +996,10 @@ class Game {
   /**
    * Create, move and retire the cars this client does not own.
    *
-   * They are kinematic bodies: put where the packets say, a tenth of a second
-   * behind the newest one so the line between packets can be interpolated
-   * rather than guessed at. Police cars among them are also registered with
+   * They are followed along the line the packets describe (see
+   * _netDriveRemote), a tenth of a second behind the newest one so that line
+   * can be interpolated rather than guessed at. Police cars among them are
+   * also registered with
    * the dispatcher, which is what makes the siren, the radar blips and -- on
    * the escapee's machine -- the arrest work without knowing about any of this.
    */
@@ -1010,8 +1024,7 @@ class Game {
           this.dispatcher.units.push(unit);
         }
       }
-      v.body.setNextKinematicTranslation({ x: car.x, y: car.y, z: car.z });
-      v.body.setNextKinematicRotation({ x: car.qx, y: car.qy, z: car.qz, w: car.qw });
+      this._netDriveRemote(v, car, dt);
       if (!v.netVel) v.netVel = new THREE.Vector3();
       v.netVel.set(car.vx, car.vy, car.vz);
       v.damage = car.damage;
@@ -1082,6 +1095,62 @@ class Game {
       this.hud.suspect = session.seen ? this.netSuspect.position
         : ((this.netLostFor || 0) < SEARCH_SECONDS ? this.netLastSeen : null);
       this.hud.suspectStale = !session.seen;
+    }
+  }
+
+  /**
+   * Move somebody else's car to where their packets say it is.
+   *
+   * These used to be kinematic bodies, which cannot be pushed -- infinite
+   * mass, as far as the solver is concerned. That is tidy until one touches
+   * you: all of the energy goes into your car and none into theirs. Measured,
+   * an AI car clipping a stationary player at 54 km/h threw them to 119 km/h
+   * and did 42% damage, where the same hit from an ordinary car gives 29 km/h
+   * and 7%. "Another police car went past me and it hit me and I went flying
+   * like much too fast... it doesn't seem very proportionate."
+   *
+   * So they are ordinary cars now, with no engine or suspension of their own,
+   * steered along the line of the packets by setting their velocity: they
+   * carry their real mass into a collision and take a share of it. Being
+   * shoved off that line is allowed -- the correction below is capped, so a
+   * car that is leaned on gives way and then comes back, rather than being an
+   * immovable object that launches whatever touches it.
+   */
+  _netDriveRemote(v, car, dt) {
+    const step = Math.max(dt, 1 / 120);
+    const body = v.body;
+    const dx = car.x - v.position.x, dy = car.y - v.position.y, dz = car.z - v.position.z;
+
+    // Too far out to be worth chasing: a teleport, a respawn, or packets that
+    // stopped arriving for a while. Put it there outright.
+    if (dx * dx + dy * dy + dz * dz > NET_SNAP * NET_SNAP) {
+      body.setTranslation({ x: car.x, y: car.y, z: car.z }, true);
+      body.setRotation({ x: car.qx, y: car.qy, z: car.qz, w: car.qw }, true);
+      body.setLinvel({ x: car.vx, y: car.vy, z: car.vz }, true);
+      body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+      return;
+    }
+
+    const gain = 0.5 / step;
+    body.setLinvel({
+      x: car.vx + clamp(dx * gain, -NET_PULL, NET_PULL),
+      y: car.vy + clamp(dy * gain, -NET_PULL, NET_PULL),
+      z: car.vz + clamp(dz * gain, -NET_PULL, NET_PULL),
+    }, true);
+
+    // The same for the facing: the shortest arc from where it is to where it
+    // should be, as a rate.
+    _qA.set(car.qx, car.qy, car.qz, car.qw);
+    _qB.copy(v.quaternion).invert();
+    _qC.copy(_qA).multiply(_qB);
+    if (_qC.w < 0) { _qC.x = -_qC.x; _qC.y = -_qC.y; _qC.z = -_qC.z; _qC.w = -_qC.w; }
+    const sin = Math.sqrt(Math.max(0, 1 - _qC.w * _qC.w));
+    if (sin > 1e-4) {
+      const angle = 2 * Math.atan2(sin, _qC.w);
+      const rate = clamp((angle * 0.5) / step, -NET_SPIN, NET_SPIN) / sin;
+      body.setAngvel({ x: _qC.x * rate, y: _qC.y * rate, z: _qC.z * rate }, true);
+    } else {
+      body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     }
   }
 
@@ -1204,10 +1273,11 @@ class Game {
         // to see it.
         if (v.remote) {
           v._readState();
-          // A kinematic body reports no velocity of its own, and half the game
-          // asks cars how fast they are going -- closing speed for avoidance,
-          // the tails on the radar, whether a car counts as moving. Use the
-          // velocity its owner sent instead.
+          // What its owner says it is doing, rather than what the follower
+          // above is doing this frame: half the game asks cars how fast they
+          // are going -- closing speed for avoidance, the tails on the radar,
+          // whether a car counts as moving -- and a correction, or a moment of
+          // contact, is not the car's own speed.
           if (v.netVel) {
             v.linvel.copy(v.netVel);
             v.speed = v.linvel.length();

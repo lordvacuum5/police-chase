@@ -157,6 +157,9 @@ export function setVoiceChoice(who, name) {
  * test is now what the engine is, not where it runs.
  */
 export function rateFor(voice, style) {
+  // No voice at all means the engine's own default is reading it, and there is
+  // nothing to know about it; treat it as the cautious case.
+  if (!voice) return 1 + (style.rate - 1) * 0.3;
   const windowsDesktop = voice.localService && /^Microsoft\b/i.test(voice.name)
     && !/\b(natural|online)\b/i.test(voice.name);
   return windowsDesktop ? style.rate : 1 + (style.rate - 1) * 0.3;
@@ -850,13 +853,27 @@ export class GameAudio {
     };
 
     const startIn = Math.max(0, (t - ctx.currentTime) * 1000);
-    const voice = this.voices && this.voices[kind];
+    // The voice list often arrives after the page does, and a browser only
+    // announces that once -- so a game that started before the voices were
+    // ready used to play the clicks and the static with nothing said in
+    // between, for the rest of the session: "it has the beeps... but it
+    // doesn't actually say anything". Ask again whenever a line has no voice.
+    let voice = this.voices && this.voices[kind];
+    if (this.speech && !voice) {
+      this.voices = pickVoices(this.speech.getVoices());
+      voice = this.voices && this.voices[kind];
+    }
 
-    if (this.speech && voice) {
+    if (this.speech) {
       const words = speakable(msg.text);
       const u = new SpeechSynthesisUtterance(words);
-      u.voice = voice;
-      u.lang = voice.lang;
+      // And if there is genuinely no English voice on this machine, let the
+      // engine read it in whatever it does have. Saying the line in the wrong
+      // accent beats a radio that never says anything.
+      if (voice) {
+        u.voice = voice;
+        u.lang = voice.lang;
+      }
       const rate = rateFor(voice, style);
       u.rate = rate;
       u.pitch = style.pitch;
@@ -886,10 +903,9 @@ export class GameAudio {
       const guess = 1.5 + (words.length / 9.5) / Math.sqrt(rate);
       setTimeout(finish, startIn + (guess + 3) * 1000);
     } else {
-      // No speech engine, or no English voice on this machine: the key goes
-      // down and comes up again with nothing readable in between. There used
-      // to be recorded police traffic here, and under every pursuit, until it
-      // was asked to go.
+      // No speech engine at all: the key goes down and comes up again with
+      // nothing readable in between. There used to be recorded police traffic
+      // here, and under every pursuit, until it was asked to go.
       setTimeout(finish, startIn + 600);
     }
   }

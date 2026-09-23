@@ -9,7 +9,7 @@
 //   * each police player owns their own interceptor.
 //
 // An owner broadcasts what its cars are doing; everyone else receives those
-// cars as kinematic bodies and moves them along the line the packets describe.
+// cars as ordinary cars and follows them along the line the packets describe.
 // The consequence is that the player who hits somebody is the one whose
 // physics decides what the hit felt like, which is the usual bargain: both
 // cars bounce on both screens, and neither side can shove the other around

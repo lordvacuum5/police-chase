@@ -132,11 +132,23 @@ one owns exactly the cars it drives:
   second;
 * each **police player owns their own interceptor** and broadcasts that.
 
-Everything a client does not own arrives as packets and is driven as a
-**kinematic body**: it shoves the cars around it and cannot be shoved back by
-somebody else's stale packet. The player who hits somebody is the one whose
-physics decides what the hit felt like, so both cars bounce on both screens
-without either side being able to push the other around. Remote cars are drawn
+Everything a client does not own arrives as packets and is **followed** by an
+ordinary car with no engine or suspension of its own, whose velocity is set
+each frame to run along the line those packets describe. The player who hits
+somebody is the one whose physics decides what the hit felt like, so both cars
+bounce on both screens without either side being able to push the other around.
+
+They were kinematic bodies first, which is tidier — put the car where the
+packet says and be done — until one touches you. A kinematic body has infinite
+mass as far as the solver is concerned, so none of a collision goes into it and
+all of it goes into you: an AI car clipping a stationary player at 54 km/h
+threw them to **119 km/h** and did 42% damage, where the same hit from an
+ordinary car gives 29 km/h and 7%. Following with velocity instead means the
+car carries its real 1.7 tonnes into the contact and takes its share. Being
+shoved off the line is allowed, and the pull that brings it back is capped
+(10 m/s, 6 rad/s) precisely so that a car being leaned on gives way instead of
+becoming a battering ram; more than five metres out and it is simply put where
+it belongs. Remote cars are drawn
 120 ms behind the newest packet and interpolated between the two either side of
 it — extrapolating reads beautifully on a straight and badly everywhere else,
 because a car that brakes hard carries on into the junction and is then yanked
