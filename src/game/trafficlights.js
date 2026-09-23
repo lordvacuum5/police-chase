@@ -197,7 +197,20 @@ export class TrafficLights {
     this.lampGreen = mk(0x27d95a);
   }
 
-  /** Where a phase is in its cycle at time t. */
+  /**
+   * Where a phase is in its cycle at time t, measured from its own green.
+   *
+   * Red and amber together mean "yours is next", so it belongs at the *end*
+   * of the red, immediately before this phase goes green. It used to sit just
+   * after this phase's own amber -- so a driver watched green, amber, red,
+   * red-and-amber, and then red again for another nineteen seconds while the
+   * other way went. Worse, the speed planner reads red-and-amber as "carry
+   * on", so cars took the junction during the clearance gap.
+   *
+   * The all-red between the two phases is still there; it is simply the far
+   * side's red-and-amber that overlaps the end of it, which is the point of
+   * the sequence.
+   */
   static phaseState(t, phase) {
     const half = CYCLE * 0.5;
     // Phase 1 runs exactly half a cycle behind phase 0.
@@ -205,9 +218,8 @@ export class TrafficLights {
     if (u < 0) u += CYCLE;
     if (u < GREEN) return SIGNAL.GREEN;
     if (u < GREEN + AMBER) return SIGNAL.AMBER;
-    if (u < half - RED_AMBER) return SIGNAL.RED;
-    if (u < half) return SIGNAL.RED_AMBER;
-    return SIGNAL.RED;
+    if (u < CYCLE - RED_AMBER) return SIGNAL.RED;
+    return SIGNAL.RED_AMBER;
   }
 
   update(dt) {

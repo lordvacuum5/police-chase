@@ -1,3 +1,63 @@
+// The signal sequence itself, and then running a red in front of a patrol car.
+//
+// __runSignalSequence checks the order of the lamps rather than anything in
+// the world: a phase must read green, amber, red, red-and-amber, green, the
+// two phases must never both be told to go, and there must be a spell with
+// everything red between them. Red-and-amber once sat straight after a
+// phase's own amber -- so a driver saw "yours is next" and then nineteen more
+// seconds of red, and the speed planner, which reads red-and-amber as carry
+// on, took cars through the clearance gap.
+window.__runSignalSequence = async function () {
+  const { TrafficLights, SIGNAL } = await import('/src/game/trafficlights.js');
+  const name = { [SIGNAL.RED]: 'RED', [SIGNAL.RED_AMBER]: 'RED_AMBER', [SIGNAL.GREEN]: 'GREEN', [SIGNAL.AMBER]: 'AMBER' };
+  const STEP = 0.05;
+  // One full cycle: green plus amber plus the gap, twice over.
+  let cycle = 0;
+  const first = TrafficLights.phaseState(0, 0);
+  for (let t = STEP; t < 600; t += STEP) {
+    if (TrafficLights.phaseState(t, 0) === first && TrafficLights.phaseState(t - STEP, 0) !== first) { cycle = t; break; }
+  }
+
+  const order = (phase) => {
+    const seq = [];
+    let last = null;
+    for (let t = 0; t < cycle * 2; t += STEP) {
+      const s = name[TrafficLights.phaseState(t, phase)];
+      if (s !== last) { seq.push(s); last = s; }
+    }
+    return seq;
+  };
+
+  let bothGo = 0, allRed = 0, brokenPromise = 0;
+  for (let t = 0; t < cycle; t += STEP) {
+    const a = TrafficLights.phaseState(t, 0), b = TrafficLights.phaseState(t, 1);
+    const moving = (s) => s === SIGNAL.GREEN || s === SIGNAL.RED_AMBER;
+    if (moving(a) && moving(b)) bothGo++;
+    if (a === SIGNAL.RED && b === SIGNAL.RED) allRed++;
+    for (const s of [a, b]) void s;
+  }
+  for (const phase of [0, 1]) {
+    for (let t = 0; t < cycle; t += STEP) {
+      // Whatever follows red-and-amber must be green: that is what it means.
+      if (TrafficLights.phaseState(t, phase) === SIGNAL.RED_AMBER
+        && TrafficLights.phaseState(t + STEP * 2, phase) !== SIGNAL.RED_AMBER
+        && TrafficLights.phaseState(t + STEP * 2, phase) !== SIGNAL.GREEN) brokenPromise++;
+    }
+  }
+
+  const wanted = ['GREEN', 'AMBER', 'RED', 'RED_AMBER', 'GREEN'];
+  const seq0 = order(0).join(' ');
+  return {
+    cycleSeconds: +cycle.toFixed(1),
+    phase0: seq0,
+    phase1: order(1).join(' '),
+    sequenceRight: seq0.includes(wanted.join(' ')),
+    bothPhasesToldToGo: bothGo,
+    secondsAllRed: +(allRed * STEP).toFixed(1),
+    redAmberNotFollowedByGreen: brokenPromise,
+  };
+};
+
 // Running a red light in front of a patrol car.
 //
 // Finds a signalised approach that is showing red, parks a police car at the

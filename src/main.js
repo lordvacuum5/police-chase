@@ -1016,6 +1016,7 @@ class Game {
    */
   _netUpdate(dt) {
     this._netApplyCars(dt);
+    this._netReportHit();
     this._netHandleEvents();
     if (session.dueToSend()) this._netSend();
     if (session.closed && !this.netOver) {
@@ -1218,10 +1219,67 @@ class Game {
     this.startPlace = best;
   }
 
+  /**
+   * Tell the owner of a car when this machine has just hit it.
+   *
+   * Each client simulates its own car and follows everyone else's, so a
+   * collision is seen properly by exactly one side: the one that did the
+   * hitting. On the other screen that car is a tenth of a second behind and
+   * a little to one side, and often nothing touches at all -- "on my screen I
+   * hit the subject, but on their screen it didn't do any damage, and
+   * obviously it did damage to me."
+   *
+   * So the hitter reports it. What it sends is the other car's share, not its
+   * own: the lighter car takes the bigger change in speed, which is why the
+   * same shunt can end a Runner's run and barely mark an interceptor.
+   */
+  _netReportHit() {
+    const p = this.player;
+    if (!p.lastImpactAt || p.lastImpactAt === this._netHitAt) return;
+    this._netHitAt = p.lastImpactAt;
+    if (performance.now() - p.lastImpactAt > 120) return;      // stale, not this frame
+    if (!this.netCars) return;
+
+    let hit = null, closest = Infinity;
+    for (const [id, v] of this.netCars) {
+      const gap = dist2(v.position.x, v.position.z, p.position.x, p.position.z)
+        - (v.spec.dims.l + p.spec.dims.l) * 0.5;
+      if (gap < 1.4 && gap < closest) { closest = gap; hit = id; }
+    }
+    if (hit === null) return;                                   // hit the scenery
+
+    const other = this.netCars.get(hit);
+    const theirs = p.lastImpact * ((p.spec.mass || 1500) / (other.spec.mass || 1500));
+    session.sendEvent('hit', { target: hit, dv: Math.round(theirs * 100) / 100 });
+  }
+
+  /** A hit somebody else's machine saw, on a car this one owns. */
+  _netApplyHit(msg) {
+    const id = String(msg.target || '');
+    let v = null;
+    if (id === session.id) {
+      v = this.player;
+    } else if (id.startsWith('a') && session.isHost) {
+      const key = id.slice(1);
+      const unit = this.dispatcher.units.find((u) => !u.human && u.vehicle
+        && String(u.callsignId || u.vehicle.id) === key);
+      v = unit && unit.vehicle;
+    }
+    if (!v) return;
+    // Our own physics may have seen the same contact, in which case it has
+    // already been paid for; this is only for the times it saw nothing.
+    if (v.lastImpactAt && performance.now() - v.lastImpactAt < 400) return;
+    v.takeImpact(msg.dv);
+  }
+
   /** Busted, got away, or started again -- announced by the escapee's machine. */
   _netHandleEvents() {
     for (const msg of session.takeEvents()) {
-      if (session.isHost) continue;                        // its own doing
+      // A hit is the one thing that travels both ways: the escapee's machine
+      // has to hear about a police player hitting it just as much as the
+      // other way round.
+      if (msg.e === 'hit') { this._netApplyHit(msg); continue; }
+      if (session.isHost) continue;                        // the rest is its own doing
       if (msg.e === 'radio') {
         // Said on the escapee's machine; heard on this one too, in the same
         // voice it would have used, and marked so it is not sent back.

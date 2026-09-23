@@ -39,6 +39,10 @@ export class Heat {
     if (this.value <= 0 && amount > 0) {
       this.value = 1.0;
       this.chaseStarted = performance.now();
+      // Whoever called it in knows where you were when they did (see
+      // Dispatcher.beginChase). Otherwise the chase inherits the last thing
+      // the force knew, which may be nothing for several minutes.
+      if (this.game.dispatcher) this.game.dispatcher.beginChase(this.game.player && this.game.player.position);
       this.game.say('chase-start', [
         (v) => `Control, all units, vehicle ${v.reason}. Respond.`,
         (v) => `Control, any units, a vehicle ${v.reason}.`,

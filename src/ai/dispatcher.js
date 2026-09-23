@@ -959,6 +959,27 @@ export class Dispatcher {
   }
 
   /** Compact status for the HUD. */
+  /**
+   * A chase has just started: somebody reported this car, here, now.
+   *
+   * Without this the force carried whatever it last knew into the new chase,
+   * which after a quiet spell is "nobody has seen that car for eight
+   * minutes". Blow past a patrol car and run the red before it can take a
+   * proper look and the screen went straight to COOLING DOWN while units were
+   * being sent and the radio was calling a pursuit -- the status line and the
+   * chase describing two different situations. A fresh report is what has
+   * actually happened, so the search starts from where the offence was.
+   */
+  beginChase(position) {
+    const k = this.knowledge;
+    k.timeSinceSeen = 0;
+    k.confidence = 1;
+    if (position) {
+      k.position.copy(position);
+      k.velocity.set(0, 0, 0);
+    }
+  }
+
   statusLine() {
     const k = this.knowledge;
     if (this.tier === 0) return { text: 'NO ACTIVE PURSUIT', cls: 'clear' };

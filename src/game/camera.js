@@ -53,15 +53,20 @@ export class ChaseCamera {
     this.heading += angleDelta(this.heading, targetHeading) * (1 - Math.exp(-turnRate * dt));
 
     if (mode === 'hood') {
-      // Eye height, not bonnet height. Sitting 0.62 m above the centre of mass
-      // and 0.45 m forward put the viewpoint down on the slam panel: the bonnet
-      // filled the lower half of the screen and you could not see the road
-      // close in front of the car. Back and up to roughly where a driver's head
-      // actually is.
+      // Out over the bonnet, and measured from the car rather than in fixed
+      // metres. Sitting where a driver's head goes put the camera inside the
+      // cabin of the taller bodies -- in a police interceptor you looked
+      // straight through the car at the back of its own boot. Every car knows
+      // how long and how tall it is, so the viewpoint is taken from that: far
+      // enough forward to be ahead of the screen, high enough to see over the
+      // bonnet, and it lands in the right place on a saloon, an SUV and an
+      // imported body alike.
+      const nose = v.spec.dims.l * 0.16;
+      const eye = (v.spec.colliderY === undefined ? 0.1 : v.spec.colliderY) + v.spec.dims.h * 0.62;
       _pos.copy(v.position)
-        .addScaledVector(v.forward, -0.15)
-        .addScaledVector(v.up, 1.02);
-      _look.copy(_pos).addScaledVector(v.forward, 30).addScaledVector(v.up, -1.6);
+        .addScaledVector(v.forward, nose)
+        .addScaledVector(v.up, eye);
+      _look.copy(_pos).addScaledVector(v.forward, 30).addScaledVector(v.up, -1.4);
       this.pos.copy(_pos);
       this.look.lerp(_look, 1 - Math.exp(-18 * dt));
       this.fov = damp(this.fov, 66 + clamp(v.speed * 0.32, 0, 20), 4, dt);

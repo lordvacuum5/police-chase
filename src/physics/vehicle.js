@@ -309,6 +309,33 @@ export class Vehicle {
   }
 
   /** Called once per physics substep, after world.step(). */
+  /**
+   * Book a collision of this severity: the damage, and the marks the camera
+   * and the sound read.
+   *
+   * Separate from postStep because in a multiplayer game a hit can be
+   * something another machine saw. Each client only simulates its own car
+   * properly, so two cars meeting are two half-measurements -- and the side
+   * that was hit often missed it entirely, because on its screen the other
+   * car is a tenth of a second behind and a little to one side.
+   */
+  takeImpact(dv) {
+    // Below this a knock is just a knock: kerbs, cones, a scrape along a wall
+    // and the ordinary bumping of a pack of cars all sit under it. Raised
+    // along with `durability` so bodywork survives a chase that involves
+    // contact, which this one always does.
+    if (!(dv > 2.6)) return;
+    // Police cars are built to be shunted; `durability` divides the damage
+    // so a patrol car survives several hits that would end the player's run.
+    // A shielded unit -- one still making its way to the chase -- records the
+    // impact for sound and camera but takes none of the damage.
+    if (!this.assist.shielded) {
+      this.damage = clamp01(this.damage + ((dv - 2.6) * 0.042) / (this.spec.durability || 1));
+    }
+    this.lastImpact = dv;
+    this.lastImpactAt = performance.now();
+  }
+
   postStep(dt) {
     const lv = this.body.linvel();
     _v1.set(lv.x, lv.y, lv.z);
@@ -331,17 +358,7 @@ export class Vehicle {
     // and the ordinary bumping of a pack of cars all sit under it. Raised
     // along with `durability` so bodywork survives a chase that involves
     // contact, which this one always does.
-    if (dv > 2.6) {
-      // Police cars are built to be shunted; `durability` divides the damage
-      // so a patrol car survives several hits that would end the player's run.
-      // A shielded unit -- one still making its way to the chase -- records the
-      // impact for sound and camera but takes none of the damage.
-      if (!this.assist.shielded) {
-        this.damage = clamp01(this.damage + ((dv - 2.6) * 0.042) / (this.spec.durability || 1));
-      }
-      this.lastImpact = dv;
-      this.lastImpactAt = performance.now();
-    }
+    this.takeImpact(dv);
     this._prevVel.copy(_v1);
 
     if (this.up.y < 0.25) this.flippedFor += dt;
