@@ -36,6 +36,13 @@ public sealed class Rooms
     {
         public required string Name { get; init; }
         public required string Map { get; set; }
+        /// <summary>
+        /// Night and rain, as the game's creator set them. They belong to the
+        /// game rather than to each player: rain changes grip, so a police car
+        /// in the dry would not be driving on the same roads as the escapee.
+        /// </summary>
+        public bool Night { get; set; }
+        public bool Rain { get; set; }
         public string? EscapeeId { get; set; }
         public DateTimeOffset EmptySince { get; set; }
         public ConcurrentDictionary<string, Player> Players { get; } = new();
@@ -50,12 +57,18 @@ public sealed class Rooms
     /// one person in it.
     /// </summary>
     public (Room? room, Player? player, string? error) Enter(
-        string roomName, string id, string name, string map, bool create)
+        string roomName, string id, string name, string map, bool night, bool rain, bool create)
     {
         Sweep();
         if (create)
         {
-            var fresh = new Room { Name = roomName, Map = string.IsNullOrWhiteSpace(map) ? "ashfield" : map };
+            var fresh = new Room
+            {
+                Name = roomName,
+                Map = string.IsNullOrWhiteSpace(map) ? "ashfield" : map,
+                Night = night,
+                Rain = rain,
+            };
             if (!_rooms.TryAdd(roomName, fresh))
             {
                 return (null, null, $"There is already a game called \"{roomName}\".");

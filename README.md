@@ -49,6 +49,20 @@ the game is concerned: the siren picks them up, they show on the radar, and
 **they can make the arrest** — the bust clock is heat.js measuring the gap to
 the nearest unit, and a human in an interceptor is a unit like any other.
 
+They are given a callsign, in the order they joined: the first police player is
+**U1**, which the radio reads as "Unit one". Typing a name for yourself was
+tried and taken out again — it is one more box to fill in before a game that is
+meant to be a name and a button, and a callsign is what a unit has. The AI's
+pool starts above the numbers held for players, so there is never a second U1;
+on your own, with no players to hold numbers for, the AI starts at U1 as it
+always did.
+
+**Night and rain belong to the game, not to the player.** Whoever creates it
+sets them and everyone else gets them, whatever their own menu says. They used
+to be read from each machine separately, so the escapee could be out in the
+rain at night while the police had a dry afternoon — and rain takes grip down
+to 0.8 of dry, so the two of them were not even driving on the same roads.
+
 ### The car a person drives
 
 Police cars are tuned for the AI, which plans its speed into a corner before it
@@ -128,7 +142,7 @@ one owns exactly the cars it drives:
 
 * the **escapee owns the chase** — their machine runs the dispatcher, the AI
   cars, the heat, the roadblocks and the helicopter, because all of that is
-  built around the car being chased, and broadcasts the result twenty times a
+  built around the car being chased, and broadcasts the result thirty times a
   second;
 * each **police player owns their own interceptor** and broadcasts that.
 
@@ -149,14 +163,17 @@ shoved off the line is allowed, and the pull that brings it back is capped
 (10 m/s, 6 rad/s) precisely so that a car being leaned on gives way instead of
 becoming a battering ram; more than five metres out and it is simply put where
 it belongs. Remote cars are drawn
-120 ms behind the newest packet and interpolated between the two either side of
+90 ms behind the newest packet and interpolated between the two either side of
 it — extrapolating reads beautifully on a straight and badly everywhere else,
 because a car that brakes hard carries on into the junction and is then yanked
 back.
 
 Cars on the wire are a list of numbers, not objects: position, rotation,
-velocity, steering, speed, damage and a flags byte, rounded to centimetres.
-Eighteen police cars and an escapee come to about 1.6 KB a packet.
+velocity, steering, speed, damage and a flags byte, rounded to centimetres --
+about 80 bytes each, and a chase in progress measured 640 bytes a packet and
+13 KB a second going up from the host. An AI car more than 400 m from every
+human is not sent at all: it is a dot nobody can see, half the pack is usually
+out there, and it comes back the moment somebody drives near it.
 
 `RemoteUnit` (in `main.js`) is what makes the rest of the game work without
 knowing any of this: a police car somebody else drives is registered with the

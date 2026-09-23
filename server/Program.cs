@@ -108,6 +108,8 @@ app.Map("/ws", async (HttpContext http, Rooms rooms, ILogger<Program> log) =>
     var id = (q["id"].ToString() ?? string.Empty).Trim();
     var name = (q["name"].ToString() ?? "Player").Trim();
     var map = (q["map"].ToString() ?? string.Empty).Trim();
+    var night = q["night"].ToString() == "1";
+    var rain = q["rain"].ToString() == "1";
     var create = q["create"].ToString() == "1";
 
     using var socket = await http.WebSockets.AcceptWebSocketAsync();
@@ -123,7 +125,7 @@ app.Map("/ws", async (HttpContext http, Rooms rooms, ILogger<Program> log) =>
     // Refusals are sent down the socket rather than refused at the handshake,
     // because a browser cannot read the status code of a failed WebSocket
     // upgrade -- and "there is already a game called that" is worth reading.
-    var (found, _, error) = rooms.Enter(room, id, name, map, create);
+    var (found, _, error) = rooms.Enter(room, id, name, map, night, rain, create);
     if (error is not null || found is null)
     {
         await SendRaw(socket, new { t = "error", message = error ?? "Could not join." }, token);
@@ -140,6 +142,7 @@ app.Map("/ws", async (HttpContext http, Rooms rooms, ILogger<Program> log) =>
         id = player.Id,
         role = player.Role,
         map = found.Map,
+        conditions = new { night = found.Night, rain = found.Rain },
         escapee = found.EscapeeId,
         players = Rooms.Roster(found),
     }, token);

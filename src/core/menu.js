@@ -5,7 +5,7 @@
 // menu is to appear instantly.
 
 import { MAPS, mapById } from '../world/maps.js';
-import { session, cleanUnitName, UNIT_NAME_MAX } from '../net/session.js';
+import { session } from '../net/session.js';
 import { prefersTouch } from './touch.js';
 import { bestScores } from '../game/score.js';
 import { chosenConditions, setConditions } from '../game/weather.js';
@@ -128,7 +128,9 @@ export function showMenu(onPick) {
         if (!room) { netStatus('Give the game a name first.', 'bad'); return; }
         netStatus(`Creating "${room}"…`);
         try {
-          await session.connect({ room, name: 'Escapee', map: m.id, create: true });
+          await session.connect({
+            room, name: 'Escapee', map: m.id, create: true, conditions: chosenConditions(),
+          });
         } catch (err) {
           netStatus(err.message, 'bad');
           return;
@@ -254,7 +256,6 @@ function buildMultiplayer(onPick) {
 
   const create = document.getElementById('netcreate');
   const join = document.getElementById('netjoin');
-  const unitBox = document.getElementById('unitname');
   const sub = document.getElementById('menusub');
 
   const setMode = (mode) => {
@@ -294,10 +295,8 @@ function buildMultiplayer(onPick) {
     const room = gameName();
     if (!room) { netStatus('Type the name of the game to join.', 'bad'); return; }
     netStatus(`Joining "${room}"…`);
-    const name = cleanUnitName(unitBox ? unitBox.value : '');
-    rememberUnitName(name);
     try {
-      await session.connect({ room, name: name || 'Unit', create: false });
+      await session.connect({ room, create: false });
     } catch (err) {
       netStatus(err.message, 'bad');
       return;
@@ -315,33 +314,6 @@ function buildMultiplayer(onPick) {
       if (netMode === 'join') join.onclick();
     };
   }
-  // Remembered, so it is only typed once. Anything the radio could not say is
-  // dropped as it is typed rather than silently at the end.
-  if (unitBox) {
-    // Not maxlength: that cuts a paste at seven before the stray characters
-    // come out, leaving fewer than seven that were wanted. oninput trims.
-    unitBox.removeAttribute('maxlength');
-    unitBox.value = savedUnitName();
-    unitBox.oninput = () => {
-      const clean = unitBox.value.replace(/[^A-Za-z0-9 ]/g, '').slice(0, UNIT_NAME_MAX);
-      if (clean !== unitBox.value) unitBox.value = clean;
-    };
-    unitBox.onkeydown = (e) => {
-      if (e.key !== 'Enter') return;
-      e.preventDefault();
-      join.onclick();
-    };
-  }
-}
-
-const UNIT_KEY = 'pc.unitname';
-
-function savedUnitName() {
-  try { return cleanUnitName(localStorage.getItem(UNIT_KEY)); } catch (e) { return ''; }
-}
-
-function rememberUnitName(name) {
-  try { localStorage.setItem(UNIT_KEY, name); } catch (e) { /* storage blocked */ }
 }
 
 function buildConditions() {

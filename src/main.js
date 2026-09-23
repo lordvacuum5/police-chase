@@ -12,7 +12,9 @@ import { MAPS, mapById } from './world/maps.js';
 import { showMenu, hideMenu, chosenCar } from './core/menu.js';
 import { DRIVE_SIDE } from './world/roadgraph.js';
 import { Dispatcher, SEARCH_SECONDS } from './ai/dispatcher.js';
-import { Officer, ROLE, releaseCallsign } from './ai/officer.js';
+import {
+  Officer, ROLE, releaseCallsign, reserveCallsigns, HUMAN_CALLSIGNS,
+} from './ai/officer.js';
 import { Driver, SKILL } from './ai/driver.js';
 import { Heat } from './game/heat.js';
 import { RoadblockManager } from './game/roadblock.js';
@@ -28,8 +30,8 @@ import { Hud } from './game/hud.js';
 import { Input } from './core/input.js';
 import { TouchControls } from './core/touch.js';
 import { SkidMarks, LightBars } from './game/effects.js';
-import { session, packCar, FLAG, cleanUnitName } from './net/session.js';
-import { GameAudio, setUnitNames } from './game/audio.js';
+import { session, packCar, FLAG } from './net/session.js';
+import { GameAudio } from './game/audio.js';
 import { Commentary } from './game/commentary.js';
 import { Phrasebook } from './game/phrases.js';
 import { vertexColorMaterial, shinyVertexMaterial } from './util/meshbuild.js';
@@ -56,6 +58,8 @@ const MAX_VEHICLES = 24;
 const NET_SNAP = 5;      // m
 const NET_PULL = 10;     // m/s
 const NET_SPIN = 6;      // rad/s
+/** How near a human a car has to be for the host to bother sending it. */
+const NET_RANGE = 400;   // m
 
 /** Seconds between any two routine radio lines -- commentary, units en route. */
 const ROUTINE_GAP = 12;
@@ -133,20 +137,22 @@ class RemoteUnit {
   }
 
   /**
-   * What the radio calls it. A police player goes by the name they typed on
-   * the menu -- this used to be two letters of their connection id, so the
-   * net was full of "MJQ" -- and an AI car by its own callsign. Looked up
-   * each time rather than kept, because the roster can arrive after the car.
+   * What the radio calls it: a police player by the number they were given
+   * when they joined, an AI car by its own callsign. Looked up each time
+   * rather than kept, because the roster can arrive after the car does.
    */
   get callsign() {
     const id = String(this.netId);
     const police = session.players.filter((p) => p.role === 'police');
     const i = police.findIndex((p) => p.id === id);
-    if (i >= 0) {
-      const name = cleanUnitName(police[i].name);
-      return name || `M${i + 1}`;
-    }
-    return id.startsWith('a') ? id.slice(1) : 'M' + id.slice(0, 2);
+    // A police player is a unit like any other and is given a number in the
+    // order they joined, the first of them U1. Typing a name was tried and
+    // taken out again: the radio reads a callsign as "Unit one", and a name
+    // is one more thing to fill in before a game that is meant to be a name
+    // and a button. HUMAN_CALLSIGNS keeps these numbers off the AI's pool, so
+    // there is never a second U1 on the net.
+    if (i >= 0) return `U${i + 1}`;
+    return id.startsWith('a') ? id.slice(1) : `U${id.slice(0, 2)}`;
   }
 
   get position() { return this.vehicle.position; }
@@ -210,6 +216,10 @@ class Game {
     this._initPlayer();
 
     boot.set(0.88, 'briefing units…');
+    // Low callsigns belong to the police players in a multiplayer game, so an
+    // AI car cannot turn up as a second U1. On your own, the AI starts at U1
+    // as it always has.
+    reserveCallsigns(session.active ? HUMAN_CALLSIGNS : 0);
     this.heat = new Heat(this);
     this.dispatcher = new Dispatcher(this);
     this.roadblocks = new RoadblockManager(this);
@@ -220,8 +230,11 @@ class Game {
     // Props first: the signals hand their posts to it to be knocked over.
     this.props = new StreetProps(this);
     this.signals = new TrafficLights(this);
-    // Night and rain, as chosen on the menu. After the props, whose lamp posts it lights.
-    this.weather = new Weather(this);
+    // Night and rain, as chosen on the menu -- or, in a multiplayer game, as
+    // the host chose them, because the weather belongs to the game and not to
+    // the player: rain changes grip, so two people in different weather are
+    // not driving on the same roads. After the props, whose lamp posts it lights.
+    this.weather = new Weather(this, session.conditions || undefined);
     this.weather.lightStreets(this.props);
     // The police talking about what is going on. Reads everything above; decides nothing.
     this.commentary = new Commentary(this);
@@ -997,8 +1010,8 @@ class Game {
    * Create, move and retire the cars this client does not own.
    *
    * They are followed along the line the packets describe (see
-   * _netDriveRemote), a tenth of a second behind the newest one so that line
-   * can be interpolated rather than guessed at. Police cars among them are
+   * _netDriveRemote), slightly behind the newest one so that line can be
+   * interpolated rather than guessed at. Police cars among them are
    * also registered with
    * the dispatcher, which is what makes the siren, the radar blips and -- on
    * the escapee's machine -- the arrest work without knowing about any of this.
@@ -1055,9 +1068,6 @@ class Game {
       if (this.netSuspect === v) this.netSuspect = null;
       this.removeVehicle(v);
     }
-
-    // So the radio gives a police player's lines a unit's voice, not Control's.
-    setUnitNames([...this.netUnits.values()].map((u) => u.callsign));
 
     // A police player joins wherever the world put them; once the suspect's
     // position is known, start them a couple of streets away from it instead.
@@ -1204,16 +1214,32 @@ class Game {
 
   /** This client's own cars, twenty times a second. */
   _netSend() {
-    if (session.isHost) {
-      const cars = [packCar(session.id, this.player)];
-      for (const u of this.dispatcher.units) {
-        if (u.human || !u.vehicle || u.vehicle.remote) continue;
-        cars.push(packCar('a' + (u.callsignId || u.vehicle.id), u.vehicle));
-      }
-      session.sendWorld(cars, this.heat.value, this.dispatcher.inContact);
-    } else {
+    if (!session.isHost) {
       session.sendCar(packCar(session.id, this.player));
+      return;
     }
+
+    // Everyone who is actually looking at this world: the escapee, and every
+    // police player, wherever their car has got to.
+    const watchers = [this.player.position];
+    if (this.netCars) {
+      for (const [id, v] of this.netCars) {
+        if (!String(id).startsWith('a')) watchers.push(v.position);
+      }
+    }
+    const inSight = (v) => watchers.some(
+      (w) => dist2(v.position.x, v.position.z, w.x, w.z) < NET_RANGE);
+
+    // An AI car four hundred metres from every human is a dot nobody can see,
+    // and sending it costs the same as one they are looking at. Half the pack
+    // is usually out there. It comes back the moment somebody drives near it.
+    const cars = [packCar(session.id, this.player)];
+    for (const u of this.dispatcher.units) {
+      if (u.human || !u.vehicle || u.vehicle.remote) continue;
+      if (!inSight(u.vehicle)) continue;
+      cars.push(packCar('a' + (u.callsignId || u.vehicle.id), u.vehicle));
+    }
+    session.sendWorld(cars, this.heat.value, this.dispatcher.inContact);
   }
 
   _update(dt) {

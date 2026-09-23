@@ -61,14 +61,24 @@ export const ROLE = {
  * A force of nine cars that has been running for ten minutes had got to U50 and
  * beyond, because every car that came on and went off again took its number
  * with it: "it will start saying, unit fifty-one, going for a PIT". Numbers now
- * come back when a car is retired, so the board reads U1 to U12 all night and a
+ * come back when a car is retired, so the board reads U5 to U16 all night and a
  * callsign means "one of the cars out there" rather than "how many have ever
  * been out there".
  */
 const takenCallsigns = new Set();
 
+/**
+ * Numbers kept back for police players, who are given U1 upward in the order
+ * they joined (see RemoteUnit in main.js), so there are never two units
+ * answering to U1. None are held back in a single-player game, where the AI
+ * should still start at U1 as it always has.
+ */
+export const HUMAN_CALLSIGNS = 4;
+let reserved = 0;
+export function reserveCallsigns(n) { reserved = Math.max(0, Math.floor(n) || 0); }
+
 function claimCallsign() {
-  for (let i = 1; i < 200; i++) {
+  for (let i = reserved + 1; i < 200; i++) {
     if (takenCallsigns.has(i)) continue;
     takenCallsigns.add(i);
     return { id: i, text: 'U' + i };

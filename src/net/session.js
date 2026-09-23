@@ -23,12 +23,19 @@
 
 const PROTOCOL = 1;
 
-/** How far behind the newest packet remote cars are drawn, in ms. */
-const INTERP_DELAY = 120;
+/**
+ * How far behind the newest packet remote cars are drawn, in ms.
+ *
+ * This is latency the game adds on purpose, and every millisecond of it is
+ * felt: a car you are chasing is drawn where it was, not where it is. It has
+ * to cover the gap between packets and the jitter on top, so it comes down
+ * with the send rate rather than on its own.
+ */
+const INTERP_DELAY = 90;
 /** Snapshots kept per car. A second at the send rate is plenty. */
-const BUFFER = 24;
-/** Sends a second. */
-export const SEND_HZ = 20;
+const BUFFER = 36;
+/** Sends a second. Thirty costs about a kilobyte a second more than twenty. */
+export const SEND_HZ = 30;
 
 /**
  * Car kinds, as an index: a snapshot is a list of numbers, and the kind is the
@@ -37,20 +44,6 @@ export const SEND_HZ = 20;
 const KINDS = ['runner', 'supercar', 'offroad', 'patrol', 'interceptor', 'suv', 'van', 'unmarked'];
 
 export const FLAG = { POLICE: 1, UNMARKED: 2, DISABLED: 4, BLIP: 8 };
-
-/** Longest name a police player can go by on the radio. */
-export const UNIT_NAME_MAX = 7;
-
-/**
- * A police player's name as the radio says it: letters, digits and single
- * spaces, at most UNIT_NAME_MAX of them. Empty if nothing usable was typed.
- * The placeholder names the menu used to send stand for "no name" too.
- */
-export function cleanUnitName(name) {
-  const n = String(name || '').replace(/[^A-Za-z0-9 ]/g, '').replace(/\s+/g, ' ').trim()
-    .slice(0, UNIT_NAME_MAX).trim();
-  return n === 'Unit' || n === 'Host' ? '' : n;
-}
 
 /** A car, as it goes on the wire: fifteen numbers and an id. */
 export function packCar(id, v, extra = {}) {
@@ -222,6 +215,7 @@ class Session {
     this.id = '';
     this.name = '';
     this.map = null;
+    this.conditions = null;   // night and rain, as the host set them
     this.players = [];
     this.tracks = new Map();
     this.transport = null;
@@ -241,13 +235,19 @@ class Session {
    * BroadcastChannel, the host) has said which map is being played and which
    * side this player is on.
    */
-  connect({ room, name, map, create }) {
+  connect({ room, name, map, create, conditions }) {
     this.reset();
     this.room = room;
     this.name = name || (create ? 'Host' : 'Unit');
     this.id = Math.random().toString(36).slice(2, 10);
     this.local = new URLSearchParams(location.search).get('net') === 'local';
 
+    // Night and rain belong to the game, not to the player: whoever creates it
+    // sets the weather and everyone else gets that. It used to be read from
+    // each machine's own menu, so the escapee could be out in the rain at
+    // night while the police had a bright dry afternoon -- and rain changes
+    // grip, so they were not even driving on the same roads.
+    const wet = conditions || { night: false, rain: false };
     const query = new URLSearchParams({
       v: String(PROTOCOL),
       room,
@@ -255,6 +255,8 @@ class Session {
       name: this.name,
       create: create ? '1' : '0',
       map: map || '',
+      night: wet.night ? '1' : '0',
+      rain: wet.rain ? '1' : '0',
     }).toString();
 
     this.transport = this.local ? openChannel(query) : openSocket(query);
@@ -263,6 +265,7 @@ class Session {
       // thing that answers joins, so it knows all of this without asking.
       this.role = 'escapee';
       this.map = map;
+      this.conditions = { night: !!wet.night, rain: !!wet.rain };
       this.escapeeId = this.id;
       this.players = [{ id: this.id, name: this.name, role: 'escapee' }];
     }
@@ -299,6 +302,7 @@ class Session {
         this.id = msg.id || this.id;
         this.role = msg.role;
         this.map = msg.map;
+        this.conditions = msg.conditions || null;
         this.escapeeId = msg.escapee;
         this.players = msg.players || [];
         if (this._ready) { const r = this._ready; this._ready = null; r(null); }
@@ -319,7 +323,7 @@ class Session {
           }
           this.transport.send({
             t: 'joined', to: msg.from, from: this.id, id: msg.from, role: 'police',
-            map: this.map, escapee: this.id, players: this.players,
+            map: this.map, conditions: this.conditions, escapee: this.id, players: this.players,
           });
           this.transport.send({ t: 'players', from: this.id, players: this.players });
         }
