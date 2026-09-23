@@ -1,0 +1,112 @@
+# Build the game and its server, and publish them to the Azure Web App.
+#
+# This replaced a Static Web Apps workflow: that service serves files, and the
+# game now needs a server for multiplayer (a WebSocket relay at /ws), which
+# only App Service can host.
+#
+# Signing in: the site has basic publishing credentials switched off for both
+# FTP and SCM, so there is no publish profile to paste in and no deployment
+# password to keep. This authenticates with Microsoft Entra instead, over
+# OIDC -- GitHub mints a short-lived token for the run and Azure trusts it,
+# so nothing long-lived is stored in the repository at all. The one-time
+# setup is in the README, under "Deploying from GitHub".
+#
+# It does the same work as deploy-azure.ps1, which is still the way to push a
+# build from a desk without waiting for CI.
+
+name: Deploy to Azure App Service
+
+on:
+  push:
+    branches: [master]
+    # Documentation and screenshots do not change what is served.
+    paths-ignore:
+      - '**/*.md'
+      - 'shots/**'
+  workflow_dispatch:
+
+# Required for the OIDC handshake; the job needs nothing else.
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  APP_NAME: police-chase
+  RESOURCE_GROUP: police-chase
+  DOTNET_VERSION: '10.0.x'
+
+concurrency:
+  # A newer commit supersedes an older deploy rather than queueing behind it.
+  group: deploy-app-service
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Deliberately no `environment:`. Naming one changes the subject GitHub
+    # puts in the OIDC token to "…:environment:NAME" instead of the branch,
+    # and the federated credential in Azure then no longer matches -- which
+    # fails at sign-in with a message that does not mention environments.
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # The server project and the game are kept apart in the repository: the
+      # game is the thing you can open with the dev server, and the server is
+      # the thing that hosts it. They are put together here, the same way
+      # deploy-azure.ps1 does it, so there is one copy of the game and the
+      # site can never be out of date with it. tests/ and shots/ are left out.
+      - name: Stage the site
+        run: |
+          mkdir -p build/wwwroot
+          cp server/*.csproj server/*.cs build/
+          cp index.html build/wwwroot/
+          cp -r src vendor resources build/wwwroot/
+          echo "staged $(find build/wwwroot -type f | wc -l) files"
+
+      - name: Build
+        run: dotnet publish build/PoliceChase.Server.csproj -c Release -o publish --nologo
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Settings, not tiers: none of this costs anything or leaves the free
+      # plan. Idempotent, so it is cheap to assert on every run.
+      #   * the build already happened here, so Oryx must not run again on the
+      #     published output;
+      #   * name the DLL to run rather than leaving the platform to find it;
+      #   * multiplayer needs the WebSocket upgrade to be allowed.
+      - name: Make sure the app is configured for this build
+        run: |
+          az webapp config appsettings set -g "$RESOURCE_GROUP" -n "$APP_NAME" \
+            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false -o none
+          az webapp config set -g "$RESOURCE_GROUP" -n "$APP_NAME" \
+            --startup-file "dotnet PoliceChase.Server.dll" --web-sockets-enabled true -o none
+
+      - uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.APP_NAME }}
+          package: publish
+
+      # A free plan has no Always On, so the first request after a deploy is
+      # also the one that starts the app: give it time before calling it bad.
+      - name: Wait for the site
+        run: |
+          url="https://police-chase-c8c8bbdrbeg8cfcx.ukwest-01.azurewebsites.net/healthz"
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$url" || true)
+            if [ "$code" = "200" ]; then
+              echo "up after $((i * 6))s"
+              echo "### Live: https://police-chase-c8c8bbdrbeg8cfcx.ukwest-01.azurewebsites.net" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 6
+          done
+          echo "site did not answer"; exit 1

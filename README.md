@@ -210,6 +210,55 @@ is done.
 `-IncludeTests` also publishes `tests/`, so the browser-console harnesses can
 be run against the deployed site; they are left out by default.
 
+### Deploying from GitHub
+
+`.github/workflows/deploy.yml` does the same thing on every push to `master`:
+stages the game into the server's `wwwroot`, builds it with the .NET 10 SDK on
+the runner, publishes it to the Web App, and waits for the site to answer
+before calling the run green. It replaced a Static Web Apps workflow — that
+service serves files, and multiplayer needs a server to relay through.
+
+It signs in with **Microsoft Entra over OIDC**, not a publish profile: basic
+publishing credentials are off on this site, and OIDC means nothing
+long-lived is stored in the repository at all. That needs a one-time setup —
+an app registration GitHub is allowed to impersonate, and permission for it on
+the one web app. Nothing here is billable: an app registration, a federated
+credential and a role assignment are all free.
+
+```bash
+az ad app create --display-name police-chase-deploy --query appId -o tsv
+```
+
+With that `appId`:
+
+```bash
+az ad sp create --id <appId>
+```
+
+```bash
+az role assignment create --assignee <appId> --role "Website Contributor" --scope /subscriptions/0dc4d6c9-9c1f-493e-b13c-18bcf67c0749/resourceGroups/police-chase/providers/Microsoft.Web/sites/police-chase
+```
+
+```bash
+az ad app federated-credential create --id <appId> --parameters '{"name":"github-master","issuer":"https://token.actions.githubusercontent.com","subject":"repo:lordvacuum5/police-chase:ref:refs/heads/master","audiences":["api://AzureADTokenExchange"]}'
+```
+
+Then three repository secrets (Settings → Secrets and variables → Actions):
+`AZURE_CLIENT_ID` (the `appId`), `AZURE_TENANT_ID` and
+`AZURE_SUBSCRIPTION_ID`.
+
+Two things worth knowing, because both fail in ways that do not mention
+themselves:
+
+* **The subject has to match exactly.** The workflow names no `environment:`,
+  because naming one changes the subject GitHub puts in the token from
+  `…:ref:refs/heads/master` to `…:environment:NAME`, and sign-in then fails.
+  Deploying from another branch needs its own federated credential.
+* **The workflow asserts the app's settings** before it deploys — Oryx off
+  (the build already happened on the runner), the startup command, and
+  WebSockets on. They are settings rather than tiers, so this stays on the
+  free plan; `Website Contributor` is enough to set them.
+
 ## Controls
 
 | Key | Action |
@@ -2987,9 +3036,12 @@ way. If the frame rate does drop the game degrades itself: shadows off below
 ```
 serve.ps1              dev server (also accepts POSTed screenshots to shots/)
 deploy-azure.ps1       publish the game and its server to the Azure Web App
+.github/workflows/
+  deploy.yml           the same, on every push to master
 server/
   PoliceChase.Server.csproj
   Program.cs           the ASP.NET host: static files, types, compression
+  Rooms.cs             multiplayer rooms, and the packet relay at /ws
 index.html             canvas, HUD markup, import map
 src/
   main.js              boot, fixed-timestep loop, rendering, spawning
@@ -3008,6 +3060,8 @@ src/
     officer.js         per-unit state machine
     driver.js          pure-pursuit steering, counter-steer, speed planner
     tactics.js         PIT and rolling box
+  net/
+    session.js         multiplayer: rooms, roles, car packets, interpolation
   game/
     vehicles.js        car specs and procedural bodywork
     livery.js          procedural police livery texture atlas
