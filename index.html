@@ -466,9 +466,14 @@
     padding: 5px 8px; gap: 8px;
   }
   body.touch #speedo { width: 78px; height: 78px; }
+  /* On a phone the plate goes beside the dial rather than on top of it: the
+     dash sits in the middle of the bottom edge, and what is above it is the
+     road you are trying to look at. To its left, clear of the steering thumb
+     on one side and the pedals on the other. */
   body.touch #roadsign {
-    left: 50%; transform: translateX(-50%); bottom: calc(112px + env(safe-area-inset-bottom, 0px));
-    font-size: 10px; padding: 3px 8px 4px; max-width: 60vw;
+    left: auto; right: calc(50% + 82px); transform: none;
+    bottom: calc(38px + env(safe-area-inset-bottom, 0px));
+    font-size: 10px; padding: 3px 8px 4px; max-width: 30vw; letter-spacing: 1.5px;
   }
   body.touch #gear { font-size: 22px; }
   body.touch #gearbox { padding-bottom: 2px; }
@@ -488,6 +493,9 @@
     #t-steer { top: 200px; }
     #t-stick { top: calc(100% - 250px); left: 50%; }
     body.touch #dash { left: auto; right: calc(8px + env(safe-area-inset-right, 0px)); transform: none; bottom: 196px; }
+    /* Upright, the space beside the dash is where the steering thumb lives, so
+       the plate goes back on top of it -- there is nothing above it here. */
+    body.touch #roadsign { right: calc(8px + env(safe-area-inset-right, 0px)); bottom: 292px; max-width: 46vw; }
     body.touch #track { top: 200px; }
   }
   /* Short screens: a phone held sideways is about 360-430 px tall. */

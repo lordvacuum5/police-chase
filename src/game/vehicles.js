@@ -550,7 +550,7 @@ export const SPECS = {
  */
 export function drivablePoliceSpec(key = 'interceptor') {
   const base = SPECS[key] || SPECS.interceptor;
-  return Object.assign({}, base, {
+  const spec = Object.assign({}, base, {
     // The Runner's setting, but coming in from 29 km/h rather than 72.
     //
     // Matching the Runner exactly was aiming at the wrong target: the Runner
@@ -600,6 +600,28 @@ export function drivablePoliceSpec(key = 'interceptor') {
       torqueCurve: base.engine.torqueCurve.map(([rpm, nm]) => [rpm, Math.round(nm * 1.12)]),
     }),
   });
+
+  // The SUV, at the speeds you manoeuvre at.
+  //
+  // It is a long car on a small lock -- 2.98 m of wheelbase turned by 0.55
+  // radians -- so at 20 km/h, full lock, it needs a five metre radius, and
+  // getting it round a corner in a town feels like a three point turn. Its
+  // own lock goes to 0.62, and the fronts take a little more of the grip than
+  // the rears so the nose uses the extra lock instead of pushing on:
+  //
+  //   full lock, radius   20 km/h   30 km/h   50 km/h   90 km/h
+  //   was                  5.0 m     5.9 m    15.5 m    45.0 m
+  //   now                  4.4 m     5.5 m    14.3 m    42.3 m
+  //
+  // with body slip within a degree and a half of what it was at every speed
+  // (tests/policeturn.js, the `lock` set). More lock than this only made the
+  // back end scrub without turning any tighter. The AI's SUVs are untouched,
+  // as with everything else here.
+  if (key === 'suv') {
+    spec.steering = Object.assign({}, base.steering, { maxAngle: 0.62 });
+    spec.gripBias = { front: spec.gripBias.front + 0.10, rear: spec.gripBias.rear };
+  }
+  return spec;
 }
 
 // ---------------------------------------------------------------- liveries

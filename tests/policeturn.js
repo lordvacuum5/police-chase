@@ -20,7 +20,11 @@
 //
 // `variants` are named changes to the spec, so a proposed setting can be
 // measured against the one in the game in a single run.
-window.__runPoliceTurn = async function (kind = 'interceptor', speeds = [50, 70, 90, 100], steer = 1) {
+// `set` picks what is being tried: 'tyre' for the grip balance that fixed the
+// interceptor's understeer at 50-100 km/h, 'lock' for how tightly a car will
+// come round at crawling speed, where the steering lock and not the tyres is
+// what runs out first.
+window.__runPoliceTurn = async function (kind = 'interceptor', speeds = [50, 70, 90, 100], steer = 1, set = 'tyre') {
   try {
     for (let i = 0; i < 200 && !(window.__game && window.__game.player); i++) {
       await new Promise((r) => setTimeout(r, 100));
@@ -58,7 +62,16 @@ window.__runPoliceTurn = async function (kind = 'interceptor', speeds = [50, 70,
     // 90 km/h 36.6 m -> 37.9), and raising the steering limiter did nothing a
     // tyre change had not already done. Front grip is the setting that moves
     // it, so these are four helpings of it.
-    const variants = [
+    const lock = (angle, front) => Object.assign({}, base, {
+      steering: Object.assign({}, base.steering, { maxAngle: angle }),
+      gripBias: { front: front || base.gripBias.front, rear: base.gripBias.rear },
+    });
+    const variants = set === 'lock' ? [
+      ['now', base],
+      ['0.62+0.06', lock(0.62, base.gripBias.front + 0.06)],
+      ['0.62+0.10', lock(0.62, base.gripBias.front + 0.10)],
+      ['0.66+0.10', lock(0.66, base.gripBias.front + 0.10)],
+    ] : [
       ['now', base],
       ['fg-1.24', tyre(2.2, 2.8, 1.24, 1.25)],
       ['fg-1.30', tyre(2.2, 2.8, 1.30, 1.25)],

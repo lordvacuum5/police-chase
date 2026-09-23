@@ -295,6 +295,10 @@ export class TouchControls {
     if (ended !== this._ended) {
       this._ended = ended;
       this.root.classList.toggle('ended', ended);
+      // A police player in somebody else's game is stopped by the arrest like
+      // everyone else, but starting again is not theirs to do -- so they get
+      // the overlay and no button, rather than one that does nothing.
+      this.againBtn.hidden = ended && !this.game.canRestart;
     }
     const p = this.game.player;
     const stuck = !!p && (p.flippedFor > 0.3);

@@ -71,6 +71,21 @@ tougher, so it was a choice nobody would make for a reason, and the unmarked
 pursuit car because a police player turns up as a unit that has been sent, with
 a light bar on the roof.
 
+**The SUV turns at manoeuvring speed.** It is a long car on a small lock —
+2.98 m of wheelbase turned by 0.55 radians — so getting it round a corner in a
+town felt like a three point turn. Its own lock goes to 0.62, and its fronts
+take a little more of the grip than its rears so the nose uses the extra lock
+instead of pushing on (`tests/policeturn.js`, the `lock` set):
+
+| full lock, radius | 20 km/h | 30 km/h | 50 km/h | 90 km/h |
+|---|---|---|---|---|
+| before | 5.0 m | 5.9 m | 15.5 m | 45.0 m |
+| **now** | **4.4 m** | **5.5 m** | **14.3 m** | **42.3 m** |
+
+Body slip is within a degree and a half of what it was at every one of those
+speeds, so it turns tighter without being any looser, and more lock than this
+only made the back end scrub. The AI's SUVs are untouched.
+
 They are given a callsign, in the order they joined: the first police player is
 **U1**, which the radio reads as "Unit one". Typing a name for yourself was
 tried and taken out again — it is one more box to fill in before a game that is
@@ -286,10 +301,12 @@ ever deployed.
 
 ### Endings, and what is not one
 
-Being arrested is an ending: the escapee gets the full curtain, the score and
-"press R", and a police player gets a notice saying so — which clears by itself
-when the escapee sets off again, and does not pin their car shut in the
-meantime.
+Being arrested is an ending **for everybody in the game**: the escapee gets the
+full curtain, the score and "press R", and a police player gets a notice saying
+so, with their car pinned shut exactly as the escapee's is. It used to leave
+them driving — *"even though it says the subject has been busted, you can still
+drive around"* — which is not an ending, it is a screensaver. Starting again is
+still the escapee's call, and the restart releases everyone.
 
 **Getting away is not an ending for anybody.** The escapee's banner says so for
 a few seconds and they drive on, and the police now get the same banner from
@@ -446,11 +463,13 @@ handbrake, `X` clutch kick.
 "speeds 130" while the needle in front of you said 80 was nonsense, and the
 roads are British ones. The dial runs to 180, past anything in the game.
 
-**The plate above the dash is the road you are on** — the same names dispatch
+**The plate by the dash is the road you are on** — the same names dispatch
 has always used on the radio, so "last seen on Cold Harbour" and the sign in
 front of you agree, and a call about a road you are nowhere near is easy to
 tell from a call about yours. Cut across a field and it keeps the last road,
-dimmed, rather than blanking every time two wheels touch grass.
+dimmed, rather than blanking every time two wheels touch grass. It sits above
+the dial on a desktop and beside it on a phone, where what is above the dash is
+the road you are trying to look at.
 
 Sound only starts after your first key press — browsers refuse to play audio
 until the page has been interacted with.

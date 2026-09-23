@@ -910,6 +910,14 @@ class Game {
     this.heat.reset();
   }
 
+  /**
+   * Whether this machine may start the run again. There is one chase, and it
+   * is the escapee's: a police player's copy restarting on its own would only
+   * walk away from everybody else's. Read by the overlay and by the phone's
+   * RUN AGAIN button, so neither offers something that would do nothing.
+   */
+  get canRestart() { return !(session.active && !session.isHost); }
+
   restart() {
     if (session.active && session.isHost) session.sendEvent('restart');
     this.outcome = null;
@@ -1299,11 +1307,14 @@ class Game {
         // voice it would have used, and marked so it is not sent back.
         this.radio(msg.text, !!msg.hot, { low: !!msg.low, fromNet: true });
       } else if (msg.e === 'busted') {
-        // An arrest is an ending for the escapee, who gets the full curtain
-        // and a score. For a police player it is news: the overlay says so and
-        // clears when they set off again, and the car is still theirs to drive
-        // in the meantime -- `outcome` is deliberately not set, because that
-        // is what pins the controls shut.
+        // An arrest ends the game for everybody in it. A police player used to
+        // keep their car behind the overlay and drive off round the city while
+        // the screen said the suspect had been arrested, which is not an
+        // ending, it is a screensaver. `outcome` pins the controls shut here
+        // exactly as it does on the escapee's machine, and the 'restart' event
+        // below lets them go again when the escapee runs again. Starting the
+        // chase over is still the escapee's call, not theirs.
+        this.outcome = 'busted';
         this.hud.showOverlay('SUSPECT ARRESTED', 'Waiting for the escapee to run again…', { canRestart: false });
       } else if (msg.e === 'escaped') {
         // Getting away is not an ending for anybody. The escapee's banner says
