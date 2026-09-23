@@ -28,8 +28,8 @@ import { Hud } from './game/hud.js';
 import { Input } from './core/input.js';
 import { TouchControls } from './core/touch.js';
 import { SkidMarks, LightBars } from './game/effects.js';
-import { session, packCar, FLAG } from './net/session.js';
-import { GameAudio } from './game/audio.js';
+import { session, packCar, FLAG, cleanUnitName } from './net/session.js';
+import { GameAudio, setUnitNames } from './game/audio.js';
 import { Commentary } from './game/commentary.js';
 import { Phrasebook } from './game/phrases.js';
 import { vertexColorMaterial, shinyVertexMaterial } from './util/meshbuild.js';
@@ -119,8 +119,24 @@ class RemoteUnit {
     this.netId = id;
     this.human = true;
     this.role = ROLE.PURSUE;
-    this.callsign = String(id).startsWith('a') ? String(id).slice(1) : 'M' + String(id).slice(0, 2);
     this.orders = {};
+  }
+
+  /**
+   * What the radio calls it. A police player goes by the name they typed on
+   * the menu -- this used to be two letters of their connection id, so the
+   * net was full of "MJQ" -- and an AI car by its own callsign. Looked up
+   * each time rather than kept, because the roster can arrive after the car.
+   */
+  get callsign() {
+    const id = String(this.netId);
+    const police = session.players.filter((p) => p.role === 'police');
+    const i = police.findIndex((p) => p.id === id);
+    if (i >= 0) {
+      const name = cleanUnitName(police[i].name);
+      return name || `M${i + 1}`;
+    }
+    return id.startsWith('a') ? id.slice(1) : 'M' + id.slice(0, 2);
   }
 
   get position() { return this.vehicle.position; }
@@ -1027,6 +1043,9 @@ class Game {
       this.removeVehicle(v);
     }
 
+    // So the radio gives a police player's lines a unit's voice, not Control's.
+    setUnitNames([...this.netUnits.values()].map((u) => u.callsign));
+
     // A police player joins wherever the world put them; once the suspect's
     // position is known, start them a couple of streets away from it instead.
     if (session.role === 'police' && this.netSuspect && !this.netPlaced) {
@@ -1162,6 +1181,11 @@ class Game {
     } else {
       this.props.update(dt);
       this.signals.update(dt);
+      // The garage mends whoever is sitting in it, and a police player's car
+      // is theirs alone -- nobody else simulates its damage -- so the bay has
+      // to run here too. It used to live only in the host's branch above,
+      // which is why a police car could sit in the bay forever and never mend.
+      this.garage.update(dt);
       this.heat.value = session.heat;
     }
     if (session.active) this._netUpdate(dt);

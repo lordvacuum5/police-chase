@@ -154,6 +154,12 @@ export class Vehicle {
     this.maxSlip = 0;         // worst wheel, drives smoke and skid marks
 
     this._prevVel = new THREE.Vector3();
+    this._prevYaw = 0;
+    // Turns a change in spin into the change in speed that carries the same
+    // energy: the body's radius of gyration about its middle, treating it as
+    // a uniform box. So a spin stopped by a wall costs what a straight hit
+    // with as much energy behind it would, no more.
+    this._lever = Math.hypot(spec.dims.l, spec.dims.w) / Math.sqrt(12);
 
     this._buildBody(position, heading);
     this._buildWheels();
@@ -314,7 +320,20 @@ export class Vehicle {
     const lv = this.body.linvel();
     _v1.set(lv.x, lv.y, lv.z);
     // A large velocity change in a single substep can only be a collision.
-    const dv = _v1.distanceTo(this._prevVel);
+    //
+    // The spin counts as well as the speed. A car that has spun out is barely
+    // moving at its middle but its ends are still swinging round, and when one
+    // of them meets a wall it is the spin that stops dead -- so measuring only
+    // the middle charged nothing: "if you spin out ... and then you hit a
+    // building, sometimes you don't actually take more damage". A spin of
+    // 10 rad/s stopped by a wall used to cost 0%; the end of the car was doing
+    // over 80 km/h. Yaw only: a kerb or a landing rocks the car in pitch and
+    // roll without anything having been hit.
+    const av = this.body.angvel();
+    const yaw = av.x * this.up.x + av.y * this.up.y + av.z * this.up.z;
+    const spinStop = Math.abs(yaw - this._prevYaw) * this._lever;
+    this._prevYaw = yaw;
+    const dv = _v1.distanceTo(this._prevVel) + spinStop;
     // Below this a knock is just a knock: kerbs, cones, a scrape along a wall
     // and the ordinary bumping of a pack of cars all sit under it. Raised
     // along with `durability` so bodywork survives a chase that involves
@@ -1044,6 +1063,7 @@ export class Vehicle {
     this.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
     this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     this._prevVel.set(0, 0, 0);
+    this._prevYaw = 0;
     for (const w of this.wheels) { w.omega = 0; w.compression = 0; }
     this.gear = 1;
     this.rpm = this.spec.engine.idleRpm;

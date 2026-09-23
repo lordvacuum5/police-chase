@@ -203,12 +203,20 @@ export function speakable(text) {
     .trim();
 }
 
+/**
+ * Police players' names, which are callsigns too but look like nothing in
+ * particular ("Sam, eyes on") -- so they are told to us rather than guessed.
+ */
+let unitNames = [];
+export function setUnitNames(names) { unitNames = names.filter(Boolean); }
+
 /** Which of the three speakers a line of dispatch belongs to. */
 function voiceFor(text) {
   if (/India 99|Air support/i.test(text)) return 'air';
   if (/^Control\b|^All units\b/i.test(text)) return 'control';
   // "U3 responding, northbound" -- a callsign at the front means a unit.
   if (/^[A-Z]+\d+\b/.test(text)) return 'unit';
+  if (unitNames.some((n) => text.startsWith(`${n},`) || text.startsWith(`${n} `))) return 'unit';
   return 'control';
 }
 

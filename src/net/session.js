@@ -38,6 +38,20 @@ const KINDS = ['runner', 'supercar', 'offroad', 'patrol', 'interceptor', 'suv', 
 
 export const FLAG = { POLICE: 1, UNMARKED: 2, DISABLED: 4, BLIP: 8 };
 
+/** Longest name a police player can go by on the radio. */
+export const UNIT_NAME_MAX = 7;
+
+/**
+ * A police player's name as the radio says it: letters, digits and single
+ * spaces, at most UNIT_NAME_MAX of them. Empty if nothing usable was typed.
+ * The placeholder names the menu used to send stand for "no name" too.
+ */
+export function cleanUnitName(name) {
+  const n = String(name || '').replace(/[^A-Za-z0-9 ]/g, '').replace(/\s+/g, ' ').trim()
+    .slice(0, UNIT_NAME_MAX).trim();
+  return n === 'Unit' || n === 'Host' ? '' : n;
+}
+
 /** A car, as it goes on the wire: fifteen numbers and an id. */
 export function packCar(id, v, extra = {}) {
   let flags = 0;
