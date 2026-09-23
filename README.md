@@ -68,10 +68,44 @@ Full lock held for two seconds, throttle on (`tests/highspeed.js`):
 | body slip, mean / worst | 100 km/h | 140 km/h | 180 km/h |
 |---|---|---|---|
 | stock interceptor, as the AI drives it | 11.0° / 21.5° | 11.4° / 18.8° | 9.7° / 14.3° |
-| **as a person drives it** | **2.1° / 4.0°** | **1.1° / 2.5°** | **0.6° / 1.3°** |
+| **as a person drives it** | **0.4° / 0.8°** | **0.2° / 0.6°** | **0.6° / 1.3°** |
 | the Runner, for comparison | 4.9° / 7.5° | 1.6° / 3.3° | 1.0° / 2.2° |
 
-It also holds more grip while doing it — 1.28–1.47 g against 1.14–1.22.
+It also holds more grip while doing it — 1.37–1.47 g against 1.14–1.22.
+
+**Where a chase actually happens is lower than that**, and the first attempt at
+this matched the Runner exactly — which turned out to be aiming at the wrong
+target, because the Runner is a handful too and that is the point of it. The
+setting only came in from 72 km/h, so the whole 40–80 km/h band was still the
+raw car. It now comes in from 29.
+
+`tests/drivable.js` asks the three questions that spin a rear-drive car for
+somebody holding a keyboard, where steering is all or nothing: hold full lock
+at a steady speed, hold it and floor the throttle, hold it and lift off.
+
+| at 60 km/h, body slip mean / worst | turn in | on the power | lifting off |
+|---|---|---|---|
+| the Runner | 3.2° / 4.9° | **8.5° / 18.6°**, and does not gather itself up | 2.1° / 5.0° |
+| police car, first attempt | 1.0° / 1.8° | 3.2° / 5.6° | 3.2° / 6.2° |
+| **police car, now** | **2.1° / 2.4°** | **1.7° / 2.1°** | **4.2° / 6.4°** |
+
+At 80 km/h it is flatter still — 0.8° at full lock against the Runner's 7.4° —
+and it keeps its speed through the corner rather than scrubbing it off: 75 km/h
+out of 80, where the Runner leaves with 61.
+
+Lifting off mid-corner at 40 km/h is the one thing still worth respecting —
+about 10° of slip, which gathers itself up — and that is deliberate: the car
+can still be rotated on purpose, and a handbrake turn is still a handbrake
+turn.
+
+Traction control was not the answer and is not part of this. Every car in the
+game already has it (`makeSpec`, 0.85); turning it up moved wheelspin by four
+hundredths on tarmac and on grass and body slip not at all. What the car was
+short of was grip in the corner, not restraint on the throttle.
+
+What it deliberately is **not** is faster. Grip and pace stay where a police
+saloon's belong, well inside the Stiletto's; the car is forgiving, not
+superior, because the job is to catch somebody, not to win on pace.
 
 ### Seeing them, and losing them
 

@@ -551,8 +551,21 @@ export const SPECS = {
 export function drivablePoliceSpec(key = 'interceptor') {
   const base = SPECS[key] || SPECS.interceptor;
   return Object.assign({}, base, {
+    // The Runner's setting, but coming in from 29 km/h rather than 72.
+    //
+    // Matching the Runner exactly was aiming at the wrong target: the Runner
+    // is itself a handful, which is the point of it -- floor it mid-corner at
+    // 60 km/h and it goes to 18 degrees of slip and does not come back. A
+    // chase happens at city speeds, and the whole 40-80 km/h band was below
+    // where the setting did anything, so the car was still raw exactly where
+    // it was being driven. Measured, `tests/drivable.js`.
+    //
+    // Nothing is done about traction control here, because every car already
+    // has it (makeSpec's default, 0.85): turning it up moved wheelspin by four
+    // hundredths on tarmac and on grass, and body slip not at all. What was
+    // missing was grip in the corner, not restraint on the throttle.
     highSpeedTyre: {
-      from: 20, to: 42,
+      from: 8, to: 30,
       stiffness: { front: 2.2, rear: 2.8 },
       grip: { front: 1.15, rear: 1.25 },
     },
