@@ -90,10 +90,51 @@ jobs:
           az webapp config set -g "$RESOURCE_GROUP" -n "$APP_NAME" \
             --startup-file "dotnet PoliceChase.Server.dll" --web-sockets-enabled true -o none
 
-      - uses: azure/webapps-deploy@v3
-        with:
-          app-name: ${{ env.APP_NAME }}
-          package: publish
+      # Deployed by hand rather than with azure/webapps-deploy, because that
+      # action asks App Service to build the package on the server: it ran
+      # Oryx over the *published output*, which has no project in it to detect,
+      # and failed with "Couldn't detect a version for the platform 'dotnet'"
+      # -- with SCM_DO_BUILD_DURING_DEPLOYMENT already false on the site, so
+      # turning the setting off is not enough to stop it.
+      #
+      # Kudu's one-deploy endpoint has no such opinion: it puts the files where
+      # they go and restarts. It is the same request deploy-azure.ps1 makes,
+      # with the same Entra token the CLI is already holding, so a deploy from
+      # CI and a deploy from a desk do exactly the same thing.
+      - name: Deploy
+        run: |
+          set -euo pipefail
+          (cd publish && zip -qr ../package.zip .)
+          scm=$(az webapp show -g "$RESOURCE_GROUP" -n "$APP_NAME" \
+            --query "hostNameSslStates[?hostType=='Repository'].name | [0]" -o tsv)
+          token=$(az account get-access-token --query accessToken -o tsv)
+          echo "sending $(du -h package.zip | cut -f1) to $scm"
+          code=$(curl -sS -o deploy.json -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $token" -H "Content-Type: application/zip" \
+            --data-binary "@package.zip" \
+            "https://$scm/api/publish?type=zip&clean=true&restart=true&isAsync=true")
+          echo "HTTP $code"
+          cat deploy.json 2>/dev/null || true
+          case "$code" in 200|202) ;; *) echo "upload refused"; exit 1 ;; esac
+
+          # Kudu says when it has finished, and whether it worked: 4 is success,
+          # 3 is failure. Without this the site check below can pass on the
+          # build that is still running.
+          for _ in $(seq 1 60); do
+            sleep 5
+            status=$(curl -sS -H "Authorization: Bearer $token" \
+              "https://$scm/api/deployments/latest" || echo '{}')
+            text=$(echo "$status" | jq -r '.status_text // ""')
+            [ -n "$text" ] && echo "$text"
+            if [ "$(echo "$status" | jq -r '.complete // false')" = "true" ]; then
+              result=$(echo "$status" | jq -r '.status // -1')
+              [ "$result" = "4" ] && { echo "deployment succeeded"; exit 0; }
+              echo "deployment failed (status $result)"
+              echo "$status" | jq -r '.log_url // ""'
+              exit 1
+            fi
+          done
+          echo "deployment did not finish in time"; exit 1
 
       # A free plan has no Always On, so the first request after a deploy is
       # also the one that starts the app: give it time before calling it bad.
