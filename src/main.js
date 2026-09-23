@@ -348,12 +348,11 @@ class Game {
       // Driveable by a person rather than by the speed planner, and heavy
       // enough to shove with: see drivablePoliceSpec. Only this car, and only
       // on this machine.
+      // A marked car, always: a police player is a unit that has been sent,
+      // and the unmarked pursuit car stays the AI's to drive.
       const kind = SPECS[chosenPoliceCar()] ? chosenPoliceCar() : 'interceptor';
-      // An unmarked car has no light bar to switch on, here or on the other
-      // player's screen -- the flag travels with the car over the network --
-      // which is the whole point of picking one.
       this.player = this.createVehicle(kind, kind, place.position, place.heading,
-        { police: true, unmarked: kind === 'unmarked', spec: drivablePoliceSpec(kind) });
+        { police: true, spec: drivablePoliceSpec(kind) });
       this.player.lampPhase = this.rng();
       this.startPlace = place;
       return;

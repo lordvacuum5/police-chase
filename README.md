@@ -64,15 +64,12 @@ Measured on the car as a person gets it, not as the AI drives it
 |---|---|---|---|---|
 | **Interceptor** | 152 mph | 5.7 s | 1.52 g | 12 |
 | **Police SUV** | 145 mph | 7.1 s | 1.43 g | 19 |
-| **Unmarked** | 155 mph | 5.3 s | 1.52 g | 10 |
 
-The unmarked car is the quickest thing the force owns and the easiest to break,
-and it **carries no light bar** — the flag travels with the car over the
-network, so nothing lights up on the escapee's screen either, and nothing gets
-out of your way. The SUV is half as breakable again and a second and a half
-slower to sixty. There is deliberately **no patrol car** in the list: measured,
-it is slower than the interceptor, less grippy and no tougher, so it was a
-choice nobody would make for a reason.
+Two, and both marked. The rest of the fleet stays the AI's to drive: the patrol
+car because, measured, it is slower than the interceptor, less grippy and no
+tougher, so it was a choice nobody would make for a reason, and the unmarked
+pursuit car because a police player turns up as a unit that has been sent, with
+a light bar on the roof.
 
 They are given a callsign, in the order they joined: the first police player is
 **U1**, which the radio reads as "Unit one". Typing a name for yourself was

@@ -91,14 +91,14 @@ export const CARS = [
  * model, the extra mass, the extra engine (see drivablePoliceSpec) -- and not
  * on the fleet car the AI drives, so the cards describe what you will actually
  * be holding. Bars are scaled within this list, as the escapee's are within
- * theirs: these three are a choice between each other, not against a Stiletto.
+ * theirs: these two are a choice between each other, not against a Stiletto.
  *
- * There is no patrol car in the list on purpose. Measured, it is slower than
- * the interceptor, no tougher, and less grippy -- a choice nobody would make
- * for a reason. These three are a real triangle: the unmarked car is the
- * quickest thing the force owns and the easiest to break, and it carries no
- * light bar, so nothing moves out of your way; the SUV is half as breakable
- * again and a second and a half slower to sixty.
+ * Two, and marked ones. The fleet's other cars stay the AI's to drive: the
+ * patrol car because, measured, it is slower than the interceptor, no tougher
+ * and less grippy, so nobody would pick it for a reason; the unmarked car
+ * because a police player turns up as a unit that has been sent, with a light
+ * bar on the roof. What is left is a real choice -- the interceptor is a
+ * second and a half quicker to sixty, and the SUV is half as breakable again.
  */
 export const POLICE_CARS = [
   {
@@ -126,19 +126,6 @@ export const POLICE_CARS = [
       ['0-60', 7.1, 's', true],
       ['Grip', 1.43, 'g'],
       ['Toughness', 19, 'hits'],
-    ],
-  },
-  {
-    id: 'unmarked',
-    name: 'Unmarked',
-    tag: 'NO LIGHT BAR',
-    colour: '#23272e',
-    shape: 'saloon',
-    stats: [
-      ['Top speed', 155, 'mph'],
-      ['0-60', 5.3, 's', true],
-      ['Grip', 1.52, 'g'],
-      ['Toughness', 10, 'hits'],
     ],
   },
 ];

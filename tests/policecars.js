@@ -8,7 +8,7 @@
 // drivablePoliceSpec). Same lane past the map edge, same four questions:
 // top speed, 0-100, peak steady lateral acceleration at 120 km/h, and how many
 // 50 km/h shunts into a parked patrol car it takes to wreck it.
-window.__runPoliceCars = async function (kinds = ['interceptor', 'suv', 'patrol']) {
+window.__runPoliceCars = async function (kinds = ['interceptor', 'suv']) {
   try {
     for (let i = 0; i < 200 && !(window.__game && window.__game.player); i++) {
       await new Promise((r) => setTimeout(r, 100));
