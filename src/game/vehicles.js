@@ -507,11 +507,17 @@ export const SPECS = {
         [4500, 615], [5500, 530], [6500, 420],
       ]),
     }),
-    gears: [0, 4.3, 2.6, 1.75, 1.3, 1.02, 0.84],
+    // Short, low gearing and five speeds, which is what a working four-wheel
+    // drive has: geared to pull, not to cruise. It runs out of revs in top at
+    // about 145 km/h rather than pulling on to 190 -- "the Land Rover needs to
+    // top out at like 140 kilometres an hour", because the fleet is not fast
+    // enough to make a chase of it otherwise.
+    gears: [0, 4.30, 3.35, 2.70, 2.20, 1.85],
     finalDrive: 3.9,
     shiftUpRpm: 6000,
     brakes: { maxTorque: 3200, frontBias: 0.62, handbrakeTorque: 4000 },
-    aero: { dragArea: 1.05, downforce: 0.1 },
+    // A brick, and now drag is most of what holds the top end down.
+    aero: { dragArea: 1.25, downforce: 0.1 },
     gripScale: 0.96,
     gripBias: { front: 1.04, rear: 1.04 },
     // Grass mu 0.62 comes up to about 1.1: as good as most of the fleet does
@@ -521,6 +527,40 @@ export const SPECS = {
     topSpeedHint: 55,
   }),
 };
+
+/**
+ * The interceptor, as a person has to drive it.
+ *
+ * Police cars are tuned for the AI, which plans its speed into a corner before
+ * it gets there and never asks for more than it worked out it could have. A
+ * person does not: they hold the wheel over and wait to see what happens. Put
+ * a human in a stock interceptor and it slides -- "it's so hard to drive, like,
+ * honestly, it just slides".
+ *
+ * The difference is one setting. Both player cars carry a `highSpeedTyre` (see
+ * README, "Grip at speed"): above about 72 km/h the lateral curve stiffens, so
+ * the car points where it is going instead of running nine degrees sideways
+ * while it corners. The fleet has never had it, because nothing driving those
+ * cars needed it. This gives the car a human drives the Runner's version of it
+ * -- "maybe make it similar to the first car we ever made" -- and leaves every
+ * AI interceptor exactly as it was, so the chase is unchanged.
+ *
+ * Applied to the one car, as its own copy of the spec, so it does not touch
+ * the shared table: same body, same model, same collider, same engine.
+ */
+export function drivablePoliceSpec(key = 'interceptor') {
+  const base = SPECS[key] || SPECS.interceptor;
+  return Object.assign({}, base, {
+    highSpeedTyre: {
+      from: 20, to: 42,
+      stiffness: { front: 2.2, rear: 2.8 },
+      grip: { front: 1.15, rear: 1.25 },
+    },
+    // A shade more bite at the back than the fleet setting, for the same
+    // reason: the tail stepping out is what a person cannot catch.
+    gripBias: { front: base.gripBias.front, rear: base.gripBias.rear + 0.04 },
+  });
+}
 
 // ---------------------------------------------------------------- liveries
 

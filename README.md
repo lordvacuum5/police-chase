@@ -47,8 +47,45 @@ A human police player drives an **interceptor from the first star**, which an
 AI unit would not get until three. They are a real unit as far as the rest of
 the game is concerned: the siren picks them up, they show on the radar, and
 **they can make the arrest** — the bust clock is heat.js measuring the gap to
-the nearest unit, and a human in an interceptor is a unit like any other. Their
-own radar shows the suspect for as long as the pursuit has eyes on the car.
+the nearest unit, and a human in an interceptor is a unit like any other.
+
+### The car a person drives
+
+Police cars are tuned for the AI, which plans its speed into a corner before it
+arrives and never asks for more than it worked out it could have. A person
+holds the wheel over and waits to see what happens, and in a stock interceptor
+what happens is a slide: *"it's so hard to drive, honestly, it just slides."*
+
+The difference is one setting. Both player cars carry a `highSpeedTyre` (see
+"Grip at speed"), which stiffens the lateral curve above about 72 km/h so the
+car points where it is going; the fleet has never had it, because nothing
+driving those cars needed it. The car a human police player drives now gets the
+Runner's version of it, as its own copy of the spec — same body, same model,
+same engine — so every AI interceptor is untouched and the chase is unchanged.
+
+Full lock held for two seconds, throttle on (`tests/highspeed.js`):
+
+| body slip, mean / worst | 100 km/h | 140 km/h | 180 km/h |
+|---|---|---|---|
+| stock interceptor, as the AI drives it | 11.0° / 21.5° | 11.4° / 18.8° | 9.7° / 14.3° |
+| **as a person drives it** | **2.1° / 4.0°** | **1.1° / 2.5°** | **0.6° / 1.3°** |
+| the Runner, for comparison | 4.9° / 7.5° | 1.6° / 3.3° | 1.0° / 2.2° |
+
+It also holds more grip while doing it — 1.28–1.47 g against 1.14–1.22.
+
+### Seeing them, and losing them
+
+A police player's radar shows the suspect **only while the pursuit can actually
+see them**. The car is on their machine the whole time — it has to be, to be
+driven past and crashed into — but knowing where it is has to be earned:
+*"if the other person escapes the sight of the police officers, I can still see
+them on the map… I should have to get closer to see them again."*
+
+So the marker follows the same rules as the force's own knowledge: solid while
+somebody has eyes on the car, then frozen at the last place it was seen and
+**flashing** for the search window, then out altogether. Sight is the real
+thing — range, and a line that a building blocks — and a human unit counts as a
+spotter like any other, so driving closer is what brings the dot back.
 
 ### How it is put together
 
@@ -97,6 +134,20 @@ two tabs of the same browser are two players, against the static dev server.
 The protocol above it is identical, which is how the whole of it — create,
 join, world sync, an arrest by a human police car — was tested before it was
 ever deployed.
+
+### Endings, and what is not one
+
+Being arrested is an ending: the escapee gets the full curtain, the score and
+"press R", and a police player gets a notice saying so — which clears by itself
+when the escapee sets off again, and does not pin their car shut in the
+meantime.
+
+**Getting away is not an ending for anybody.** The escapee's banner says so for
+a few seconds and they drive on, and the police now get the same banner from
+the other side rather than a full-screen "play again" they could not act on:
+*"the police car has this big thing comes up… but it doesn't work because the
+host is free roaming."* Starting a fresh run is the escapee's to do, so R does
+nothing on a police player's machine and the overlay no longer offers it.
 
 ### What it does not do
 
@@ -2139,10 +2190,18 @@ the shortcut across the park that bogs everyone else down is yours.
 
 | | Runner | Stiletto | **Badger** |
 |---|---|---|---|
-| 0–100 km/h | 7.4 s | 5.1 s | **10.0 s** |
-| top speed | 215 km/h | 240 km/h | **190 km/h** |
+| 0–100 km/h | 7.4 s | 5.1 s | **10.2 s** |
+| top speed | 215 km/h | 240 km/h | **142 km/h** |
 | peak steady grip, 120 km/h | 1.40 g | 1.58 g | **1.08 g** |
 | shunts to a wreck | 11 | 5 | **19** |
+
+It used to run to 190, which made it a chase nobody could finish: the fleet
+tops out around 185–222 and spends most of a pursuit well below that, so a
+four-wheel drive that could sit at 190 on a dual carriageway simply left. Now
+it is geared like a working off-roader — five short ratios and a brick's worth
+of drag — and runs out of revs in top at **142 km/h**. Nothing else about it
+changed: same grip, same armour, same 0–100 to within a tenth, and the same
+advantage the moment the tarmac stops.
 
 The body is lofted the same way as the police SUV and van (`bodies.js`): flat
 panels, an upright screen, a raised waist behind the bonnet, a cream roof, wide

@@ -59,8 +59,8 @@ export const CARS = [
     roof: '#e9e2c8',
     shape: 'boxy',
     stats: [
-      ['Top speed', 190, 'km/h'],
-      ['0-100', 10.0, 's', true],
+      ['Top speed', 142, 'km/h'],
+      ['0-100', 10.2, 's', true],
       ['Grip', 1.08, 'g'],
       ['Toughness', 19, 'hits'],
     ],

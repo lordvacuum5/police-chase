@@ -5,13 +5,13 @@ import { initPhysics, createWorld, hasLineOfSight } from './physics/world.js';
 import { Vehicle } from './physics/vehicle.js';
 import {
   SPECS, LIVERIES, buildCarGeometry, buildWheelGeometry, LAMP_OFFSETS,
-  carMaterials,
+  carMaterials, drivablePoliceSpec,
 } from './game/vehicles.js';
 import { WORLD_HALF } from './world/common.js';
 import { MAPS, mapById } from './world/maps.js';
 import { showMenu, hideMenu, chosenCar } from './core/menu.js';
 import { DRIVE_SIDE } from './world/roadgraph.js';
-import { Dispatcher } from './ai/dispatcher.js';
+import { Dispatcher, SEARCH_SECONDS } from './ai/dispatcher.js';
 import { Officer, ROLE, releaseCallsign } from './ai/officer.js';
 import { Driver, SKILL } from './ai/driver.js';
 import { Heat } from './game/heat.js';
@@ -306,6 +306,9 @@ class Game {
     if (session.active && session.role === 'police') {
       this.player = this.createVehicle('interceptor', 'interceptor',
         place.position, place.heading, { police: true });
+      // Driveable by a person rather than by the speed planner: see
+      // drivablePoliceSpec. Only this car, and only on this machine.
+      this.player.spec = drivablePoliceSpec('interceptor');
       this.player.lampPhase = this.rng();
       this.startPlace = place;
       return;
@@ -1033,15 +1036,33 @@ class Game {
 
     // What the rest of the game asks the dispatcher for. On a police player's
     // machine nothing has updated it, so the suspect's own car is the answer.
+    //
+    // Only while the pursuit can actually see them, though. The car is on this
+    // machine the whole time -- it has to be, to be driven past and crashed
+    // into -- but knowing where it is is something the force has to earn:
+    // "if the other person escapes the sight of the police officers, I can
+    // still see them on the map... I should have to get closer to see them
+    // again." Once sight is lost the marker stops where they were last seen
+    // and flashes, and after the search window it goes out altogether.
     if (session.role === 'police' && this.netSuspect) {
       const k = this.dispatcher.knowledge;
-      k.position.copy(this.netSuspect.position);
-      k.velocity.copy(this.netSuspect.linvel);
+      if (session.seen) {
+        k.position.copy(this.netSuspect.position);
+        k.velocity.copy(this.netSuspect.linvel);
+        k.timeSinceSeen = 0;
+        this.netLostFor = 0;
+        if (!this.netLastSeen) this.netLastSeen = new THREE.Vector3();
+        this.netLastSeen.copy(this.netSuspect.position);
+      } else {
+        k.timeSinceSeen += dt;
+        this.netLostFor = (this.netLostFor || 0) + dt;
+      }
       k.seen = session.seen;
-      k.timeSinceSeen = session.seen ? 0 : k.timeSinceSeen + dt;
-      k.confidence = 1;
+      k.confidence = session.seen ? 1 : clamp01(1 - (this.netLostFor || 0) / SEARCH_SECONDS);
       this.dispatcher.inContact = session.seen;
-      this.hud.suspect = this.netSuspect.position;
+      this.hud.suspect = session.seen ? this.netSuspect.position
+        : ((this.netLostFor || 0) < SEARCH_SECONDS ? this.netLastSeen : null);
+      this.hud.suspectStale = !session.seen;
     }
   }
 
@@ -1071,11 +1092,20 @@ class Game {
     for (const msg of session.takeEvents()) {
       if (session.isHost) continue;                        // its own doing
       if (msg.e === 'busted') {
+        // An arrest is an ending for the escapee, who gets the full curtain
+        // and a score. For a police player it is news: the overlay says so and
+        // clears when they set off again, and the car is still theirs to drive
+        // in the meantime -- `outcome` is deliberately not set, because that
+        // is what pins the controls shut.
         this.hud.showOverlay('SUSPECT ARRESTED', 'Waiting for the escapee to run again…', { canRestart: false });
-        this.outcome = 'busted';
       } else if (msg.e === 'escaped') {
-        this.hud.showOverlay('SUSPECT LOST', 'They got away.', { canRestart: false });
-        this.outcome = 'escaped';
+        // Getting away is not an ending for anybody. The escapee's banner says
+        // so for a few seconds and they drive on; this is the same banner from
+        // the other side, and used to be a full-screen "play again" that could
+        // not be acted on -- "the police car has this big thing comes up... but
+        // it doesn't work because the host is free roaming".
+        this.hud.hideOverlay();
+        this.hud.flash('SUSPECT LOST', 'They have shaken the pursuit &nbsp;·&nbsp; resume patrol');
       } else if (msg.e === 'restart') {
         this.outcome = null;
         this.hud.hideOverlay();

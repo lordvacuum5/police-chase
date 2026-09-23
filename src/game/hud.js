@@ -463,13 +463,26 @@ export class Hud {
     if (this.suspect) {
       const p = toMap(this.suspect.x, this.suspect.z);
       if (p.x > -20 && p.y > -20 && p.x < W + 20 && p.y < W + 20) {
-        ctx.fillStyle = '#ff7a1a';
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-        ctx.lineWidth = 2.5;
-        ctx.stroke();
+        // Seen: a solid dot where they are. Lost: the last place anybody saw
+        // them, flashing, so it reads as a memory rather than a position.
+        const blink = this.suspectStale ? (Math.floor(performance.now() / 380) % 2 === 0) : true;
+        if (blink) {
+          ctx.globalAlpha = this.suspectStale ? 0.75 : 1;
+          ctx.fillStyle = '#ff7a1a';
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+          if (this.suspectStale) {
+            ctx.lineWidth = 2.5;
+            ctx.strokeStyle = '#ff7a1a';
+            ctx.stroke();
+          } else {
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+          }
+          ctx.globalAlpha = 1;
+        }
       }
     }
 
