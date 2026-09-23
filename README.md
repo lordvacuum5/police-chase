@@ -37,17 +37,42 @@ Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
 
 One player runs; everyone else is a police car, alongside the AI.
 
-On the menu, **MULTIPLAYER** asks for a game name. Whoever **creates** a game
-is the escapee: they pick the car, the map and the conditions, and picking the
-map is what starts it. Anyone who types that same name and **joins** arrives as
-a police unit on the same map. There is no lobby to browse and nothing to sign
+The menu offers three ways in: **SINGLE PLAYER**, **HOST A GAME** and **JOIN A
+GAME**. Hosting asks for a name for the game and then the same three questions
+single player asks — car, weather, ground — because the host is the escapee and
+what they pick is what everybody plays. Joining asks for that name and one
+thing more: which police car you turn up in. It does not show a map, because
+the map is not yours to choose; it used to show one greyed out, which looked
+broken rather than settled. There is no lobby to browse and nothing to sign
 into — the name is the whole of it.
 
-A human police player drives an **interceptor from the first star**, which an
-AI unit would not get until three. They are a real unit as far as the rest of
-the game is concerned: the siren picks them up, they show on the radar, and
-**they can make the arrest** — the bust clock is heat.js measuring the gap to
-the nearest unit, and a human in an interceptor is a unit like any other.
+**Nothing starts until START is pressed.** Clicking a map used to start the
+game on the spot, which meant you could not read what the second map was like
+without playing it, and made hosting a game feel like it went off by accident.
+
+A human police player drives a **pursuit car from the first star**, which an AI
+unit would not get until three, and chooses which one on the way in. They are a
+real unit as far as the rest of the game is concerned: the siren picks them up,
+they show on the radar, and **they can make the arrest** — the bust clock is
+heat.js measuring the gap to the nearest unit, and a human in a police car is a
+unit like any other.
+
+Measured on the car as a person gets it, not as the AI drives it
+(`tests/policecars.js`; the escapee's three are in the table further down):
+
+| | top speed | 0–60 | grip | shunts to wreck |
+|---|---|---|---|---|
+| **Interceptor** | 152 mph | 5.7 s | 1.52 g | 12 |
+| **Police SUV** | 145 mph | 7.1 s | 1.43 g | 19 |
+| **Unmarked** | 155 mph | 5.3 s | 1.52 g | 10 |
+
+The unmarked car is the quickest thing the force owns and the easiest to break,
+and it **carries no light bar** — the flag travels with the car over the
+network, so nothing lights up on the escapee's screen either, and nothing gets
+out of your way. The SUV is half as breakable again and a second and a half
+slower to sixty. There is deliberately **no patrol car** in the list: measured,
+it is slower than the interceptor, less grippy and no tougher, so it was a
+choice nobody would make for a reason.
 
 They are given a callsign, in the order they joined: the first police player is
 **U1**, which the radio reads as "Unit one". Typing a name for yourself was
@@ -128,14 +153,47 @@ about 10° of slip, which gathers itself up — and that is deliberate: the car
 can still be rotated on purpose, and a handbrake turn is still a handbrake
 turn.
 
+#### Turning at chase speeds
+
+*"At higher speeds — like fifty to a hundred — it needs to be slightly better
+at turning."* Turning is not the same question as grip, and the grip was
+already there: what a driver feels as a car that will not turn is the front
+tyres giving up before the rears, so the nose runs wide of the lock they asked
+for. The drivable spec's front grip was 1.15 against the rear's 1.25, which is
+exactly that, on purpose — it is what kept the tail planted.
+
+At 1.24 the two ends are almost even. Full lock, held at a steady speed
+(`tests/policeturn.js`):
+
+| | 50 km/h | 70 km/h | 90 km/h | 100 km/h |
+|---|---|---|---|---|
+| radius, before | 10.6 m | 21.9 m | 36.6 m | 43.9 m |
+| **radius, now** | **10.3 m** | **19.7 m** | **30.6 m** | **36.4 m** |
+| body slip, before / now | 4.9° / 5.0° | 1.4° / 1.5° | 0.5° / 0.5° | 0.3° / 0.2° |
+
+A sixth off the circle at the top of that band, and the body is no more
+sideways than it was at the bottom of it — it turns better without getting
+loose. The three keyboard questions above are unmoved: turn-in at 60 km/h is
+2.0° against 2.1°, on the power 1.6° against 1.7°, lifting off 4.4° against
+4.2°, nothing spins and everything gathers itself up.
+
+Two other ways in were tried and measured away. Stiffening the front made it
+turn *worse* (90 km/h: 36.6 m → 37.9 m), and raising the steering limiter's
+lateral target did nothing the tyre change had not already done.
+
 Traction control was not the answer and is not part of this. Every car in the
 game already has it (`makeSpec`, 0.85); turning it up moved wheelspin by four
 hundredths on tarmac and on grass and body slip not at all. What the car was
 short of was grip in the corner, not restraint on the throttle.
 
-What it deliberately is **not** is faster. Grip and pace stay where a police
-saloon's belong, well inside the Stiletto's; the car is forgiving, not
-superior, because the job is to catch somebody, not to win on pace.
+**It is not a slow car, and it is not meant to be.** A pursuit car that cannot
+stay with the thing it is chasing is scenery: measured, the interceptor a
+person drives tops 245 km/h against the Stiletto's 240, and since the front
+tyres were evened up it holds 1.52 g against the Stiletto's 1.58 and the
+Runner's 1.40. What it gives away is weight — it is half a tonne heavier than
+the Runner, which is what makes a shove a shove — and, in the SUV, a second and
+a half to sixty. None of this touches the AI's cars: every fleet interceptor is
+the spec it always was, so a single-player chase is unchanged.
 
 ### Seeing them, and losing them
 
@@ -386,6 +444,16 @@ themselves:
 
 A gamepad works too: left stick steers, triggers are throttle and brake, `A`
 handbrake, `X` clutch kick.
+
+**The speedometer reads in mph**, and so does the radio: a unit calling in
+"speeds 130" while the needle in front of you said 80 was nonsense, and the
+roads are British ones. The dial runs to 180, past anything in the game.
+
+**The plate above the dash is the road you are on** — the same names dispatch
+has always used on the radio, so "last seen on Cold Harbour" and the sign in
+front of you agree, and a call about a road you are nowhere near is easy to
+tell from a call about yours. Cut across a field and it keeps the last road,
+dimmed, rather than blanking every time two wheels touch grass.
 
 Sound only starts after your first key press — browsers refuse to play audio
 until the page has been interacted with.

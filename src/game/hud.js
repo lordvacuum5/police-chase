@@ -5,7 +5,7 @@
 // network is rasterised once into an offscreen canvas at load, and each frame
 // only blits a crop of it.
 
-import { clamp, clamp01, lerp, toKmh } from '../util/math.js';
+import { clamp, clamp01, lerp, toMph } from '../util/math.js';
 import { ROAD_KIND } from '../world/roadgraph.js';
 import { WORLD_HALF } from '../world/common.js';
 import { TRACK_SECONDS } from '../ai/dispatcher.js';
@@ -52,6 +52,10 @@ export class Hud {
     this.repairValue = document.getElementById('repairvalue');
     this.repairFill = document.getElementById('repairfill');
     this._repairShown = false;
+
+    this.roadEl = document.getElementById('roadsign');
+    this._roadName = '';
+    this._roadAt = 0;
 
     this.speedo = document.getElementById('speedo');
     this.sctx = this.speedo.getContext('2d');
@@ -235,6 +239,7 @@ export class Hud {
     }
 
     this._drawSpeedo(dt, player);
+    this._drawRoadSign(player);
     this._drawMinimap(player, dispatcher, heat);
   }
 
@@ -245,14 +250,16 @@ export class Hud {
     const S = this.speedo.width;
     const cx = S / 2, cy = S / 2, r = S * 0.42;
 
-    this.smoothSpeed = lerp(this.smoothSpeed, Math.abs(toKmh(v.forwardSpeed)), 1 - Math.exp(-14 * dt));
+    this.smoothSpeed = lerp(this.smoothSpeed, Math.abs(toMph(v.forwardSpeed)), 1 - Math.exp(-14 * dt));
     this.smoothRpm = lerp(this.smoothRpm, v.rpmFraction, 1 - Math.exp(-18 * dt));
 
     ctx.clearRect(0, 0, S, S);
 
     const A0 = Math.PI * 0.78;
     const A1 = Math.PI * 2.22;
-    const maxKmh = 300;
+    // Miles per hour, because the roads outside are signed in them. 180 is
+    // past what anything in the game will do, so the needle never pins.
+    const maxMph = 180;
 
     // dial
     ctx.strokeStyle = 'rgba(140,170,200,0.18)';
@@ -263,9 +270,9 @@ export class Hud {
 
     // ticks
     ctx.strokeStyle = 'rgba(200,220,240,0.45)';
-    for (let k = 0; k <= maxKmh; k += 20) {
-      const a = A0 + (A1 - A0) * (k / maxKmh);
-      const major = k % 60 === 0;
+    for (let k = 0; k <= maxMph; k += 10) {
+      const a = A0 + (A1 - A0) * (k / maxMph);
+      const major = k % 30 === 0;
       ctx.lineWidth = major ? 2.5 : 1;
       const r0 = r - (major ? 13 : 7);
       ctx.beginPath();
@@ -283,7 +290,7 @@ export class Hud {
     ctx.stroke();
 
     // needle
-    const sa = A0 + (A1 - A0) * clamp01(this.smoothSpeed / maxKmh);
+    const sa = A0 + (A1 - A0) * clamp01(this.smoothSpeed / maxMph);
     ctx.strokeStyle = '#e8eef5';
     ctx.lineWidth = 3;
     ctx.beginPath();
@@ -298,7 +305,36 @@ export class Hud {
     ctx.fillText(String(Math.round(this.smoothSpeed)), cx, cy + 30);
     ctx.font = '500 13px ui-monospace, Consolas, monospace';
     ctx.fillStyle = '#8c9bab';
-    ctx.fillText('km/h', cx, cy + 50);
+    ctx.fillText('mph', cx, cy + 50);
+  }
+
+  // ------------------------------------------------------------- road sign
+  /**
+   * Which road you are on, on a nameplate beside the speedometer.
+   *
+   * The names are the ones dispatch has always used on the radio ("last seen
+   * on Cold Harbour"), so the plate and the voice agree, and a call about a
+   * road you are nowhere near is easy to tell from one about the road you are
+   * on. Looked up a few times a second rather than every frame -- it is a
+   * search through the road index, and the answer changes at walking pace.
+   *
+   * Cutting across a field keeps the last road, dimmed: a name that blanks
+   * every time two wheels touch grass is worse than one that is a moment out
+   * of date.
+   */
+  _drawRoadSign(v) {
+    if (!this.roadEl) return;
+    const now = performance.now();
+    if (now - this._roadAt < 250) return;
+    this._roadAt = now;
+
+    const name = this.game.roadSign ? this.game.roadSign(v.position) : '';
+    if (name && name !== this._roadName) {
+      this._roadName = name;
+      this.roadEl.textContent = name;
+    }
+    this.roadEl.hidden = !this._roadName;
+    this.roadEl.classList.toggle('off', !name);
   }
 
   // --------------------------------------------------------------- minimap

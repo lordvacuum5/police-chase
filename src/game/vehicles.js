@@ -564,10 +564,26 @@ export function drivablePoliceSpec(key = 'interceptor') {
     // has it (makeSpec's default, 0.85): turning it up moved wheelspin by four
     // hundredths on tarmac and on grass, and body slip not at all. What was
     // missing was grip in the corner, not restraint on the throttle.
+    // Front grip was 1.15, below the rear's 1.25, which is what kept the tail
+    // planted -- and also what made the nose run wide of the lock the driver
+    // asked for from about 70 km/h up: "at higher speeds, like fifty to a
+    // hundred, it needs to be slightly better at turning". At 1.24 the two
+    // ends are almost even, and the car goes round measurably tighter at the
+    // top of that band without getting loose at the bottom of it
+    // (tests/policeturn.js; README, "Turning at chase speeds"):
+    //
+    //   full lock, steady speed   50 km/h   70 km/h   90 km/h   100 km/h
+    //   radius, was               10.6 m    21.9 m    36.6 m    43.9 m
+    //   radius, now               10.3 m    19.7 m    30.6 m    36.4 m
+    //   body slip, was / now      4.9/5.0   1.4/1.5   0.5/0.5   0.3/0.2
+    //
+    // Stiffening the front instead was tried and made it worse, and giving the
+    // steering limiter a higher lateral target did nothing the tyres had not
+    // already done.
     highSpeedTyre: {
       from: 8, to: 30,
       stiffness: { front: 2.2, rear: 2.8 },
-      grip: { front: 1.15, rear: 1.25 },
+      grip: { front: 1.24, rear: 1.25 },
     },
     // A shade more bite at the back than the fleet setting, for the same
     // reason: the tail stepping out is what a person cannot catch.

@@ -92,3 +92,10 @@ export function curveRadius(ax, az, bx, bz, cx, cz) {
 
 /** Format metres/second as km/h. */
 export const toKmh = (ms) => ms * 3.6;
+
+/**
+ * Format metres/second as mph -- what the car in front of you is doing, in the
+ * units the road signs it is passing are written in. The speedometer and the
+ * radio both read in these; the physics is metres and seconds throughout.
+ */
+export const toMph = (ms) => ms * 2.2369363;

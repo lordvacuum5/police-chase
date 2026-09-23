@@ -9,7 +9,7 @@ import {
 } from './game/vehicles.js';
 import { WORLD_HALF } from './world/common.js';
 import { MAPS, mapById } from './world/maps.js';
-import { showMenu, hideMenu, chosenCar } from './core/menu.js';
+import { showMenu, hideMenu, chosenCar, chosenPoliceCar } from './core/menu.js';
 import { DRIVE_SIDE } from './world/roadgraph.js';
 import { Dispatcher, SEARCH_SECONDS } from './ai/dispatcher.js';
 import {
@@ -340,16 +340,20 @@ class Game {
         : this.graph.randomNode(this.rng, 'street');
       place = this._placeOnRoad(node);
     }
-    // A human police player drives an interceptor whatever the wanted level
-    // is: they are not an ambient patrol car that happened to be nearby, they
-    // are a unit that has been sent. The car cards on the menu are the
-    // escapee's choice; this side does not get one.
+    // A human police player drives a pursuit car whatever the wanted level is:
+    // they are not an ambient patrol car that happened to be nearby, they are
+    // a unit that has been sent. Which of the three they turn up in is the one
+    // thing the join screen asks; an interceptor if it was never asked.
     if (session.active && session.role === 'police') {
       // Driveable by a person rather than by the speed planner, and heavy
       // enough to shove with: see drivablePoliceSpec. Only this car, and only
       // on this machine.
-      this.player = this.createVehicle('interceptor', 'interceptor',
-        place.position, place.heading, { police: true, spec: drivablePoliceSpec('interceptor') });
+      const kind = SPECS[chosenPoliceCar()] ? chosenPoliceCar() : 'interceptor';
+      // An unmarked car has no light bar to switch on, here or on the other
+      // player's screen -- the flag travels with the car over the network --
+      // which is the whole point of picking one.
+      this.player = this.createVehicle(kind, kind, place.position, place.heading,
+        { police: true, unmarked: kind === 'unmarked', spec: drivablePoliceSpec(kind) });
       this.player.lampPhase = this.rng();
       this.startPlace = place;
       return;
@@ -829,6 +833,17 @@ class Game {
   roadName(pos) {
     const snap = this.graph.nearestEdge(pos.x, pos.z);
     return snap && snap.edge.name ? 'on ' + snap.edge.name : 'in the city';
+  }
+
+  /**
+   * The same name without its article, for the plate on the HUD: "on the M1
+   * ring" is how it is said, "M1 RING" is how it is signed. Nothing within
+   * 40 m means there is no road to name -- a field, or the far side of one.
+   */
+  roadSign(pos) {
+    const snap = this.graph.nearestEdge(pos.x, pos.z, 40);
+    const name = snap && snap.edge.name;
+    return name ? name.replace(/^the\s+/i, '') : '';
   }
 
   nodeName(id) {

@@ -106,9 +106,14 @@ export class Commentary {
   }
 
   /** Speed as a unit would call it: rounded to the nearest ten. */
+  /**
+   * The speed to say on the radio, in mph and rounded to ten, because that is
+   * what the speedometer in front of the player reads and a unit calling in
+   * "speeds 130" while the driver's needle says 80 is nonsense.
+   */
   _speed(v) {
-    const kph = Math.abs(v.forwardSpeed) * 3.6;
-    return Math.max(10, Math.round(kph / 10) * 10);
+    const mph = Math.abs(v.forwardSpeed) * 2.2369363;
+    return Math.max(10, Math.round(mph / 10) * 10);
   }
 
   /**

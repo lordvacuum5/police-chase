@@ -1,4 +1,18 @@
-// Main menu: pick a map before anything heavy is built.
+// Main menu: settle everything before anything heavy is built.
+//
+// Three ways in, and the menu shows only what each one has to answer:
+//
+//   SINGLE PLAYER   car, weather, ground
+//   HOST A GAME     a name for the game, then the same three -- you are the
+//                   escapee, and what you pick is what everyone plays
+//   JOIN A GAME     the name of the game, and which police car you turn up in.
+//                   The ground and the weather are the host's; there is no
+//                   point showing them here, and showing them greyed out only
+//                   made it look broken.
+//
+// Nothing starts until START is pressed. Picking a map used to start the game
+// on the spot, which meant you could not look at the second map without
+// playing it.
 //
 // The thumbnails are schematics drawn with 2D canvas rather than renders of the
 // real map -- generating a map costs a second or so, and the whole point of the
@@ -18,11 +32,12 @@ import {
  * The cars you can run in.
  *
  * Every figure is measured by tests/supercar.js, not estimated: top speed and
- * 0-100 on flat tarmac past the map edge, grip as the peak steady lateral
+ * 0-60 on flat tarmac past the map edge, grip as the peak steady lateral
  * acceleration at 120 km/h, and toughness as how many 50 km/h shunts into a
- * parked patrol car it takes to wreck the car. Each bar is scaled to the
- * best of the three, so the cards read as a trade rather than a rating.
- * Re-run the test and update these if a spec changes.
+ * parked patrol car it takes to wreck the car. Speeds are in mph, like the
+ * speedometer and like the radio. Each bar is scaled to the best of the three,
+ * so the cards read as a trade rather than a rating. Re-run the test and
+ * update these if a spec changes.
  */
 export const CARS = [
   {
@@ -32,8 +47,8 @@ export const CARS = [
     colour: '#d94f16',
     shape: 'saloon',
     stats: [
-      ['Top speed', 215, 'km/h'],
-      ['0-100', 7.4, 's', true],
+      ['Top speed', 134, 'mph'],
+      ['0-60', 7.1, 's', true],
       ['Grip', 1.40, 'g'],
       ['Toughness', 11, 'hits'],
     ],
@@ -45,8 +60,8 @@ export const CARS = [
     colour: '#b3101e',
     shape: 'wedge',
     stats: [
-      ['Top speed', 240, 'km/h'],
-      ['0-100', 5.0, 's', true],
+      ['Top speed', 149, 'mph'],
+      ['0-60', 4.8, 's', true],
       ['Grip', 1.58, 'g'],
       ['Toughness', 5, 'hits'],
     ],
@@ -59,15 +74,80 @@ export const CARS = [
     roof: '#e9e2c8',
     shape: 'boxy',
     stats: [
-      ['Top speed', 142, 'km/h'],
-      ['0-100', 10.2, 's', true],
+      ['Top speed', 88, 'mph'],
+      ['0-60', 9.8, 's', true],
       ['Grip', 1.08, 'g'],
+      ['Toughness', 18, 'hits'],
+    ],
+  },
+];
+
+/**
+ * The police cars a human unit can turn up in.
+ *
+ * Joining a game puts you in the fleet rather than in front of it, so this is
+ * the one thing that side of the menu picks. The figures are measured by
+ * tests/policecars.js on the car as a person gets it -- the drivable tyre
+ * model, the extra mass, the extra engine (see drivablePoliceSpec) -- and not
+ * on the fleet car the AI drives, so the cards describe what you will actually
+ * be holding. Bars are scaled within this list, as the escapee's are within
+ * theirs: these three are a choice between each other, not against a Stiletto.
+ *
+ * There is no patrol car in the list on purpose. Measured, it is slower than
+ * the interceptor, no tougher, and less grippy -- a choice nobody would make
+ * for a reason. These three are a real triangle: the unmarked car is the
+ * quickest thing the force owns and the easiest to break, and it carries no
+ * light bar, so nothing moves out of your way; the SUV is half as breakable
+ * again and a second and a half slower to sixty.
+ */
+export const POLICE_CARS = [
+  {
+    id: 'interceptor',
+    name: 'Interceptor',
+    tag: 'PURSUIT',
+    colour: '#16233c',
+    shape: 'saloon',
+    stats: [
+      ['Top speed', 152, 'mph'],
+      ['0-60', 5.7, 's', true],
+      ['Grip', 1.52, 'g'],
+      ['Toughness', 12, 'hits'],
+    ],
+  },
+  {
+    id: 'suv',
+    name: 'Police SUV',
+    tag: 'HEAVY, 4WD',
+    colour: '#eef2f6',
+    roof: '#13233f',
+    shape: 'suv',
+    stats: [
+      ['Top speed', 145, 'mph'],
+      ['0-60', 7.1, 's', true],
+      ['Grip', 1.43, 'g'],
       ['Toughness', 19, 'hits'],
+    ],
+  },
+  {
+    id: 'unmarked',
+    name: 'Unmarked',
+    tag: 'NO LIGHT BAR',
+    colour: '#23272e',
+    shape: 'saloon',
+    stats: [
+      ['Top speed', 155, 'mph'],
+      ['0-60', 5.3, 's', true],
+      ['Grip', 1.52, 'g'],
+      ['Toughness', 10, 'hits'],
     ],
   },
 ];
 
 const CAR_KEY = 'pc.car';
+const POLICE_KEY = 'pc.policecar';
+// Not 'pc.map': that name is taken, in sessionStorage, by the map a refresh
+// drops you back into.
+const MAP_KEY = 'pc.ground';
 
 /** The car picked on the menu, remembered between visits. */
 export function chosenCar() {
@@ -80,25 +160,57 @@ function rememberCar(id) {
   try { localStorage.setItem(CAR_KEY, id); } catch (e) { /* storage blocked */ }
 }
 
+/** The police car picked for joining somebody else's game. */
+export function chosenPoliceCar() {
+  let id = null;
+  try { id = localStorage.getItem(POLICE_KEY); } catch (e) { /* storage blocked */ }
+  return POLICE_CARS.some((c) => c.id === id) ? id : POLICE_CARS[0].id;
+}
+
+/** The map picked on the menu. Only the escapee's side of it ever asks. */
+export function chosenMap() {
+  let id = null;
+  try { id = localStorage.getItem(MAP_KEY); } catch (e) { /* storage blocked */ }
+  return MAPS.some((m) => m.id === id) ? id : MAPS[0].id;
+}
+
+function remember(key, id) {
+  try { localStorage.setItem(key, id); } catch (e) { /* storage blocked */ }
+}
+
 export function showMenu(onPick) {
   const menu = document.getElementById('menu');
-  const holder = document.getElementById('maps');
-  holder.innerHTML = '';
   menu.classList.remove('gone');
-  buildCarCards();
-  buildMultiplayer(onPick);
+  buildMaps();
   buildConditions();
   buildBestScores();
   buildVoicePicker();
+  buildModes(onPick);
   if (prefersTouch()) {
     const hint = document.getElementById('menuhint');
     if (hint) hint.innerHTML = 'Tap <b>MENU</b> in game to come back here';
   }
+}
+
+/**
+ * The ground. Picking one only selects it; START is what starts the game.
+ */
+function buildMaps() {
+  const holder = document.getElementById('maps');
+  if (!holder) return;
+  holder.innerHTML = '';
+  let current = chosenMap();
+  const cards = [];
+
+  const paint = () => {
+    for (const c of cards) c.classList.toggle('chosen', c.dataset.id === current);
+  };
 
   for (const m of MAPS) {
     const card = document.createElement('div');
     card.className = 'mapcard';
     card.tabIndex = 0;
+    card.dataset.id = m.id;
 
     const canvas = document.createElement('canvas');
     canvas.width = 620; canvas.height = 300;
@@ -119,32 +231,15 @@ export function showMenu(onPick) {
 
     if (m.id === 'wexbury') drawTown(canvas); else drawCity(canvas);
 
-    // In a single-player game, or as the host of a new multiplayer one,
-    // picking the ground is what starts everything. A player joining somebody
-    // else's game never gets here: the host has already chosen.
-    const pick = async () => {
-      if (netMode === 'create') {
-        const room = gameName();
-        if (!room) { netStatus('Give the game a name first.', 'bad'); return; }
-        netStatus(`Creating "${room}"…`);
-        try {
-          await session.connect({
-            room, name: 'Escapee', map: m.id, create: true, conditions: chosenConditions(),
-          });
-        } catch (err) {
-          netStatus(err.message, 'bad');
-          return;
-        }
-      }
-      menu.classList.add('gone');
-      onPick(m);
-    };
-    card.addEventListener('click', pick);
+    const select = () => { current = m.id; remember(MAP_KEY, m.id); paint(); };
+    card.addEventListener('click', select);
     card.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); }
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(); }
     });
+    cards.push(card);
     holder.appendChild(card);
   }
+  paint();
 }
 
 export function hideMenu() {
@@ -152,22 +247,25 @@ export function hideMenu() {
 }
 
 /**
- * Car cards. Picking one only selects it -- picking a map is what starts the
- * game -- so the choice is shown as a highlighted card rather than acted on.
+ * Car cards. Picking one only selects it -- START is what starts the game --
+ * so the choice is shown as a highlighted card rather than acted on.
+ *
+ * The same cards do both sides of the game: the escapee's three, or, for
+ * somebody joining as a police unit, the three cars the fleet will hand them.
  */
-function buildCarCards() {
+function buildCarCards(list, key, chosen) {
   const holder = document.getElementById('cars');
   if (!holder) return;
   holder.innerHTML = '';
-  let current = chosenCar();
+  let current = chosen();
 
-  const best = CARS[0].stats.map((_, i) => {
-    const vals = CARS.map((c) => c.stats[i][1]);
-    return CARS[0].stats[i][3] ? Math.min(...vals) : Math.max(...vals);
+  const best = list[0].stats.map((_, i) => {
+    const vals = list.map((c) => c.stats[i][1]);
+    return list[0].stats[i][3] ? Math.min(...vals) : Math.max(...vals);
   });
 
   const cards = [];
-  for (const car of CARS) {
+  for (const car of list) {
     const card = document.createElement('div');
     card.className = 'carcard';
     card.tabIndex = 0;
@@ -198,7 +296,7 @@ function buildCarCards() {
 
     const select = () => {
       current = car.id;
-      rememberCar(car.id);
+      remember(key, car.id);
       for (const c of cards) {
         const on = c.dataset.id === current;
         c.classList.toggle('chosen', on);
@@ -222,15 +320,22 @@ function buildCarCards() {
 
 /** Day or night, dry or rain: two switches, remembered for next time. */
 /**
- * Single player, or a game with other people in it.
+ * Single player, hosting, or joining.
  *
  * Multiplayer is one escapee and any number of police cars, and a game is just
- * a name: whoever creates it is the one being chased and picks the ground,
- * and anyone who types the same name joins as a police unit on that map. The
- * name is the whole of the lobby -- there is no list of games to browse and
- * nothing to sign into.
+ * a name: whoever hosts it is the one being chased and picks the ground and
+ * the weather, and anyone who types the same name joins as a police unit in
+ * that game. The name is the whole of the lobby -- there is no list of games
+ * to browse and nothing to sign into.
+ *
+ * Hosting and joining are separate choices rather than two small buttons
+ * inside one multiplayer panel, because they are not the same job: one of them
+ * decides what everybody plays, and the other turns up to it. A joiner is
+ * shown a car and nothing else -- the ground and the weather are already
+ * settled, and greying them out only made the menu look broken.
  */
 let netMode = 'single';       // 'single' | 'create' | 'join'
+let starting = false;         // a connection is already in flight
 
 function gameName() {
   const el = document.getElementById('gamename');
@@ -244,76 +349,125 @@ function netStatus(text, kind) {
   el.className = kind || '';
 }
 
-function buildMultiplayer(onPick) {
+const START_LABEL = { single: 'START CHASE', create: 'CREATE & START', join: 'JOIN GAME' };
+const MODE_HINT = {
+  single: '',
+  create: 'You are the escapee. Others join by typing this name.',
+  join: 'You are a police unit in this game.',
+};
+
+function buildModes(onPick) {
   const holder = document.getElementById('mode');
   const panel = document.getElementById('netpanel');
-  const menu = document.getElementById('menu');
-  if (!holder || !panel) return;
+  const startBtn = document.getElementById('startbtn');
+  const nameBox = document.getElementById('gamename');
+  if (!holder || !panel || !startBtn) return;
   holder.innerHTML = '';
   netMode = 'single';
-  netStatus('');
-  menu.classList.remove('joining');
+  starting = false;
 
-  const create = document.getElementById('netcreate');
-  const join = document.getElementById('netjoin');
-  const sub = document.getElementById('menusub');
-
-  const setMode = (mode) => {
-    netMode = mode;
-    create.classList.toggle('on', mode === 'create');
-    join.classList.toggle('on', mode === 'join');
-    menu.classList.toggle('joining', mode === 'join');
-    if (sub) {
-      sub.textContent = mode === 'create' ? 'CHOOSE YOUR GROUND — THIS STARTS THE GAME' : 'CHOOSE YOUR GROUND';
-    }
-    if (mode === 'create') netStatus('You are the escapee. Pick a map to start; others join by name.');
-    else if (mode === 'join') netStatus('You drive an interceptor. The host picks the map and car.');
-    else netStatus('');
-  };
-
+  const modes = [
+    ['SINGLE PLAYER', 'single'],
+    ['HOST A GAME', 'create'],
+    ['JOIN A GAME', 'join'],
+  ];
   const seg = document.createElement('div');
   seg.className = 'seg';
-  const buttons = [['SINGLE PLAYER', 'single'], ['MULTIPLAYER', 'multi']].map(([label, value]) => {
+  const buttons = modes.map(([label, value]) => {
     const b = document.createElement('button');
     b.type = 'button';
     b.textContent = label;
-    b.classList.toggle('on', value === 'single');
-    b.addEventListener('click', () => {
-      for (const x of buttons) x.classList.toggle('on', x === b);
-      panel.hidden = value !== 'multi';
-      setMode(value === 'multi' ? 'create' : 'single');
-    });
+    b.addEventListener('click', () => setMode(value));
     seg.appendChild(b);
     return b;
   });
   holder.appendChild(seg);
-  panel.hidden = true;
 
-  create.onclick = () => setMode('create');
-  join.onclick = async () => {
-    setMode('join');
-    const room = gameName();
-    if (!room) { netStatus('Type the name of the game to join.', 'bad'); return; }
-    netStatus(`Joining "${room}"…`);
-    try {
-      await session.connect({ room, create: false });
-    } catch (err) {
-      netStatus(err.message, 'bad');
+  function setMode(mode) {
+    netMode = mode;
+    starting = false;
+    startBtn.disabled = false;
+    buttons.forEach((b, i) => b.classList.toggle('on', modes[i][1] === mode));
+
+    // Joining picks a police car; the other two pick the escapee's.
+    const joining = mode === 'join';
+    buildCarCards(joining ? POLICE_CARS : CARS,
+      joining ? POLICE_KEY : CAR_KEY,
+      joining ? chosenPoliceCar : chosenCar);
+
+    const show = (id, on, text) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.hidden = !on;
+      if (text !== undefined) el.textContent = text;
+    };
+    show('netpanel', mode !== 'single');
+    show('netlabel', true, mode === 'create' ? 'NAME YOUR GAME' : 'GAME TO JOIN');
+    show('carsub', true, joining ? 'CHOOSE YOUR POLICE CAR' : 'CHOOSE YOUR CAR');
+    show('conditions', !joining);
+    show('menusub', !joining);
+    show('maps', !joining);
+    const note = document.getElementById('joinnote');
+    if (note) {
+      note.hidden = !joining;
+      note.innerHTML = 'The host is the escapee, and picks the ground and the weather. '
+        + 'You are <b>a police unit in their game</b> &mdash; all you choose is the car you turn up in.';
+    }
+    if (nameBox) nameBox.placeholder = mode === 'create' ? 'NEW GAME NAME' : 'GAME NAME';
+    startBtn.textContent = START_LABEL[mode];
+    netStatus(MODE_HINT[mode]);
+    if (mode !== 'single' && nameBox) nameBox.focus();
+  }
+
+  const start = async () => {
+    if (starting) return;
+    if (netMode === 'single') {
+      hideMenu();
+      onPick(mapById(chosenMap()) || MAPS[0]);
       return;
     }
-    netStatus('In. Starting…', 'good');
-    const map = mapById(session.map) || MAPS[0];
-    document.getElementById('menu').classList.add('gone');
+    const room = gameName();
+    if (!room) {
+      netStatus(netMode === 'create' ? 'Give the game a name first.'
+        : 'Type the name of the game to join.', 'bad');
+      if (nameBox) nameBox.focus();
+      return;
+    }
+    starting = true;
+    startBtn.disabled = true;
+    netStatus(netMode === 'create' ? `Creating "${room}"...` : `Joining "${room}"...`);
+    try {
+      await session.connect({
+        room,
+        create: netMode === 'create',
+        map: chosenMap(),
+        conditions: chosenConditions(),
+      });
+    } catch (err) {
+      netStatus(err.message, 'bad');
+      starting = false;
+      startBtn.disabled = false;
+      return;
+    }
+    netStatus('In. Starting...', 'good');
+    // The host plays the map it just picked; a joiner plays the host's,
+    // whatever it is, which is why the join screen never showed one.
+    const map = netMode === 'create'
+      ? (mapById(chosenMap()) || MAPS[0])
+      : (mapById(session.map) || MAPS[0]);
+    hideMenu();
     onPick(map);
   };
-  const nameBox = document.getElementById('gamename');
+
+  startBtn.onclick = start;
   if (nameBox) {
     nameBox.onkeydown = (e) => {
       if (e.key !== 'Enter') return;
       e.preventDefault();
-      if (netMode === 'join') join.onclick();
+      start();
     };
   }
+  setMode('single');
 }
 
 function buildConditions() {
@@ -465,6 +619,16 @@ function drawCarProfile(canvas, car) {
     },
     // Square-rigged: an upright screen, a flat roof the full length of the
     // body, a short bonnet, and big wheels standing well clear of the ground.
+    // A police estate: the boxy body without the ladder-frame spare on the
+    // back door, sitting a little lower on smaller wheels.
+    suv: {
+      tall: 116,
+      body: [[0.00, 0.26], [0.00, 0.93], [0.03, 0.97], [0.62, 0.97], [0.70, 0.62],
+        [0.97, 0.60], [1.00, 0.54], [1.00, 0.26], [0.86, 0.20], [0.14, 0.20]],
+      glass: [[0.06, 0.66], [0.06, 0.91], [0.60, 0.91], [0.67, 0.66]],
+      roof: [[0.03, 0.97], [0.62, 0.97], [0.63, 0.935], [0.03, 0.935]],
+      wheels: [0.19, 0.79], r: 0.22,
+    },
     boxy: {
       tall: 124,
       body: [[0.00, 0.26], [0.00, 0.95], [0.02, 0.99], [0.66, 0.99], [0.69, 0.96],
