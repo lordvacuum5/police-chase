@@ -46,6 +46,19 @@ const KINDS = ['runner', 'supercar', 'offroad', 'patrol', 'interceptor', 'suv', 
 export const FLAG = { POLICE: 1, UNMARKED: 2, DISABLED: 4, BLIP: 8 };
 
 /** A car, as it goes on the wire: fifteen numbers and an id. */
+/**
+ * What marks a car id as one of the AI's rather than a player's.
+ *
+ * It used to be the letter "a", and a player's id is eight characters of
+ * `Math.random().toString(36)` -- so about one player in thirty-six had an id
+ * beginning with an a and was taken for an AI car by every machine but their
+ * own. Their car was dropped from the world packet's bookkeeping and blinked
+ * in and out on everybody else's screen, they did not count as somebody who
+ * could see a car appear, and a hit on them went looking for a patrol car
+ * with their name. A hash cannot appear in base 36, so it cannot collide.
+ */
+export const AI_ID = '#';
+
 export function packCar(id, v, extra = {}) {
   let flags = 0;
   if (v.isPolice) flags |= FLAG.POLICE;
@@ -221,6 +234,7 @@ class Session {
     this.transport = null;
     this.heat = 0;
     this.seen = false;          // does the pursuit have eyes on the escapee
+    this.bust = 0;              // seconds the escapee has been pinned, 0-5
     this.escapeeId = null;
     this.error = '';
     this.closed = false;
@@ -340,6 +354,7 @@ class Session {
         const at = performance.now();
         this.heat = msg.h || 0;
         this.seen = !!msg.s;
+        this.bust = msg.b || 0;
         const live = new Set();
         for (const packed of msg.c) {
           const car = unpackCar(packed);
@@ -348,7 +363,7 @@ class Session {
         }
         // AI cars that stopped being sent have been despawned.
         for (const id of [...this.tracks.keys()]) {
-          if (String(id).startsWith('a') && !live.has(id)) this.tracks.delete(id);
+          if (String(id).startsWith(AI_ID) && !live.has(id)) this.tracks.delete(id);
         }
         break;
       }
@@ -401,9 +416,14 @@ class Session {
     return true;
   }
 
-  sendWorld(cars, heat, seen) {
+  sendWorld(cars, heat, seen, bust) {
     if (!this.active) return;
-    this.transport.send({ t: 'w', from: this.id, c: cars, h: heat, s: seen ? 1 : 0 });
+    this.transport.send({
+      t: 'w', from: this.id, c: cars, h: heat, s: seen ? 1 : 0,
+      // How far through the arrest the escapee is, so every screen can show
+      // the same five seconds running down.
+      b: Math.round((bust || 0) * 100) / 100,
+    });
   }
 
   sendCar(car) {

@@ -200,7 +200,8 @@ export class RoadblockManager {
       const nx = -p.tz * edge.width * 0.45, nz = p.tx * edge.width * 0.45;
       if (this.game.inView({ x: p.x, z: p.z })
         || this.game.inView({ x: p.x + nx, z: p.z + nz })
-        || this.game.inView({ x: p.x - nx, z: p.z - nz })) continue;
+        || this.game.inView({ x: p.x - nx, z: p.z - nz })
+        || this.game.nearHuman({ x: p.x, z: p.z })) continue;
 
       // The tangent points along increasing `along`, which runs from the edge's
       // a end to its b end. A target arriving *at* the a end is therefore

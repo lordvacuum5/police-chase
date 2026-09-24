@@ -207,6 +207,15 @@ the Runner, which is what makes a shove a shove — and, in the SUV, a second an
 a half to sixty. None of this touches the AI's cars: every fleet interceptor is
 the spec it always was, so a single-player chase is unchanged.
 
+**Commentary needs somebody with eyes on.** Running a red light is called in
+by the unit that saw it — within 120 m, with a clear line to the car — and when
+there was nobody, the call fell back to whoever was primary, who then read out
+a junction name from the other side of town while the entire force was
+searching: *"they kept giving commentary, saying red light through Elmstown
+Road, like they knew where I was."* The fallback now only stands in while the
+force can actually see the car. The rest of the running commentary was already
+gated this way.
+
 ### Seeing them, and losing them
 
 A police player's radar shows the suspect **only while the pursuit can actually
@@ -275,6 +284,47 @@ about 80 bytes each, and a chase in progress measured 640 bytes a packet and
 13 KB a second going up from the host. An AI car more than 400 m from every
 human is not sent at all: it is a dot nobody can see, half the pack is usually
 out there, and it comes back the moment somebody drives near it.
+
+**A hit has to move the car as well as dent it.** The machine that did the
+hitting sends the velocity change it measured, and the owner applies it to its
+own copy — that part worked, and the damage landed. What did not is that the
+car never went anywhere: ramming an AI patrol car as a police player wrote down
+the dent on the escapee's machine while the car itself drove on, so on the
+screen that did the hitting it was a car that would not budge. The hit now
+carries the direction it went in as well, and the owner puts it through the
+body as a real impulse, capped at 14 m/s so a bad frame cannot launch anybody.
+
+**"a" is a letter players' ids start with.** Cars on the wire are told apart by
+their id, and an AI car's used to be the letter *a* in front of its callsign
+number, while a player's id is eight characters of `Math.random().toString(36)`
+— so about **one player in thirty-six** was taken for an AI car by every
+machine but their own. Their car was dropped from the world packet's
+bookkeeping and blinked in and out on the other screens, they did not count as
+somebody who could see a car appear, and a hit on them went looking for a
+patrol car with their name on it. The marker is now `#`, which base 36 cannot
+produce.
+
+**Nothing appears or vanishes in front of anybody.** Every spawn already
+checked that the escapee could not see the spot, and every retirement measured
+its distance from the escapee — which in a game with other people in it is one
+person out of however many are playing: *"I would see police cars just despawn
+right in front of my eyes as a police officer."* Their cameras cannot be tested
+from another machine, but their cars can, so anywhere within 170 m of another
+player counts as in view, and the roster's distances are measured to the
+**nearest person** rather than to the escapee. In a single player game that
+list is empty and none of it changes anything.
+
+**Two units, one parking space.** Each machine places its own car, so two
+police players joining within a moment of each other both chose a spot knowing
+only the cars they had heard about — and neither had heard about the other yet.
+For the first six seconds after joining, if somebody else's car is within nine
+metres, whoever has the higher id gives way and goes somewhere else. The ids
+are the same strings on both machines, so exactly one of them moves.
+
+**The arrest clock is on every screen.** It is measured on the escapee's
+machine, because it is their car and their five seconds, so a police player
+watching an arrest happen — even one they were making themselves — had no
+meter at all. It goes out with the rest of the world state now.
 
 `RemoteUnit` (in `main.js`) is what makes the rest of the game work without
 knowing any of this: a police car somebody else drives is registered with the

@@ -314,7 +314,10 @@ export class Dispatcher {
       const u = this.units[i];
       if (u.human) continue;                // somebody else is driving it
       if (u.role === ROLE.HOLD) continue;   // the roadblock owns its own cars
-      const d = u.distanceTo(target.position);
+      // Distance from the nearest person, not from the escapee: in a
+      // multiplayer game a car 900 m from the suspect can be alongside a
+      // police player, and they watched it vanish.
+      const d = this.game.watcherDistance(u.vehicle.position);
       const far = d > 900;
 
       if (u.vehicle.speed < 1.0 && !(u.role === ROLE.INTERCEPT && u.driver.remaining() < 30)) {
@@ -373,7 +376,7 @@ export class Dispatcher {
     if (over > 0 && this.trimTimer <= 0) {
       let pick = null, pickD = 0;
       for (const u of live) {
-        const d = u.distanceTo(target.position);
+        const d = this.game.watcherDistance(u.vehicle.position);
         if (d <= pickD) continue;
         pick = u; pickD = d;
       }
@@ -381,7 +384,8 @@ export class Dispatcher {
       const nearLimit = this.game.vehicles.length >= this.game.vehicleLimit - 4;
       const gap = over >= 3 || nearLimit ? 160 : 260;
       const hidden = over >= 3 || nearLimit ? 70 : 110;
-      if (pick && (pickD > gap || (pickD > hidden && !this._visibleTo(pick, target)))) {
+      if (pick && !this.game.nearHuman(pick.vehicle.position)
+        && (pickD > gap || (pickD > hidden && !this._visibleTo(pick, target)))) {
         this.trimTimer = clamp(2.2 / over, 0.5, 2.2);
         this.retire(pick);
       }
@@ -397,10 +401,11 @@ export class Dispatcher {
       for (const u of live) {
         if (u.vehicle.specKey !== 'patrol') continue;
         if (u.role === ROLE.BOX || u.role === ROLE.PIT || u.role === ROLE.BLOCK) continue;
-        const d = u.distanceTo(target.position);
+        const d = this.game.watcherDistance(u.vehicle.position);
         if (d > pickD) { pick = u; pickD = d; }
       }
-      if (pick && (pickD > 160 || (pickD > 70 && !this._visibleTo(pick, target)))) {
+      if (pick && !this.game.nearHuman(pick.vehicle.position)
+        && (pickD > 160 || (pickD > 70 && !this._visibleTo(pick, target)))) {
         this.trimTimer = 3;
         this.retire(pick);
       }

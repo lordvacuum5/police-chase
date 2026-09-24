@@ -30,7 +30,7 @@ import { Hud } from './game/hud.js';
 import { Input } from './core/input.js';
 import { TouchControls } from './core/touch.js';
 import { SkidMarks, LightBars } from './game/effects.js';
-import { session, packCar, FLAG } from './net/session.js';
+import { session, packCar, AI_ID, FLAG } from './net/session.js';
 import { GameAudio } from './game/audio.js';
 import { Commentary } from './game/commentary.js';
 import { Phrasebook } from './game/phrases.js';
@@ -154,7 +154,10 @@ class RemoteUnit {
     // and a button. HUMAN_CALLSIGNS keeps these numbers off the AI's pool, so
     // there is never a second U1 on the net.
     if (i >= 0) return `U${i + 1}`;
-    return id.startsWith('a') ? id.slice(1) : `U${id.slice(0, 2)}`;
+    // An AI car's id is its callsign number behind the AI marker, and the
+    // number is what the officer on the other machine answers to: U5 there
+    // should be U5 here, not "5".
+    return id.startsWith(AI_ID) ? `U${id.slice(1)}` : `U${id.slice(0, 2)}`;
   }
 
   get position() { return this.vehicle.position; }
@@ -499,6 +502,46 @@ class Game {
    * generous at the edges -- a car sliding into shot as you turn is still a
    * car you watched appear -- by testing a sphere that grows with distance.
    */
+  /**
+   * Where the other people are.
+   *
+   * Everything that decides whether a car may appear or be taken away asks
+   * whether it would be seen, and "seen" used to mean seen by this machine's
+   * camera -- which in a multiplayer game is one person out of however many
+   * are playing. A police player four streets away from the escapee watched
+   * cars blink in and out in front of them, because as far as the spawner was
+   * concerned nobody was there.
+   *
+   * Their cameras cannot be tested from here; their cars can. So anywhere
+   * near another player counts as in view, generously, and in a single player
+   * game this list is empty and nothing below it changes at all.
+   */
+  humanPositions() {
+    const out = [];
+    if (!this.netCars) return out;
+    for (const [id, v] of this.netCars) {
+      if (!String(id).startsWith(AI_ID)) out.push(v.position);
+    }
+    return out;
+  }
+
+  /** True if another player's car is close enough to see what happens here. */
+  nearHuman(pos, radius = 170) {
+    for (const p of this.humanPositions()) {
+      if (dist2(p.x, p.z, pos.x, pos.z) < radius) return true;
+    }
+    return false;
+  }
+
+  /** How far this is from the nearest person playing, whoever that is. */
+  watcherDistance(pos) {
+    let best = dist2(pos.x, pos.z, this.player.position.x, this.player.position.z);
+    for (const p of this.humanPositions()) {
+      best = Math.min(best, dist2(p.x, p.z, pos.x, pos.z));
+    }
+    return best;
+  }
+
   inView(pos) {
     const cam = this.camera;
     if (!cam) return false;
@@ -535,7 +578,7 @@ class Game {
       place = this._placeOnRoad(n);
       // Never where you are looking: a car that has to drive in from out of
       // sight is a car arriving, not one appearing.
-      if (place && this.inView(place.position)) place = null;
+      if (place && (this.inView(place.position) || this.nearHuman(place.position))) place = null;
       if (place) break;
     }
     if (!place) return null;
@@ -653,7 +696,7 @@ class Game {
       // fifty metres up the road is worse than no rolling block; the
       // dispatcher tries again after its cooldown, by which time the road
       // ahead has usually turned a corner.
-      if (this.inView(pos)) continue;
+      if (this.inView(pos) || this.nearHuman(pos)) continue;
       let occupied = false;
       for (const v of this.vehicles) {
         if (dist2(v.position.x, v.position.z, pos.x, pos.z) < 8) { occupied = true; break; }
@@ -735,7 +778,8 @@ class Game {
       };
       if (this.sim.surfaceAt(pos.x, pos.z) !== 1) continue;
       // Appearing in plain view is only acceptable a long way off.
-      if (this.inView(pos) && dist2(pos.x, pos.z, target.position.x, target.position.z) < 260) continue;
+      if ((this.inView(pos) && dist2(pos.x, pos.z, target.position.x, target.position.z) < 260)
+        || this.nearHuman(pos)) continue;
       let occupied = false;
       for (const v of this.vehicles) {
         if (dist2(v.position.x, v.position.z, pos.x, pos.z) < 9) { occupied = true; break; }
@@ -1114,8 +1158,10 @@ class Game {
     // position is known, start them a couple of streets away from it instead.
     if (session.role === 'police' && this.netSuspect && !this.netPlaced) {
       this.netPlaced = true;
+      this.netPlacedAt = this.clock;
       this._netPlaceNearSuspect();
     }
+    if (session.role === 'police' && this.netPlaced) this._netKeepClear();
 
     // What the rest of the game asks the dispatcher for. On a police player's
     // machine nothing has updated it, so the suspect's own car is the answer.
@@ -1220,6 +1266,30 @@ class Game {
     }
   }
 
+  /**
+   * Two units, one parking space.
+   *
+   * Each machine places its own car, so two police players joining within a
+   * moment of each other both pick a spot knowing only the cars they have
+   * heard about -- and neither of them has heard about the other yet. They
+   * landed on top of one another. For the first few seconds after joining,
+   * whoever has the higher id gives way and goes somewhere else; the id is
+   * the same string on both machines, so exactly one of them moves.
+   */
+  _netKeepClear() {
+    if (this.clock - (this.netPlacedAt || 0) > 6) return;
+    if (!this.netCars) return;
+    for (const [id, v] of this.netCars) {
+      if (String(id).startsWith(AI_ID)) continue;            // an AI car, not a person
+      if (dist2(v.position.x, v.position.z,
+        this.player.position.x, this.player.position.z) > 9) continue;
+      if (String(session.id) < String(id)) continue;         // they moved first
+      this.netPlacedAt = this.clock;
+      this._netPlaceNearSuspect();
+      return;
+    }
+  }
+
   /** Put this police car on a road a few hundred metres from the suspect. */
   _netPlaceNearSuspect() {
     const s = this.netSuspect;
@@ -1229,6 +1299,10 @@ class Game {
       const node = this.graph.randomNode(this.rng, 'street');
       const d = dist2(node.x, node.z, s.position.x, s.position.z);
       if (d < 90 || d > 260) continue;
+      // Not where another person is sitting: _placeOnRoad keeps cars 7 m
+      // apart, which is enough not to overlap and not enough to be a
+      // different place to start.
+      if (this.nearHuman({ x: node.x, z: node.z }, 40)) continue;
       const place = this._placeOnRoad(node);
       if (place) { best = place; break; }
     }
@@ -1272,7 +1346,18 @@ class Game {
 
     const other = this.netCars.get(hit);
     const theirs = p.lastImpact * ((p.spec.mass || 1500) / (other.spec.mass || 1500));
-    session.sendEvent('hit', { target: hit, dv: Math.round(theirs * 100) / 100 });
+    // Which way the shove went, so the owner can put it through its own car
+    // rather than only writing down the damage. Centre to centre, flattened:
+    // a contact between two cars on a road is a horizontal business.
+    let nx = other.position.x - p.position.x, nz = other.position.z - p.position.z;
+    const l = Math.hypot(nx, nz) || 1;
+    nx /= l; nz /= l;
+    session.sendEvent('hit', {
+      target: hit,
+      dv: Math.round(theirs * 100) / 100,
+      nx: Math.round(nx * 1000) / 1000,
+      nz: Math.round(nz * 1000) / 1000,
+    });
   }
 
   /** A hit somebody else's machine saw, on a car this one owns. */
@@ -1281,7 +1366,7 @@ class Game {
     let v = null;
     if (id === session.id) {
       v = this.player;
-    } else if (id.startsWith('a') && session.isHost) {
+    } else if (id.startsWith(AI_ID) && session.isHost) {
       const key = id.slice(1);
       const unit = this.dispatcher.units.find((u) => !u.human && u.vehicle
         && String(u.callsignId || u.vehicle.id) === key);
@@ -1292,6 +1377,20 @@ class Game {
     // already been paid for; this is only for the times it saw nothing.
     if (v.lastImpactAt && performance.now() - v.lastImpactAt < 400) return;
     v.takeImpact(msg.dv);
+    // And it moves. The damage was being applied and the car was not: hitting
+    // an AI patrol car as a police player went through as a dent on the host's
+    // machine while the car itself carried on down the road, so on the screen
+    // that did the hitting it was a car that would not budge. The velocity
+    // change the hitter measured is put through the body here, in the
+    // direction the hit went, which is the same shove the host's own physics
+    // would have given it had the two cars met on this machine.
+    if (v.body && typeof msg.nx === 'number' && typeof msg.nz === 'number' && msg.dv > 0) {
+      const m = v.spec.mass || 1500;
+      // Capped: a packet claiming a hundred metres a second is either a bad
+      // frame or somebody having a go, and either way it is not a car crash.
+      const dv = Math.min(msg.dv, 14);
+      v.body.applyImpulse({ x: msg.nx * dv * m, y: 0, z: msg.nz * dv * m }, true);
+    }
   }
 
   /** Busted, got away, or started again -- announced by the escapee's machine. */
@@ -1344,7 +1443,7 @@ class Game {
     const watchers = [this.player.position];
     if (this.netCars) {
       for (const [id, v] of this.netCars) {
-        if (!String(id).startsWith('a')) watchers.push(v.position);
+        if (!String(id).startsWith(AI_ID)) watchers.push(v.position);
       }
     }
     const inSight = (v) => watchers.some(
@@ -1357,9 +1456,9 @@ class Game {
     for (const u of this.dispatcher.units) {
       if (u.human || !u.vehicle || u.vehicle.remote) continue;
       if (!inSight(u.vehicle)) continue;
-      cars.push(packCar('a' + (u.callsignId || u.vehicle.id), u.vehicle));
+      cars.push(packCar(AI_ID + (u.callsignId || u.vehicle.id), u.vehicle));
     }
-    session.sendWorld(cars, this.heat.value, this.dispatcher.inContact);
+    session.sendWorld(cars, this.heat.value, this.dispatcher.inContact, this.heat.bustTimer);
   }
 
   _update(dt) {
@@ -1402,6 +1501,13 @@ class Game {
       // which is why a police car could sit in the bay forever and never mend.
       this.garage.update(dt);
       this.heat.value = session.heat;
+      // The arrest is measured on the escapee's machine -- it is their car and
+      // their clock -- so a police player watching it happen had no meter, not
+      // even the one their own car was filling. It comes over with the rest of
+      // the world now, so everybody watches the same five seconds run down,
+      // whoever is doing the arresting.
+      this.heat.bustTimer = session.bust || 0;
+      this.heat.bustPinned = (session.bust || 0) > 0;
     }
     if (session.active) this._netUpdate(dt);
 

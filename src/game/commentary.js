@@ -338,7 +338,15 @@ export class Commentary {
    */
   onRanRed(junction, witness, startsChase) {
     const k = this.game.dispatcher.knowledge;
-    const who = witness || this.primary || (k.spotter && k.spotter.callsign ? k.spotter : null);
+    // Somebody has to have seen it. `witness` is the unit that did -- within
+    // 120 m with a clear line to the car -- and when there is nobody, the call
+    // used to fall back to whoever was primary, who then read out a junction
+    // name from the other side of town while the whole force was searching:
+    // "they kept giving commentary, saying red light through Elmstown Road,
+    // like they knew where I was". The fallbacks now only stand in while the
+    // force can actually see the car.
+    const eyes = witness || (k.seen ? (this.primary || (k.spotter && k.spotter.callsign ? k.spotter : null)) : null);
+    const who = eyes;
     if (!who) return;
     const v = { cs: who.callsign, junction, car: this._describe() };
     if (startsChase) {
