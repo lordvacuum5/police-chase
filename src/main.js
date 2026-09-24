@@ -1104,7 +1104,9 @@ class Game {
   _netApplyCars(dt) {
     if (!this.netCars) { this.netCars = new Map(); this.netUnits = new Map(); }
     const seen = new Set();
-    for (const car of session.sample()) {
+    // Sampled around this machine's own car: the cars near it are the ones
+    // worth guessing about. See Session.sample.
+    for (const car of session.sample(this.player.position)) {
       if (car.id === session.id) continue;                 // our own, echoed
       seen.add(car.id);
       let v = this.netCars.get(car.id);
@@ -1373,6 +1375,15 @@ class Game {
       v = unit && unit.vehicle;
     }
     if (!v) return;
+    // Where the car that reported it is now, if this machine knows. A hit that
+    // turns up when the two of them are nowhere near each other went missing
+    // somewhere -- a stall, a burst of latency -- and putting a shove through
+    // a car from twenty metres away looks worse on this screen than never
+    // having heard about it. Generous on purpose: at a closing speed of
+    // 30 m/s, 14 m is still less than half a second of staleness, and the
+    // complaint this is next to is hits that did not register at all.
+    const from = this.netCars && this.netCars.get(String(msg.from || ''));
+    if (from && dist2(from.position.x, from.position.z, v.position.x, v.position.z) > 14) return;
     // Our own physics may have seen the same contact, in which case it has
     // already been paid for; this is only for the times it saw nothing.
     if (v.lastImpactAt && performance.now() - v.lastImpactAt < 400) return;

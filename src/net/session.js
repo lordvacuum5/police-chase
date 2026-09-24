@@ -32,6 +32,32 @@ const PROTOCOL = 1;
  * with the send rate rather than on its own.
  */
 const INTERP_DELAY = 90;
+
+/**
+ * ...except up close, where it is dropped and the car is carried forward from
+ * the newest packet instead.
+ *
+ * Ninety milliseconds at 80 km/h is two metres, and two metres is the
+ * difference between a shunt and a miss: "he hit me, and on my screen he hit
+ * me from quite far away -- like an in-game metre or so -- but on his screen
+ * it looked like he properly hit me." Both machines were right about what they
+ * drew. The hitter was looking at where the other car had been.
+ *
+ * Far away, that does not matter and the delay buys smoothness, so it is kept.
+ * Inside CLOSE metres it is gone entirely: the car is put where its own
+ * velocity says it should be by now, which is a guess, but a guess over one
+ * packet's worth of time about a car a few metres away and travelling in
+ * roughly the same direction as you.
+ *
+ * This is not the same as extrapolating all the time, which was tried and is
+ * genuinely bad: a car that brakes hard for a junction carries on into it and
+ * is then yanked back. The guess is capped at AHEAD_MAX, and it only happens
+ * where being two metres out is worse than being a fraction of a metre wrong.
+ */
+const NEAR_CLOSE = 7;
+const NEAR_FAR = 32;
+const AHEAD_MAX = 110;
+
 /** Snapshots kept per car. A second at the send rate is plenty. */
 const BUFFER = 36;
 /** Sends a second. Thirty costs about a kilobyte a second more than twenty. */
@@ -122,11 +148,26 @@ class Track {
     if (this.snaps.length > BUFFER) this.snaps.shift();
   }
 
-  /** Interpolated state at `now`, or null if nothing has arrived yet. */
-  sample(now) {
-    const want = now - INTERP_DELAY;
+  /** The newest thing heard about this car, whenever that was. */
+  newest() {
+    const n = this.snaps.length;
+    return n ? this.snaps[n - 1].car : null;
+  }
+
+  /**
+   * State at `now`, `delay` ms in the past. With a delay smaller than the age
+   * of the newest packet there is nothing to interpolate between, so the car
+   * is carried on along its own velocity -- see NEAR_CLOSE.
+   */
+  sample(now, delay = INTERP_DELAY) {
+    const want = now - delay;
     const n = this.snaps.length;
     if (!n) return null;
+    const newest = this.snaps[n - 1];
+    if (want > newest.at) {
+      const ahead = Math.min(want - newest.at, AHEAD_MAX) / 1000;
+      return ahead > 0.001 ? carriedOn(newest.car, ahead) : newest.car;
+    }
     if (n === 1 || want <= this.snaps[0].at) return this.snaps[0].car;
     let a = this.snaps[n - 1], b = null;
     for (let i = 0; i < n - 1; i++) {
@@ -140,6 +181,22 @@ class Track {
     const t = span > 1 ? (want - a.at) / span : 0;
     return lerpCar(a.car, b.car, t);
   }
+}
+
+/**
+ * The same car, `dt` seconds further along its own velocity.
+ *
+ * Position only: the facing is left where it was, because a car's heading does
+ * not run on in a straight line the way its position does, and a tenth of a
+ * second of yaw rate applied to a car mid-corner points it somewhere it never
+ * went.
+ */
+function carriedOn(car, dt) {
+  return Object.assign({}, car, {
+    x: car.x + car.vx * dt,
+    y: car.y + car.vy * dt,
+    z: car.z + car.vz * dt,
+  });
 }
 
 function lerpCar(a, b, t) {
@@ -388,11 +445,27 @@ class Session {
   }
 
   /** Everything this client does not own, interpolated to now. */
-  sample() {
+  /**
+   * Every car this machine does not own, as it should be drawn now.
+   *
+   * `near` is where the person at this screen is, if anywhere: cars close to
+   * them are sampled with less delay and more guesswork, because up close
+   * being late is worse than being slightly wrong. See NEAR_CLOSE.
+   */
+  sample(near) {
     const now = performance.now();
     const out = [];
     for (const track of this.tracks.values()) {
-      const car = track.sample(now);
+      let delay = INTERP_DELAY;
+      const newest = near && track.newest();
+      if (newest) {
+        const gap = Math.hypot(newest.x - near.x, newest.z - near.z);
+        // Smoothstep, so a car coming towards you is eased forward rather than
+        // stepping as it crosses a line.
+        const t = Math.max(0, Math.min(1, (gap - NEAR_CLOSE) / (NEAR_FAR - NEAR_CLOSE)));
+        delay = INTERP_DELAY * t * t * (3 - 2 * t);
+      }
+      const car = track.sample(now, delay);
       if (car) out.push(car);
     }
     return out;

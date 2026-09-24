@@ -274,9 +274,35 @@ a hit feel wrong — the car you hit carried on as though nothing had happened.
 It gives way for the contact and catches up afterwards, which is what a car
 does. Remote cars are drawn
 90 ms behind the newest packet and interpolated between the two either side of
-it — extrapolating reads beautifully on a straight and badly everywhere else,
-because a car that brakes hard carries on into the junction and is then yanked
-back.
+it — extrapolating all the time reads beautifully on a straight and badly
+everywhere else, because a car that brakes hard carries on into the junction
+and is then yanked back.
+
+**Up close, that delay is dropped.** Ninety milliseconds at 80 km/h is two
+metres, and two metres is the difference between a shunt and a miss: *"he hit
+me, and on my screen he hit me from quite far away — like an in-game metre or
+so — but on his screen it looked like he properly hit me."* Both machines drew
+what they had; the one doing the hitting was looking at where the other car had
+been. So the delay now eases off as a car comes near, and inside about seven
+metres it is gone — the car is carried forward along its own velocity instead,
+capped at 110 ms of guesswork. Measured, a car doing 80 km/h whose true
+position is 0:
+
+| distance away | 100 m | 40 m | 20 m | 5 m |
+|---|---|---|---|---|
+| drawn at | −1.97 m | −1.96 m | −1.08 m | **+0.02 m** |
+
+The guess is only ever about a car a few metres away, travelling roughly the
+way you are, over one packet's worth of time — which is a different thing from
+predicting a car three streets off through a junction. The facing is left
+alone: a heading does not run on in a straight line the way a position does.
+
+**And a hit that arrives stale is dropped.** If the machine that reported it is
+more than 14 m from the car it says it hit by the time the packet lands, it is
+thrown away rather than shoving a car in front of somebody who saw nothing
+touch it. Fourteen metres is deliberately generous — half a second at a closing
+speed of 30 m/s — because hits that never registered at all were the complaint
+before this one.
 
 Cars on the wire are a list of numbers, not objects: position, rotation,
 velocity, steering, speed, damage and a flags byte, rounded to centimetres --
