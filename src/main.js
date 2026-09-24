@@ -1523,13 +1523,21 @@ class Game {
     // stays inside the 60 ms window for several frames (and for hundreds of
     // headless steps, where performance.now() barely moves), so remember which
     // one was handled rather than counting it again on every frame.
+    //
+    // Touching one while a chase is already running does not move the wanted
+    // level any more. It used to be worth a quarter of a tier a time, which is
+    // four hits to a whole star -- and a hit is not something only the driver
+    // being chased does. A police car that rams you put your own wanted level
+    // up, and with a person driving it, leaning on you is the entire game:
+    // "it's a bit of a nightmare". Contact still brings the response -- they
+    // close in, and a PIT comes round sooner -- it just is not evidence of
+    // anything any more.
     if (p.lastImpactAt && p.lastImpactAt !== this._lastRamImpact
         && performance.now() - p.lastImpactAt < 60) {
       this._lastRamImpact = p.lastImpactAt;
       for (const u of this.dispatcher.units) {
         if (u.distanceTo(p.position) < 6.5) {
           if (this.heat.value <= 0) this.heat.bump(1, 'ramming a patrol car');
-          else this.heat.bump(0.28, 'contact');
           this.dispatcher.onRammed(u);
           break;
         }
