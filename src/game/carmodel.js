@@ -48,9 +48,10 @@ export const CAR_MODELS = {
   suv: { url: 'resources/models/police-suv.glb', police: true, yaw: 0, lift: 0, lamps: null },
   van: { url: 'resources/models/police-van.glb', police: true, yaw: 0, lift: 0, lamps: null },
   supercar: { url: 'resources/models/supercar.glb', police: false, yaw: 0, lift: 0, lamps: null },
-  // The Runner. No file yet, which is the ordinary case: the generated body
-  // is used until one turns up.
   runner: { url: 'resources/models/runner.glb', police: false, yaw: 0, lift: 0, lamps: null },
+  // The Badger. No file yet, which is the ordinary case: the generated body
+  // is used until one turns up.
+  offroad: { url: 'resources/models/offroad.glb', police: false, yaw: 0, lift: 0, lamps: null },
 };
 
 const _box = new THREE.Box3();
