@@ -20,7 +20,10 @@ Other kinds can be added to `CAR_MODELS` in `src/game/carmodel.js`.
 
 * **glTF 2.0 binary (`.glb`)**, uncompressed. Draco and meshopt compression
   and KTX2 textures are not handled — export with those off.
-* **Four wheels, named `wheel_fl`, `wheel_fr`, `wheel_rl`, `wheel_rr`.** They
+* **Four wheels, named `wheel_fl`, `wheel_fr`, `wheel_rl`, `wheel_rr`.** A
+  wheel may be one mesh or a whole assembly with every part named after it
+  (`wheel_fl_tyre`, `wheel_fl_lug7`, ...) -- the parts are grouped by which
+  corner of the car they sit in, so either way it is four wheels. They
   are measured and then thrown away: the game uses its own wheels, which turn
   and steer. Measuring them is how the body is fitted — scaled so its wheelbase
   is the game's, slid so its axles are where the game's are, and stood on its

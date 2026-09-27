@@ -156,26 +156,64 @@ export function wheelLayout(spec) {
  * not look like a car's wheels, rather than trusting a badly named node.
  */
 function fitByWheels(scene, wheels, spec, targetGeometry) {
+  /**
+   * The four corners the wheel parts sit in, and where each corner's wheel
+   * centres.
+   *
+   * A wheel is not always one mesh. On the Badger each one is an assembly --
+   * a tyre, a disc, six spokes and twenty-four lug nuts, every part named
+   * after the wheel it belongs to -- so 140 nodes matched the wheel name and
+   * every one of them was treated as a whole wheel. The "front axle" came out
+   * as the frontmost lug nut on the front tyre and the "rear axle" as the
+   * rearmost one on the back, which is a wheelbase a whole wheel too long:
+   * the car was scaled down by a quarter, failed the sanity check below, and
+   * fell back to being fitted by its box -- which stands the body *and its
+   * wheels* in the space meant for the body alone, so it came out oversized
+   * and floating three quarters of a metre off the road.
+   *
+   * So the parts are grouped by which corner of the car they are in, and each
+   * corner is measured as one wheel, whether it arrived as one mesh or forty.
+   */
   const measure = () => {
     scene.updateMatrixWorld(true);
-    const out = [];
+    const parts = [];
     for (const w of wheels) {
-      _box.setFromObject(w);
-      const c = new THREE.Vector3();
-      _box.getCenter(c);
-      out.push({ c, low: _box.min.y });
+      const b = new THREE.Box3().setFromObject(w);
+      if (b.isEmpty() || !Number.isFinite(b.min.x)) continue;   // an empty group
+      parts.push(b);
     }
-    out.sort((a, b) => b.c.z - a.c.z);          // +Z is the front
-    const n = out.length;
+    if (parts.length < 4) return null;
+
+    const mid = (b) => ({ x: (b.min.x + b.max.x) * 0.5, z: (b.min.z + b.max.z) * 0.5 });
+    const mx = parts.reduce((t, b) => t + mid(b).x, 0) / parts.length;
+    const mz = parts.reduce((t, b) => t + mid(b).z, 0) / parts.length;
+
+    // Front or rear, left or right, about the middle of the set: four corners.
+    const corners = [[], [], [], []];
+    for (const b of parts) {
+      const c = mid(b);
+      corners[(c.z >= mz ? 0 : 2) + (c.x >= mx ? 0 : 1)].push(b);
+    }
+    if (corners.some((c) => !c.length)) return null;   // not four wheels
+
+    // Each corner as one box, so a wheel centres on its hub however its parts
+    // are distributed.
+    const hub = (list) => {
+      const u = list[0].clone();
+      for (const b of list) u.union(b);
+      return { x: (u.min.x + u.max.x) * 0.5, z: (u.min.z + u.max.z) * 0.5, low: u.min.y };
+    };
+    const [fr, fl, rr, rl] = corners.map(hub);
     return {
-      front: (out[0].c.z + out[1].c.z) * 0.5,
-      rear: (out[n - 1].c.z + out[n - 2].c.z) * 0.5,
-      midX: out.reduce((s, w) => s + w.c.x, 0) / n,
-      low: Math.min(...out.map((w) => w.low)),
+      front: (fl.z + fr.z) * 0.5,
+      rear: (rl.z + rr.z) * 0.5,
+      midX: (fl.x + fr.x + rl.x + rr.x) * 0.25,
+      low: Math.min(fl.low, fr.low, rl.low, rr.low),
     };
   };
 
   let m = measure();
+  if (!m) return false;
   const modelBase = m.front - m.rear;
   if (!(modelBase > 0.1)) return false;
   const scale = spec.wheelbase / modelBase;
@@ -196,6 +234,7 @@ function fitByWheels(scene, wheels, spec, targetGeometry) {
 
   const game = wheelLayout(spec);
   m = measure();
+  if (!m) { scene.scale.multiplyScalar(1 / scale); return false; }
   scene.position.x -= m.midX;
   scene.position.z += (game.front + game.rear) * 0.5 - (m.front + m.rear) * 0.5;
   scene.position.y += game.ground - m.low;
