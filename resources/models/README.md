@@ -10,6 +10,7 @@ as before.
 | `police-interceptor.glb` | the interceptor, from three stars |
 | `police-suv.glb` | the police SUV |
 | `police-van.glb` | the armoured van, including the head-on one |
+| `supercar.glb` | the Stiletto, the fast one you can drive |
 
 Other kinds can be added to `CAR_MODELS` in `src/game/carmodel.js`.
 

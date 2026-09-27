@@ -36,12 +36,20 @@ import { SPECS } from './vehicles.js';
  * fitting, for when the sills end up buried or floating. `lamps` overrides
  * where the flashing lights go, in body-local metres, for a model whose light
  * bar is not where the fitted roof line suggests.
+ *
+ * `police` says which generated body the model is fitted against. It matters:
+ * the police fit-out adds a push bar at the nose and a bar on the roof, so a
+ * police target is longer and taller than the plain one, and a car fitted to
+ * the wrong one comes out the wrong size.
  */
 export const CAR_MODELS = {
-  patrol: { url: 'resources/models/police-patrol.glb', yaw: 0, lift: 0, lamps: null },
-  interceptor: { url: 'resources/models/police-interceptor.glb', yaw: 0, lift: 0, lamps: null },
-  suv: { url: 'resources/models/police-suv.glb', yaw: 0, lift: 0, lamps: null },
-  van: { url: 'resources/models/police-van.glb', yaw: 0, lift: 0, lamps: null },
+  patrol: { url: 'resources/models/police-patrol.glb', police: true, yaw: 0, lift: 0, lamps: null },
+  interceptor: { url: 'resources/models/police-interceptor.glb', police: true, yaw: 0, lift: 0, lamps: null },
+  suv: { url: 'resources/models/police-suv.glb', police: true, yaw: 0, lift: 0, lamps: null },
+  van: { url: 'resources/models/police-van.glb', police: true, yaw: 0, lift: 0, lamps: null },
+  // The Stiletto. No file yet: a missing one is the ordinary case and the
+  // generated body is used until it turns up.
+  supercar: { url: 'resources/models/supercar.glb', police: false, yaw: 0, lift: 0, lamps: null },
 };
 
 const _box = new THREE.Box3();
@@ -292,7 +300,7 @@ export async function loadCarModels(game, table = CAR_MODELS) {
   const out = {};
   for (const [specKey, opts] of Object.entries(table)) {
     try {
-      const target = game._geometryFor(specKey, specKey, true, false);
+      const target = game._geometryFor(specKey, specKey, !!opts.police, !!opts.unmarked);
       const model = await loadCarModel(opts.url, target, opts, SPECS[specKey]);
       if (model) out[specKey] = model;
     } catch (e) {
