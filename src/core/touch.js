@@ -39,6 +39,35 @@ function fullLockPx() {
 /** Dead zone at the centre of the stick, as a fraction of full lock. */
 const DEAD = 0.06;
 
+/** Launched from the home screen, with no browser chrome around it. */
+function standalone() {
+  return window.navigator.standalone === true
+    || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+}
+
+/** An iPhone or iPad, including an iPad pretending to be a Mac. */
+function isApple() {
+  const ua = navigator.userAgent || '';
+  return /iPad|iPhone|iPod/.test(ua)
+    || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+}
+
+/**
+ * What to tell somebody whose browser will not let the page go full screen.
+ *
+ * On an iPhone that is all of them, and the answer is the home screen: a page
+ * added there opens without Safari's bars, which is the same thing by a
+ * different route (index.html carries the meta tags that make it work).
+ */
+function fullScreenAdvice() {
+  return isApple()
+    ? 'Safari can\'t make a page full screen on an iPhone.<br>'
+      + 'Tap <b>Share</b>, then <b>Add to Home Screen</b> \u2014 opened from there, '
+      + 'the game gets the whole screen.'
+    : 'This browser won\'t let a page go full screen.<br>'
+      + 'Try hiding its bars, or use Chrome.';
+}
+
 const BUTTONS = [
   { id: 'pause', label: 'II', title: 'Pause', key: 'KeyP' },
   { id: 'camera', label: 'CAM', title: 'Camera', key: 'KeyC' },
@@ -113,6 +142,7 @@ export class TouchControls {
       <div id="t-buttons">${BUTTONS.map((b) => `<div class="tbtn" id="t-${b.id}" data-tap="${b.id}"`
         + ` role="button" aria-label="${b.title}">${b.label}</div>`).join('')}</div>
       <div class="tbtn" id="t-again" data-tap="again" role="button">RUN AGAIN</div>
+      <div id="t-hint" data-tap="hint" role="button" hidden></div>
       <div id="t-rotate" data-tap="rotate" role="button">Turn your phone sideways for a wider view<small>tap to hide</small></div>`;
     document.body.appendChild(root);
     this.root = root;
@@ -126,9 +156,20 @@ export class TouchControls {
     this.pauseBtn = root.querySelector('#t-pause');
     this.fullBtn = root.querySelector('#t-full');
     this.againBtn = root.querySelector('#t-again');
+    this.hintEl = root.querySelector('#t-hint');
 
-    const canFull = !!(document.fullscreenEnabled && document.documentElement.requestFullscreen);
-    if (!canFull) this.fullBtn.hidden = true;
+    // An iPhone has no Fullscreen API at all -- Safari only ever gave it to
+    // video -- so the button used to hide itself there, which is every iPhone:
+    // "on some phones, and mainly on Apple phones, you can't see the full
+    // screen button." Hiding it was the wrong answer twice over, because
+    // there *is* a way to play an iPhone full screen; it is just not a button
+    // the page is allowed to press. So the button stays, and on a phone that
+    // cannot do it from here it says how.
+    //
+    // The one case where it really has nothing to offer is a game already
+    // launched from the home screen: there is no browser left to hide.
+    this.canFull = !!(document.fullscreenEnabled && document.documentElement.requestFullscreen);
+    if (standalone()) this.fullBtn.hidden = true;
 
     root.addEventListener('pointerdown', (e) => this._down(e));
     root.addEventListener('pointermove', (e) => this._move(e));
@@ -244,7 +285,7 @@ export class TouchControls {
   // -------------------------------------------------------------- buttons
 
   _tap(id, el) {
-    if (id === 'rotate') { el.hidden = true; return; }
+    if (id === 'rotate' || id === 'hint') { el.hidden = true; return; }
     if (id === 'again') { this.input.press('KeyR'); return; }
     if (id === 'full') { this._toggleFullscreen(); return; }
     const b = BUTTONS.find((x) => x.id === id);
@@ -270,6 +311,7 @@ export class TouchControls {
   }
 
   _toggleFullscreen() {
+    if (!this.canFull) { this._say(fullScreenAdvice()); return; }
     if (document.fullscreenElement) {
       document.exitFullscreen().catch(() => {});
       return;
@@ -286,6 +328,15 @@ export class TouchControls {
 
   _syncFullscreen() {
     this.fullBtn.classList.toggle('on', !!document.fullscreenElement);
+  }
+
+  /** A line of advice over the game, until it is tapped or ten seconds pass. */
+  _say(html) {
+    if (!this.hintEl) return;
+    this.hintEl.innerHTML = `${html}<small>tap to hide</small>`;
+    this.hintEl.hidden = false;
+    clearTimeout(this._hintTimer);
+    this._hintTimer = setTimeout(() => { this.hintEl.hidden = true; }, 10000);
   }
 
   /** Per frame: the parts of the layout that follow the game rather than a finger. */

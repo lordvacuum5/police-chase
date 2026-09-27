@@ -562,13 +562,25 @@ back. Add `?touch` to the address to see them on a desktop.
 | `GAS` / `BRAKE` | Throttle and brake — slide between them without lifting, as you would rock a foot |
 | `HANDBRAKE` | Handbrake, usable while holding either pedal |
 | `II` `CAM` `FLIP` `SND` | Pause · camera · flip upright · sound on or off |
-| `FULL` | Full screen, and landscape where the phone allows it to be locked |
+| `FULL` | Full screen, and landscape where the phone allows it to be locked. On an iPhone it says how instead — see below |
 | `MENU` | Back to the menu — tap twice, so a stray thumb does not end the run |
 
 Sideways is the way to hold it. Upright works, with the view widened so there is
 still road either side of the car, and a note suggesting you turn the phone.
 The HUD shrinks to fit round the thumbs, and after being busted a `RUN AGAIN`
 button stands in for `R`.
+
+**Full screen on an iPhone** is not something the page is allowed to ask for:
+Safari has never given the Fullscreen API to anything but video, so
+`document.fullscreenEnabled` is false on every iPhone. The button used to hide
+itself when it saw that — *"on some phones, and mainly on Apple phones, you
+can't see the full screen button"* — which was wrong twice over, because there
+is a way to play it full screen there; it is just not one a button can press.
+The button now stays and explains it: **Share → Add to Home Screen**, and
+opened from there the game gets the whole screen, because the page carries the
+`apple-mobile-web-app-capable` and status-bar meta tags that make an added page
+open without Safari's bars. Launched that way there is nothing left to hide, so
+the button takes itself away.
 
 It is all in `src/core/touch.js`, and it does not drive anything itself: it
 publishes throttle, brake, handbrake and steering for `Input.sample` to merge

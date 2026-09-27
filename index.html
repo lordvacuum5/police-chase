@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
+<!-- Added to the home screen, the game draws under the status bar rather than
+     beside it; the safe-area insets below keep the HUD out from under it. -->
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Police Chase" />
 <meta name="theme-color" content="#05070a" />
 <title>Police Chase</title>
 <style>
@@ -452,6 +456,18 @@
     border: 1px solid var(--edge); border-radius: 10px; pointer-events: auto;
   }
   #t-rotate small { display: block; margin-top: 6px; font-size: 10px; color: var(--dim); }
+
+  /* Advice that cannot be a button: how to get a full screen on a phone whose
+     browser will not give the page one. Same panel as the rotate prompt. */
+  #t-hint {
+    position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%);
+    width: min(330px, 86vw); padding: 14px 16px; text-align: center; line-height: 1.55;
+    background: rgba(10, 14, 20, .93); border: 1px solid var(--edge); border-radius: 10px;
+    color: var(--ink); font-size: 12px; letter-spacing: .5px;
+    pointer-events: auto; z-index: 3;
+  }
+  #t-hint b { color: var(--blue); font-weight: 600; }
+  #t-hint small { display: block; margin-top: 8px; font-size: 10px; color: var(--dim); }
 
   /* The HUD, made to fit round the thumbs. */
   body.touch #hint, body.touch #ohint, body.touch #help { display: none !important; }
