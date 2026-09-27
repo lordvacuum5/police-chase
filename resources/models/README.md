@@ -11,6 +11,7 @@ as before.
 | `police-suv.glb` | the police SUV |
 | `police-van.glb` | the armoured van, including the head-on one |
 | `supercar.glb` | the Stiletto, the fast one you can drive |
+| `runner.glb` | the Runner, the car the game was built around |
 
 Other kinds can be added to `CAR_MODELS` in `src/game/carmodel.js`.
 

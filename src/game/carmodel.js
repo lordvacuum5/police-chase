@@ -47,9 +47,10 @@ export const CAR_MODELS = {
   interceptor: { url: 'resources/models/police-interceptor.glb', police: true, yaw: 0, lift: 0, lamps: null },
   suv: { url: 'resources/models/police-suv.glb', police: true, yaw: 0, lift: 0, lamps: null },
   van: { url: 'resources/models/police-van.glb', police: true, yaw: 0, lift: 0, lamps: null },
-  // The Stiletto. No file yet: a missing one is the ordinary case and the
-  // generated body is used until it turns up.
   supercar: { url: 'resources/models/supercar.glb', police: false, yaw: 0, lift: 0, lamps: null },
+  // The Runner. No file yet, which is the ordinary case: the generated body
+  // is used until one turns up.
+  runner: { url: 'resources/models/runner.glb', police: false, yaw: 0, lift: 0, lamps: null },
 };
 
 const _box = new THREE.Box3();
