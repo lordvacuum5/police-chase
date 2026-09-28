@@ -472,8 +472,17 @@ export class Vehicle {
     // an allowance for front tyre slip. Real steady-state cornering needs
     // delta = L/R + (alpha_front - alpha_rear); leaving that term out makes the
     // limit far too tight and the car simply will not turn into a corner.
+    // ...and by what is under the tyres. `latLimit` is a tarmac number -- the
+    // lateral acceleration the lock is sized for -- and on grass the surface
+    // can give about two thirds of it. Left unscaled, the limiter handed the
+    // driver enough lock to ask for half as much grip again as the ground had,
+    // which is a car that turns in, loses the back and goes round: the hard
+    // impacts in a wood are cars that had already spun before they met a trunk
+    // (tests/woods.js). Scaled, the car cannot ask the grass for more than the
+    // grass has, and tarmac is untouched because there the ratio is one.
+    const surface = clamp(this.surfaceMu / TYRE_ROAD.mu, 0.45, 1);
     const v2 = Math.max(this.speed * this.speed, 1);
-    const gripLimit = Math.atan((this.spec.wheelbase * st.latLimit) / v2) * st.overshoot
+    const gripLimit = Math.atan((this.spec.wheelbase * st.latLimit * surface) / v2) * st.overshoot
       + st.slipAllowance;
 
     // ...but never less than enough lock to point the front wheels along the

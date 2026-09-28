@@ -314,6 +314,11 @@ export class Driver {
   slideLift() {
     const v = this.v;
     const slip = Math.abs(v.slipAngleBody);
+    // Lifting sooner and harder on the loose was tried here -- onset at eleven
+    // degrees of slip instead of twenty, a deeper cut, and counter-steer
+    // scaled up to match -- on the theory that a slide on grass runs away
+    // faster. Measured in the copse (tests/woods.js) it was slightly worse, 4
+    // hits against 3, so it is not in the game.
     if (slip <= 0.20 || v.speed <= 7) return Infinity;
     const severity = clamp01((slip - 0.20) / 0.45);
     const keep = lerp(0.96, 0.68, severity * lerp(1.15, 0.75, this.skill.throttleControl));

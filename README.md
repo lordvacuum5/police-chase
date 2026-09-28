@@ -1137,6 +1137,37 @@ The plate is now turned to face the way it is being swept, and all four
 headings agree to the centimetre. `tests/gaps.js` is unchanged by it: still
 through a 2.2 m gap, still nothing touched.
 
+### Asking the grass for tarmac grip
+
+The steering limiter sizes the available lock to what the tyres could actually
+use at this speed: the Ackermann angle for `latLimit`, the lateral
+acceleration it plans for. That figure is a tarmac figure -- 14.6 m/s², about
+1.5 g -- and it was applied whatever was under the car. Grass gives a police
+car about two thirds of it, so out there the limiter was handing the driver
+enough lock to ask the ground for half as much grip again as it had. A car that
+turns in on that promise loses the back end and goes round.
+
+It is scaled by the surface now (`Vehicle.surfaceMu` over the road's own mu,
+floored at 0.45), so the car cannot ask the grass for more than the grass has,
+and tarmac is untouched because there the ratio is one -- measured, seven units
+in a city chase drive at the same 61–78 km/h with the same 0.17–0.24 rad of
+lock as before.
+
+In the copse `tests/woods.js` runs in, the hits over forty seconds went from
+four to three. Two further changes were tried on top and both measured worse,
+so neither is in the game: lifting off sooner and harder on the loose (onset at
+eleven degrees of body slip instead of twenty, with counter-steer scaled up to
+match) came out at four hits, and the full-stop the plan cap asked for when all
+four wheels were momentarily off the ground was worse than useless.
+
+What is left of the problem is the worst impact, and it is worth writing down
+what it actually is: a unit at seventy-nine degrees of slip -- travelling very
+nearly sideways at 23 km/h -- meeting a trunk three metres in front of it. The
+velocity change reported for that is 31 m/s because the figure includes the
+spin the trunk stopped. It is not a car that drove into a tree; it is a car
+that had already lost it, and the tree is simply what was there. Anything
+further will have to be about not losing it in the first place.
+
 ### Braking only for what is in the way
 
 The obstacle sweep casts three swept boxes: one straight ahead and one
