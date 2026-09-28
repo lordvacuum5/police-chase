@@ -1145,6 +1145,44 @@ export class Officer {
     }
 
     this.driver.setPath([]);
+
+    // ---- a line through whatever is between here and there ----
+    //
+    // The corridor test above only asks about walls, which is right -- a tree
+    // is not a reason to go round by road. But it does leave the car driving
+    // straight at the target through woodland at chase speed, with nothing but
+    // the avoidance reflex to get it past each trunk as it arrives, and a
+    // reflex is too late: at 100 km/h on grass the tightest turn this car can
+    // make is eighty metres of radius, so a trunk forty metres ahead cannot be
+    // missed however hard it tries. "They still crash into trees, a lot."
+    //
+    // So when something is in the way, the aim point comes from a two-move
+    // plan instead (Driver.planThrough): a gap that leads somewhere rather
+    // than the nearest gap. The speed clamp then measures down that line,
+    // because it probes toward the aim -- so the plan sets the pace as well as
+    // the direction, and a car with a clear forty metres through the trees is
+    // allowed to use it.
+    //
+    // Not in the last few lengths: the point of being there is contact, and a
+    // planner that keeps looking for a way round the car it is supposed to be
+    // hitting is no use to anybody.
+    this._planFor = (this._planFor || 0) - dt;
+    if (d > ramRange + 14) {
+      if (this._planFor <= 0) {
+        const reach = clamp(18 + v.speed * 2.0, 24, 80);
+        const plan = this.driver.planThrough(_aim.x, _aim.z, reach);
+        this._planFor = 0.18;
+        this._planAim = plan ? { x: plan.x, z: plan.z } : null;
+        // The speed the planned turn can be taken at, which is the whole point
+        // of planning it: see Driver.planThrough.
+        this._planCap = plan ? this.driver.planCap : Infinity;
+      }
+      if (this._planAim) _aim.set(this._planAim.x, target.position.y, this._planAim.z);
+    } else {
+      this._planAim = null;
+      this._planCap = Infinity;
+    }
+
     const runUp = lerp(7.5, 17, ram);
     if (this._ramBackOff(dt, target, d, runUp)) {
       // Just hit them: drop back for a run-up before the next one. Braked
@@ -1163,7 +1201,10 @@ export class Officer {
     this._mode = d < ramRange + 8 ? 'ram' : 'direct';
     const closeBy = Math.max(lerp(5.5, 16, ram), Math.min(d * 0.35, 16 + 11 * ram));
     const speed = Math.abs(target.forwardSpeed) + closeBy;
-    return this.driver.driveTo(_aim, Math.min(speed, this._chaseSpeed() * lerp(1, 1.15, ram), this._gapCap(target)), dt);
+    return this.driver.driveTo(_aim, Math.min(
+      speed, this._chaseSpeed() * lerp(1, 1.15, ram), this._gapCap(target),
+      this._planCap === undefined ? Infinity : this._planCap,
+    ), dt);
   }
 
   /**

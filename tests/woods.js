@@ -1,148 +1,117 @@
-// How many trees does a unit hit crossing a wood at speed?
+// How many trees does a pursuit hit, in the thickest wood the map has?
 //
-// "When I go through trees fast, the police cars still crash. A lot. It feels
-// like they don't stop now -- like they know how to get through -- I think
-// they keep misjudging how much they can turn. When they're going through
-// tight trees very close to each other, they seem to just hit the trees."
+// "When I go through trees fast, the police cars still crash. A lot. I think
+// they keep misjudging how much they can turn."
 //
-// A field of trunks out past the edge of the map, a unit put down at one end
-// and sent to the other, and a count of what it hit on the way:
+// The site is found rather than invented: every trunk on the loaded map is
+// collected and the densest neighbourhood of them is the copse this runs in --
+// on Wexbury that is about twenty-two trunks inside thirty metres, roughly one
+// every eleven metres, which is as thick as the game gets. The escapee is put
+// down a hundred and twenty metres short of it with the throttle pinned, two
+// units are put behind them at speed, and everything they hit over the next
+// forty seconds is counted:
 //
-//   hits     impacts above a knock (dv > 4), which is a trunk, not a kerb
-//   worst    the hardest one, in metres per second of velocity change
-//   kph      mean speed across the run, and what it arrived at
-//   arrived  whether it got there at all inside the time
+//   hits    impacts above a knock (dv > 4 m/s of velocity change)
+//   worst   the hardest of them, and what the car was doing at the time
 //
-// The trunks are the map's own: 1.3 m square, on a jittered grid whose spacing
-// is the argument, so `gap` is how much room there is between one trunk and
-// the next -- a 1.94 m car needs rather more than its own width to thread.
+// A unit that has slowed for the *obstacle* but not for the *turn it is about
+// to have to make* arrives at the gap pointing at the trunk beside it.
 //
-// What it says as it stands (2026-09, an interceptor sent 300 m at 105 km/h):
+// What this said when it was written (Wexbury, two units, forty seconds):
 //
-//   12 m apart   1 hit, dv 5.2, mean 13 kph, did not arrive
-//    9 m apart   no hits,       mean 22 kph, did not arrive
-//    7 m apart   no hits,       mean 15 kph, did not arrive
+//   before the planner   5 hits, worst 31.7 m/s at 95 kph
+//   with it              4 hits, worst 31.3 m/s at 93 kph
 //
-// So in a wood this dense a unit does not crash -- it crawls, and the thing
-// holding it there is the stopping distance to the next trunk: with trunks
-// nine metres apart there is never more than nine metres of it, which is about
-// 30 km/h. Two changes were tried against this and both measured worse and
-// were taken out again: letting the speed rule assume the car could go *round*
-// a trunk rather than stop for it (hits went from dv 5 to dv 18, damage 0.04
-// to 0.27 -- the steering cannot execute the swerve the speed assumed), and
-// making the avoidance steer start earlier by taking its urgency linearly
-// rather than squared (no measurable difference at all).
-//
-// Which means the crashing seen in the game -- "when I go through trees fast,
-// the police cars still crash, a lot" -- is not this code path. Something in a
-// real pursuit is letting a unit into a wood faster than this limiter allows:
-// the gap-seeker (_driveDirect/_findGap) and the chase speed target are where
-// to look, with an in-game reproduction rather than this synthetic one.
-window.__runWoods = async function (gaps = [12, 9, 7], seconds = 26, kph = 105) {
+// and what the impacts turn out to be is the useful part. A dv of 31 m/s from
+// a car doing 93 km/h -- 26 m/s -- is not a car driving into a tree: the
+// impact figure includes the spin the trunk stopped (see Vehicle.postStep), so
+// these are cars that have already lost the back end on grass and then wrapped
+// a trunk sideways. The gap-finding is not what is failing at that point; the
+// car is. Off-road stability, not obstacle planning, is the next lever.
+window.__runWoods = async function (seconds = 40) {
   try {
     for (let i = 0; i < 200 && !(window.__game && window.__game.player); i++) {
       await new Promise((r) => setTimeout(r, 100));
     }
     const g = window.__game;
-    const { SKILL } = window.__modules;
-    const world = await import('/src/physics/world.js');
+    const { SKILL, ROLE } = window.__modules;
     g.onBusted = () => { g.outcome = null; };
     g.onEscaped = () => { g.outcome = null; };
-    g.heat.value = 0;
     g.paused = true;
 
-    // Flat, empty, and grass all the way: the wood is the only thing in it.
-    const realSurface = g.sim.surfaceAt, realHeight = g.sim.heightAt;
-    g.sim.surfaceAt = () => 0;
-    g.sim.heightAt = () => 0;
-
-    const rows = [];
-    for (let gi = 0; gi < gaps.length; gi++) {
-      const gap = gaps[gi];
-      // All three on the same lane of the ground plate, which runs to 1200:
-      // spread sideways they fell off the edge of it, and a car falling
-      // through the floor reports a lovely clear run.
-      const X0 = 1040, Z0 = -820 + gi * 340;
-      const LEN = 300, WIDE = 120;
-
-      // A jittered grid of trunks, with a clear strip at each end to get up to
-      // speed in and to stop in.
-      const bodies = [];
-      let seed = 1234 + gi * 77;
-      const rnd = () => {
-        seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-        return seed / 0x7fffffff;
-      };
-      let row = 0;
-      for (let z = 40; z < LEN - 40; z += gap) {
-        // Every other row offset by half a gap, so there is no straight lane
-        // through the wood: the car has to steer, which is the whole question.
-        const stagger = (row++ % 2) * gap * 0.5;
-        // Measured from the car's own line, so every other row has a trunk
-        // squarely in front of it. Laid out from the edge instead, the grid
-        // left a clear lane down the middle and the car drove through the wood
-        // without steering at all -- which measured nothing.
-        const n = Math.ceil(WIDE / (2 * gap));
-        for (let k = -n; k <= n; k++) {
-          const x = k * gap + stagger;
-          const jx = (rnd() - 0.5) * gap * 0.55;
-          const jz = (rnd() - 0.5) * gap * 0.55;
-          bodies.push(world.addStaticBox(
-            g.world, X0 + x + jx, 2.6, Z0 + z + jz, 0.65, 2.6, 0.65, world.GROUP.PROP, 0,
-          ));
-        }
+    // ---- the thickest copse on this map ----
+    const pts = [];
+    g.world.forEachCollider((c) => {
+      const h = c.halfExtents ? c.halfExtents() : null;
+      if (h && Math.abs(h.x - 0.65) < 0.01 && Math.abs(h.y - 2.6) < 0.01) {
+        const t = c.translation();
+        pts.push([t.x, t.z]);
       }
-      g.world.step();
-
-      const officer = g.spawnPoliceAt({ x: X0, y: 0.95, z: Z0 }, 0, 2);
-      if (!officer) { window.__res = 'no unit'; return; }
-      officer.skill = SKILL.pursuit;
-      officer.driver.allowOffRoad = true;
-      officer.driver.limitScale = 3;
-      const v = officer.vehicle;
-      v.assist.boost = 1; v.assist.grip = 1;
-      v._readState();
-      v.setVelocity({ x: 0, y: 0, z: kph / 3.6 });
-
-      const goal = { x: X0, y: 0.95, z: Z0 + LEN };
-      const speeds = [];
-      let hits = 0, worst = 0, lastAt = 0, t = 0, arrived = false;
-      while (t < seconds) {
-        v.setControls(officer.driver.driveTo(goal, kph / 3.6, 1 / 60));
-        g.stepHeadless(1 / 60);
-        t += 1 / 60;
-        speeds.push(Math.abs(v.forwardSpeed) * 3.6);
-        if (v.lastImpactAt && v.lastImpactAt !== lastAt) {
-          lastAt = v.lastImpactAt;
-          if (v.lastImpact > 4) { hits++; worst = Math.max(worst, v.lastImpact); }
-        }
-        if (Math.hypot(v.position.x - goal.x, v.position.z - goal.z) < 25) { arrived = true; break; }
+    });
+    if (pts.length < 20) { window.__res = 'no trees on this map'; return; }
+    let site = null;
+    for (let i = 0; i < pts.length; i += 7) {
+      const [x, z] = pts[i];
+      let n = 0;
+      for (const [px, pz] of pts) {
+        const dx = px - x, dz = pz - z;
+        if (dx * dx + dz * dz < 900) n++;       // within 30 m
       }
-
-      const mean = speeds.reduce((a, b) => a + b, 0) / Math.max(1, speeds.length);
-      rows.push({
-        gap,
-        hits,
-        worst: +worst.toFixed(1),
-        meanKph: Math.round(mean),
-        endKph: Math.round(Math.abs(v.forwardSpeed) * 3.6),
-        arrived,
-        secs: +t.toFixed(1),
-        damage: +v.damage.toFixed(2),
-      });
-
-      g.dispatcher.retire(officer);
-      for (const b of bodies) g.world.removeRigidBody(b);
-      await new Promise((r) => setTimeout(r, 0));
+      if (!site || n > site.n) site = { x, z, n };
     }
 
-    g.sim.surfaceAt = realSurface;
-    g.sim.heightAt = realHeight;
+    // ---- the chase ----
+    g.player.repair();
+    g.player.teleport({ x: site.x, y: 1.0, z: site.z - 120 }, 0);
+    g.player._readState();
+    g.player.setVelocity({ x: 0, y: 0, z: 25 });
+    g.heat.value = 3;
+    g.dispatcher.knowledge.seen = true;
+    g.dispatcher.knowledge.position.copy(g.player.position);
+
+    const units = [];
+    for (const off of [-8, 8]) {
+      const o = g.spawnPoliceAt({ x: site.x + off, y: 0.95, z: site.z - 150 }, 0, 3);
+      if (!o) continue;
+      o.skill = SKILL.pursuit;
+      // Not on the dispatcher's roster: it would retask them against whatever
+      // it currently believes, and the point of this is the pursuit's driving.
+      o.setRole(ROLE.PURSUE);
+      o.vehicle._readState();
+      o.vehicle.setVelocity({ x: 0, y: 0, z: 28 });
+      units.push(o);
+    }
+    if (!units.length) { window.__res = 'no units'; return; }
+
+    const log = [];
+    const last = new Map();
+    const speeds = [];
+    g.forceControls = { throttle: 1, brake: 0, steer: 0, handbrake: 0 };
+    for (let i = 0; i < seconds * 60; i++) {
+      for (const o of units) o.update(1 / 60, g.player);
+      g.stepHeadless(1 / 60);
+      for (const o of units) {
+        const v = o.vehicle;
+        speeds.push(v.speed * 3.6);
+        if (v.lastImpactAt && v.lastImpactAt !== last.get(o) && v.lastImpact > 4) {
+          last.set(o, v.lastImpactAt);
+          log.push({ dv: +v.lastImpact.toFixed(1), kph: Math.round(v.speed * 3.6) });
+        }
+      }
+    }
+    g.forceControls = null;
+
+    const mean = speeds.reduce((a, b) => a + b, 0) / Math.max(1, speeds.length);
+    const worst = log.reduce((w, h) => (h.dv > (w ? w.dv : 0) ? h : w), null);
+    const damage = units.map((o) => +o.vehicle.damage.toFixed(2));
+    for (const o of units) g.despawnPolice(o);
     g.paused = false;
-    window.__res = rows.map((r) => `${String(r.gap).padStart(2)} m apart  `
-      + `hits ${String(r.hits).padStart(2)} (worst ${String(r.worst).padStart(4)})  `
-      + `mean ${String(r.meanKph).padStart(3)} kph  end ${String(r.endKph).padStart(3)}  `
-      + `damage ${r.damage}  ${r.arrived ? `arrived ${r.secs}s` : 'did not arrive'}`).join('\n');
+
+    window.__res = `copse of ${site.n} trunks within 30 m at `
+      + `${Math.round(site.x)}, ${Math.round(site.z)}\n`
+      + `hits ${log.length}  worst ${worst ? `${worst.dv} m/s at ${worst.kph} kph` : 'none'}  `
+      + `mean ${Math.round(mean)} kph  damage ${damage.join(' / ')}`
+      + (log.length ? `\n${log.map((h) => `  dv ${h.dv} at ${h.kph} kph`).join('\n')}` : '');
   } catch (e) {
     window.__res = 'EX: ' + e.message + ' | ' + (e.stack || '').slice(0, 300);
   }

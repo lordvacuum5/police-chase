@@ -20,6 +20,7 @@ import { raycast, sweepBox, RAY_GROUNDS, RAY_SOLID } from '../physics/world.js';
 const _p = new THREE.Vector3();
 const _origin = new THREE.Vector3();
 const _probe = new THREE.Vector3();
+const _plan = new THREE.Vector3();
 const _run = new THREE.Vector3();
 
 /**
@@ -531,6 +532,111 @@ export class Driver {
     // as the geometry opens up.
     const reachTo = Math.min(bestClear * 0.85, span);
     return { x: v.position.x + gx * reachTo, z: v.position.z + gz * reachTo };
+  }
+
+  /**
+   * A line *through* the clutter, two moves deep.
+   *
+   * `pickGap` asks one question -- which way is open right now -- and that is
+   * enough to get round a building but not enough to cross a wood. A heading
+   * that is open for thirty metres and then closes is indistinguishable, at
+   * depth one, from one that is open all the way; the car commits to it,
+   * arrives at the dead end, and either stops or is already too fast to do
+   * anything about the trunk in front of it. That is the difference between a
+   * driver threading trees, who is looking three gaps ahead and setting the
+   * car up for the third one now, and a reflex.
+   *
+   * So each candidate heading is followed by a second leg from where it would
+   * end, aimed back at the goal, and scored on how much of the way to the goal
+   * the pair of them actually covers. A gap that leads somewhere beats a gap
+   * that is merely wider.
+   *
+   * Returns { x, z, clear } -- a point to aim at and how far the plan holds --
+   * or null when the straight line is already clear, which is most of the time
+   * and costs one sweep to find out.
+   */
+  planThrough(goalX, goalZ, reach) {
+    const v = this.v;
+    const hw = this.halfWidth;
+
+    let dx = goalX - v.position.x, dz = goalZ - v.position.z;
+    const goalDist = Math.hypot(dx, dz) || 1;
+    dx /= goalDist; dz /= goalDist;
+    const span = Math.min(reach, goalDist);
+
+    _origin.copy(v.position).addScaledVector(v.forward, v.spec.dims.l * 0.45);
+    _origin.y += 0.5;
+
+    // Nothing in the way: no plan needed, and the caller keeps its own aim.
+    _probe.set(dx, 0, dz);
+    const straight = sweepBox(v.world, _origin, _probe, span, RAY_GROUNDS, v.body, hw);
+    if (straight >= span - 0.5) { this.planClear = span; this.planCap = Infinity; return null; }
+
+    const heading = Math.atan2(v.forward.x, v.forward.z);
+    let best = null;
+    for (const ang of GAP_FAN) {
+      const ca = Math.cos(ang), sa = Math.sin(ang);
+      const gx = dx * ca - dz * sa, gz = dx * sa + dz * ca;
+      _probe.set(gx, 0, gz);
+      const c1 = sweepBox(v.world, _origin, _probe, span, RAY_GROUNDS, v.body, hw);
+      // A leg has to be worth taking. Anything shorter than a car length and a
+      // bit is a gap the car is already in, not a way through.
+      if (c1 < 7) continue;
+
+      const leg1 = Math.min(c1 - 1.5, span);
+      const px = _origin.x + gx * leg1, pz = _origin.z + gz * leg1;
+
+      // From there, back toward the goal.
+      let qx = goalX - px, qz = goalZ - pz;
+      const left = Math.hypot(qx, qz) || 1;
+      qx /= left; qz /= left;
+      _plan.set(px, _origin.y, pz);
+      _probe.set(qx, 0, qz);
+      const c2 = sweepBox(v.world, _plan, _probe, Math.min(reach, left), RAY_GROUNDS, v.body, hw);
+
+      // How much of the way to the goal the pair of legs covers, measured
+      // along the line to it -- a long run that points away is worth nothing.
+      const gain1 = leg1 * (gx * dx + gz * dz);
+      const gain2 = Math.min(c2, left) * ((qx * dx + qz * dz));
+      // Swing costs, because a car that is always turning never gets going.
+      const swing = Math.abs(angleDelta(heading, Math.atan2(gx, gz)));
+      const score = gain1 + gain2 * 0.7 - swing * 6;
+      if (!best || score > best.score) {
+        best = { score, gx, gz, leg1, clear: leg1 + Math.min(c2, left) };
+      }
+    }
+
+    if (!best) { this.planClear = straight; this.planCap = Infinity; return null; }
+    this.planClear = best.clear;
+    // And the speed that turn can be taken at.
+    //
+    // This is the piece that was missing, and it is what "they keep
+    // misjudging how much they can turn" is: the car slowed for the obstacle
+    // in front of it, not for the *manoeuvre* it was about to have to make.
+    // A gap forty metres away that needs twenty-five degrees of swing is an
+    // arc of about fifty metres' radius, and there is a speed that arc can be
+    // driven at. Below that and the car threads it; above it the car arrives
+    // pointing at the trunk beside the gap, which is what you see.
+    const swingTo = Math.abs(angleDelta(heading, Math.atan2(best.gx, best.gz)));
+    const sinS = Math.abs(Math.sin(swingTo));
+    // Floored: a plan is a line to take, never a reason to stop dead. With no
+    // wheels on the ground -- which happens in a wood, over a root or coming
+    // off a kerb -- the grip term reads zero and this asked for a standstill
+    // in the middle of the trees, which is both wrong and a good way to be
+    // rear-ended by the car behind. Stopping, when it is called for, is the
+    // speed limiter's job and it has better information.
+    const cap = sinS > 0.04
+      ? cornerSpeedLimit(Math.max(this.arcFloor, best.leg1 / (2 * sinS)), Math.max(0.35, this._mu()))
+      : Infinity;
+    this.planCap = Math.max(cap, 7);
+    // Aimed into the first leg rather than at its end, so the car keeps
+    // steering as the geometry opens up -- the same reason pickGap does it.
+    const aimAt = Math.max(6, best.leg1 * 0.8);
+    return {
+      x: v.position.x + best.gx * aimAt,
+      z: v.position.z + best.gz * aimAt,
+      clear: best.clear,
+    };
   }
 
   /**
