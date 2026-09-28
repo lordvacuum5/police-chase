@@ -10,6 +10,15 @@
 
 import { clamp, moveTowards } from '../util/math.js';
 
+/**
+ * Pad buttons that press a key. Standard gamepad numbering, which every pad
+ * the browser calls "standard" follows: 3 is Y on an Xbox pad, triangle on a
+ * PlayStation one.
+ */
+const PAD_TAPS = {
+  3: 'KeyC',        // Y: change view
+};
+
 const KEYMAP = {
   throttle: ['KeyW', 'ArrowUp'],
   brake: ['KeyS', 'ArrowDown'],
@@ -47,6 +56,33 @@ export class Input {
   }
 
   down(action) { return KEYMAP[action].some((k) => this.keys.has(k)); }
+
+  /**
+   * Pad buttons that act like key taps, read once a frame.
+   *
+   * Held axes and triggers are sampled with the driving controls; these are
+   * different -- they fire once on the press, like a key, so they go through
+   * the same `pressed` set the keyboard and the on-screen buttons use and the
+   * game does not have to know where a tap came from.
+   *
+   * It has to be polled from the frame loop rather than from `sample`, which
+   * runs later in the frame than the key handling and only while the game is
+   * unpaused: a press found there would be cleared by endFrame before anything
+   * read it.
+   */
+  pollPad() {
+    const pad = this._pad();
+    if (!pad) { this._padPrev = null; return; }
+    const prev = this._padPrev || [];
+    const now = [];
+    for (const [index, code] of Object.entries(PAD_TAPS)) {
+      const b = pad.buttons[index];
+      const on = !!(b && b.pressed);
+      now[index] = on;
+      if (on && !prev[index]) this.press(code);
+    }
+    this._padPrev = now;
+  }
 
   /** True once per press. */
   tapped(code) {

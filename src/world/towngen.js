@@ -628,16 +628,21 @@ function buildTownCountryside(ctx) {
   const keepOut = (x, z) => Math.hypot(x, z) < TOWN_EDGE;
 
   buildFieldPatches(ctx, fields, { count: 110, minR: TOWN_EDGE, maxR: WORLD_HALF - 60, keepOut });
+  // Thinner than it was. An English market town surrounded by woodland is
+  // right; one where the outskirts are a forest is not, and every trunk is a
+  // collider a chase has to thread -- "there are a lot, just reduce the amount
+  // of trees in general". Copses down from 190, and the hedgerow trees spaced
+  // further apart and skipped more often.
   scatterTrees(ctx, trees, {
-    copses: 190, keepOut, minR: TOWN_EDGE + 20, maxR: WORLD_HALF - 70,
+    copses: 115, keepOut, minR: TOWN_EDGE + 20, maxR: WORLD_HALF - 70,
   });
-  treesAlongRoads(ctx, trees, ['country', 'lane', 'dual', 'avenue'], { spacing: 16, skip: 0.5 });
+  treesAlongRoads(ctx, trees, ['country', 'lane', 'dual', 'avenue'], { spacing: 21, skip: 0.6 });
 
   // A common on the edge of town: open grass with scattered oaks.
   const { rng } = ctx;
   const ca = rng() * TAU;
   const cx = Math.cos(ca) * 300, cz = Math.sin(ca) * 300;
-  for (let i = 0; i < 26; i++) {
+  for (let i = 0; i < 18; i++) {
     addTree(ctx, trees, cx + rand(rng, -110, 110), cz + rand(rng, -110, 110), rand(rng, 1.0, 1.4));
   }
 

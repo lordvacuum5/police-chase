@@ -1041,6 +1041,9 @@ class Game {
 
   _handleKeys() {
     const i = this.input;
+    // A pad button that acts like a key press becomes one here, before any of
+    // them are read.
+    i.pollPad();
     if (i.tapped('KeyM')) {
       // Back to map select. Rebuilding a whole world in place means tearing
       // down the physics world, the scene and every cached geometry; a reload
@@ -1054,7 +1057,14 @@ class Game {
     if (i.tapped('KeyC')) this.camera3.cycle();
     // N, not M: M is the menu, and was checked first, so muting could never happen.
     if ((i.tapped('KeyN') || i.tapped('Mute')) && this.audio) {
-      this.radio(this.audio.toggleMute() ? '[sound] muted' : '[sound] on');
+      // Said out loud on screen, not just written to the radio log -- the log
+      // is hidden now, so muting was a key press with no visible answer at
+      // all, and a mute you cannot see is indistinguishable from one that did
+      // not work: "I have to turn the sound off on the keyboard, and it
+      // doesn't seem to work."
+      const muted = this.audio.toggleMute();
+      this.radio(muted ? '[sound] muted' : '[sound] on');
+      this.hud.toast(muted ? 'SOUND OFF' : 'SOUND ON');
     }
     if (i.tapped('F3')) {
       this.debug = !this.debug;

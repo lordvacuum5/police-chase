@@ -728,9 +728,10 @@ export class RoadGraph {
    * `speed` is how fast the car is going, in m/s. It only matters in a
    * junction: see _turnHere.
    */
-  pathFromPosition(x, z, dirX, dirZ, goalId, laneOffset = 0, speedCap = Infinity, speed = 0) {
-    const straight = this._pathAhead(x, z, dirX, dirZ, goalId, laneOffset, speedCap);
-    const turn = this._turnHere(x, z, dirX, dirZ, goalId, laneOffset, speedCap, speed);
+  pathFromPosition(x, z, dirX, dirZ, goalId, laneOffset = 0, speedCap = Infinity, speed = 0,
+    corner = 9) {
+    const straight = this._pathAhead(x, z, dirX, dirZ, goalId, laneOffset, speedCap, corner);
+    const turn = this._turnHere(x, z, dirX, dirZ, goalId, laneOffset, speedCap, speed, corner);
     if (turn && (!straight.length || pathTime(turn) < pathTime(straight) - TURN_BIAS)) return turn;
     return straight;
   }
@@ -753,7 +754,7 @@ export class RoadGraph {
    * there. Only turns the car can actually take: one it is already swinging
    * into, or any turn short of a U-turn when it is slow enough to make it.
    */
-  _turnHere(x, z, dirX, dirZ, goalId, laneOffset, speedCap, speed) {
+  _turnHere(x, z, dirX, dirZ, goalId, laneOffset, speedCap, speed, corner = 9) {
     const snap = this.nearestEdge(x, z);
     if (!snap) return null;
     const e = snap.edge;
@@ -787,12 +788,12 @@ export class RoadGraph {
     // not back the way it came.
     if (!(along > 0.5 || (along > -0.2 && speed < TURN_SPEED))) return null;
 
-    const pts = this.pathToPoints(route, laneOffset);
+    const pts = this.pathToPoints(route, laneOffset, true, corner);
     return pts.length >= 2 ? pts : null;
   }
 
   /** The path from a car's position via the junction ahead. See pathFromPosition. */
-  _pathAhead(x, z, dirX, dirZ, goalId, laneOffset, speedCap) {
+  _pathAhead(x, z, dirX, dirZ, goalId, laneOffset, speedCap, corner = 9) {
     const snap = this.nearestEdge(x, z);
     if (!snap) return [];
     const e = snap.edge;
@@ -822,7 +823,7 @@ export class RoadGraph {
     if (aheadId === goalId) return lead;
     const route = this.route(aheadId, goalId, speedCap);
     if (!route || route.length < 2) return lead;
-    const tail = this.pathToPoints(route, laneOffset);
+    const tail = this.pathToPoints(route, laneOffset, true, corner);
     // The tail's first point duplicates the lead's last.
     return lead.concat(tail.slice(1));
   }
@@ -1144,13 +1145,21 @@ export class RoadGraph {
    * side; passing 0 gives the centreline, which is what a pursuing unit uses
    * when it stops caring about lane discipline.
    */
-  pathToPoints(path, laneOffset = 0, smooth = true) {
+  /**
+   * `corner` is how far back from a junction the turn starts -- the tangent
+   * length of the fillet, in metres. It decides the line a car takes through
+   * the corner and therefore how fast it may take it: the speed planner reads
+   * the radius straight off these points. Nine metres is a car keeping to its
+   * lane; a unit allowed to use the width of the road takes a longer one and
+   * carries the speed through, the way a driver in a hurry does.
+   */
+  pathToPoints(path, laneOffset = 0, smooth = true, corner = 9) {
     const raw = this._rawPathPoints(path, laneOffset);
     if (!smooth || raw.length < 3) return raw;
     // Junction corners must be rounded before the points are resampled, or the
     // AI reads a right-angle turn as a 50 m radius sweep, carries motorway
     // speed into it and puts the car through a shop window.
-    return resample(roundCorners(raw, 9), 14);
+    return resample(roundCorners(raw, corner), 14);
   }
 
   _rawPathPoints(path, laneOffset = 0) {

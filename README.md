@@ -533,7 +533,17 @@ themselves:
 | `P` | Pause · `H` Controls · `N` Sound on or off · `M` Back to the menu · `F3` Debug telemetry |
 
 A gamepad works too: left stick steers, triggers are throttle and brake, `A`
-handbrake, `X` clutch kick.
+handbrake, `X` clutch kick, **`Y` changes the view**. Held controls are sampled
+with the driving; the face buttons that act like a key press are read once a
+frame and go through the same path the keyboard and the on-screen buttons use,
+so nothing downstream has to know where a tap came from.
+
+`N` mutes, and now says so on screen. It always worked — the master gain goes
+to zero and the radio stops — but the only confirmation was a line in the radio
+log, and the log is hidden, so muting was a key press with no visible answer at
+all: *"I have to turn the sound off on the keyboard, and it doesn't seem to
+work."* A mute you cannot see is indistinguishable from one that did not
+happen.
 
 **The speedometer reads in mph**, and so does the radio: a unit calling in
 "speeds 130" while the needle in front of you said 80 was nonsense, and the
@@ -865,6 +875,27 @@ well. The cone is gone: a crew has mirrors, a passenger and a radio, and the
 thing that actually stops them seeing you is a building, which the line-of-sight
 test already handles.
 
+### Committing to a route
+
+Watched from across the map, the pack used to look like it could not make up
+its mind: *"they keep changing their minds, and they keep on going forward, so
+they just end up crashing."* Three separate things were re-deciding faster than
+a car can act on a decision.
+
+* **The intercept was re-solved every second** and the junction that looks best
+  moves with the target, so a unit was handed a different one most seconds of
+  the chase. It now keeps the junction it has while that junction is still
+  worth having, and gives it up only when it can no longer get there in time or
+  the target is clearly not coming that way.
+* **A route to a moving point was re-planned every 1.1 s**, and the goal is the
+  nearest junction to the last place the target was seen — which shuffles along
+  the road as they drive. A route is now kept unless the goal has genuinely
+  moved somewhere else (35 m near, 70 m far), and the periodic re-plan slows to
+  4.5 s once the goal is more than 150 m away. A car that far out has nothing
+  to gain from re-solving the same road twice a second.
+* **The direct-line corridor** flipped with every tree (see "A tree is not a
+  wall").
+
 ### Roadblocks need to know where you are
 
 They were going in while the force was *searching*. Siting a block needs a
@@ -1040,6 +1071,30 @@ never looked at, and now is. The impacts are mostly bumps at walking pace; the
 first version of this, which let units reach spots however they could and use
 the ordinary road router between them, had nine and eight on Wexbury, some at
 up to 90 km/h.
+
+### A tree is not a wall
+
+Seeing and driving are different questions, and one mask was answering both. A
+unit decides whether to drive straight at the target by sweeping a corridor the
+width of its own car toward them; that corridor was tested against buildings
+*and props*, and a tree is a prop. So in woodland the line was "blocked" by a
+trunk sixty metres away, and the unit went the long way round by road — *"they
+seem too scared about hitting trees, they don't go in small gaps between
+trees"* — while a trunk drifting across the corridor flipped the answer several
+times a second and the unit changed its mind with it.
+
+The corridor now tests walls only (`RAY_WALL`). Trees are still solid, still
+hurt, and are still steered around by the sweeps that do that job; they are no
+longer a reason to take the roads. The answer also has hysteresis: blocked is
+believed at once, but a corridor that was blocked has to read clear for half a
+second before the unit commits to the straight line again.
+
+**And there are fewer of them.** Measured as tree colliders on each map:
+Wexbury 1942 → **1193**, Ashfield 1321 → **918**. Copses are thinner, hedgerow
+trees are spaced further apart and skipped more often. An English market town
+surrounded by woodland is right; one whose outskirts are a forest is not, and
+every trunk is a collider the broad phase pays for — the town's total collider
+count came down from 3230 to 2481 with it.
 
 ### Braking only for what is in the way
 
@@ -1676,6 +1731,38 @@ police car is no better on tarmac — it is simply less helpless the moment it
 leaves it. Grass mu goes 0.62 to about 0.96. Before, a unit that cut a corner
 crawled at 6–10 km/h on the other side, which is not a shortcut; it now carries
 about 42 km/h off-road.
+
+#### Slowing down for the corner, then taking it
+
+*"When they're turning they slow down loads and then they turn. They need to
+keep a relative good speed and cut the corner, like a human would."*
+
+A unit follows its route by pure pursuit: aim at a point `look` metres ahead
+and hold the arc that reaches it. `safeSpeed` then limits the speed to what
+that arc's grip allows — and both the arc and the lookahead shrink as the car
+slows. So a junction ran away with itself: the corner limit slowed the car, the
+shorter lookahead tightened the arc, the tighter arc lowered the limit again,
+and units arrived at every junction in the city doing 27 km/h. Measured, the
+arc term was the binding constraint on **100%** of the samples where a unit was
+under 50 km/h — the road's own geometry allowed 200 to 300 km/h at the same
+moments.
+
+Two things changed, both sized by measurement over one fixed route across the
+city (`tests/corners.js`). A unit allowed to use the width of the road now
+starts its turn 16 m back rather than 9, and the speed limiter will not believe
+in a turn tighter than 13 m:
+
+| junction minimum, km/h | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| before | 18 | 31 | 33 | 41 | 45 | 32 |
+| **now** | **30** | **41** | **41** | **41** | **47** | **40** |
+
+Every corner on the route is quicker and the slowest one by two thirds, with no
+more scenery contacts than before. Tighter floors than 13 m were tried and are
+worse, not better: at 21 m some junctions are taken at 53 km/h and others
+collapse to 12 as the car runs wide and has to gather itself up, and by 26 m it
+starts hitting things. Putting a floor under the lookahead as well changed
+nothing measurable and is not in the game.
 
 #### Flat out across a field
 

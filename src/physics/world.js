@@ -134,14 +134,27 @@ export function sweepBox(
 }
 
 /** True if nothing solid sits between two world points. */
-export function hasLineOfSight(world, a, b, pad = 0.0) {
+export function hasLineOfSight(world, a, b, pad = 0.0, mask = RAY_SIGHT) {
   const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
   const len = Math.hypot(dx, dy, dz);
   if (len < 1e-3) return true;
   const dir = { x: dx / len, y: dy / len, z: dz / len };
-  const hit = raycast(world, a, dir, len - pad, RAY_SIGHT, null);
+  const hit = raycast(world, a, dir, len - pad, mask, null);
   return hit === null;
 }
+
+/**
+ * What a *driver* counts as being in the way, as opposed to what an eye does.
+ *
+ * Seeing and driving are different questions. A tree hides a car, so it blocks
+ * sight; but a tree is a thing you steer round, not a wall, and treating one
+ * as a blocked way through is what made units refuse gaps in woodland and go
+ * the long way by road -- "they seem too scared about hitting trees, they
+ * don't go in small gaps between trees". Worse, a trunk drifting in and out of
+ * a seventy-metre corridor flipped the answer several times a second, and the
+ * unit changed its mind with it.
+ */
+export const RAY_WALL = groups(0xFFFF, GROUP.BUILDING);
 
 /**
  * A traffic cone: a light, tippable dynamic body.

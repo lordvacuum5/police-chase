@@ -720,6 +720,30 @@ export class Dispatcher {
       );
       const cruise = u.vehicle.spec.topSpeedHint * 0.55;
 
+      // ---- stay on the job ----
+      // This is re-solved every second and the junction that looks best moves
+      // with the target, so a unit was handed a different one most seconds of
+      // the chase: it turned round, lost the road it was committed to, and
+      // from a distance the whole pack read as cars that could not make up
+      // their minds. A unit keeps the junction it has while that junction is
+      // still worth having -- it only gives it up when it can no longer get
+      // there in time, or the target is clearly not coming that way any more.
+      const held = u.role === ROLE.INTERCEPT && u.orders.node !== undefined
+        && u.orders.node !== null && !this.claimedNodes.has(u.orders.node)
+        ? candidates.find((c) => c.id === u.orders.node) : null;
+      if (held) {
+        const path = g.route(from.id, held.id, cruise);
+        const margin = path ? held.eta - g.routeTime(path, 0.82) : null;
+        // Wider than the window a job is taken on (1.2 to 15 s): having
+        // committed, a unit sees it through unless it has genuinely fallen
+        // out of reach.
+        if (margin !== null && margin >= 0.6 && margin <= 20) {
+          this.claimedNodes.add(held.id);
+          placed++;
+          continue;
+        }
+      }
+
       // Pre-filter by straight-line distance so we only pay for a handful of
       // A* runs per unit per second.
       const open = shortlist.filter((c) => !this.claimedNodes.has(c.id));

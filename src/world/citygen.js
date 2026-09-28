@@ -769,9 +769,9 @@ function buildCountryside(ctx) {
     if (e.kind !== 'country' && e.kind !== 'lane') continue;
     for (const s of e.segs) {
       const len = Math.hypot(s.b.x - s.a.x, s.b.z - s.a.z);
-      const n = Math.floor(len / 26);
+      const n = Math.floor(len / 32);
       for (let k = 0; k < n; k++) {
-        if (rng() < 0.42) continue;
+        if (rng() < 0.5) continue;
         const t = (k + 0.5) / n;
         const px = lerp(s.a.x, s.b.x, t), pz = lerp(s.a.z, s.b.z, t);
         const dx = (s.b.x - s.a.x) / len, dz = (s.b.z - s.a.z) / len;
@@ -831,7 +831,7 @@ function scatterWoodland(ctx, trees) {
   };
 
   // ---- copses, thicker near the ring than out at the map edge ----
-  for (let c = 0; c < 150; c++) {
+  for (let c = 0; c < 110; c++) {
     const a = rng() * TAU;
     const r = rand(rng, CITY_EDGE + 10, WORLD_HALF - 70);
     const cx = Math.cos(a) * r, cz = Math.sin(a) * r;

@@ -8,9 +8,18 @@
 import * as THREE from 'three';
 import { Driver, SKILL } from './driver.js';
 import { pitUpdate, relativeTo, boxAim, boxSpeed } from './tactics.js';
-import { hasLineOfSight, sweepBox, raycast, groups, GROUP, RAY_SOLID } from '../physics/world.js';
+import { hasLineOfSight, sweepBox, raycast, groups, GROUP, RAY_SOLID, RAY_WALL } from '../physics/world.js';
 import { WORLD_HALF } from '../world/common.js';
 import { clamp, clamp01, lerp, dist2, sign } from '../util/math.js';
+
+/**
+ * How far back a turn starts, in metres: the tangent length of the fillet the
+ * route is rounded with. See RoadGraph.pathToPoints.
+ */
+const LANE_CORNER = 9;
+const CUT_CORNER = 16;
+/** The tightest turn a unit in a hurry plans for. See Driver.arcFloor. */
+const CUT_ARC = 13;
 
 const _aim = new THREE.Vector3();
 const _tmp = new THREE.Vector3();
@@ -139,6 +148,12 @@ export class Officer {
     const pts = this.game.graph.pathFromPosition(
       v.position.x, v.position.z, v.forward.x, v.forward.z, goalId, laneOffset,
       Infinity, v.speed,
+      // How the corner is taken. A unit in a hurry is allowed the width of the
+      // road (see Driver.allowOffRoad), and takes the turn as a driver in a
+      // hurry does -- starting it earlier, running wider, carrying the speed
+      // through -- instead of following its lane round the kerb and braking to
+      // a walk for every junction: "they slow down loads and then they turn".
+      this.driver.allowOffRoad ? CUT_CORNER : LANE_CORNER,
     );
     if (pts.length < 2) return false;
     this.driver.setPath(pts);
@@ -256,6 +271,10 @@ export class Officer {
     const searchingRoad = this.role === ROLE.SEARCH && !this._wentIn
       && !(this._searchSpot && this._searchSpot.direct);
     this.driver.allowOffRoad = this.role !== ROLE.PATROL && !searchingRoad;
+    // A unit that may use the width of the road turns like one: see
+    // Driver.arcFloor. A patrol car on its beat keeps the tight one and takes
+    // its junctions properly.
+    this.driver.arcFloor = this.driver.allowOffRoad ? CUT_ARC : 6;
 
     // Off the hard surface: getting back onto it is the only job.
     //
@@ -748,9 +767,24 @@ export class Officer {
     const g = this.game.graph;
     const goal = g.nearestNode(point.x, point.z);
 
-    if (this.repathTimer <= 0 || !this.driver.hasPath || this.goalNode !== goal.id) {
+    // The point is usually the last place the target was seen, which moves --
+    // so the nearest junction to it changes every few seconds, and a unit that
+    // re-plans on every one of those changes is a unit that keeps changing its
+    // mind: it turns at a junction, abandons the road it was on, and drives
+    // into the kerb doing it. Watched from a distance that is most of what the
+    // pack looks like it is doing.
+    //
+    // So a route is kept unless the goal has genuinely moved somewhere else,
+    // and the periodic re-plan slows right down with distance. A car three
+    // hundred metres away has nothing to gain from re-solving the same road
+    // twice a second; it needs to get going.
+    const far = this.distanceTo(point) > 150;
+    const shifted = this.goalNode !== goal.id
+      && (!this._goalAt || dist2(this._goalAt.x, this._goalAt.z, goal.x, goal.z) > (far ? 70 : 35));
+    if (this.repathTimer <= 0 || !this.driver.hasPath || shifted) {
       this._routeTo(goal.id, 2.4);
-      this.repathTimer = 1.1;
+      this._goalAt = { x: goal.x, z: goal.z };
+      this.repathTimer = far ? 4.5 : 1.4;
     }
 
     if (this.driver.remaining() < 22) {
@@ -1050,9 +1084,25 @@ export class Officer {
           target.position.y + 0.8,
           v.position.z + nz * off + uz * look,
         );
-        if (!hasLineOfSight(this.game.world, _eye, _aim2, 1.5)) { open = false; break; }
+        // Walls only. A tree in the corridor is something to steer round --
+        // see RAY_WALL -- and counting it as a blocked way through sent units
+        // the long way by road through woodland, and flipped the answer every
+        // time a trunk drifted across the line.
+        if (!hasLineOfSight(this.game.world, _eye, _aim2, 1.5, RAY_WALL)) { open = false; break; }
       }
-      this._hasLos = open;
+
+      // Hysteresis, because this decides how the car drives and a car that
+      // changes its mind four times a second drives into things. Blocked is
+      // believed at once -- there is a building there -- but a corridor that
+      // was blocked has to read clear for half a second before the unit
+      // commits to the straight line again.
+      if (!open) {
+        this._hasLos = false;
+        this._losOpenFor = 0;
+      } else {
+        this._losOpenFor = (this._losOpenFor || 0) + 0.2;
+        if (this._losOpenFor >= 0.5 || this._hasLos) this._hasLos = true;
+      }
     }
 
     if (!this._hasLos) {
@@ -1174,7 +1224,10 @@ export class Officer {
 
     if (this.repathTimer <= 0 || !this.driver.hasPath || this.goalNode !== node) {
       this._routeTo(node, 2.4);
-      this.repathTimer = 1.4;
+      // Same as _goTo: the further off the junction is, the less there is to
+      // gain from solving the road to it again, and the more a fresh route
+      // costs in changed minds.
+      this.repathTimer = this.distanceTo(g.nodes[node] || this.position) > 150 ? 4.5 : 1.6;
     }
 
     const arrived = this.driver.remaining() < 26;

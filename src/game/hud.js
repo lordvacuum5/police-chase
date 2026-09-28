@@ -53,6 +53,9 @@ export class Hud {
     this.repairFill = document.getElementById('repairfill');
     this._repairShown = false;
 
+    this.toastEl = document.getElementById('toast');
+    this._toastTimer = null;
+
     this.roadEl = document.getElementById('roadsign');
     this._roadName = '';
     this._roadAt = 0;
@@ -306,6 +309,18 @@ export class Hud {
     ctx.font = '500 13px ui-monospace, Consolas, monospace';
     ctx.fillStyle = '#8c9bab';
     ctx.fillText('mph', cx, cy + 50);
+  }
+
+  /**
+   * A word on screen for a moment: what a control did, when it has no other
+   * visible answer. Deliberately small -- the banner is for the chase.
+   */
+  toast(text) {
+    if (!this.toastEl) return;
+    this.toastEl.textContent = text;
+    this.toastEl.classList.add('on');
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => this.toastEl.classList.remove('on'), 1600);
   }
 
   // ------------------------------------------------------------- road sign
