@@ -64,6 +64,7 @@ export class Hud {
     this.sctx = this.speedo.getContext('2d');
     this.minimap = document.getElementById('minimap');
     this.mctx = this.minimap.getContext('2d');
+    this._wireMinimapTap();
 
     this.messages = [];
     this.smoothSpeed = 0;
@@ -321,6 +322,24 @@ export class Hud {
     this.toastEl.classList.add('on');
     clearTimeout(this._toastTimer);
     this._toastTimer = setTimeout(() => this.toastEl.classList.remove('on'), 1600);
+  }
+
+  /**
+   * Tap the map to make it twice the size; tap anything else to put it back.
+   *
+   * The canvas is 380 pixels square behind a 190 px picture, so the big one is
+   * drawn pixel for pixel rather than blown up. Pointer events, so a finger
+   * and a mouse both do it, and the collapse listens on the document -- a
+   * press anywhere else, including the map's own second press, closes it.
+   */
+  _wireMinimapTap() {
+    const wrap = document.getElementById('mapwrap');
+    if (!wrap) return;
+    wrap.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      wrap.classList.toggle('big');
+    });
+    document.addEventListener('pointerdown', () => wrap.classList.remove('big'));
   }
 
   // ------------------------------------------------------------- road sign

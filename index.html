@@ -60,7 +60,15 @@
   #status.clear { color: var(--cool); }
 
   /* ---- minimap, top right ---- */
-  #mapwrap { position: absolute; top: 14px; right: 14px; padding: 6px; }
+  /* Tap it and it doubles; tap anywhere else and it goes back. Scaled rather
+     than resized: the canvas is 380 backing pixels square, so the big one is
+     drawn pixel for pixel, and the panel's border and padding grow with it. */
+  #mapwrap {
+    position: absolute; top: 14px; right: 14px; padding: 6px;
+    pointer-events: auto; cursor: pointer;
+    transform-origin: 100% 0; transition: transform .16s;
+  }
+  #mapwrap.big { transform: scale(2); }
   #minimap { display: block; width: 190px; height: 190px; border-radius: 3px; }
 
   /* A word about a control that has no other visible answer -- muting, mostly.
