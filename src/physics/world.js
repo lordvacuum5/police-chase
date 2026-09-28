@@ -102,10 +102,34 @@ function sweepShapeFor(halfWidth) {
   const key = Math.round(halfWidth * 100);
   let s = _sweepShapes.get(key);
   if (!s) {
-    s = new RAPIER.Cuboid(halfWidth, 0.5, 0.35);
+    // A car-width, car-height plate, thin along the way it is going: the
+    // cross-section the car would present if it carried on. Its local +Z is
+    // the direction of travel -- see aimSweep.
+    s = new RAPIER.Cuboid(halfWidth, 0.5, 0.25);
     _sweepShapes.set(key, s);
   }
   return s;
+}
+
+/**
+ * Point the swept plate along the direction it is being swept.
+ *
+ * It used to be left at the world's own rotation, which made every obstacle
+ * check depend on which way the car happened to be pointing. Heading north or
+ * south the plate was 2.2 m wide and 0.7 m deep -- right. Heading east or west
+ * it was the other way about: 0.7 m wide, so it threaded past trunks the car
+ * would have hit, and 2.2 m deep, so it reported things in the way from over a
+ * metre further back than they were. Both of the complaints about the pack
+ * come out of that one line: "they have a bubble around all these objects that
+ * is too big" and "they still crash into trees at that high speed", depending
+ * on which way the car was facing when it happened.
+ */
+function aimSweep(dir) {
+  const half = Math.atan2(dir.x, dir.z) * 0.5;
+  _sweepRot.x = 0;
+  _sweepRot.y = Math.sin(half);
+  _sweepRot.z = 0;
+  _sweepRot.w = Math.cos(half);
 }
 
 /**
@@ -122,6 +146,7 @@ export function sweepBox(
   world, origin, dir, maxToi, filterGroups = undefined, excludeBody = null, halfWidth = 1.0,
 ) {
   _sweepPos.x = origin.x; _sweepPos.y = origin.y; _sweepPos.z = origin.z;
+  aimSweep(dir);
   const hit = world.castShape(
     _sweepPos, _sweepRot, dir, sweepShapeFor(halfWidth),
     0, maxToi, true,

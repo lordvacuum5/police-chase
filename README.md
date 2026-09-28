@@ -1105,6 +1105,38 @@ surrounded by woodland is right; one whose outskirts are a forest is not, and
 every trunk is a collider the broad phase pays for — the town's total collider
 count came down from 3230 to 2481 with it.
 
+### The sweep that was only right facing north
+
+*"It was trying to turn into a gap between two buildings, but it thought it
+couldn't make it, so it stopped — and it had loads of room. And they'd still
+crash into trees at that high speed. It's like they have a bubble around all
+these objects that is too big."*
+
+Both halves of that were one line. Every obstacle check — will this fit, how
+far to the thing in front, which side has more room — sweeps a box along the
+direction of travel, and the box was created at the world's own rotation and
+never turned. Its half-extents are (car half-width, 0.5, 0.25), so heading
+north or south it was a car-width plate, which is right; heading east or west
+it was that plate turned sideways: 0.5 m wide and 4.3 m deep.
+
+Measured from twenty metres back, the same wall and the same 1.6 m hole in it
+(`tests/bubble.js`; 18.75 m is the correct answer, the wall's own half-depth
+and the plate's taken off):
+
+| | wall | 1.6 m gap, which a 1.94 m car does not fit through |
+|---|---|---|
+| north / south, before | 18.65 m | 18.65 m |
+| **east / west, before** | **17.95 m** | **clear for 60 m** |
+| every heading, now | 18.75 m | 18.75 m |
+
+So driving east, a unit believed a wall was 0.8 m closer than it was — the
+bubble — and believed it could thread a gap two thirds of its own width, which
+is how a car at speed ends up wearing a tree. Which of the two you got depended
+on which way the car happened to be pointing, which is why it looked arbitrary.
+The plate is now turned to face the way it is being swept, and all four
+headings agree to the centimetre. `tests/gaps.js` is unchanged by it: still
+through a 2.2 m gap, still nothing touched.
+
 ### Braking only for what is in the way
 
 The obstacle sweep casts three swept boxes: one straight ahead and one
