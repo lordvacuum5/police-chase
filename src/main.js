@@ -10,6 +10,7 @@ import {
 import { WORLD_HALF } from './world/common.js';
 import { MAPS, mapById } from './world/maps.js';
 import { showMenu, hideMenu, chosenCar, chosenPoliceCar } from './core/menu.js';
+import { takeCarCards } from './game/cards.js';
 import { DRIVE_SIDE } from './world/roadgraph.js';
 import { Dispatcher, SEARCH_SECONDS } from './ai/dispatcher.js';
 import {
@@ -263,6 +264,10 @@ class Game {
 
     this._initDebug();
     window.addEventListener('resize', () => this._resize());
+
+    // Photographs of the cars for the menu's cards, taken once and kept, while
+    // the boot screen is still up and nothing is happening. See game/cards.js.
+    takeCarCards(this);
 
     boot.set(1, 'ready');
     await frame();

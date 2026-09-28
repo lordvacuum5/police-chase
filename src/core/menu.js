@@ -23,6 +23,7 @@ import { session } from '../net/session.js';
 import { prefersTouch } from './touch.js';
 import { bestScores } from '../game/score.js';
 import { chosenConditions, setConditions } from '../game/weather.js';
+import { carCards } from '../game/cards.js';
 import { makeRng, TAU } from '../util/math.js';
 import {
   englishVoices, pickVoices, voiceChoices, setVoiceChoice, speakSample, SPEAKER_NAMES,
@@ -261,7 +262,7 @@ function buildCarCards(list, key, chosen) {
     const canvas = document.createElement('canvas');
     canvas.width = 620; canvas.height = 168;
     card.appendChild(canvas);
-    drawCarProfile(canvas, car);
+    drawCar(canvas, car);
 
     const title = document.createElement('h2');
     title.innerHTML = `<span>${car.name}</span><small>${car.tag}</small>`;
@@ -566,6 +567,26 @@ function buildVoicePicker() {
     // Most browsers fill the list in a moment after the page asks for it.
     speech.addEventListener('voiceschanged', render);
   }
+}
+
+/**
+ * The car on its card: a photograph of the real one if the game has taken one
+ * (see game/cards.js), and the schematic below if it has not -- a first visit,
+ * or a browser that will not keep anything.
+ */
+function drawCar(canvas, car) {
+  const shot = carCards()[car.id];
+  if (!shot) { drawCarProfile(canvas, car); return; }
+  // Something to look at while the image decodes, and what is left if it will
+  // not decode at all.
+  drawCarProfile(canvas, car);
+  const img = new Image();
+  img.onload = () => {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  };
+  img.src = shot;
 }
 
 /**
