@@ -3380,6 +3380,13 @@ the screen counts the three seconds and then the repair. It works in a chase
 too, but stopping is how you get arrested, so it is only safe if you have got
 some distance first.
 
+**The workshop is open at both ends** — two walls and a roof, no back. It had
+one, which made the bay a dead end: drive in to mend the car and the only way
+out is a reverse, with whoever is chasing you arriving at the single entrance.
+Open at the back it is a building you can go through, which is worth having in
+a chase and costs nothing — the sides and the roof still make it a workshop to
+look at, and the bay is still the bay.
+
 The site is found, not authored, so the same code (`src/game/garage.js`)
 serves both maps: a straight stretch of ordinary road a few hundred metres from
 the start with a 34 × 24 m lot of clear ground beside it — no road, no

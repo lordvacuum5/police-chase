@@ -231,11 +231,17 @@ export class Garage {
       b.addBox(0.82, 0.3, 1.02, CU + du, y0 + 1.6, CV + 1.0, 0x2f7d4c);
     }
 
-    // The workshop over the bay: open to the forecourt.
+    // The workshop over the bay: two walls and a roof, open at both ends.
+    //
+    // It had a back wall, which made the bay a dead end -- drive in to mend
+    // the car and the only way out is a reverse, with whoever was chasing you
+    // arriving at the one entrance. Open at the back it is a building you can
+    // go through, which is worth something in a chase and costs nothing: the
+    // sides and the roof still make it a workshop to look at, and the bay is
+    // still the bay.
     const WU = (BAY.u0 + BAY.u1) * 0.5;
     b.addBox(0.4, 5.6, 12, 4.2, y0 + 2.8, 5.5, 0xcfcac0);
     b.addBox(0.4, 5.6, 12, 15.8, y0 + 2.8, 5.5, 0xcfcac0);
-    b.addBox(12, 5.6, 0.4, 10, y0 + 2.8, 11.3, 0xbfb9ae);
     b.addBox(12.4, 0.4, 12.4, 10, y0 + 5.8, 5.5, 0x5b6068);
     b.addBox(12.4, 0.7, 0.3, 10, y0 + 5.35, -0.55, 0x2f7d4c);             // fascia over the door
 
@@ -304,7 +310,8 @@ export class Garage {
     box(-10, 8.25, y0 + 2.1, 12, 4.2, 6.5);
     box(4.2, 5.5, y0 + 2.8, 0.4, 5.6, 12);
     box(15.8, 5.5, y0 + 2.8, 0.4, 5.6, 12);
-    box(10, 11.3, y0 + 2.8, 12, 5.6, 0.4);
+    // No back wall: see above. The roof has none either -- it is held up by
+    // the two sides, and a collider on it would be a ceiling to drive into.
     for (const du of [-7.5, 7.5]) for (const dv of [-3, 3]) box(CU + du, CV + dv, y0 + 2.5, 0.45, 5, 0.45, GROUP.PROP);
     for (const du of [-4, 4]) box(CU + du, CV, y0 + 0.9, 1.4, 1.8, 4.2, GROUP.PROP);
     box(SU, SV, y0 + 3, 0.35, 6, 0.35, GROUP.PROP);
