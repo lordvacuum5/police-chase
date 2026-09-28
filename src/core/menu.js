@@ -91,7 +91,8 @@ export const CARS = [
  * tests/policecars.js on the car as a person gets it -- the drivable tyre
  * model, the extra mass, the extra engine (see drivablePoliceSpec) -- and not
  * on the fleet car the AI drives, so the cards describe what you will actually
- * be holding. Bars are scaled within this list, as the escapee's are within
+ * be holding. Toughness is hits from a *civilian* car: one from another police
+ * car costs a third of that (see Vehicle.FRIENDLY). Bars are scaled within this list, as the escapee's are within
  * theirs: these two are a choice between each other, not against a Stiletto.
  *
  * Two, and marked ones. The fleet's other cars stay the AI's to drive: the
@@ -112,7 +113,7 @@ export const POLICE_CARS = [
       ['Top speed', 152, 'mph'],
       ['0-60', 5.7, 's', true],
       ['Grip', 1.52, 'g'],
-      ['Toughness', 12, 'hits'],
+      ['Toughness', 15, 'hits'],
     ],
   },
   {
@@ -125,8 +126,8 @@ export const POLICE_CARS = [
     stats: [
       ['Top speed', 145, 'mph'],
       ['0-60', 7.1, 's', true],
-      ['Grip', 1.43, 'g'],
-      ['Toughness', 19, 'hits'],
+      ['Grip', 1.53, 'g'],
+      ['Toughness', 22, 'hits'],
     ],
   },
 ];

@@ -62,8 +62,17 @@ Measured on the car as a person gets it, not as the AI drives it
 
 | | top speed | 0–60 | grip | shunts to wreck |
 |---|---|---|---|---|
-| **Interceptor** | 152 mph | 5.7 s | 1.52 g | 12 |
-| **Police SUV** | 145 mph | 7.1 s | 1.43 g | 19 |
+| **Interceptor** | 152 mph | 5.7 s | 1.52 g | 15 |
+| **Police SUV** | 145 mph | 7.1 s | 1.53 g | 22 |
+
+Shunts to wreck is hits from a *civilian* car. **One of your own costs a
+third** — the same 50 km/h shunt does 2.6% to an interceptor when it comes
+from a patrol car and 6.6% when it comes from a Runner, and the patrol car on
+the other end of it takes 3.2% rather than 9.0%. As a police player you catch a
+lot of those, because the pack is driving at the escapee and you are in the
+way: *"the other police cars seem to do loads of damage"*. Two police cars
+meeting is a paint swap and somebody's paperwork, not the end of either car,
+and it applies both ways round so the pack does not wreck itself on you.
 
 Two, and both marked. The rest of the fleet stays the AI's to drive: the patrol
 car because, measured, it is slower than the interceptor, less grippy and no

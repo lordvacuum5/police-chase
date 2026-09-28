@@ -23,6 +23,12 @@ import { clamp, clamp01, lerp, damp, sign, moveTowards, smoothstep, TAU } from '
 const SURFACE_TYRES = [TYRE_GRASS, TYRE_ROAD, TYRE_PAVED];
 
 /**
+ * What a shunt from another police car costs, as a fraction of the same shunt
+ * from anybody else. See takeImpact.
+ */
+const FRIENDLY = 0.35;
+
+/**
  * How far the ground may stand above the flat collision plate.
  *
  * Ground height comes from `sim.heightAt` rather than from geometry: the world
@@ -319,6 +325,26 @@ export class Vehicle {
    * that was hit often missed it entirely, because on its screen the other
    * car is a tenth of a second behind and a little to one side.
    */
+  /**
+   * Is another police car touching this one right now?
+   *
+   * The impact itself is inferred from a velocity change, which says how hard
+   * but not who by, so the contact is looked up at the moment it is charged
+   * for. Colliders carry their vehicle, so the pair is enough.
+   */
+  _touchingPolice() {
+    let friend = false;
+    try {
+      this.world.contactPairsWith(this.collider, (other) => {
+        const v = other && other.__vehicle;
+        if (v && v !== this && v.isPolice) friend = true;
+      });
+    } catch (e) {
+      // An older Rapier without the query: charge full price, as before.
+    }
+    return friend;
+  }
+
   takeImpact(dv) {
     // Below this a knock is just a knock: kerbs, cones, a scrape along a wall
     // and the ordinary bumping of a pack of cars all sit under it. Raised
@@ -330,7 +356,16 @@ export class Vehicle {
     // A shielded unit -- one still making its way to the chase -- records the
     // impact for sound and camera but takes none of the damage.
     if (!this.assist.shielded) {
-      this.damage = clamp01(this.damage + ((dv - 2.6) * 0.042) / (this.spec.durability || 1));
+      // One of your own costs less. Two police cars meeting is a paint swap
+      // and a bad afternoon for somebody's paperwork, not the end of either
+      // car -- and as a police player you catch a lot of them, because the
+      // pack is driving at the escapee and you are in the way: "when I'm a
+      // police officer, the other police cars seem to do loads of damage".
+      // Both ways round, so the pack does not wreck itself on you either.
+      const friendly = this.isPolice && this._touchingPolice() ? FRIENDLY : 1;
+      this.damage = clamp01(
+        this.damage + ((dv - 2.6) * 0.042 * friendly) / (this.spec.durability || 1),
+      );
     }
     this.lastImpact = dv;
     this.lastImpactAt = performance.now();

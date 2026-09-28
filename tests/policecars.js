@@ -117,8 +117,11 @@ window.__runPoliceCars = async function (kinds = ['interceptor', 'suv']) {
       }
 
       // -------------------------------------------------------------- damage
-      const wall = g.createVehicle('patrol', 'patrol', { x: LANE_X, y: 0.9, z: -900 }, 0,
-        { police: true });
+      // Into a civilian car, not a patrol car: a shunt between two police cars
+      // is charged at a third (Vehicle.FRIENDLY), and the card's "toughness"
+      // is meant to say how many hits the car takes, not how many hits from
+      // its own side.
+      const wall = g.createVehicle('runner', 'runner', { x: LANE_X, y: 0.9, z: -900 }, 0, {});
       const d = spawn(kind, LANE_X, -915, 0);
       d.repair();
       controls = { throttle: 0, brake: 1, steer: 0, handbrake: 1 };
