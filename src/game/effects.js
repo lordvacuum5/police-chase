@@ -170,8 +170,13 @@ export class LightBars {
   /**
    * Place one car's pair of lamps. `offsets` are body-local positions.
    * The pattern is a double-blink alternating side to side.
+   *
+   * `basis` is the pose the car is being drawn in this frame, which is not
+   * quite where the physics left it (see the interpolation in Game._render).
+   * A light bar that ignores that sits a few centimetres off the roof it is
+   * bolted to, and at speed it swims.
    */
-  place(vehicle, offsets, phaseOffset = 0) {
+  place(vehicle, offsets, phaseOffset = 0, basis = null) {
     if (this.count >= this.capacity) return;
     const t = (this.time * 3.4 + phaseOffset) % 1;
     const leftOn = t < 0.16 || (t > 0.24 && t < 0.40);
@@ -179,8 +184,9 @@ export class LightBars {
 
     const i = this.count++;
     for (let k = 0; k < 2; k++) {
-      _a.copy(offsets[k]).applyQuaternion(vehicle.quaternion).add(vehicle.position);
-      _q.copy(vehicle.quaternion);
+      const quat = basis ? basis.quaternion : vehicle.quaternion;
+      _a.copy(offsets[k]).applyQuaternion(quat).add(basis ? basis.position : vehicle.position);
+      _q.copy(quat);
       const on = k === 0 ? leftOn : rightOn;
       const mesh = k === 0 ? this.red : this.blue;
       _s.setScalar(on ? 1 : 0.0001);

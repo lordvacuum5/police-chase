@@ -140,6 +140,11 @@ export class Vehicle {
     // ---- telemetry read by the camera, HUD, AI and effects ----
     this.position = new THREE.Vector3();
     this.quaternion = new THREE.Quaternion();
+    // Where the car was at the start of the current physics substep. The
+    // frame is drawn somewhere between this and where it is now -- see
+    // Game._render. Nothing in the simulation reads them.
+    this.prevPos = new THREE.Vector3();
+    this.prevQuat = new THREE.Quaternion();
     this.linvel = new THREE.Vector3();
     this.angvel = new THREE.Vector3();
     this.forward = new THREE.Vector3(0, 0, 1);
@@ -1150,14 +1155,25 @@ export class Vehicle {
   }
 
   /** Wheel centre in world space, accounting for suspension travel. */
-  wheelCentre(i, out) {
+  /**
+   * Wheel centre in world space, accounting for suspension travel.
+   *
+   * `basis` lets the caller ask for the wheel against a pose the car is not
+   * actually in -- the drawn pose, part way between two physics substeps, so
+   * the wheels travel with the body rather than being pinned to where the
+   * solver last left them.
+   */
+  wheelCentre(i, out, basis = null) {
     const w = this.wheels[i];
     const sus = this.spec.suspension;
     const drop = sus.rest - w.compression;
+    const pos = basis ? basis.position : this.position;
+    const quat = basis ? basis.quaternion : this.quaternion;
+    const up = basis ? basis.up : this.up;
     return out.copy(w.pos)
-      .applyQuaternion(this.quaternion)
-      .add(this.position)
-      .addScaledVector(this.up, -drop);
+      .applyQuaternion(quat)
+      .add(pos)
+      .addScaledVector(up, -drop);
   }
 
   teleport(position, heading) {
@@ -1168,6 +1184,11 @@ export class Vehicle {
     this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     this._prevVel.set(0, 0, 0);
     this._prevYaw = 0;
+    // Nothing to interpolate from: a car that has been picked up and put down
+    // somewhere else did not travel between the two, and drawing it part way
+    // would smear it across the map for a frame.
+    this.prevPos.copy(position);
+    this.prevQuat.set(0, Math.sin(half), 0, Math.cos(half));
     for (const w of this.wheels) { w.omega = 0; w.compression = 0; }
     this.gear = 1;
     this.rpm = this.spec.engine.idleRpm;

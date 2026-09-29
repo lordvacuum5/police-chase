@@ -111,6 +111,13 @@ const _frustum = new THREE.Frustum();
 const _viewMat = new THREE.Matrix4();
 const _sphere = new THREE.Sphere();
 const _eyeV = new THREE.Vector3();
+const _up = new THREE.Vector3();
+/**
+ * The pose a car is drawn in this frame, as something that can stand in for
+ * the car itself: everything bolted to the body -- wheels, lamps -- is placed
+ * against this rather than against where the solver last left it.
+ */
+const _drawn = { position: null, quaternion: null, up: _up };
 const _atV = new THREE.Vector3();
 
 const boot = {
@@ -1642,6 +1649,12 @@ class Game {
     this.world.timestep = FIXED;
     this.world.integrationParameters.dt = FIXED;
     while (this.accumulator >= FIXED && steps < MAX_SUBSTEPS) {
+      // Where everything was before this substep, so the frame can be drawn
+      // between the two: see the interpolation in _render.
+      for (const v of this.vehicles) {
+        v.prevPos.copy(v.position);
+        v.prevQuat.copy(v.quaternion);
+      }
       for (const v of this.vehicles) { if (!v.remote) v.prepare(FIXED); }
       this.world.step();
       for (const v of this.vehicles) {
@@ -1672,7 +1685,8 @@ class Game {
 
     this._catchFallen();
     this._updateSkids(dt);
-    this.camera3.update(dt, player);
+    // The same part-way-through-a-substep pose the frame will be drawn in.
+    this.camera3.update(dt, player, clamp01(this.accumulator / FIXED));
     this.weather.update(dt);
 
     // Camera shake and a thud on a real hit.
@@ -1803,12 +1817,32 @@ class Game {
     this.roadblocks.syncVisuals();
 
     // ---- car transforms ----
+    //
+    // Drawn between the last two physics substeps rather than at whichever one
+    // the solver happened to stop on.
+    //
+    // Physics runs at a fixed 1/120 and the frame does not divide into it:
+    // with half a millisecond of jitter on a 60 fps frame, about one frame in
+    // twenty-six gets one substep and another one in twenty-six gets three,
+    // while the rest get two. Drawn raw, that is the world advancing 0.46 m,
+    // 0.93 m and 1.39 m on successive frames at 200 km/h -- a metre of pop
+    // several times a second, which is worst at speed and worst of all in the
+    // chase views, where the camera glides smoothly behind a car that is
+    // stepping. "When you're outside any vehicle it seems to judder... at high
+    // speed." Interpolating by how much of a substep is left over costs two
+    // vector copies per car per substep and removes all of it.
+    const alpha = clamp01(this.accumulator / FIXED);
     let wi = 0;
     this.lights.begin(dt);
 
     for (const v of this.vehicles) {
-      v.view.position.copy(v.position);
-      v.view.quaternion.copy(v.quaternion);
+      v.view.position.lerpVectors(v.prevPos, v.position, alpha);
+      v.view.quaternion.copy(v.prevQuat).slerp(v.quaternion, alpha);
+      // The wheels, the lamps and the camera all have to agree with the body
+      // they are attached to, so everything below works off the drawn pose.
+      _drawn.position = v.view.position;
+      _drawn.quaternion = v.view.quaternion;
+      _drawn.up = _up.copy(AXIS_Y).applyQuaternion(v.view.quaternion);
 
       // Every wheel is one instance of the same 0.34 m by 0.26 m tyre, scaled
       // to whatever this car actually runs on -- wider still at the rear if
@@ -1817,10 +1851,10 @@ class Game {
       const rs = s.wheelRadius / 0.34;
       for (let i = 0; i < 4; i++) {
         const w = v.wheels[i];
-        v.wheelCentre(i, _v);
+        v.wheelCentre(i, _v, _drawn);
         _qA.setFromAxisAngle(AXIS_Y, w.steer);
         _qB.setFromAxisAngle(AXIS_X, -w.spin);
-        _qC.copy(v.quaternion).multiply(_qA).multiply(_qB);
+        _qC.copy(v.view.quaternion).multiply(_qA).multiply(_qB);
         const width = !w.front && s.wheelWidthRear ? s.wheelWidthRear : s.wheelWidth;
         _scale.set(width / 0.26, rs, rs);
         _m.compose(_v, _qC, _scale);
@@ -1836,7 +1870,7 @@ class Game {
         const lamps = v.view.userData.lamps
           || (v.view.geometry && v.view.geometry.userData.lamps)
           || LAMP_OFFSETS;
-        this.lights.place(v, lamps, v.lampPhase || 0);
+        this.lights.place(v, lamps, v.lampPhase || 0, _drawn);
       }
     }
 

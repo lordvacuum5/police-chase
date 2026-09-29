@@ -11,8 +11,99 @@ import { clamp, clamp01, lerp, damp, angleDelta, smoothstep } from '../util/math
 const _pos = new THREE.Vector3();
 const _look = new THREE.Vector3();
 const _tmp = new THREE.Vector3();
+const _dir = new THREE.Vector3();
+// The car as it is being drawn this frame, rather than as the solver left it.
+const _carPos = new THREE.Vector3();
+const _carQuat = new THREE.Quaternion();
+const _fwd = new THREE.Vector3();
+const _upv = new THREE.Vector3();
+const AXIS_F = new THREE.Vector3(0, 0, 1);
+const AXIS_U = new THREE.Vector3(0, 1, 0);
 
 export const CAM_MODES = ['chase', 'close', 'hood', 'cinematic'];
+
+/**
+ * How far below the horizon the car's own bodywork may first appear in the
+ * bonnet view before the camera is moved, in degrees.
+ *
+ * The bottom of the frame is about 36 degrees down. Measured at the settings
+ * that were already there, every car in the game sits between 20 and 28 --
+ * a strip of bonnet across the bottom of the screen -- except one:
+ *
+ *   Stiletto 23.5    interceptor 20.5    patrol 24
+ *   Runner   26.5    SUV         28      Badger 38.5
+ *
+ * which is the bug, and the number is the line those numbers already drew.
+ */
+const HOOD_BODY_DEG = 28;
+const _hoodEye = new Map();
+const _ray = new THREE.Raycaster();
+
+/**
+ * Where to put the bonnet camera: the old arithmetic, checked against the car.
+ *
+ * The viewpoint is a fraction of the car's own size -- far enough forward to
+ * be ahead of the screen, 62% of the way up the body -- and for five of the
+ * six cars that is right and stays exactly as it was. It fails on a Land
+ * Rover, whose bonnet is nearly as high as its roof: the camera came out five
+ * centimetres above the bonnet surface, looking straight along it, and the
+ * view had no car in it at all. "I can't quite see the bonnet on the cam on
+ * the Land Rover."
+ *
+ * So the sum is checked by looking. A ray from the viewpoint, swept downward,
+ * finds the angle at which the body first gets in the way. Inside
+ * HOOD_BODY_DEG the answer stands and nothing moves. Past it the bonnet has
+ * dropped off the bottom of the screen, and the camera goes back over the
+ * scuttle and climbs until the body is in frame again -- on a tall cab that
+ * ends up above the screen line, because inside that cabin there is nowhere
+ * you can see the bonnet from at all. A body imported later gets caught the
+ * same way without anybody tuning it.
+ *
+ * Measured once per kind of car and remembered: it is a property of the shape,
+ * and a sweep of rays is not something to do every frame.
+ */
+function hoodEye(v) {
+  const key = v.specKey || v.spec.name;
+  const had = _hoodEye.get(key);
+  if (had) return had;
+
+  // The mesh follows the physics in the render step, which has not run yet on
+  // the frame a car is created -- so put it where the car is before asking it
+  // anything, or the rays are cast at where it used to be.
+  v.view.position.copy(v.position);
+  v.view.quaternion.copy(v.quaternion);
+  v.view.updateMatrixWorld(true);
+
+  const bodyAt = (fwd, eye) => {
+    _pos.copy(v.position).addScaledVector(v.forward, fwd).addScaledVector(v.up, eye);
+    for (let deg = 2; deg <= 44; deg += 1) {
+      _dir.copy(v.forward).addScaledVector(v.up, -Math.tan((deg * Math.PI) / 180)).normalize();
+      _ray.set(_pos, _dir);
+      _ray.far = 12;
+      if (_ray.intersectObject(v.view, true).length) return deg;
+    }
+    return 90;                       // nothing in the way at all
+  };
+
+  const base = (v.spec.colliderY === undefined ? 0.1 : v.spec.colliderY);
+  let out = { fwd: v.spec.dims.l * 0.16, eye: base + v.spec.dims.h * 0.62 };
+  if (bodyAt(out.fwd, out.eye) > HOOD_BODY_DEG) {
+    // Back over the scuttle, then bisect on height. The angle climbs with the
+    // eye -- the higher you sit the further down the screen your own bodywork
+    // appears -- so this is the highest seat that still has the car in frame:
+    // low enough to see over the bonnet, high enough not to be looking at the
+    // inside of the windscreen.
+    const fwd = -0.25;
+    let lo = base, hi = base + v.spec.dims.h * 1.6;
+    for (let i = 0; i < 14; i++) {
+      const mid = (lo + hi) * 0.5;
+      if (bodyAt(fwd, mid) > HOOD_BODY_DEG) hi = mid; else lo = mid;
+    }
+    out = { fwd, eye: lo };
+  }
+  _hoodEye.set(key, out);
+  return out;
+}
 
 export class ChaseCamera {
   constructor(camera) {
@@ -32,12 +123,24 @@ export class ChaseCamera {
   /** Add a jolt -- called on impacts. */
   impulse(strength) { this.shake = Math.min(1.2, this.shake + strength); }
 
-  update(dt, v) {
+  /**
+   * `alpha` is how far through the current physics substep the frame is being
+   * drawn (Game._render). The camera has to follow the car that is on screen,
+   * not the one the solver last wrote down: in the bonnet view the camera is
+   * bolted to the body, and following the raw pose there would have the car
+   * sliding about in front of a camera that is meant to be inside it.
+   */
+  update(dt, v, alpha = 1) {
     const mode = CAM_MODES[this.mode];
     this.shake = Math.max(0, this.shake - dt * 2.2);
 
+    _carPos.copy(v.prevPos).lerp(v.position, alpha);
+    _carQuat.copy(v.prevQuat).slerp(v.quaternion, alpha);
+    _fwd.copy(AXIS_F).applyQuaternion(_carQuat);
+    _upv.copy(AXIS_U).applyQuaternion(_carQuat);
+
     // ---- which way is "behind"? ----
-    const noseHeading = Math.atan2(v.forward.x, v.forward.z);
+    const noseHeading = Math.atan2(_fwd.x, _fwd.z);
     let targetHeading = noseHeading;
     if (v.speed > 6) {
       const velHeading = Math.atan2(v.linvel.x, v.linvel.z);
@@ -53,20 +156,12 @@ export class ChaseCamera {
     this.heading += angleDelta(this.heading, targetHeading) * (1 - Math.exp(-turnRate * dt));
 
     if (mode === 'hood') {
-      // Out over the bonnet, and measured from the car rather than in fixed
-      // metres. Sitting where a driver's head goes put the camera inside the
-      // cabin of the taller bodies -- in a police interceptor you looked
-      // straight through the car at the back of its own boot. Every car knows
-      // how long and how tall it is, so the viewpoint is taken from that: far
-      // enough forward to be ahead of the screen, high enough to see over the
-      // bonnet, and it lands in the right place on a saloon, an SUV and an
-      // imported body alike.
-      const nose = v.spec.dims.l * 0.16;
-      const eye = (v.spec.colliderY === undefined ? 0.1 : v.spec.colliderY) + v.spec.dims.h * 0.62;
-      _pos.copy(v.position)
-        .addScaledVector(v.forward, nose)
-        .addScaledVector(v.up, eye);
-      _look.copy(_pos).addScaledVector(v.forward, 30).addScaledVector(v.up, -1.4);
+      // Out over the bonnet, from a seat the car itself decides: see hoodEye.
+      const seat = hoodEye(v);
+      _pos.copy(_carPos)
+        .addScaledVector(_fwd, seat.fwd)
+        .addScaledVector(_upv, seat.eye);
+      _look.copy(_pos).addScaledVector(_fwd, 30).addScaledVector(_upv, -1.4);
       this.pos.copy(_pos);
       this.look.lerp(_look, 1 - Math.exp(-18 * dt));
       this.fov = damp(this.fov, 66 + clamp(v.speed * 0.32, 0, 20), 4, dt);
@@ -74,12 +169,12 @@ export class ChaseCamera {
       this.orbit += dt * 0.25;
       const r = 13 + v.speed * 0.16;
       _pos.set(
-        v.position.x + Math.sin(this.orbit) * r,
-        v.position.y + 4.5 + Math.sin(this.orbit * 0.6) * 1.6,
-        v.position.z + Math.cos(this.orbit) * r,
+        _carPos.x + Math.sin(this.orbit) * r,
+        _carPos.y + 4.5 + Math.sin(this.orbit * 0.6) * 1.6,
+        _carPos.z + Math.cos(this.orbit) * r,
       );
       this.pos.lerp(_pos, 1 - Math.exp(-3.0 * dt));
-      this.look.lerp(v.position, 1 - Math.exp(-6 * dt));
+      this.look.lerp(_carPos, 1 - Math.exp(-6 * dt));
       this.fov = damp(this.fov, 52, 3, dt);
     } else {
       const close = mode === 'close';
@@ -88,16 +183,16 @@ export class ChaseCamera {
 
       const sh = Math.sin(this.heading), ch = Math.cos(this.heading);
       _pos.set(
-        v.position.x - sh * dist,
-        v.position.y + height,
-        v.position.z - ch * dist,
+        _carPos.x - sh * dist,
+        _carPos.y + height,
+        _carPos.z - ch * dist,
       );
       // Follow position with a spring so kerbs and jumps read as movement.
       this.pos.lerp(_pos, 1 - Math.exp(-(close ? 11 : 8.5) * dt));
 
       // Look slightly ahead of the car, further the faster it is going.
-      _look.copy(v.position)
-        .addScaledVector(v.forward, 3.5 + v.speed * 0.16)
+      _look.copy(_carPos)
+        .addScaledVector(_fwd, 3.5 + v.speed * 0.16)
         .add(_tmp.set(0, 1.15, 0));
       this.look.lerp(_look, 1 - Math.exp(-9 * dt));
 
