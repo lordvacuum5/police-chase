@@ -114,6 +114,9 @@ export class ChaseCamera {
     this.look = new THREE.Vector3();
     this.fov = 62;
     this.shake = 0;
+    this.buzz = 0;            // stinger shudder: see rumble()
+    this.buzzFor = 0;
+    this.buzzPhase = 0;
     this.orbit = 0;
   }
 
@@ -122,6 +125,18 @@ export class ChaseCamera {
 
   /** Add a jolt -- called on impacts. */
   impulse(strength) { this.shake = Math.min(1.2, this.shake + strength); }
+
+  /**
+   * A shudder held for a while, rather than a knock that decays in half a
+   * second: a tyre going down over a stinger, which is not an impact so much
+   * as the car starting to fight you. The camera buzzes at a fixed rate
+   * instead of jittering randomly, so it reads as the car vibrating rather
+   * than as the picture breaking up.
+   */
+  rumble(strength, seconds) {
+    this.buzz = Math.max(this.buzz || 0, strength);
+    this.buzzFor = Math.max(this.buzzFor || 0, seconds);
+  }
 
   /**
    * `alpha` is how far through the current physics substep the frame is being
@@ -206,6 +221,17 @@ export class ChaseCamera {
       this.camera.position.x += (Math.random() - 0.5) * s;
       this.camera.position.y += (Math.random() - 0.5) * s;
       this.camera.position.z += (Math.random() - 0.5) * s;
+    }
+    // The shudder: two fast sine waves at different rates, so it never quite
+    // repeats, fading out over whatever is left of its time.
+    if (this.buzzFor > 0) {
+      this.buzzFor = Math.max(0, this.buzzFor - dt);
+      this.buzzPhase = (this.buzzPhase || 0) + dt;
+      const fade = clamp01(this.buzzFor / 0.9);
+      const a = this.buzz * fade * 0.16;
+      this.camera.position.y += Math.sin(this.buzzPhase * 61) * a;
+      this.camera.position.x += Math.sin(this.buzzPhase * 43) * a * 0.7;
+      if (this.buzzFor <= 0) this.buzz = 0;
     }
     this.camera.lookAt(this.look);
 

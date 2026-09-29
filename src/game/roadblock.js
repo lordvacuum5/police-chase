@@ -354,6 +354,10 @@ export class RoadblockManager {
     }
     if (hit) {
       this.game.camera3.impulse(0.25);
+      // And a shudder that stays: a tyre letting go is not a bang, it is the
+      // moment the car starts fighting you, and it wants to be felt for
+      // longer than a knock. Two tyres shudder harder than one.
+      this.game.camera3.rumble(0.55 + hit * 0.25, 1.5 + hit * 0.35);
       if (this.game.audio) this.game.audio.impact(0.3);
       if (!this._stungAt || this.game.clock - this._stungAt > 6) {
         this._stungAt = this.game.clock;

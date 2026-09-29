@@ -1170,6 +1170,71 @@ export class GameAudio {
     return this.muted;
   }
 
+  /**
+   * The sting when the wanted level goes up.
+   *
+   * Three notes of a minor chord arriving together and held, over a sub drop
+   * and a short noise swell -- the shape every chase game uses for this,
+   * because it reads as "something has just got worse" in about a second. It
+   * is pitched off the tier, a whole tone higher each star, so five stars
+   * arrives brighter and more urgent than two without being a different sound.
+   */
+  wantedUp(tier) {
+    if (!this.ready || this.muted || this.held || this.ctx.state !== 'running') return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const step = Math.max(0, Math.min(4, (tier | 0) - 1));
+    // A minor triad, root rising a whole tone a star: tense rather than triumphant.
+    const root = 146.83 * Math.pow(2, step / 6);
+    const bus = ctx.createGain();
+    bus.gain.value = 0.9;
+    bus.connect(this.master);
+
+    for (const [mult, level, wave] of [[1, 0.16, 'sawtooth'], [1.2, 0.11, 'sawtooth'],
+      [1.5, 0.09, 'square'], [2, 0.07, 'sawtooth']]) {
+      const o = ctx.createOscillator();
+      o.type = wave;
+      // A short upward bend into the note, which is what gives it the shove.
+      o.frequency.setValueAtTime(root * mult * 0.84, now);
+      o.frequency.exponentialRampToValueAtTime(root * mult, now + 0.09);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(level, now + 0.035);
+      g.gain.exponentialRampToValueAtTime(level * 0.55, now + 0.35);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 1.05);
+      o.connect(g); g.connect(bus);
+      o.start(now); o.stop(now + 1.15);
+    }
+
+    // The floor dropping out from under it.
+    const sub = ctx.createOscillator();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(root * 0.5, now);
+    sub.frequency.exponentialRampToValueAtTime(root * 0.25, now + 0.5);
+    const sg = ctx.createGain();
+    sg.gain.setValueAtTime(0.0001, now);
+    sg.gain.exponentialRampToValueAtTime(0.30, now + 0.02);
+    sg.gain.exponentialRampToValueAtTime(0.0001, now + 0.7);
+    sub.connect(sg); sg.connect(bus);
+    sub.start(now); sub.stop(now + 0.8);
+
+    // A swell of air underneath, so it lands rather than just appearing.
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    src.loop = true;
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.Q.value = 1.1;
+    f.frequency.setValueAtTime(420, now);
+    f.frequency.exponentialRampToValueAtTime(2600, now + 0.22);
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.0001, now);
+    ng.gain.exponentialRampToValueAtTime(0.09, now + 0.18);
+    ng.gain.exponentialRampToValueAtTime(0.0001, now + 0.55);
+    src.connect(f); f.connect(ng); ng.connect(bus);
+    src.start(now); src.stop(now + 0.7);
+  }
+
   /** A short thud whose weight scales with the impact. */
   impact(strength) {
     if (!this.ready || this.muted || this.ctx.state !== 'running') return;

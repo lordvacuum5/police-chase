@@ -137,6 +137,15 @@ export class Hud {
     let stars = '';
     for (let i = 0; i < 5; i++) stars += i < tier ? '<b>★</b>' : '☆';
     if (this.starsEl.innerHTML !== stars) this.starsEl.innerHTML = stars;
+
+    // Going up is an event, and it used to happen in silence: a star quietly
+    // filled in while you were watching the road. Now the panel flashes and
+    // the sting plays, which is the only warning you get that the response
+    // just changed. Only upward -- the heat sliding back down as you get away
+    // is the good news, and it has the ESCAPED banner already.
+    if (this._lastTier === undefined) this._lastTier = tier;
+    if (tier > this._lastTier) this._flashStars(tier);
+    this._lastTier = tier;
     this.heatFill.style.width = (heat.progress * 100).toFixed(0) + '%';
 
     const st = dispatcher.statusLine();
@@ -310,6 +319,25 @@ export class Hud {
     ctx.font = '500 13px ui-monospace, Consolas, monospace';
     ctx.fillStyle = '#8c9bab';
     ctx.fillText('mph', cx, cy + 50);
+  }
+
+  /**
+   * The wanted panel flashing as a star lands.
+   *
+   * The class is taken off and put back on with a reflow in between, so that
+   * two levels in quick succession flash twice rather than the second one
+   * being swallowed by the animation the first one started.
+   */
+  _flashStars(tier) {
+    const el = document.getElementById('heat');
+    if (el) {
+      el.classList.remove('levelup');
+      void el.offsetWidth;
+      el.classList.add('levelup');
+      clearTimeout(this._flashTimer);
+      this._flashTimer = setTimeout(() => el.classList.remove('levelup'), 1300);
+    }
+    if (this.game.audio) this.game.audio.wantedUp(tier);
   }
 
   /**
