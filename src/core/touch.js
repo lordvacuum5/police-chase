@@ -68,13 +68,20 @@ function fullScreenAdvice() {
       + 'Try hiding its bars, or use Chrome.';
 }
 
+/**
+ * The buttons along the top of a phone screen.
+ *
+ * Only what you need with the car moving. It used to be six -- camera, sound
+ * and the way back to the menu as well -- which is a row of small targets
+ * above the game for things you want once a session, and no volume control
+ * anywhere. They live in the pause panel now (game/pausemenu.js), which is
+ * what the first of these opens: "on the phone all we need is full screen...
+ * and flip".
+ */
 const BUTTONS = [
-  { id: 'pause', label: 'II', title: 'Pause', key: 'KeyP' },
-  { id: 'camera', label: 'CAM', title: 'Camera', key: 'KeyC' },
-  { id: 'flip', label: 'FLIP', title: 'Flip upright', key: 'KeyR' },
-  { id: 'mute', label: 'SND', title: 'Sound on or off', key: 'Mute' },
+  { id: 'pause', label: 'II', title: 'Pause and settings', key: 'KeyP' },
   { id: 'full', label: 'FULL', title: 'Full screen' },
-  { id: 'menu', label: 'MENU', title: 'Back to the menu', key: 'KeyM', confirm: true },
+  { id: 'flip', label: 'FLIP', title: 'Flip upright', key: 'KeyR' },
 ];
 
 export class TouchControls {
@@ -150,9 +157,7 @@ export class TouchControls {
     this.knob = this.stick.querySelector('i');
     this.steerZone = root.querySelector('#t-steer');
     this.pedalEls = [...root.querySelectorAll('[data-pedal]')];
-    this.menuBtn = root.querySelector('#t-menu');
     this.flipBtn = root.querySelector('#t-flip');
-    this.muteBtn = root.querySelector('#t-mute');
     this.pauseBtn = root.querySelector('#t-pause');
     this.fullBtn = root.querySelector('#t-full');
     this.againBtn = root.querySelector('#t-again');
@@ -356,13 +361,6 @@ export class TouchControls {
     if (stuck !== this._stuck) {
       this._stuck = stuck;
       this.flipBtn.classList.toggle('warn', stuck);
-    }
-    // The radio log that used to confirm "[sound] muted" is hidden, so the
-    // button has to show it.
-    const muted = !!(this.game.audio && this.game.audio.muted);
-    if (muted !== this._muted) {
-      this._muted = muted;
-      this.muteBtn.classList.toggle('off', muted);
     }
     const paused = !!this.game.paused;
     if (paused !== this._paused) {

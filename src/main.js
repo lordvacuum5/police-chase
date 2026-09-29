@@ -28,6 +28,7 @@ import { loadCarModels } from './game/carmodel.js';
 import { Weather } from './game/weather.js';
 import { ChaseCamera } from './game/camera.js';
 import { Hud } from './game/hud.js';
+import { PauseMenu, savedVolume } from './game/pausemenu.js';
 import { Input } from './core/input.js';
 import { TouchControls } from './core/touch.js';
 import { SkidMarks, LightBars } from './game/effects.js';
@@ -264,12 +265,14 @@ class Game {
     this.touch = new TouchControls(this);
     this.camera3 = new ChaseCamera(this.camera);
     this.camera3.snapTo(this.player);
+    this.pauseMenu = new PauseMenu(this);
 
     // Audio cannot start until the user has interacted with the page, so the
     // context is only built and resumed on the first key press or click.
     // A finger going down does not count as that interaction in the spec --
     // only lifting it does -- so phones need pointerup and touchend too.
     this.audio = new GameAudio();
+    this.audio.setVolume(savedVolume());
     this.audio.rainLevel = this.weather.rain ? 1 : 0;
     const wake = () => this.audio.resume();
     window.addEventListener('keydown', wake);
@@ -1069,6 +1072,10 @@ class Game {
     this._trackPerformance(dt);
     this._handleKeys();
     this.touch.frame();
+    // A paused game runs no frames, so the engine note would otherwise hang on
+    // whatever chord it was left holding: see Audio.setHeld.
+    if (this.audio) this.audio.setHeld(this.paused);
+    if (this.pauseMenu) this.pauseMenu.frame();
 
     if (!this.paused) {
       this._update(dt);

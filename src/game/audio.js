@@ -318,6 +318,7 @@ export class GameAudio {
     this.ctx = null;
     this.ready = false;
     this.muted = false;
+    this.held = false;         // paused: see setHeld
     this.failed = false;
     this.sirenPhase = 0;
     this.masterVolume = 0.75;
@@ -1119,6 +1120,40 @@ export class GameAudio {
     this.rainGain.gain.setTargetAtTime(0.05 * this.rainLevel, ctx.currentTime, 1.2);
   }
 
+  /**
+   * How loud everything is, 0 to 1. Remembered across sessions by the caller.
+   */
+  setVolume(v) {
+    this.masterVolume = clamp01(v);
+    if (this.master && !this.muted && !this.held) {
+      this.master.gain.setTargetAtTime(this.masterVolume, this.ctx.currentTime, 0.05);
+    }
+    return this.masterVolume;
+  }
+
+  /**
+   * Silence while the game is paused.
+   *
+   * The engine is a bank of oscillators whose pitch and gain are set from the
+   * car every frame, and a paused game does not run frames -- so they carried
+   * on sounding whatever they had been left on, which is a single held chord
+   * for as long as the game is paused. "When you do pause the game it keeps
+   * the sound... it doesn't talk or anything, it just means, a whining sound."
+   *
+   * Separate from mute, and it does not disturb it: coming back from a pause
+   * restores whatever the sound was set to rather than turning it on.
+   */
+  setHeld(held) {
+    if (this.held === !!held) return;
+    this.held = !!held;
+    if (this.held && this.radioQueue) this.radioQueue.length = 0;
+    if (this.held && this.speech) this.speech.cancel();
+    if (this.master) {
+      const to = (this.held || this.muted) ? 0 : this.masterVolume;
+      this.master.gain.setTargetAtTime(to, this.ctx.currentTime, 0.04);
+    }
+  }
+
   toggleMute() {
     this.muted = !this.muted;
     // Drop anything still queued, or unmuting fires off a backlog of calls
@@ -1129,7 +1164,8 @@ export class GameAudio {
     // the channel.
     if (this.muted && this.speech) this.speech.cancel();
     if (this.master) {
-      this.master.gain.setTargetAtTime(this.muted ? 0 : this.masterVolume, this.ctx.currentTime, 0.05);
+      const to = (this.muted || this.held) ? 0 : this.masterVolume;
+      this.master.gain.setTargetAtTime(to, this.ctx.currentTime, 0.05);
     }
     return this.muted;
   }
