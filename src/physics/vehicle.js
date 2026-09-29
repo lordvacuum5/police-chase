@@ -12,7 +12,7 @@
 // spin out for the same reasons you would.
 
 import * as THREE from 'three';
-import { RAPIER, GROUP, groups, raycast, RAY_GROUNDS } from './world.js';
+import { RAPIER, GROUP, groups, raycast, RAY_GROUNDS, EDGE_FACE } from './world.js';
 import {
   tyreForces, slipRatioOf, slipAngleOf, slipIntensity, loadedMu,
   TYRE_ROAD, TYRE_GRASS, TYRE_PAVED,
@@ -351,6 +351,17 @@ export class Vehicle {
     // along with `durability` so bodywork survives a chase that involves
     // contact, which this one always does.
     if (!(dv > 2.6)) return;
+    // The wall round the edge of the map costs nothing. It is not scenery you
+    // drove into, it is the end of the world with something invisible in front
+    // of it, and being charged sixty per cent of your bodywork for finding it
+    // is a punishment for exploring. It still thuds and shakes the camera --
+    // you did hit something -- and every car gets this, not only the police.
+    // The nearest thing to it that is worth charging for is 190 m away.
+    if (Math.abs(this.position.x) > EDGE_FACE - 6 || Math.abs(this.position.z) > EDGE_FACE - 6) {
+      this.lastImpact = dv;
+      this.lastImpactAt = performance.now();
+      return;
+    }
     // Police cars are built to be shunted; `durability` divides the damage
     // so a patrol car survives several hits that would end the player's run.
     // A shielded unit -- one still making its way to the chase -- records the
@@ -481,8 +492,35 @@ export class Vehicle {
     // (tests/woods.js). Scaled, the car cannot ask the grass for more than the
     // grass has, and tarmac is untouched because there the ratio is one.
     const surface = clamp(this.surfaceMu / TYRE_ROAD.mu, 0.45, 1);
+    // Off the road, a car with fleet tyres may size its lock for more than it
+    // will really pull.
+    //
+    // The limiter is an honest model of steady-state cornering and it is too
+    // careful for a wood. Threading trunks at 50 km/h it was handing out about
+    // fifteen degrees of a thirty-one degree wheel, so a unit that wanted to go
+    // round a tree could not turn tightly enough to and braked instead --
+    // measured over five approaches through the thickest copse on the map, one
+    // frame in six had the driver asking for full lock against the limit, the
+    // cars were on the brakes a quarter of the time and averaged 41 km/h.
+    // Understeering past a trunk with the wheel further over is worse
+    // cornering and better driving: you scrub, but you miss it.
+    //
+    // Sized by sweeping it rather than by theory: 16.5 did not show, 18.5 was
+    // the best of them, and past about 21 it went the way more off-road grip
+    // went -- spent on speed and then binned, six hits instead of three.
+    // Fifteen approaches at three target speeds, run twice: 13 then 12 hits
+    // without it, 10 then 10 with, for the same mean speed. An improvement,
+    // not a transformation.
+    //
+    // Only where the fleet already has the grip for it (see offRoadGrip), and
+    // only on the loose: on tarmac this branch cannot be reached, so nothing
+    // about how these cars drive on a road changes by a single digit --
+    // tests/policeturn.js comes back byte for byte identical with it on and
+    // off.
+    const loose = this.spec.offRoadLatLimit && this._onLoose();
+    const latLimit = loose ? this.spec.offRoadLatLimit : st.latLimit;
     const v2 = Math.max(this.speed * this.speed, 1);
-    const gripLimit = Math.atan((this.spec.wheelbase * st.latLimit * surface) / v2) * st.overshoot
+    const gripLimit = Math.atan((this.spec.wheelbase * latLimit * surface) / v2) * st.overshoot
       + st.slipAllowance;
 
     // ...but never less than enough lock to point the front wheels along the
@@ -1088,6 +1126,18 @@ export class Vehicle {
    * a car that has slid onto grass cannot be to keep demanding road-surface
    * cornering from it.
    */
+  /**
+   * Is any wheel that is carrying the car on the loose stuff?
+   *
+   * Asked rather than read off surfaceMu, which rain also pulls down: a wet
+   * road is still a road, and the off-road steering allowance has no business
+   * appearing on one.
+   */
+  _onLoose() {
+    for (const w of this.wheels) if (w.grounded && w.surface === 0) return true;
+    return false;
+  }
+
   get surfaceMu() {
     let sum = 0, n = 0;
     for (const w of this.wheels) {

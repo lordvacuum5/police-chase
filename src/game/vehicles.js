@@ -352,6 +352,10 @@ export const SPECS = {
     // Fleet tyres bite on the loose. Grass mu goes 0.62 -> about 1.1, so a
     // line straight across country is a real option rather than a bog.
     offRoadGrip: 1.80,
+    // And the lock to use it. The limiter sizes the steering for steady-state
+    // cornering, which in a wood is far more caution than a gap needs: see
+    // offRoadLatLimit in physics/vehicle.js. Tarmac is untouched.
+    offRoadLatLimit: 18.5,
     durability: 2.6,
     topSpeedHint: 88,
   }),
@@ -383,6 +387,7 @@ export const SPECS = {
     // 57% wrecked, because the units spend the extra grip on speed (mean 14
     // km/h through the copse to 40) and then bin it. tests/woods.js.
     offRoadGrip: 1.85,
+    offRoadLatLimit: 18.5,
     durability: 2.8,
     topSpeedHint: 99,
   }),
@@ -405,6 +410,7 @@ export const SPECS = {
     gripScale: 1.0 * POLICE_GRIP * ROLL_PAYBACK,
     gripBias: { front: 1.08, rear: 1.06 },
     offRoadGrip: 1.88,
+    offRoadLatLimit: 18.5,
     durability: 2.4,
     topSpeedHint: 103,
   }),
@@ -448,6 +454,7 @@ export const SPECS = {
     gripScale: 0.98 * POLICE_GRIP,
     gripBias: { front: 1.08, rear: 1.06 },
     offRoadGrip: 2.0,
+    offRoadLatLimit: 18.5,
     durability: 3.4,
     topSpeedHint: 92,
   }),

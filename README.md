@@ -1208,13 +1208,70 @@ eleven degrees of body slip instead of twenty, with counter-steer scaled up to
 match) came out at four hits, and the full-stop the plan cap asked for when all
 four wheels were momentarily off the ground was worse than useless.
 
+### The lock a wood needs
+
+*"Police cars still seem to hit trees even when they have loads of time to
+react... you could make them be able to turn tighter at higher speed if you
+want."*
+
+Measuring this took longer than fixing it, because `tests/woods.js` was not
+measuring it at all. It used to chase the player's own car through the copse
+for forty seconds. The player drove into the first trunk at about two seconds
+— 90 km/h, then 39, then stopped — and the remaining thirty-seven seconds were
+two police cars parked behind a stationary car in a wood. "0 hits, mean 10 km/h"
+read like a flawless drive and was two cars that never went anywhere. The test
+now chases a ghost: a point carried along a straight line through the middle of
+the copse at a fixed speed, which cannot crash, so the pursuit lasts as long as
+the wood does and every car in the count is a police car doing its own driving.
+
+With something real to look at, the fault is not what it looked like. The cars
+are not sliding into trunks — body slip is under six degrees nine tenths of the
+time — they are *braking*. A unit threading trunks at 50 km/h was being handed
+about fifteen degrees of a thirty-one degree wheel, so one that wanted to go
+round a tree could not turn tightly enough to, and stopped instead: on the
+brakes a quarter of the time, averaging 41 km/h, and still clipping trunks at
+walking pace while it shuffled about. One frame in six had the driver asking
+for full lock against the limiter.
+
+So the fleet sizes its lock for more than it will really pull, but only on the
+loose, where it has the tyres for it. Understeering past a trunk with the wheel
+further over is worse cornering and better driving: you scrub, but you miss it.
+`offRoadLatLimit` is 18.5 m/s² against the road figure's 14.6, and it was
+picked by sweeping it: 16.5 was not enough to show, 18.5 was the best of them,
+and past about 21 it went the way the extra grip went — spent on speed and then
+binned, six hits instead of three.
+
+It is an improvement, not a transformation, and it is worth being exact about
+the size of it. Fifteen approaches through the copse at three target speeds,
+run twice on different days:
+
+| | hits | mean speed | ground lost to the target |
+|---|---|---|---|
+| the road figure everywhere | 13, then 12 | 45 km/h, 47 | 341 m, 332 |
+| with the off-road allowance | 10, then 10 | 49 km/h, 47 | 315 m, 331 |
+
+About a fifth fewer contacts, both times, for about the same pace. The cars
+still hit trees; they hit fewer of them.
+
+One number moved more than the rest and it is the one that says why: at a 70
+km/h target — the speed where the trunks come up quickest relative to how hard
+the car has to turn — it is five hits to four, 35 km/h to 39, and 26 m less
+ground lost.
+
+It cannot touch the road. The branch is only reached when a wheel that is
+carrying the car is on grass, so `tests/policeturn.js` comes back byte for byte
+identical with it on and off, and a five-leg route across the city with
+off-road cutting allowed differs by a tenth of a second in 339. The van does
+not get it: three and a half tonnes of box is not threading a wood, and an
+allowance it was never measured with is not worth the risk of standing it on
+its side.
+
 What is left of the problem is the worst impact, and it is worth writing down
 what it actually is: a unit at seventy-nine degrees of slip -- travelling very
 nearly sideways at 23 km/h -- meeting a trunk three metres in front of it. The
 velocity change reported for that is 31 m/s because the figure includes the
 spin the trunk stopped. It is not a car that drove into a tree; it is a car
-that had already lost it, and the tree is simply what was there. Anything
-further will have to be about not losing it in the first place.
+that had already lost it, and the tree is simply what was there.
 
 ### Braking only for what is in the way
 
@@ -3500,10 +3557,13 @@ police car that went over was worse: the roster measures how far away a unit is
 across the ground, so a car three hundred metres down was still counted as one
 of the cars chasing you, and was never replaced.
 
-So there is an invisible wall where the grass runs out. It behaves like every
-other wall in the game — hitting it flat out costs about 64% damage, against 60%
-for driving into a building at the same speed — and it stands four metres inside
-an edge you can see coming.
+So there is an invisible wall where the grass runs out, four metres inside an
+edge you can see coming. It costs nothing to hit: it is not scenery you drove
+into, it is the end of the world with something in front of it, and charging
+64% of the bodywork — which is what it did when it was an ordinary wall — is a
+punishment for finding the edge of the map. It still thuds and shakes the
+camera, because you did hit something, and every car gets that, not only the
+player's.
 
 Behind it, `Game._catchFallen` checks every frame for a car below y = −14 and
 puts it back: the player is towed to the nearest road, upright and stopped, and

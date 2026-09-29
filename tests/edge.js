@@ -18,10 +18,11 @@
 // The wall is what stops it happening and the catch is what stops it
 // mattering, so the second is tested by cheating past the first.
 //
-// The wall is invisible and it hurts: 64% damage at 150 km/h, against 60% for
-// driving into a building at the same speed. That is deliberate -- it is a
-// wall, it behaves like every other wall in the game, and it stands four
-// metres inside an edge you can see coming, 200 m beyond the furthest road.
+// The wall is invisible, so it costs nothing: it is not scenery somebody drove
+// into, it is the end of the world with something in front of it, and charging
+// 64% of the bodywork -- which is what it did when it was an ordinary wall --
+// is a punishment for finding the edge of the map. Every car gets that, not
+// only the player's, so the damage column should read 0% on all four sides.
 window.__runEdge = async function () {
   try {
     for (let i = 0; i < 200 && !(window.__game && window.__game.player); i++) {
@@ -49,7 +50,9 @@ window.__runEdge = async function () {
       p.setVelocity(vel);
       g.stepHeadless(14, { throttle: 1, brake: 0, steer: 0, handbrake: 0 });
       rows.push(`${name.padEnd(6)} stopped ${out().toFixed(1).padStart(7)} m out  `
-        + `y ${p.position.y.toFixed(2).padStart(6)}  ${p.position.y > -1 ? 'on the plate' : 'FELL OFF'}`);
+        + `y ${p.position.y.toFixed(2).padStart(6)}  `
+        + `damage ${(p.damage * 100).toFixed(0).padStart(3)}%  `
+        + `${p.position.y > -1 ? 'on the plate' : 'FELL OFF'}`);
     }
 
     // ---- 2. under the world anyway ----

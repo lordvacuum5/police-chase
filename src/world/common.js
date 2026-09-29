@@ -11,7 +11,7 @@ import { ROAD_KIND } from './roadgraph.js';
 import {
   planJunctions, buildJunctionCorners, buildStopLines, sliceLine, approachesAt, addNodeWedges,
 } from './junctions.js';
-import { GROUP, addStaticBox } from '../physics/world.js';
+import { GROUP, addStaticBox, PLATE_HALF, EDGE_FACE } from '../physics/world.js';
 import { rand, randInt, lerp, TAU } from '../util/math.js';
 
 export const WORLD_HALF = 1000;
@@ -152,7 +152,7 @@ export function makeSurfaceAt(surface) {
 // ------------------------------------------------------------------ ground
 
 export function buildGround(ctx) {
-  const g = new THREE.PlaneGeometry(WORLD_HALF * 2.4, WORLD_HALF * 2.4, 24, 24);
+  const g = new THREE.PlaneGeometry(PLATE_HALF * 2, PLATE_HALF * 2, 24, 24);
   g.rotateX(-Math.PI / 2);
   // Gentle colour variation so the fields are not a flat wash.
   const pos = g.attributes.position;
@@ -174,7 +174,7 @@ export function buildGround(ctx) {
   mesh.renderOrder = DRAW_ORDER.ground;
 
   // One big static box under everything gives the wheels something to hit.
-  addStaticBox(ctx.sim.world, 0, -2, 0, WORLD_HALF * 1.2, 2, WORLD_HALF * 1.2, GROUP.TERRAIN);
+  addStaticBox(ctx.sim.world, 0, -2, 0, PLATE_HALF, 2, PLATE_HALF, GROUP.TERRAIN);
   buildWorldEdge(ctx.sim.world);
   return mesh;
 }
@@ -198,7 +198,7 @@ export function buildGround(ctx) {
  * it mattering.
  */
 function buildWorldEdge(world) {
-  const inner = WORLD_HALF * 1.2 - 4;    // the face a car touches
+  const inner = EDGE_FACE;               // the face a car touches
   const t = 3;                           // thickness
   const c = inner + t;                   // centre of the wall box
   const span = inner + t * 2;            // long enough to close the corners

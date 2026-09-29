@@ -21,6 +21,18 @@ export const GROUP = {
 
 export const groups = (membership, filter) => ((membership << 16) | filter) >>> 0;
 
+/**
+ * The ground plate, and the wall round the edge of it.
+ *
+ * The plate is wider than the road network on every side -- 200 m of open
+ * field -- and past it there is nothing to drive on at all, so `buildGround`
+ * stands a wall at EDGE_FACE. It lives here rather than with the map because
+ * two other things need to know where it is: the wall itself, and Vehicle,
+ * which does not charge for hitting it (see takeImpact).
+ */
+export const PLATE_HALF = 1200;
+export const EDGE_FACE = PLATE_HALF - 4;
+
 /** What a suspension ray is allowed to see -- deliberately not other vehicles. */
 export const RAY_GROUNDS = groups(0xFFFF, GROUP.TERRAIN | GROUP.BUILDING | GROUP.PROP);
 
