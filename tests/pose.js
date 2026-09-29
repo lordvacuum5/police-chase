@@ -1,5 +1,9 @@
 // Browser-side helper: parks one car on a long straight and photographs it
 // from four angles. Injected by the shot rig; not part of the game.
+//
+// Load the page with ?shots=1. Reading the canvas back needs the drawing
+// buffer preserved, which the game only asks for when that flag is set --
+// see _initRenderer. Without it every picture comes back empty.
 window.__shoot = async function (name, pos, look, W, H) {
   const g = window.__game, r = g.renderer, cam = g.camera;
   W = W || 1280; H = H || 720;

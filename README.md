@@ -3487,6 +3487,32 @@ Every road is registered in a graph with widths, speeds and junction types, whic
 is what the AI routes over. The minimap is heading-up: the map turns under a
 fixed marker, with an `N` pointer for orientation.
 
+### The edge of the map
+
+The ground is a plate 2.4 km square, 200 m of open field wider than the road
+network on every side, and past it there is nothing at all. There used to be
+nothing stopping you either: one straight run across the fields and the car went
+over the edge and fell forever. Nothing caught that, because nothing was looking
+for it — **R** rights a car that is stopped or upside down, and a falling one is
+neither, so the chase carried on around a player who was half a kilometre under
+the map at terminal velocity, with no way back into it short of restarting. A
+police car that went over was worse: the roster measures how far away a unit is
+across the ground, so a car three hundred metres down was still counted as one
+of the cars chasing you, and was never replaced.
+
+So there is an invisible wall where the grass runs out. It behaves like every
+other wall in the game — hitting it flat out costs about 64% damage, against 60%
+for driving into a building at the same speed — and it stands four metres inside
+an edge you can see coming.
+
+Behind it, `Game._catchFallen` checks every frame for a car below y = −14 and
+puts it back: the player is towed to the nearest road, upright and stopped, and
+anything else is retired so the roster sends a replacement. It should never fire
+now that the wall is there. It exists because a car under the map is not a state
+the rest of the game can cope with, and both of the ways it used to happen were
+silent. `tests/edge.js` drives at the boundary from all four sides and then
+cheats past it to check the catch.
+
 ---
 
 ### The garage

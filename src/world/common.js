@@ -175,7 +175,39 @@ export function buildGround(ctx) {
 
   // One big static box under everything gives the wheels something to hit.
   addStaticBox(ctx.sim.world, 0, -2, 0, WORLD_HALF * 1.2, 2, WORLD_HALF * 1.2, GROUP.TERRAIN);
+  buildWorldEdge(ctx.sim.world);
   return mesh;
+}
+
+/**
+ * A wall round the edge of the ground plate.
+ *
+ * The plate is 2400 m across and there is nothing at all beyond it, so a car
+ * that reached the edge -- one straight run across the fields does it -- drove
+ * off and fell forever. Nothing caught that. R only rights a car that is
+ * stationary or upside down and a falling one is neither, so the chase carried
+ * on around a player who was somewhere under the map at 120 m/s with no way
+ * back into it. A police car that went over was worse: the roster measures how
+ * far away a unit is across the ground, so a car three hundred metres down was
+ * still "nearby", never retired, and held its place on the board from outside
+ * the world.
+ *
+ * Invisible, and standing where the grass runs out rather than in the middle
+ * of a field, so it reads as the end of the map. Falling through the world is
+ * caught separately (Game._catchFallen): this stops it happening, that stops
+ * it mattering.
+ */
+function buildWorldEdge(world) {
+  const inner = WORLD_HALF * 1.2 - 4;    // the face a car touches
+  const t = 3;                           // thickness
+  const c = inner + t;                   // centre of the wall box
+  const span = inner + t * 2;            // long enough to close the corners
+  for (const [cx, cz, hx, hz] of [
+    [0, c, span, t], [0, -c, span, t],
+    [c, 0, t, span], [-c, 0, t, span],
+  ]) {
+    addStaticBox(world, cx, 3, cz, hx, 4, hz, GROUP.BUILDING);
+  }
 }
 
 // ------------------------------------------------------------------- roads

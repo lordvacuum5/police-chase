@@ -12,6 +12,7 @@ import { clamp, clamp01, lerp, sign } from '../util/math.js';
 
 const _rel = new THREE.Vector3();
 const _slot = new THREE.Vector3();
+const _aim = new THREE.Vector3();
 
 /**
  * Where a chasing unit sits relative to its target, in the target's own frame.
@@ -84,7 +85,7 @@ export function pitUpdate(state, unit, target, dt) {
   state.timer += dt;
 
   const side = state.side;
-  const aim = new THREE.Vector3();
+  const aim = _aim;         // module scratch: this runs every frame
 
   // Detect that it worked: the target is rotating far faster than its steering
   // could account for, or it has gone properly sideways.

@@ -43,7 +43,6 @@ export class Heat {
   }
 
   get tier() { return clamp(Math.floor(this.value), 0, MAX); }
-  get fraction() { return clamp01((this.value - this.tier) || (this.value > 0 ? 0 : 0)); }
   /**
    * Seconds of no contact before the heat starts falling. Matches the police
    * search window, so the countdown on the HUD is telling you exactly how long

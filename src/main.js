@@ -68,6 +68,14 @@ const NET_CONTACT = 6;   // m
 const ROUTINE_GAP = 12;
 
 /**
+ * Below this, a car is not in the world any more -- see Game._catchFallen.
+ *
+ * The ground plate's underside is at y = -4, so anything past this has gone
+ * through it or round the edge of it rather than down a dip.
+ */
+const FALL_FLOOR = -14;
+
+/**
  * Which kind of car answers a call, by wanted level.
  *
  * Patrol cars at the low end, with SUVs joining from two stars and
@@ -287,9 +295,17 @@ class Game {
     this.renderer = new THREE.WebGLRenderer({
       canvas, antialias: true, powerPreference: 'high-performance', stencil: false,
       // Keeps the frame readable after compositing, so the canvas can be
-      // captured. With antialias on and this off, toDataURL comes back empty:
-      // the multisampled buffer is resolved and discarded before it can be read.
-      preserveDrawingBuffer: true,
+      // captured with toDataURL: without it the multisampled buffer is
+      // resolved and discarded, and the picture comes back empty.
+      //
+      // Nothing in the game captures the canvas -- the car cards photograph
+      // themselves with their own renderer -- and it was on for everybody so
+      // that two developer rigs (tests/pose.js, tests/roadshots.js) could take
+      // pictures. It is not free: the driver has to keep the framebuffer
+      // between frames instead of discarding it, which on the tile-based GPU
+      // in a phone means writing the whole frame back to memory every time.
+      // So the rigs ask for it with ?shots=1 and a player never pays for it.
+      preserveDrawingBuffer: new URLSearchParams(location.search).get('shots') === '1',
     });
     // Multisampling rather than supersampling: the whole world is flat-shaded
     // faceted geometry, so nearly all the aliasing is on polygon edges, which
@@ -1351,6 +1367,45 @@ class Game {
     }
   }
 
+  /**
+   * Anything that has fallen out of the world, put back into it.
+   *
+   * The edge wall (world/common.js) is what stops a car driving off the plate,
+   * and with it there this should never fire. It is here because a car under
+   * the map is not a thing the rest of the game can cope with at all: the
+   * player falls at terminal velocity forever with R doing nothing, because R
+   * rights a car that is stopped or upside down and a falling one is neither;
+   * a police car falls out of sight while the roster, which measures distance
+   * across the ground, goes on counting it as one of the cars chasing you.
+   * Both were silent -- the game carried on as though nothing had happened --
+   * which is the worst way for a bug to behave. A cheap check every frame
+   * turns either into a moment's recovery.
+   */
+  _catchFallen() {
+    if (this.player.position.y < FALL_FLOOR) this._recoverPlayer();
+    for (const v of this.vehicles) {
+      if (v === this.player || v.remote) continue;
+      if (v.position.y >= FALL_FLOOR) continue;
+      // Somebody else's problem to replace: the roster sends another car.
+      const unit = this.dispatcher.units.find((u) => u.vehicle === v);
+      if (unit) this.dispatcher.retire(unit);
+      else this.removeVehicle(v);
+    }
+  }
+
+  /** Towed back to the nearest road, facing along it, stopped. */
+  _recoverPlayer() {
+    const p = this.player;
+    const node = this.graph.nearestNode(p.position.x, p.position.z);
+    const place = (node && this._placeOnRoad(node)) || this.startPlace;
+    if (!place) return;
+    p.teleport(place.position, place.heading);
+    p._readState();
+    p.setVelocity({ x: 0, y: 0, z: 0 });
+    p._readState();
+    this.hud.toast('RECOVERED');
+  }
+
   /** Put this police car on a road a few hundred metres from the suspect. */
   _netPlaceNearSuspect() {
     const s = this.netSuspect;
@@ -1615,6 +1670,7 @@ class Game {
     }
     if (steps === MAX_SUBSTEPS) this.accumulator = 0;   // give up on the backlog
 
+    this._catchFallen();
     this._updateSkids(dt);
     this.camera3.update(dt, player);
     this.weather.update(dt);

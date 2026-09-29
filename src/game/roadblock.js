@@ -382,7 +382,16 @@ export class RoadblockManager {
   }
 
   _dispose(b) {
-    for (const m of b.meshes) this.game.scene.remove(m);
+    for (const m of b.meshes) {
+      this.game.scene.remove(m);
+      // Every stinger is built to the width of its own road, so this geometry
+      // belongs to this block alone and nothing else will ever draw it. Taking
+      // the mesh out of the scene does not free what was uploaded for it --
+      // only dispose does -- and a long run puts down a lot of roadblocks.
+      // The cones below are the other way round: one shared geometry for all
+      // of them, which must outlive any particular block.
+      m.geometry.dispose();
+    }
     b.meshes.length = 0;
     for (const c of b.cones) {
       this.game.scene.remove(c.mesh);

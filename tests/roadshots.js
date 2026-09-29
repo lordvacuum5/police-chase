@@ -4,6 +4,10 @@
 // so the same shots can be taken of any version of the game -- or of the same
 // version before and after a change -- and laid side by side. Saved through
 // the dev server's /__shot endpoint into shots/<prefix>_<map>_<view>.jpg.
+//
+// Load the page with ?shots=1: reading the canvas back needs the drawing
+// buffer preserved, which the game only asks for when that flag is set (see
+// _initRenderer), and without it every picture comes back empty.
 const ROAD_VIEWS = {
   wexbury: [
     { name: 'start', eye: [3.7, 3.2, -235.9], at: [-28.7, 0.5, -246.3] },
