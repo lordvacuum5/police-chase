@@ -1137,6 +1137,54 @@ The plate is now turned to face the way it is being swept, and all four
 headings agree to the centimetre. `tests/gaps.js` is unchanged by it: still
 through a 2.2 m gap, still nothing touched.
 
+### Going up on two wheels
+
+*"If you go on a kerb and turn really hard, it starts to tip over."*
+
+Cornering force entered the body at the contact patch, which puts the whole
+half-metre from tarmac to centre of mass under the car as a lever to roll it
+on. The Stiletto was given a roll centre of 0.18 m when it turned out to have
+the grip to turn that lever over; the saloons had the same lever, just less
+grip to pull it with -- and a kerb makes up the difference.
+
+Measured climbing a real kerb at full lock (`tests/tipping.js`), at 95 km/h:
+
+| | roll before | roll now | wheel in the air, before | now |
+|---|---|---|---|---|
+| Runner | 8.7° | **6.1°** | 0.45 s | **0.20 s** |
+| patrol | 8.3° | **4.5°** | 0.27 s | **0 s** |
+| interceptor | 7.9° | **4.7°** | 0.38 s | **0.15 s** |
+
+**The tyres pay for it.** A car on four wheels corners harder than one on
+three, so the roll centre alone handed the Runner 1.40 g → 1.52 and the
+drivable interceptor 1.52 → 1.72 -- which put a police saloon above the
+Stiletto, the escapee's one real advantage, for a change nobody asked for. So
+`gripScale` gives back what the geometry gained (`ROLL_PAYBACK`), and measured
+after both: Runner 1.41 g, 0–60 in 7.0 s, 134 mph; interceptor 1.55 g, 5.8 s,
+152 mph. Within a hundredth or two of where they were. What changed is the
+tipping, and nothing else.
+
+One thing did come free: the Runner used to lose it completely at 170 km/h on
+full lock -- `tests/supercar.js` recorded 0 g there, meaning it spun rather
+than cornered. Standing it up gives 1.47 g instead.
+
+### More grip on the grass, tried and not kept
+
+*"If you think it will help the routing system, you could improve grip for the
+police cars on off-road."* It does not, and the measurement is worth keeping
+because the idea is a reasonable one. The fleet's `offRoadGrip` went up about
+11% (an interceptor 1.85 → 2.05) and the same copse, both settings run inside
+one session so nothing else differs:
+
+| | hits in 40 s | worst impact | mean speed through the copse | damage |
+|---|---|---|---|---|
+| as it is | 2 | 9.5 m/s at 65 km/h | 14 km/h | 1% |
+| with more grip | 6 | 35.1 m/s at 102 km/h | 40 km/h | 57% |
+
+They spend the extra grip on speed and then bin it. Nearly three times the pace
+through a wood, three times the contacts, and one of the two cars more than
+half wrecked. The grip is where it was.
+
 ### Asking the grass for tarmac grip
 
 The steering limiter sizes the available lock to what the tyres could actually

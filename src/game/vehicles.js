@@ -25,9 +25,19 @@ const baseSuspension = {
   bumpStop: 26000,
   maxForce: 34000,
   // Height above the road, in metres, at which cornering force enters the body
-  // (see physics/vehicle.js). 0 is the road itself, which is what every car
-  // was tuned on; only a car with the grip to roll itself needs more.
-  rollCentre: 0,
+  // (see physics/vehicle.js). 0 is the road itself, and pushing sideways down
+  // there puts the full half-metre from tarmac to centre of mass under the car
+  // as a lever to roll it on. The Stiletto was given 0.18 because it had the
+  // grip to turn that lever over; the saloons had it too, just more slowly --
+  // "if you go on a kerb and turn really hard, it starts to tip over."
+  //
+  // Measured climbing a real kerb at full lock (tests/tipping.js), at 0 the
+  // Runner leans 8.0-8.7 degrees and holds a wheel in the air for nearly half
+  // a second, every time. At 0.20 it is 5.7-6.4 degrees and 0.22 s, and an
+  // interceptor barely lifts a wheel at all (0.40 s down to 0.08). It is not a
+  // car that cannot be rolled -- lean on it hard enough and it still goes --
+  // it is a car that does not do it on a kerb.
+  rollCentre: 0.20,
   // Softened at the front. A front bar twice the rear moves lateral load onto
   // the front axle, and a load-sensitive tyre gives back less than
   // proportionally -- which is understeer, felt as a heavy car that will not
@@ -62,6 +72,20 @@ const baseGears = [0, 4.20, 2.75, 2.05, 1.62, 1.32, 1.08];
  */
 const POLICE_POWER = 1.12;
 const POLICE_GRIP = 1.08;
+/**
+ * Paid back for the roll centre.
+ *
+ * Standing a car up on a kerb instead of letting it lift a wheel is worth real
+ * cornering grip -- a car on four tyres has more of it than one on three -- and
+ * measured, the roll centre alone took the drivable interceptor from 1.52 g to
+ * 1.72 and the Runner from 1.40 to 1.52. That is a balance change nobody asked
+ * for: it put a police saloon above the Stiletto, which is the escapee's one
+ * advantage. So the tyres give back what the geometry gained, and what changes
+ * is only the tipping. Applies to the cars that sit on the base suspension;
+ * the SUV and the van had a roll centre of their own already and gained almost
+ * nothing.
+ */
+const ROLL_PAYBACK = 0.885;
 const STILETTO_POWER = 0.85;
 const BADGER_POWER = 0.86;
 
@@ -133,7 +157,9 @@ export const SPECS = {
     frontWeight: 0.520,
     suspension: Object.assign({}, baseSuspension, { arbFront: 12400, arbRear: 9800 }),
     brakes: { maxTorque: 2400, frontBias: 0.62, handbrakeTorque: 4400 },
-    gripScale: 1.0,
+    // 1.0 until the roll centre stood it up on its kerbs and handed it grip it
+    // had not asked for: see ROLL_PAYBACK.
+    gripScale: 0.92,
     // A little extra at the front is the direct anti-understeer lever.
     gripBias: { front: 1.09, rear: 1.05 },
     // Bare grass is 0.62 -- less than half the road figure -- which makes the
@@ -321,7 +347,7 @@ export const SPECS = {
     // got. See README, "Better brakes than yours".
     brakes: { maxTorque: 3500, frontBias: 0.64, handbrakeTorque: 2800, abs: 1, gripBonus: 1.52 },
     aero: { dragArea: 0.76, downforce: 0.25 },
-    gripScale: 0.97 * POLICE_GRIP,
+    gripScale: 0.97 * POLICE_GRIP * ROLL_PAYBACK,
     gripBias: { front: 1.08, rear: 1.06 },
     // Fleet tyres bite on the loose. Grass mu goes 0.62 -> about 1.1, so a
     // line straight across country is a real option rather than a bog.
@@ -349,8 +375,13 @@ export const SPECS = {
     }),
     brakes: { maxTorque: 3800, frontBias: 0.63, handbrakeTorque: 3000, abs: 1, gripBonus: 1.58 },
     aero: { dragArea: 0.70, downforce: 0.40 },
-    gripScale: 0.99 * POLICE_GRIP,
+    gripScale: 0.99 * POLICE_GRIP * ROLL_PAYBACK,
     gripBias: { front: 1.09, rear: 1.05 },
+    // Raising this was tried, since more grip on the loose sounds like more of
+    // everything: the fleet went to 2.05 and measured *worse* in the wood --
+    // 6 hits against 2, the worst of them 35 m/s at 102 km/h and one car
+    // 57% wrecked, because the units spend the extra grip on speed (mean 14
+    // km/h through the copse to 40) and then bin it. tests/woods.js.
     offRoadGrip: 1.85,
     durability: 2.8,
     topSpeedHint: 99,
@@ -371,7 +402,7 @@ export const SPECS = {
     }),
     brakes: { maxTorque: 4000, frontBias: 0.62, handbrakeTorque: 3200, abs: 1, gripBonus: 1.62 },
     aero: { dragArea: 0.67, downforce: 0.44 },
-    gripScale: 1.0 * POLICE_GRIP,
+    gripScale: 1.0 * POLICE_GRIP * ROLL_PAYBACK,
     gripBias: { front: 1.08, rear: 1.06 },
     offRoadGrip: 1.88,
     durability: 2.4,

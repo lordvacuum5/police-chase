@@ -17,6 +17,14 @@
 // A unit that has slowed for the *obstacle* but not for the *turn it is about
 // to have to make* arrives at the gap pointing at the trunk beside it.
 //
+// Read it in twos, not in ones. Even with the cars fixed, two runs of the same
+// build come out a hit apart -- the chase is a chaotic thing and a metre of
+// difference at the first trunk is a different wood by the tenth. A change
+// worth having moves this by more than that, and the way to see it is to run
+// both settings inside one page session, where everything up to that point is
+// identical: raising the fleet's off-road grip, measured that way, went from
+// 2 hits to 6.
+//
 // What this said when it was written (Wexbury, two units, forty seconds):
 //
 //   before the planner   5 hits, worst 31.7 m/s at 95 kph
@@ -69,11 +77,19 @@ window.__runWoods = async function (seconds = 40) {
     g.dispatcher.knowledge.seen = true;
     g.dispatcher.knowledge.position.copy(g.player.position);
 
+    // Both units are interceptors, made here rather than by spawnPoliceAt,
+    // which picks a kind from the wanted level and the game's own rng -- so
+    // the same run gave a pair of interceptors one time and an interceptor
+    // and an SUV the next, and the hit count moved by two with it. The car has
+    // to be fixed for the wood to be the thing being measured.
     const units = [];
     for (const off of [-8, 8]) {
-      const o = g.spawnPoliceAt({ x: site.x + off, y: 0.95, z: site.z - 150 }, 0, 3);
-      if (!o) continue;
-      o.skill = SKILL.pursuit;
+      const car = g.createVehicle('interceptor', 'interceptor',
+        { x: site.x + off, y: 0.95, z: site.z - 150 }, 0, { police: true });
+      if (!car) continue;
+      const o = new window.__modules.Officer(g, car, {
+        skill: SKILL.pursuit, kind: 'interceptor',
+      });
       // Not on the dispatcher's roster: it would retask them against whatever
       // it currently believes, and the point of this is the pursuit's driving.
       o.setRole(ROLE.PURSUE);
@@ -104,7 +120,7 @@ window.__runWoods = async function (seconds = 40) {
     const mean = speeds.reduce((a, b) => a + b, 0) / Math.max(1, speeds.length);
     const worst = log.reduce((w, h) => (h.dv > (w ? w.dv : 0) ? h : w), null);
     const damage = units.map((o) => +o.vehicle.damage.toFixed(2));
-    for (const o of units) g.despawnPolice(o);
+    for (const o of units) g.removeVehicle(o.vehicle);
     g.paused = false;
 
     window.__res = `copse of ${site.n} trunks within 30 m at `

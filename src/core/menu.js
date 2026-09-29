@@ -111,8 +111,8 @@ export const POLICE_CARS = [
     shape: 'saloon',
     stats: [
       ['Top speed', 152, 'mph'],
-      ['0-60', 5.7, 's', true],
-      ['Grip', 1.52, 'g'],
+      ['0-60', 5.8, 's', true],
+      ['Grip', 1.55, 'g'],
       ['Toughness', 15, 'hits'],
     ],
   },
