@@ -960,6 +960,49 @@ class Game {
   }
 
   /**
+   * Skip to the wanted level you want to look at.
+   *
+   * Five stars is ten minutes of clean driving away, which is a long time to
+   * wait every time you want to see what five stars does. **Type FIVE** and
+   * you are there.
+   *
+   * Typed, not pressed, because a key that hands out the whole force is not
+   * something to leave one thumb away from a real run -- and those four
+   * letters are the only number word whose letters are all unbound. F, I, V, E
+   * drive nothing; O is fine but N mutes, R rights the car, H is the help.
+   *
+   * With the debug telemetry up (F3), the number keys set any level, 0 to 5,
+   * which is the same tool with the ceremony removed.
+   *
+   * In a multiplayer game this is the escapee's to do: the chase runs on their
+   * machine and a police player's copy of the heat is told to it, so setting
+   * it here would be overwritten on the next packet anyway.
+   */
+  _wantedShortcut(i) {
+    if (session.active && !session.isHost) return;
+    let want = null;
+    if (i.typed('five')) want = 5;
+    if (this.debug) {
+      for (let n = 0; n <= 5; n++) if (i.tapped(`Digit${n}`)) want = n;
+    }
+    if (want === null) return;
+
+    if (want <= 0) {
+      this.heat.reset();
+      this.dispatcher.standDown();
+      this.hud.toast('WANTED: CLEAR');
+      return;
+    }
+    // Through bump() for the first star, so the chase starts properly -- the
+    // dispatcher is told where you are, the radio calls it in -- and then
+    // straight to the number asked for.
+    if (this.heat.value <= 0) this.heat.bump(1, 'a request from the control room');
+    this.heat.value = want;
+    this.heat.peak = Math.max(this.heat.peak, want);
+    this.hud.toast(`WANTED: ${'★'.repeat(want)}`);
+  }
+
+  /**
    * Whether this machine may start the run again. There is one chase, and it
    * is the escapee's: a police player's copy restarting on its own would only
    * walk away from everybody else's. Read by the overlay and by the phone's
@@ -1075,6 +1118,7 @@ class Game {
       this.debug = !this.debug;
       this.debugEl.style.display = this.debug ? 'block' : 'none';
     }
+    this._wantedShortcut(i);
     if (i.tapped('KeyR')) {
       // Starting again is the escapee's call: there is one chase, and a police
       // player restarting their own copy of it would only desynchronise them.

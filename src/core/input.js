@@ -32,6 +32,7 @@ export class Input {
   constructor() {
     this.keys = new Set();
     this.pressed = new Set();
+    this.word = '';              // the last few letters typed: see typed()
     this.steerAxis = 0;
     this.gamepadIndex = null;
     this.usingPad = false;
@@ -43,6 +44,10 @@ export class Input {
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
       this.keys.add(e.code);
       this.pressed.add(e.code);
+      // The last few letters, for things that are typed rather than pressed.
+      if (/^Key[A-Z]$/.test(e.code)) {
+        this.word = (this.word + e.code.slice(3)).slice(-12).toLowerCase();
+      }
       this.usingPad = false;
     };
     this._onUp = (e) => this.keys.delete(e.code);
@@ -56,6 +61,18 @@ export class Input {
   }
 
   down(action) { return KEYMAP[action].some((k) => this.keys.has(k)); }
+
+  /**
+   * Has this word just been typed?
+   *
+   * For the things that should not be one key away from an accident. The
+   * buffer only holds letters, and a match clears it so a word fires once.
+   */
+  typed(word) {
+    if (!this.word.endsWith(word)) return false;
+    this.word = '';
+    return true;
+  }
 
   /**
    * Pad buttons that act like key taps, read once a frame.
