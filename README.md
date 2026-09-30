@@ -3608,6 +3608,33 @@ Fosse Way at the edge of town, 359 m out.
 collisions, nothing happens for the first 2.8 s, the repair runs at 5.0% a
 second, it stops when the car drives off, and 30% damage is gone 12 s later.
 
+## Apple mode
+
+The game plays harder on Apple hardware. It is a joke, it is deliberate, and
+nothing on screen announces it:
+
+* every hit costs the player's car **twice** what it costs anyone else,
+* the wanted level climbs **three times** as fast, which is most of what makes
+  it hard — the number of cars, the kinds of car, the tactics that unlock and
+  how hard each unit presses all read off the tier, so one number moves all of
+  them. Three minutes to five stars rather than ten.
+* and Control will not stop going on about your phone.
+
+The radio is the only tell, and that is on purpose. A chase where dispatch
+keeps making jokes about dongles is obviously a joke; the same chase in silence
+is just a game that feels unfairly hard and gets closed. The lines are ribbing
+about a brand and nothing more — no invented facts, no pretending to be anyone.
+
+Detection is in `core/platform.js` and it is not reliable, because it cannot
+be: an iPad has claimed to be a Mac since iPadOS 13 (the touch-point count is
+the only thing that gives it away), and any user agent can be changed by
+whoever is holding the device. The trap worth knowing about is that **every
+Chrome and every Safari on every platform has "AppleWebKit" in its user
+agent**, Windows and Android included, so a test matching on "Apple" catches
+the entire web. `tests/apple.js` keeps a table of real user agent strings —
+four Apple, four not, all eight containing the word — and checks the two things
+the flag actually does by doing them.
+
 ## Performance
 
 Measured on the target machine (Intel Core 3 N355, Intel UHD graphics, 8 GB), at

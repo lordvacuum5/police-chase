@@ -13,6 +13,7 @@
 // through Game._handleKeys and there is one place that decides what a key does.
 
 import { clamp } from '../util/math.js';
+import { appleMobile } from './platform.js';
 
 /**
  * Is this a device whose main input is a finger? `?touch` forces it, so the
@@ -45,13 +46,6 @@ function standalone() {
     || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
 }
 
-/** An iPhone or iPad, including an iPad pretending to be a Mac. */
-function isApple() {
-  const ua = navigator.userAgent || '';
-  return /iPad|iPhone|iPod/.test(ua)
-    || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-}
-
 /**
  * What to tell somebody whose browser will not let the page go full screen.
  *
@@ -60,7 +54,7 @@ function isApple() {
  * different route (index.html carries the meta tags that make it work).
  */
 function fullScreenAdvice() {
-  return isApple()
+  return appleMobile()
     ? 'Safari can\'t make a page full screen on an iPhone.<br>'
       + 'Tap <b>Share</b>, then <b>Add to Home Screen</b> \u2014 opened from there, '
       + 'the game gets the whole screen.'

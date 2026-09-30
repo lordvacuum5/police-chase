@@ -8,6 +8,7 @@
 
 import { clamp, clamp01, lerp } from '../util/math.js';
 import { SEARCH_SECONDS } from '../ai/dispatcher.js';
+import { APPLE } from '../core/platform.js';
 
 const MAX = 5;
 /** How long you have to be pinned before the arrest lands. */
@@ -28,6 +29,17 @@ const BUST_SECONDS = 5;
  * creeping up from nothing.
  */
 const TIER_SECONDS = [80, 80, 105, 135, 170];
+
+/**
+ * How much faster the wanted level climbs on an Apple device.
+ *
+ * Everything that makes the pursuit harder follows the wanted level -- the
+ * number of cars, the kinds of car, which tactics are unlocked, and how hard
+ * each unit presses (Officer.aggression is read straight off the tier) -- so
+ * this one number is most of what hard mode is. Three minutes to five stars
+ * rather than ten.
+ */
+const APPLE_HEAT = APPLE ? 3 : 1;
 
 export class Heat {
   constructor(game) {
@@ -89,6 +101,9 @@ export class Heat {
         let rate = 1 / TIER_SECONDS[Math.min(this.tier, TIER_SECONDS.length - 1)];
         if (Math.abs(player.forwardSpeed) > 38) rate *= 1.6;
         if (player.isDrifting) rate *= 1.25;
+        // Ten minutes of unbroken contact to the top of the range, unless the
+        // control room has taken a personal dislike to your telephone.
+        rate *= APPLE_HEAT;
         this.value = clamp(this.value + rate * dt, 0, MAX);
         this.peak = Math.max(this.peak, this.value);
       } else {

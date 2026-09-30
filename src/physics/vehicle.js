@@ -145,6 +145,10 @@ export class Vehicle {
     // Game._render. Nothing in the simulation reads them.
     this.prevPos = new THREE.Vector3();
     this.prevQuat = new THREE.Quaternion();
+    // Multiplies what a hit costs this particular car. Everything drives the
+    // same way and takes the same knocks; this is the one dial on top, and
+    // only one thing turns it. See core/platform.js.
+    this.damageScale = 1;
     this.linvel = new THREE.Vector3();
     this.angvel = new THREE.Vector3();
     this.forward = new THREE.Vector3(0, 0, 1);
@@ -380,7 +384,8 @@ export class Vehicle {
       // Both ways round, so the pack does not wreck itself on you either.
       const friendly = this.isPolice && this._touchingPolice() ? FRIENDLY : 1;
       this.damage = clamp01(
-        this.damage + ((dv - 2.6) * 0.042 * friendly) / (this.spec.durability || 1),
+        this.damage
+          + ((dv - 2.6) * 0.042 * friendly * (this.damageScale || 1)) / (this.spec.durability || 1),
       );
     }
     this.lastImpact = dv;

@@ -19,6 +19,8 @@
 // (see game/phrases.js). A search used to produce "Control, still no further
 // sighting, keep looking" three times in a row.
 
+import { APPLE } from '../core/platform.js';
+
 /** How a unit describes the car it is chasing. */
 const DESCRIBE = {
   runner: 'an orange saloon',
@@ -180,6 +182,25 @@ export class Commentary {
     }
 
     this._arrest(dt, heat, d, p);
+    this._apple(dt);
+  }
+
+  /**
+   * The control room, on the subject of your telephone.
+   *
+   * Nothing announces that the game plays differently on an Apple device --
+   * no banner, no setting -- so this is the only thing that tells you, and it
+   * is meant to be the tell. A chase where dispatch will not stop going on
+   * about your phone is obviously a joke; the same chase in silence is just a
+   * game that feels unfairly hard. A routine line on a long cooldown, so it
+   * queues behind anything that matters and never talks over the pursuit.
+   */
+  _apple(dt) {
+    if (!APPLE) return;
+    this.appleTimer = (this.appleTimer || 0) - dt;
+    if (this.appleTimer > 0) return;
+    this.appleTimer = 26 + Math.random() * 18;
+    this.game.say('apple', APPLE_LINES, {}, false, { low: true, every: 24 });
   }
 
   // --------------------------------------------------------------- the lines
@@ -579,3 +600,22 @@ export class Commentary {
     g.radio(text, true, { final: true });
   }
 }
+
+/**
+ * Ribbing, and only ribbing: jokes about a brand, nothing invented and put
+ * about as fact. It is a chase game having a laugh, not a press release.
+ */
+const APPLE_LINES = [
+  'Control, be advised, suspect is on an Apple device. Show no mercy.',
+  "Control, suspect's phone has no headphone jack. Consider them dangerous.",
+  'Control, all units, the subject paid how much for that phone?',
+  'Control, suspect is running iOS. Expect them to stop and charge shortly.',
+  "Control, they've gone the wrong way round a roundabout. Maps, probably.",
+  'Control, suspect will be requesting a dongle for the handcuffs.',
+  'Control, subject vehicle has courage. No ports, but courage.',
+  'Control, suspect is an Apple user. Units are authorised to enjoy this.',
+  'Control, the subject is on eleven per cent. We can wait them out.',
+  'Control, all units, remember: the suspect thinks green bubbles are rude.',
+  'Control, suspect has asked us to update to the latest version first.',
+  'Control, intelligence confirms the subject queued overnight for that thing.',
+];

@@ -8,6 +8,7 @@ import {
   carMaterials, drivablePoliceSpec,
 } from './game/vehicles.js';
 import { WORLD_HALF } from './world/common.js';
+import { APPLE } from './core/platform.js';
 import { MAPS, mapById } from './world/maps.js';
 import { showMenu, hideMenu, chosenCar, chosenPoliceCar } from './core/menu.js';
 import { takeCarCards } from './game/cards.js';
@@ -387,6 +388,7 @@ class Game {
       const kind = SPECS[chosenPoliceCar()] ? chosenPoliceCar() : 'interceptor';
       this.player = this.createVehicle(kind, kind, place.position, place.heading,
         { police: true, spec: drivablePoliceSpec(kind) });
+      if (APPLE) this.player.damageScale = 2;
       this.player.lampPhase = this.rng();
       this.startPlace = place;
       return;
@@ -395,6 +397,7 @@ class Game {
     // refresh or a trip back through M keeps it.
     const car = SPECS[chosenCar()] ? chosenCar() : 'runner';
     this.player = this.createVehicle(car, car, place.position, place.heading, {});
+    if (APPLE) this.player.damageScale = 2;
     this.startPlace = place;
   }
 
