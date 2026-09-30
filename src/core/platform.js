@@ -35,4 +35,43 @@ export function isApple(ua = LIVE_UA, touches = LIVE_TOUCHES) {
   return appleMobile(ua, touches) || /Macintosh|Mac OS X/.test(ua);
 }
 
-export const APPLE = isApple();
+/**
+ * Is the game playing as though it were on an Apple device?
+ *
+ * Read through a function rather than as a constant, because it can be turned
+ * on from a machine that is nothing of the sort: typing APPLE switches it, and
+ * `?apple=1` sets it at load. There is no way to see what the joke does
+ * otherwise without going and finding an iPhone.
+ *
+ * Remembered for the tab rather than the machine -- sessionStorage -- so a
+ * reload keeps it while you are looking at it and a new window starts honest.
+ */
+const REAL = isApple();
+const KEY = 'pc.apple';
+
+function stored() {
+  try {
+    if (new URLSearchParams(location.search).get('apple') === '1') return true;
+    return sessionStorage.getItem(KEY) === '1';
+  } catch (e) {
+    return false;                    // storage blocked, or no location
+  }
+}
+
+let forced = stored();
+
+/** True on Apple hardware, or when somebody has asked to be treated as such. */
+export function appleMode() { return REAL || forced; }
+
+/** Is this machine actually one? Only the toggle's own toast cares. */
+export function realApple() { return REAL; }
+
+/** Turn the pretence on or off. Returns what it is now. */
+export function setForcedApple(on) {
+  forced = !!on;
+  try {
+    if (forced) sessionStorage.setItem(KEY, '1');
+    else sessionStorage.removeItem(KEY);
+  } catch (e) { /* storage blocked */ }
+  return appleMode();
+}

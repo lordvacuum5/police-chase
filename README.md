@@ -3625,6 +3625,15 @@ keeps making jokes about dongles is obviously a joke; the same chase in silence
 is just a game that feels unfairly hard and gets closed. The lines are ribbing
 about a brand and nothing more — no invented facts, no pretending to be anyone.
 
+**Type APPLE** to be treated as an Apple device from anything, and again to
+stop; `?apple=1` does the same at load, for a phone with no keyboard. It is
+remembered for the tab, so a reload keeps it and a new window starts honest.
+Without it there is no way to look at any of this from a machine that is not
+one. Two of those five letters do other things — A steers and P pauses — so
+typing it twitches the wheel and blinks the pause panel on the way past, and
+the shortcut ends by unpausing so a fast typist is not left sitting on the
+pause screen.
+
 Detection is in `core/platform.js` and it is not reliable, because it cannot
 be: an iPad has claimed to be a Mac since iPadOS 13 (the touch-point count is
 the only thing that gives it away), and any user agent can be changed by

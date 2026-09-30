@@ -19,7 +19,7 @@
 // (see game/phrases.js). A search used to produce "Control, still no further
 // sighting, keep looking" three times in a row.
 
-import { APPLE } from '../core/platform.js';
+import { appleMode } from '../core/platform.js';
 
 /** How a unit describes the car it is chasing. */
 const DESCRIBE = {
@@ -196,7 +196,7 @@ export class Commentary {
    * queues behind anything that matters and never talks over the pursuit.
    */
   _apple(dt) {
-    if (!APPLE) return;
+    if (!appleMode()) return;
     this.appleTimer = (this.appleTimer || 0) - dt;
     if (this.appleTimer > 0) return;
     this.appleTimer = 26 + Math.random() * 18;

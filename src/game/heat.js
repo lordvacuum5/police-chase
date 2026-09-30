@@ -8,7 +8,7 @@
 
 import { clamp, clamp01, lerp } from '../util/math.js';
 import { SEARCH_SECONDS } from '../ai/dispatcher.js';
-import { APPLE } from '../core/platform.js';
+import { appleMode } from '../core/platform.js';
 
 const MAX = 5;
 /** How long you have to be pinned before the arrest lands. */
@@ -39,7 +39,7 @@ const TIER_SECONDS = [80, 80, 105, 135, 170];
  * this one number is most of what hard mode is. Three minutes to five stars
  * rather than ten.
  */
-const APPLE_HEAT = APPLE ? 3 : 1;
+const APPLE_HEAT = 3;
 
 export class Heat {
   constructor(game) {
@@ -103,7 +103,7 @@ export class Heat {
         if (player.isDrifting) rate *= 1.25;
         // Ten minutes of unbroken contact to the top of the range, unless the
         // control room has taken a personal dislike to your telephone.
-        rate *= APPLE_HEAT;
+        if (appleMode()) rate *= APPLE_HEAT;
         this.value = clamp(this.value + rate * dt, 0, MAX);
         this.peak = Math.max(this.peak, this.value);
       } else {

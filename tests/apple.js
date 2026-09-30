@@ -20,7 +20,7 @@ window.__runApple = async function () {
     for (let i = 0; i < 200 && !(window.__game && window.__game.player); i++) {
       await new Promise((r) => setTimeout(r, 100));
     }
-    const { isApple, appleMobile, APPLE } = await import('/src/core/platform.js');
+    const { isApple, appleMobile, appleMode, setForcedApple, realApple } = await import('/src/core/platform.js');
     const rows = [];
     let bad = 0;
 
@@ -82,6 +82,18 @@ window.__runApple = async function () {
     rows.push(`${damageOk ? '  ok ' : 'FAIL '}${'damage doubles'.padEnd(28)}`
       + `${(one * 100).toFixed(1)}% -> ${(two * 100).toFixed(1)}%  (x${ratio.toFixed(2)})`);
 
+    // ---- the pretence, for looking at the joke from a Windows machine ----
+    const was = appleMode();
+    setForcedApple(true);
+    const forcedOn = appleMode();
+    setForcedApple(false);
+    const forcedOff = appleMode();
+    setForcedApple(was && !realApple());
+    const toggleOk = forcedOn === true && forcedOff === realApple();
+    if (!toggleOk) bad++;
+    rows.push(`${toggleOk ? '  ok ' : 'FAIL '}${'APPLE toggles'.padEnd(28)}`
+      + `on ${forcedOn}, off ${forcedOff}`);
+
     // ---- and that the radio can say the lines ----
     const before = g.hud.messages.length;
     const said = g.say('apple-test', ['Control, test of the Apple line.'], {}, false);
@@ -91,7 +103,7 @@ window.__runApple = async function () {
       + `${g.hud.messages.length - before} added`);
 
     g.paused = false;
-    window.__res = `this machine: APPLE ${APPLE}\n${rows.join('\n')}\n`
+    window.__res = `this machine: real Apple ${realApple()}\n${rows.join('\n')}\n`
       + (bad ? `${bad} FAILED` : 'all good');
   } catch (e) {
     window.__res = 'EX: ' + e.message + ' | ' + (e.stack || '').slice(0, 300);

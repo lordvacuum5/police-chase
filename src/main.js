@@ -8,7 +8,7 @@ import {
   carMaterials, drivablePoliceSpec,
 } from './game/vehicles.js';
 import { WORLD_HALF } from './world/common.js';
-import { APPLE } from './core/platform.js';
+import { appleMode, realApple, setForcedApple } from './core/platform.js';
 import { MAPS, mapById } from './world/maps.js';
 import { showMenu, hideMenu, chosenCar, chosenPoliceCar } from './core/menu.js';
 import { takeCarCards } from './game/cards.js';
@@ -388,7 +388,7 @@ class Game {
       const kind = SPECS[chosenPoliceCar()] ? chosenPoliceCar() : 'interceptor';
       this.player = this.createVehicle(kind, kind, place.position, place.heading,
         { police: true, spec: drivablePoliceSpec(kind) });
-      if (APPLE) this.player.damageScale = 2;
+      if (appleMode()) this.player.damageScale = 2;
       this.player.lampPhase = this.rng();
       this.startPlace = place;
       return;
@@ -397,7 +397,7 @@ class Game {
     // refresh or a trip back through M keeps it.
     const car = SPECS[chosenCar()] ? chosenCar() : 'runner';
     this.player = this.createVehicle(car, car, place.position, place.heading, {});
-    if (APPLE) this.player.damageScale = 2;
+    if (appleMode()) this.player.damageScale = 2;
     this.startPlace = place;
   }
 
@@ -989,6 +989,36 @@ class Game {
   }
 
   /**
+   * Type APPLE to be treated as an Apple device, and again to stop.
+   *
+   * The joke in core/platform.js only happens on Apple hardware, which makes
+   * it impossible to look at from anything else -- and the person who asked
+   * for it is on Windows and Android by choice. So this pretends. Everything
+   * downstream reads appleMode() rather than a constant fixed at load, so it
+   * takes effect on the spot: the damage the car is about to take, the rate
+   * the heat climbs at, and the control room's opinion of your telephone.
+   *
+   * Two of those five letters do other things -- A steers and P pauses -- so
+   * typing it twitches the wheel and blinks the pause panel on the way past.
+   * That is the price of the word being the word. The two P presses usually
+   * cancel out, but not always: pressed keys are a set, so a fast typist puts
+   * both inside one frame, they collapse into a single tap and the game is
+   * left sitting on the pause screen. So the shortcut ends by unpausing --
+   * somebody who has just asked to be punished wants to be driving.
+   *
+   * ?apple=1 does the same thing at load, for a phone with no keyboard.
+   */
+  _appleShortcut(i) {
+    if (!i.typed('apple')) return;
+    const on = setForcedApple(!appleMode());
+    if (this.player) this.player.damageScale = on ? 2 : 1;
+    this.paused = false;
+    this.hud.toast(realApple()
+      ? 'APPLE DEVICE (REALLY)'
+      : `APPLE MODE: ${on ? 'ON' : 'OFF'}`);
+  }
+
+  /**
    * Skip to the wanted level you want to look at.
    *
    * Five stars is ten minutes of clean driving away, which is a long time to
@@ -1152,6 +1182,7 @@ class Game {
       this.debugEl.style.display = this.debug ? 'block' : 'none';
     }
     this._wantedShortcut(i);
+    this._appleShortcut(i);
     if (i.tapped('KeyR')) {
       // Starting again is the escapee's call: there is one chase, and a police
       // player restarting their own copy of it would only desynchronise them.
