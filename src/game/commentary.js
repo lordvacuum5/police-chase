@@ -20,11 +20,28 @@
 // sighting, keep looking" three times in a row.
 
 
-/** How a unit describes the car it is chasing. */
+/**
+ * How a unit describes the car it is chasing.
+ *
+ * Measured off the cars rather than remembered, because these were written
+ * when every body was generated geometry in a colour this file chose, and
+ * three of them have had imported bodies with their own paint since. Control
+ * was putting out a description of a green four-by-four while the player was
+ * driving a grey one -- the same way the menu used to promise an orange saloon
+ * and hand over a grey coupe, which is why the cards photograph themselves now
+ * (game/cards.js).
+ *
+ * Taken from the dominant hue of the actual rendered body: the Runner is
+ * 212-218 degrees at about 40% saturation, the Stiletto 23 degrees at 89%, and
+ * the Badger is within 22% of neutral at any lightness, which is to say grey.
+ * Replace a .glb and these want measuring again -- the quickest way is to read
+ * the card in localStorage under `pc.cards`, which is a photograph of the car
+ * as the game actually draws it.
+ */
 const DESCRIBE = {
-  runner: 'an orange saloon',
-  supercar: 'a red sports car',
-  offroad: 'a green four-by-four',
+  runner: 'a blue-grey coupe',
+  supercar: 'an orange sports car',
+  offroad: 'a grey four-by-four',
 };
 
 /** Minimum seconds between any two lines of commentary. */

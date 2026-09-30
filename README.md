@@ -3218,11 +3218,11 @@ does — it never decides anything:
 
 | When | Who | Says, for example |
 |---|---|---|
-| a unit takes the lead | the unit | *"Unit 2, primary, behind a red sports car, southbound."* |
+| a unit takes the lead | the unit | *"Unit 2, primary, behind an orange sports car, southbound."* |
 | a second unit is on you | the unit | *"Unit 1, backing up Unit 2."* |
 | every 22–30 s while they can see you | primary | *"Unit 1, coming up to Eighth Street and Ashcroft Road, 80."* — or *motorway, northbound*, *they're slowing*, *losing ground* |
 | through a red light, mid-chase | whoever saw it | *"…through a red at Sixth Street and Bright Lane."* |
-| through a red light **in front of a patrol car**, no chase | the patrol car | *"U1, an orange saloon just ran the red at Market Place and The Shambles. Going after it."* — and that starts the chase |
+| through a red light **in front of a patrol car**, no chase | the patrol car | *"U1, a blue-grey coupe just ran the red at Market Place and The Shambles. Going after it."* — and that starts the chase |
 | off the road | primary | *"…they've left the road."* |
 | you hit something, or ram a unit | primary, or the unit | *"…they've hit something, still mobile."* / *"…they've rammed us!"* |
 | a police car is wrecked | the unit | *"…we're out, car's disabled."* |
