@@ -217,8 +217,14 @@ export class Hud {
     // ---- score ----
     const score = this.game.score;
     if (score) {
-      const val = score.value.toLocaleString();
+      // A frozen run says so, rather than leaving a number that has quietly
+      // stopped moving and looks like a bug.
+      const val = score.value.toLocaleString() + (score.frozen ? '  — OFF' : '');
       if (this.scoreEl.textContent !== val) this.scoreEl.textContent = val;
+      if (this._scoreFrozen !== score.frozen) {
+        this._scoreFrozen = score.frozen;
+        this.scoreEl.classList.toggle('off', !!score.frozen);
+      }
       // Each bonus as a line that rises and fades under the wanted panel.
       const key = score.popups.map((p) => p.text + p.points).join('|');
       if (key !== this._popKey) {

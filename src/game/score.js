@@ -41,8 +41,20 @@ export class Score {
     this.reset();
   }
 
+  /**
+   * Stop counting, for the rest of the run.
+   *
+   * Handing yourself five stars with the developer shortcut is worth about
+   * sixty points a second, which would put a typed word at the top of the
+   * table and make the rest of it meaningless. What has already been earned
+   * stands -- play well for five minutes and then skip ahead and the five
+   * minutes still count -- but nothing after it does.
+   */
+  freeze() { this.frozen = true; }
+
   reset() {
     this.points = 0;
+    this.frozen = false;
     this.runTime = 0;
     this.peakTier = 0;
     this.chasePeak = 0;
@@ -59,6 +71,7 @@ export class Score {
   get value() { return Math.floor(this.points); }
 
   _bonus(points, text) {
+    if (this.frozen) return;
     this.points += points;
     this.popups.push({ text, points, t: 0 });
     if (this.popups.length > 4) this.popups.shift();
@@ -72,7 +85,7 @@ export class Score {
 
     this.runTime += dt;
     const tier = g.heat.tier;
-    if (tier > 0) {
+    if (tier > 0 && !this.frozen) {
       this.points += PER_SECOND[Math.min(5, tier)] * dt;
       this.peakTier = Math.max(this.peakTier, tier);
       this.chasePeak = Math.max(this.chasePeak || 0, tier);
@@ -87,13 +100,13 @@ export class Score {
       // side of town does not count.
       if (v.disabled && !this._wrecked.has(u)) {
         this._wrecked.add(u);
-        if (tier > 0 && u.distanceTo(p.position) < 25) {
+        if (tier > 0 && !this.frozen && u.distanceTo(p.position) < 25) {
           this.wrecks++;
           this._bonus(250, 'POLICE CAR WRECKED');
         }
       }
       // Near miss: past each other fast, a hand's width apart, no contact.
-      if (tier > 0 && !v.disabled) {
+      if (tier > 0 && !this.frozen && !v.disabled) {
         const gap = u.distanceTo(p.position) - p.spec.dims.w * 0.5 - v.spec.dims.w * 0.5;
         const rel = Math.hypot(v.linvel.x - p.linvel.x, v.linvel.z - p.linvel.z);
         const rec = this._near.get(u) || { at: -1, lastAward: -99 };
@@ -116,12 +129,14 @@ export class Score {
   onEscaped(peak) {
     peak = Math.max(peak, this.chasePeak || 0);
     this.chasePeak = 0;
+    if (this.frozen) return;
     const tier = Math.max(1, Math.min(5, Math.floor(peak)));
     this.escapes++;
     this._bonus(400 * tier, `ESCAPED ${'★'.repeat(tier)}`);
   }
 
   onBlockBeaten() {
+    if (this.frozen) return;
     this.blocks++;
     this._bonus(300, 'ROADBLOCK BEATEN');
   }

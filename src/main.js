@@ -1071,11 +1071,15 @@ class Game {
       for (let n = 0; n <= 5; n++) if (i.tapped(`Digit${n}`)) want = n;
     }
     if (want === null) return;
+    // Setting your own wanted level is worth about sixty points a second at
+    // five stars, so the run stops scoring the moment it is used. Anything
+    // earned up to here stands.
+    if (this.score) this.score.freeze();
 
     if (want <= 0) {
       this.heat.reset();
       this.dispatcher.standDown();
-      this.hud.toast('WANTED: CLEAR');
+      this.hud.toast('WANTED: CLEAR · NO SCORE');
       return;
     }
     // Through bump() for the first star, so the chase starts properly -- the
@@ -1084,7 +1088,7 @@ class Game {
     if (this.heat.value <= 0) this.heat.bump(1, 'a request from the control room');
     this.heat.value = want;
     this.heat.peak = Math.max(this.heat.peak, want);
-    this.hud.toast(`WANTED: ${'★'.repeat(want)}`);
+    this.hud.toast(`WANTED: ${'★'.repeat(want)} · NO SCORE`);
   }
 
   /**

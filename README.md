@@ -3646,6 +3646,13 @@ up to five stars with them. Hosting a game nobody has joined yet still counts
 as playing on your own, so the test is of people rather than of sessions, and
 it re-checks itself whenever somebody arrives or leaves.
 
+**Type FIVE** to jump straight to five stars, and with the debug telemetry up
+(F3) the number keys set any level. Using either stops the run scoring, for
+the rest of the run: five stars is worth about sixty points a second, and a
+typed word at the top of the table would make the rest of it meaningless. What
+was earned before it stands, and the score readout says OFF so a number that
+has quietly stopped moving does not look like a bug.
+
 **Type APPLE** to be treated as an Apple device from anything, and again to
 stop; `?apple=1` does the same at load, for a phone with no keyboard. It is
 remembered for the tab, so a reload keeps it and a new window starts honest.
