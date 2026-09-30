@@ -242,7 +242,12 @@ export class Commentary {
           'Control, critical incident. Every car to assist.',
         ],
       };
-      if (lines[tier]) this._say(`tier${tier}`, lines[tier], {}, { hot: true, force: true, cooldown: 60 });
+      // On an Apple device the reason given for each escalation is the
+      // device. This is the one moment the joke has something to hang on --
+      // the response genuinely is stepping up, and saying why lands better
+      // than the same gag arriving at a random moment with nothing happening.
+      const use = (this.game.appleHarder && APPLE_ESCALATION[tier]) || lines[tier];
+      if (use) this._say(`tier${tier}`, use, {}, { hot: true, force: true, cooldown: 60 });
     }
     this.lastTier = tier;
   }
@@ -617,28 +622,55 @@ export class Commentary {
 }
 
 /**
- * Ribbing, and only ribbing: jokes about a brand, nothing invented and put
- * about as fact. It is a chase game having a laugh, not a press release.
+ * What the control room says about your telephone.
+ *
+ * The first set of these were standalone jokes -- dongles, headphone jacks,
+ * green bubbles -- and they did not work, because a police radio is not a
+ * comedy club: a line only reads if it sounds like something a control room
+ * would actually say about a suspect it is chasing. "They don't really make
+ * sense, a lot of them."
+ *
+ * So these are all the same joke told as radio traffic, and the joke is that
+ * the force's official advice is to buy an Android. Ribbing about a brand and
+ * nothing else -- nothing invented and put about as fact.
  */
 const APPLE_LINES = [
-  'Control, be advised, suspect is on an Apple device. Show no mercy.',
-  "Control, suspect's phone has no headphone jack. Consider them dangerous.",
-  'Control, all units, the subject paid how much for that phone?',
-  'Control, suspect is running iOS. Expect them to stop and charge shortly.',
-  "Control, they've gone the wrong way round a roundabout. Maps, probably.",
-  'Control, suspect will be requesting a dongle for the handcuffs.',
-  'Control, subject vehicle has courage. No ports, but courage.',
-  'Control, suspect is an Apple user. Units are authorised to enjoy this.',
-  'Control, the subject is on eleven per cent. We can wait them out.',
-  'Control, all units, remember: the suspect thinks green bubbles are rude.',
-  'Control, suspect has asked us to update to the latest version first.',
-  'Control, intelligence confirms the subject queued overnight for that thing.',
-  'Control, suspect should consider upgrading to something that can keep up.',
-  "Control, the subject's hardware is not powerful enough for this pursuit.",
-  'Control, advise the suspect that Android units are already on scene.',
-  "Control, suspect's frame rate is as much a problem as their driving.",
-  'Control, all units, the subject brought a phone to a car chase.',
-  'Control, be advised, the suspect could have bought a car with that money.',
-  'Control, suspect is thermal throttling. Close in.',
-  'Control, the subject has been told to turn it off and on again. No change.',
+  'Control, suspect is still on iOS. Advise them the switch to Android is free.',
+  'Control, the subject has been offered an Android and declined.',
+  'Control, be advised, suspect would be away by now on an Android.',
+  "Control, the subject's handset cannot keep up with this pursuit.",
+  'Control, suspect may surrender, or upgrade to Android. Either is acceptable.',
+  'Control, advise the suspect an Android would have found a route by now.',
+  'Control, subject is on eleven per cent battery. We can wait them out.',
+  'Control, all units, the suspect paid flagship money for that. No sympathy.',
+  'Control, suspect has been told to upgrade. They are not listening.',
+  "Control, the subject's phone is thermal throttling. Close in.",
+  'Control, suspect is running the pursuit at fifteen frames a second.',
+  'Control, all units, the subject brought an iPhone to a car chase.',
 ];
+
+/**
+ * The reason each escalation is being authorised, on an Apple device.
+ *
+ * Keyed by the tier being arrived at, and used in place of the ordinary line
+ * -- so the moment the response steps up, the radio says what stepped it up.
+ */
+const APPLE_ESCALATION = {
+  2: [
+    'Control, pursuit authorised. Subject is an Apple user.',
+    'Control, all units, pursuit authorised. Suspect is on an iPhone.',
+  ],
+  3: [
+    'Control, tactical contact authorised. The subject is an Apple user.',
+    'Control, contact authorised on the grounds that they use an iPhone.',
+  ],
+  4: [
+    'Control, interceptors deploying. Subject has declined to switch to Android.',
+    'Control, you may box. The suspect was warned about that phone.',
+  ],
+  5: [
+    'Control, critical incident. Suspect still refuses to move to Android.',
+    'Control, all units, critical incident. The subject will not be told.',
+  ],
+};
+

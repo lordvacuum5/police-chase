@@ -3620,6 +3620,14 @@ nothing on screen announces it:
   them. Three minutes to five stars rather than ten.
 * and Control will not stop going on about your phone.
 
+Every escalation gives the device as the reason it is being authorised —
+"tactical contact authorised, the subject is an Apple user" — because that is
+the one moment the joke has something to hang on: the response genuinely is
+stepping up, and saying why lands better than the same gag arriving with
+nothing happening. Between those, the ambient lines are all the same joke told
+as radio traffic, and the joke is that the force's official advice is to buy an
+Android.
+
 The radio is the only tell, and that is on purpose. A chase where dispatch
 keeps making jokes about dongles is obviously a joke; the same chase in silence
 is just a game that feels unfairly hard and gets closed. The lines are ribbing
