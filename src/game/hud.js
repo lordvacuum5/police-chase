@@ -54,6 +54,7 @@ export class Hud {
     this._repairShown = false;
 
     this.toastEl = document.getElementById('toast');
+    this.centreEl = document.getElementById('applesay');
     this._toastTimer = null;
 
     this.roadEl = document.getElementById('roadsign');
@@ -338,6 +339,22 @@ export class Hud {
       this._flashTimer = setTimeout(() => el.classList.remove('levelup'), 1300);
     }
     if (this.game.audio) this.game.audio.wantedUp(tier);
+  }
+
+  /**
+   * A line from Control, in the middle of the screen.
+   *
+   * For the Apple jibes, which are the only thing telling you why the game
+   * has gone strange and were only ever said out loud -- so with the sound off
+   * the joke happened to nobody at all, and even with it on a line goes past
+   * while you are busy driving. Three seconds up, then it fades.
+   */
+  centreLine(text) {
+    if (!this.centreEl) return;
+    this.centreEl.textContent = text;
+    this.centreEl.classList.add('show');
+    clearTimeout(this._centreTimer);
+    this._centreTimer = setTimeout(() => this.centreEl.classList.remove('show'), 3000);
   }
 
   /**

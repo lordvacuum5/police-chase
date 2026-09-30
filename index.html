@@ -168,7 +168,13 @@
      the sound lives now: a phone has no N key, and a row of six small buttons
      along the top of the screen was the wrong place for a volume control. */
   #pause {
-    position: absolute; inset: 0; display: none; z-index: 40;
+    /* Fixed and above the touch layer, and a child of <body> rather than of
+       the HUD. #hud is position: fixed, which makes a stacking context of its
+       own, so a z-index in here only ever sorted against its brothers and the
+       whole subtree stayed underneath #touch (z 30) -- on a phone the steering
+       pad covers the left half of the screen and swallowed RESUME while the
+       buttons on the right worked fine. */
+    position: fixed; inset: 0; display: none; z-index: 45;
     align-items: center; justify-content: center;
     background: rgba(4, 6, 9, .74); backdrop-filter: blur(3px);
     /* The HUD is click-through so the game can be driven underneath it, and
@@ -215,6 +221,29 @@
   #pausebtns { display: flex; gap: 10px; margin-top: 18px; }
   #pausebtns .setbtn { flex: 1; text-align: center; padding: 10px 0; }
   #resume { background: var(--blue); border-color: var(--blue); color: #06101c; }
+
+  /* Nothing to steer while the game is stopped, and the stick and pedals sit
+     over most of the screen: they have to let go of the pointer or they catch
+     presses meant for the panel. The buttons along the top stay live, so the
+     pause button can close what it opened. */
+  #touch.held #t-steer, #touch.held #t-pedals { pointer-events: none; opacity: .35; }
+
+  /* ---- what Control is saying about your phone ----
+     The joke is deaf otherwise: with the sound off the radio says all this to
+     nobody, and even with it on a line can go past while you are busy driving.
+     So an Apple line is put on the screen as well, in the middle, where it
+     cannot be missed and does not have to be read quickly. */
+  #applesay {
+    position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%);
+    z-index: 44; max-width: min(78vw, 560px); text-align: center;
+    padding: 14px 20px; border-radius: 8px; pointer-events: none;
+    background: rgba(8, 11, 16, .82); border: 1px solid var(--edge);
+    color: var(--ink); font-size: 15px; line-height: 1.45; letter-spacing: .4px;
+    text-shadow: 0 1px 10px rgba(4, 6, 9, .95);
+    opacity: 0; transition: opacity .45s ease;
+  }
+  #applesay.show { opacity: 1; }
+  @media (max-width: 520px) { #applesay { font-size: 13px; padding: 11px 15px; } }
 
   /* ---- transient banner ---- */
   /* Says something big without taking the game away: no curtain, no key to
@@ -708,33 +737,35 @@
     <div id="bsub"></div>
   </div>
 
-  <div id="pause">
-    <div id="pausebox">
-      <h3>PAUSED</h3>
-      <div class="setrow">
-        <label for="vol">VOLUME</label>
-        <input id="vol" type="range" min="0" max="100" step="1" value="75" aria-label="Volume">
-        <span id="volval">75%</span>
-      </div>
-      <div class="setrow">
-        <label>SOUND</label>
-        <button id="soundbtn" class="setbtn on" type="button">ON</button>
-      </div>
-      <div class="setrow">
-        <label>CAMERA</label>
-        <button id="cambtn" class="setbtn" type="button">CHASE</button>
-      </div>
-      <div id="pausebtns">
-        <button id="resume" class="setbtn" type="button">RESUME</button>
-        <button id="tomenu" class="setbtn" type="button">MENU</button>
-      </div>
-    </div>
-  </div>
-
   <div id="overlay">
     <h1 id="otitle">BUSTED</h1>
     <div id="osub"></div>
     <div id="ohint">Press <b>R</b> to run again</div>
+  </div>
+</div>
+
+<div id="applesay" aria-live="polite"></div>
+
+<div id="pause">
+  <div id="pausebox">
+    <h3>PAUSED</h3>
+    <div class="setrow">
+      <label for="vol">VOLUME</label>
+      <input id="vol" type="range" min="0" max="100" step="1" value="75" aria-label="Volume">
+      <span id="volval">75%</span>
+    </div>
+    <div class="setrow">
+      <label>SOUND</label>
+      <button id="soundbtn" class="setbtn on" type="button">ON</button>
+    </div>
+    <div class="setrow">
+      <label>CAMERA</label>
+      <button id="cambtn" class="setbtn" type="button">CHASE</button>
+    </div>
+    <div id="pausebtns">
+      <button id="resume" class="setbtn" type="button">RESUME</button>
+      <button id="tomenu" class="setbtn" type="button">MENU</button>
+    </div>
   </div>
 </div>
 

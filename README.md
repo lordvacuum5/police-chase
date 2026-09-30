@@ -3628,6 +3628,11 @@ nothing happening. Between those, the ambient lines are all the same joke told
 as radio traffic, and the joke is that the force's official advice is to buy an
 Android.
 
+Every one of those lines is also put on screen, in the middle, for three
+seconds before it fades. The radio alone is deaf: with the sound off the joke
+happened to nobody at all, and even with it on a line goes past while you are
+busy driving.
+
 The radio is the only tell, and that is on purpose. A chase where dispatch
 keeps making jokes about dongles is obviously a joke; the same chase in silence
 is just a game that feels unfairly hard and gets closed. The lines are ribbing

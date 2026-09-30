@@ -343,6 +343,13 @@ export class TouchControls {
       this._paused = paused;
       this.pauseBtn.classList.toggle('on', paused);
       this.pauseBtn.textContent = paused ? '▶' : 'II';
+      // The stick and the pedals cover most of the screen and they are over
+      // the pause panel, so they have to let go of the pointer while it is up
+      // or they catch presses meant for it. Releasing what is held matters as
+      // much: pausing with a thumb on the throttle used to latch it there,
+      // and the car drove off on its own when the game came back.
+      this.root.classList.toggle('held', paused);
+      if (paused) this._releaseAll();
     }
   }
 }

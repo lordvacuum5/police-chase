@@ -232,6 +232,7 @@ export class Commentary {
     this.appleTimer = (this.appleTimer || 0) - dt;
     if (this.appleTimer > 0) return;
     const said = this.game.say('apple', APPLE_LINES, {}, false, { every: 18 });
+    if (said) this.game.hud.centreLine(said);
     this.appleTimer = said ? 22 + Math.random() * 12 : 2.5;
   }
 
@@ -263,8 +264,14 @@ export class Commentary {
       // device. This is the one moment the joke has something to hang on --
       // the response genuinely is stepping up, and saying why lands better
       // than the same gag arriving at a random moment with nothing happening.
-      const use = (this.game.appleHarder && APPLE_ESCALATION[tier]) || lines[tier];
-      if (use) this._say(`tier${tier}`, use, {}, { hot: true, force: true, cooldown: 60 });
+      const apple = this.game.appleHarder && APPLE_ESCALATION[tier];
+      const use = apple || lines[tier];
+      if (use) {
+        const said = this._say(`tier${tier}`, use, {}, { hot: true, force: true, cooldown: 60 });
+        // On screen as well, but only the ones about the phone: the ordinary
+        // escalation already has the stars flashing to announce it.
+        if (said && apple) this.game.hud.centreLine(this.game.lastLine || '');
+      }
     }
     this.lastTier = tier;
   }

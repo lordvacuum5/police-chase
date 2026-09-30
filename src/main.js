@@ -903,6 +903,9 @@ class Game {
     }
     const text = this.phrases.pick(key, variants, vars);
     this.lastSaid[key] = this.clock;
+    // The wording that was actually chosen, for callers that only learn
+    // whether a line went out and not which one (Commentary._say).
+    this.lastLine = text;
     this.radio(text, hot, { key, ...opts });
     return text;
   }
