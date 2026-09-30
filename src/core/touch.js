@@ -92,7 +92,6 @@ export class TouchControls {
     this.steering = false;
 
     this.pointers = new Map();
-    this._confirmUntil = 0;
     this._ended = null;
 
     this._build();
@@ -289,23 +288,6 @@ export class TouchControls {
     if (id === 'full') { this._toggleFullscreen(); return; }
     const b = BUTTONS.find((x) => x.id === id);
     if (!b) return;
-    if (b.confirm) {
-      // Going back to the menu throws the run away, and the button sits where
-      // a thumb reaching for something else can land on it: ask once.
-      const now = performance.now();
-      if (now > this._confirmUntil) {
-        this._confirmUntil = now + 2500;
-        el.textContent = 'SURE?';
-        el.classList.add('warn');
-        setTimeout(() => {
-          if (performance.now() >= this._confirmUntil) {
-            el.textContent = b.label;
-            el.classList.remove('warn');
-          }
-        }, 2600);
-        return;
-      }
-    }
     this.input.press(b.key);
   }
 

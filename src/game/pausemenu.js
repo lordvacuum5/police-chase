@@ -72,8 +72,20 @@ export class PauseMenu {
     document.getElementById('resume').addEventListener('click', () => {
       this.game.paused = false;
     });
-    document.getElementById('tomenu').addEventListener('click', () => {
-      this.game.input.press('KeyM');
+    // Going back to the menu throws the run away, and it sits next to RESUME,
+    // so it asks once. The phone's old MENU button did the same for the same
+    // reason; the button moved in here and the guard came with it.
+    this.menuBtn = document.getElementById('tomenu');
+    this.menuBtn.addEventListener('click', () => {
+      if (this._sureUntil && performance.now() < this._sureUntil) {
+        this.game.input.press('KeyM');
+        return;
+      }
+      this._sureUntil = performance.now() + 3000;
+      this.menuBtn.textContent = 'SURE?';
+      this.menuBtn.classList.add('off');
+      clearTimeout(this._sureTimer);
+      this._sureTimer = setTimeout(() => this._clearSure(), 3100);
     });
 
     // A press anywhere on the dimmed background resumes, which is what a tap
@@ -82,6 +94,15 @@ export class PauseMenu {
     this.el.addEventListener('pointerdown', (e) => {
       if (e.target === this.el) this.game.paused = false;
     });
+  }
+
+  /** Put the menu button back to saying MENU. */
+  _clearSure() {
+    this._sureUntil = 0;
+    if (this.menuBtn) {
+      this.menuBtn.textContent = 'MENU';
+      this.menuBtn.classList.remove('off');
+    }
   }
 
   _paintVolume(v) {
@@ -108,6 +129,7 @@ export class PauseMenu {
     this.shown = want;
     this.el.classList.toggle('show', want);
     if (want) {
+      this._clearSure();
       this._paintSound();
       this._paintCamera();
     }
