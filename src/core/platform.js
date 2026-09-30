@@ -47,31 +47,44 @@ export function isApple(ua = LIVE_UA, touches = LIVE_TOUCHES) {
  * reload keeps it while you are looking at it and a new window starts honest.
  */
 const REAL = isApple();
-const KEY = 'pc.apple';
+const FORCED_KEY = 'pc.apple';      // pretending, for a tab
+const OFF_KEY = 'pc.applyoff';      // switched off, for good
 
-function stored() {
+function read(store, key) {
+  try { return store.getItem(key) === '1'; } catch (e) { return false; }
+}
+function write(store, key, on) {
   try {
-    if (new URLSearchParams(location.search).get('apple') === '1') return true;
-    return sessionStorage.getItem(KEY) === '1';
-  } catch (e) {
-    return false;                    // storage blocked, or no location
-  }
+    if (on) store.setItem(key, '1');
+    else store.removeItem(key);
+  } catch (e) { /* storage blocked */ }
 }
 
-let forced = stored();
+let forced = read(sessionStorage, FORCED_KEY);
+let disabled = read(localStorage, OFF_KEY);
+try {
+  if (new URLSearchParams(location.search).get('apple') === '1') { forced = true; disabled = false; }
+} catch (e) { /* no location */ }
 
-/** True on Apple hardware, or when somebody has asked to be treated as such. */
-export function appleMode() { return REAL || forced; }
+/** True on Apple hardware, unless it has been switched off, or asked for. */
+export function appleMode() { return !disabled && (REAL || forced); }
 
-/** Is this machine actually one? Only the toggle's own toast cares. */
+/** Is this machine actually one? Only the toggle's own wording cares. */
 export function realApple() { return REAL; }
 
-/** Turn the pretence on or off. Returns what it is now. */
-export function setForcedApple(on) {
-  forced = !!on;
-  try {
-    if (forced) sessionStorage.setItem(KEY, '1');
-    else sessionStorage.removeItem(KEY);
-  } catch (e) { /* storage blocked */ }
+/**
+ * Turn the joke on or off, from either side.
+ *
+ * Two flags rather than one, because the two directions are not the same
+ * thing. Asking for it on a machine that is not Apple is a way of looking at
+ * the joke, so it lasts for the tab and a fresh window starts honest. Turning
+ * it off on a machine that *is* Apple is somebody saying they have had enough
+ * of it, and that has to outlive the tab or they would be switching it off
+ * every time they opened the game.
+ */
+export function setAppleMode(on) {
+  if (on) { disabled = false; forced = !REAL; } else { disabled = REAL; forced = false; }
+  write(sessionStorage, FORCED_KEY, forced);
+  write(localStorage, OFF_KEY, disabled);
   return appleMode();
 }

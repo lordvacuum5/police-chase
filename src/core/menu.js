@@ -21,6 +21,7 @@
 import { MAPS, mapById } from '../world/maps.js';
 import { session } from '../net/session.js';
 import { prefersTouch } from './touch.js';
+import { appleMode, realApple, setAppleMode } from './platform.js';
 import { bestScores } from '../game/score.js';
 import { chosenConditions, setConditions } from '../game/weather.js';
 import { carCards } from '../game/cards.js';
@@ -167,9 +168,41 @@ function remember(key, id) {
   try { localStorage.setItem(key, id); } catch (e) { /* storage blocked */ }
 }
 
+/**
+ * Tap the title enough times to switch the Apple punishment off -- or on.
+ *
+ * Typing APPLE needs a keyboard, and the people most likely to want this off
+ * are the ones holding a phone. So the name of the game is the switch: seven
+ * taps inside three seconds, on any device, and it says loudly which way it
+ * just went. Nothing hints that it is there, which is the point of an easter
+ * egg, and nothing about the menu changes if it is never found.
+ */
+function wireTitleTaps() {
+  const title = document.querySelector('#menu h1');
+  const said = document.getElementById('applebig');
+  if (!title || !said || title.dataset.wired) return;
+  title.dataset.wired = '1';
+
+  let taps = 0, since = 0;
+  title.addEventListener('pointerdown', () => {
+    const now = performance.now();
+    if (now - since > 3000) taps = 0;
+    since = now;
+    if (++taps < 7) return;
+    taps = 0;
+    const on = setAppleMode(!appleMode());
+    said.textContent = on ? 'APPLE MODE ON' : 'APPLE MODE OFF';
+    said.classList.toggle('on', on);
+    said.classList.add('show');
+    clearTimeout(said._timer);
+    said._timer = setTimeout(() => said.classList.remove('show'), 2600);
+  });
+}
+
 export function showMenu(onPick) {
   const menu = document.getElementById('menu');
   menu.classList.remove('gone');
+  wireTitleTaps();
   buildMaps();
   buildConditions();
   buildBestScores();

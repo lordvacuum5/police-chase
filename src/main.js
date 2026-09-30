@@ -8,7 +8,7 @@ import {
   carMaterials, drivablePoliceSpec,
 } from './game/vehicles.js';
 import { WORLD_HALF } from './world/common.js';
-import { appleMode, realApple, setForcedApple } from './core/platform.js';
+import { appleMode, realApple, setAppleMode } from './core/platform.js';
 import { MAPS, mapById } from './world/maps.js';
 import { showMenu, hideMenu, chosenCar, chosenPoliceCar } from './core/menu.js';
 import { takeCarCards } from './game/cards.js';
@@ -1036,12 +1036,10 @@ class Game {
 
   _appleShortcut(i) {
     if (!i.typed('apple')) return;
-    const on = setForcedApple(!appleMode());
+    const on = setAppleMode(!appleMode());
     this._syncApple();
     this.paused = false;
-    this.hud.toast(realApple()
-      ? 'APPLE DEVICE (REALLY)'
-      : `APPLE MODE: ${on ? 'ON' : 'OFF'}`);
+    this.hud.toast(`APPLE MODE: ${on ? 'ON' : 'OFF'}`);
   }
 
   /**

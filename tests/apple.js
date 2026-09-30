@@ -20,7 +20,7 @@ window.__runApple = async function () {
     for (let i = 0; i < 200 && !(window.__game && window.__game.player); i++) {
       await new Promise((r) => setTimeout(r, 100));
     }
-    const { isApple, appleMobile, appleMode, setForcedApple, realApple } = await import('/src/core/platform.js');
+    const { isApple, appleMobile, appleMode, setAppleMode, realApple } = await import('/src/core/platform.js');
     const rows = [];
     let bad = 0;
 
@@ -84,15 +84,17 @@ window.__runApple = async function () {
 
     // ---- the pretence, for looking at the joke from a Windows machine ----
     const was = appleMode();
-    setForcedApple(true);
-    const forcedOn = appleMode();
-    setForcedApple(false);
-    const forcedOff = appleMode();
-    setForcedApple(was && !realApple());
-    const toggleOk = forcedOn === true && forcedOff === realApple();
+    setAppleMode(true);
+    const turnedOn = appleMode();
+    setAppleMode(false);
+    const turnedOff = appleMode();
+    setAppleMode(was);
+    // Off means off on both sides now: a real Apple device can switch the
+    // joke off, which it could not when the flag was only ever "pretend".
+    const toggleOk = turnedOn === true && turnedOff === false;
     if (!toggleOk) bad++;
-    rows.push(`${toggleOk ? '  ok ' : 'FAIL '}${'APPLE toggles'.padEnd(28)}`
-      + `on ${forcedOn}, off ${forcedOff}`);
+    rows.push(`${toggleOk ? '  ok ' : 'FAIL '}${'APPLE toggles both ways'.padEnd(28)}`
+      + `on ${turnedOn}, off ${turnedOff}`);
 
     // ---- and that the radio can say the lines ----
     const before = g.hud.messages.length;

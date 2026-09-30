@@ -3653,6 +3653,15 @@ typed word at the top of the table would make the rest of it meaningless. What
 was earned before it stands, and the score readout says OFF so a number that
 has quietly stopped moving does not look like a bug.
 
+**Tap the title on the menu seven times** to switch the whole thing off — or
+on. That is the way out for somebody who actually owns the phone: typing APPLE
+needs a keyboard and the people most likely to want this gone are holding one
+without. It says loudly which way it just went, and being switched off sticks
+between sessions, because otherwise they would be turning it off every time
+they opened the game. Asking for it on a machine that is *not* Apple only
+lasts for the tab, since that is a way of looking at the joke rather than a
+preference.
+
 **Type APPLE** to be treated as an Apple device from anything, and again to
 stop; `?apple=1` does the same at load, for a phone with no keyboard. It is
 remembered for the tab, so a reload keeps it and a new window starts honest.
