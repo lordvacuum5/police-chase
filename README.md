@@ -3625,6 +3625,14 @@ keeps making jokes about dongles is obviously a joke; the same chase in silence
 is just a game that feels unfairly hard and gets closed. The lines are ribbing
 about a brand and nothing more — no invented facts, no pretending to be anyone.
 
+None of it applies when there is somebody else in the room. Handicapping one
+player's car in a game against other people is not the same joke as
+handicapping their own run, and the heat is shared -- the escapee's wanted
+level is sent to every police player -- so an Apple host would drag everybody
+up to five stars with them. Hosting a game nobody has joined yet still counts
+as playing on your own, so the test is of people rather than of sessions, and
+it re-checks itself whenever somebody arrives or leaves.
+
 **Type APPLE** to be treated as an Apple device from anything, and again to
 stop; `?apple=1` does the same at load, for a phone with no keyboard. It is
 remembered for the tab, so a reload keeps it and a new window starts honest.

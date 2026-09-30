@@ -388,7 +388,7 @@ class Game {
       const kind = SPECS[chosenPoliceCar()] ? chosenPoliceCar() : 'interceptor';
       this.player = this.createVehicle(kind, kind, place.position, place.heading,
         { police: true, spec: drivablePoliceSpec(kind) });
-      if (appleMode()) this.player.damageScale = 2;
+      this._syncApple();
       this.player.lampPhase = this.rng();
       this.startPlace = place;
       return;
@@ -397,7 +397,7 @@ class Game {
     // refresh or a trip back through M keeps it.
     const car = SPECS[chosenCar()] ? chosenCar() : 'runner';
     this.player = this.createVehicle(car, car, place.position, place.heading, {});
-    if (appleMode()) this.player.damageScale = 2;
+    this._syncApple();
     this.startPlace = place;
   }
 
@@ -1008,10 +1008,33 @@ class Game {
    *
    * ?apple=1 does the same thing at load, for a phone with no keyboard.
    */
+  /**
+   * Is the Apple punishment actually in force?
+   *
+   * Not when there is somebody else in the room. Making one player's car take
+   * double damage and their heat climb three times as fast is a joke when it
+   * is their own run; in a game with other people in it, it is one player
+   * being quietly handicapped in a race against the others, and the heat is
+   * shared -- the escapee's wanted level is sent to every police player -- so
+   * an Apple host would drag everybody's chase up to five stars with them.
+   *
+   * Hosting a game nobody has joined yet is still playing on your own, so the
+   * count is of people rather than of sessions.
+   */
+  get appleHarder() {
+    if (session.active && session.players && session.players.length > 1) return false;
+    return appleMode();
+  }
+
+  /** Put the car's damage where the flag says it should be. */
+  _syncApple() {
+    if (this.player) this.player.damageScale = this.appleHarder ? 2 : 1;
+  }
+
   _appleShortcut(i) {
     if (!i.typed('apple')) return;
     const on = setForcedApple(!appleMode());
-    if (this.player) this.player.damageScale = on ? 2 : 1;
+    this._syncApple();
     this.paused = false;
     this.hud.toast(realApple()
       ? 'APPLE DEVICE (REALLY)'
@@ -1204,6 +1227,7 @@ class Game {
    * host has announced, and send this client's own.
    */
   _netUpdate(dt) {
+    this._netRoster();
     this._netApplyCars(dt);
     this._netReportHit();
     this._netHandleEvents();
@@ -1212,6 +1236,40 @@ class Game {
       this.netOver = true;
       this.hud.showOverlay('GAME OVER', session.error || 'The game ended.', { canRestart: false });
     }
+  }
+
+  /**
+   * Who has come and gone.
+   *
+   * The player list arrives with every join and every goodbye and was only
+   * ever read to place cars, so the game filled up and emptied out in
+   * silence: somebody joined your chase and the only sign was another car
+   * appearing somewhere behind you.
+   *
+   * The names come off the wire, so they are cut short and stripped of
+   * anything that would be read as markup before they go anywhere near the
+   * radio log.
+   */
+  _netRoster() {
+    const now = (session.players || []).map((p) => ({ id: p.id, name: p.name, role: p.role }));
+    const before = this._netRosterWas;
+    this._netRosterWas = now;
+    if (!before) return;                      // first sight of the list
+
+    const nameOf = (p) => String(p.name || 'Unit').replace(/[<>&]/g, '').slice(0, 16) || 'Unit';
+    for (const p of now) {
+      if (before.some((q) => q.id === p.id)) continue;
+      if (p.id === session.id) continue;      // ourselves, on the way in
+      this.hud.addMessage(`[net] ${nameOf(p)} joined as ${p.role === 'escapee' ? 'the runner' : 'police'}`);
+      this.hud.toast(`${nameOf(p).toUpperCase()} JOINED`);
+    }
+    for (const p of before) {
+      if (now.some((q) => q.id === p.id)) continue;
+      this.hud.addMessage(`[net] ${nameOf(p)} left`);
+      this.hud.toast(`${nameOf(p).toUpperCase()} LEFT`);
+    }
+    // Somebody arriving or leaving can switch the Apple punishment on or off.
+    this._syncApple();
   }
 
   /**

@@ -19,7 +19,6 @@
 // (see game/phrases.js). A search used to produce "Control, still no further
 // sighting, keep looking" three times in a row.
 
-import { appleMode } from '../core/platform.js';
 
 /** How a unit describes the car it is chasing. */
 const DESCRIBE = {
@@ -53,6 +52,9 @@ export class Commentary {
     this.seenFor = 0;
     this.searchTimer = 0;
     this.runTimer = 6;
+    // Early, so the first jibe lands while you are still working out why
+    // there are suddenly so many police cars.
+    this.appleTimer = 5;
     this.pinnedFor = 0;
     this.pinStage = 0;
     this.offRoadFor = 0;
@@ -192,15 +194,28 @@ export class Commentary {
    * no banner, no setting -- so this is the only thing that tells you, and it
    * is meant to be the tell. A chase where dispatch will not stop going on
    * about your phone is obviously a joke; the same chase in silence is just a
-   * game that feels unfairly hard. A routine line on a long cooldown, so it
-   * queues behind anything that matters and never talks over the pursuit.
+   * game that feels unfairly hard.
+   *
+   * It was sent as a routine line, and routine lines never got said. Three
+   * gates have to open at once for one: two seconds of dead air on the net,
+   * a twelve-second gap shared with every other routine line whoever wants
+   * one, and this one's own cooldown -- and a pursuit at three stars has a
+   * running commentary on it, so the air is never quiet for two seconds
+   * together. The bug on top was that a refused line still reset the timer,
+   * so each failure cost another half minute: attempt, refused, wait thirty
+   * seconds, attempt, refused. Played to three stars, the joke said nothing
+   * at all.
+   *
+   * So it is not a routine line any more -- it is the only thing telling you
+   * why the game has gone strange, which makes it worth the airtime -- and a
+   * refusal is retried in a couple of seconds rather than in a minute.
    */
   _apple(dt) {
-    if (!appleMode()) return;
+    if (!this.game.appleHarder) return;
     this.appleTimer = (this.appleTimer || 0) - dt;
     if (this.appleTimer > 0) return;
-    this.appleTimer = 26 + Math.random() * 18;
-    this.game.say('apple', APPLE_LINES, {}, false, { low: true, every: 24 });
+    const said = this.game.say('apple', APPLE_LINES, {}, false, { every: 18 });
+    this.appleTimer = said ? 22 + Math.random() * 12 : 2.5;
   }
 
   // --------------------------------------------------------------- the lines
@@ -618,4 +633,12 @@ const APPLE_LINES = [
   'Control, all units, remember: the suspect thinks green bubbles are rude.',
   'Control, suspect has asked us to update to the latest version first.',
   'Control, intelligence confirms the subject queued overnight for that thing.',
+  'Control, suspect should consider upgrading to something that can keep up.',
+  "Control, the subject's hardware is not powerful enough for this pursuit.",
+  'Control, advise the suspect that Android units are already on scene.',
+  "Control, suspect's frame rate is as much a problem as their driving.",
+  'Control, all units, the subject brought a phone to a car chase.',
+  'Control, be advised, the suspect could have bought a car with that money.',
+  'Control, suspect is thermal throttling. Close in.',
+  'Control, the subject has been told to turn it off and on again. No change.',
 ];

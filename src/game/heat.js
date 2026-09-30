@@ -8,7 +8,6 @@
 
 import { clamp, clamp01, lerp } from '../util/math.js';
 import { SEARCH_SECONDS } from '../ai/dispatcher.js';
-import { appleMode } from '../core/platform.js';
 
 const MAX = 5;
 /** How long you have to be pinned before the arrest lands. */
@@ -103,7 +102,7 @@ export class Heat {
         if (player.isDrifting) rate *= 1.25;
         // Ten minutes of unbroken contact to the top of the range, unless the
         // control room has taken a personal dislike to your telephone.
-        if (appleMode()) rate *= APPLE_HEAT;
+        if (this.game.appleHarder) rate *= APPLE_HEAT;
         this.value = clamp(this.value + rate * dt, 0, MAX);
         this.peak = Math.max(this.peak, this.value);
       } else {

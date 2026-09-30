@@ -490,7 +490,7 @@ class Session {
   }
 
   sendWorld(cars, heat, seen, bust) {
-    if (!this.active) return;
+    if (!this.active || !this.transport) return;
     this.transport.send({
       t: 'w', from: this.id, c: cars, h: heat, s: seen ? 1 : 0,
       // How far through the arrest the escapee is, so every screen can show
@@ -500,12 +500,12 @@ class Session {
   }
 
   sendCar(car) {
-    if (!this.active) return;
+    if (!this.active || !this.transport) return;
     this.transport.send({ t: 'p', from: this.id, c: car });
   }
 
   sendEvent(event, data = {}) {
-    if (!this.active) return;
+    if (!this.active || !this.transport) return;
     this.transport.send(Object.assign({ t: 'e', from: this.id, e: event }, data));
   }
 
