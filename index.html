@@ -171,6 +171,11 @@
     position: absolute; inset: 0; display: none; z-index: 40;
     align-items: center; justify-content: center;
     background: rgba(4, 6, 9, .74); backdrop-filter: blur(3px);
+    /* The HUD is click-through so the game can be driven underneath it, and
+       everything in it inherits that. This panel is the one part that has to
+       catch the pointer: without it every press landed on the canvas behind
+       and none of the buttons did anything. */
+    pointer-events: auto;
   }
   #pause.show { display: flex; }
   #pausebox {
