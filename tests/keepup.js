@@ -192,7 +192,12 @@ function chase(kph, seconds, tweak, which) {
 
   const behind = units.map((o) => Math.round(o.distanceTo(p.position)));
   const damage = units.map((o) => +o.vehicle.damage.toFixed(2));
-  for (const o of units) g.removeVehicle(o.vehicle);
+  // Through despawnPolice, not removeVehicle: the callsign has to go back in
+  // the pool. These rigs make officers by hand, and over a session of sweeps
+  // they had taken all 199 of them -- after which every unit in the game is
+  // U0, and the soak's duplicate-callsign check fails on a game that is
+  // perfectly healthy. A test that cries wolf is worse than no test.
+  for (const o of units) g.despawnPolice(o);
   g.paused = false;
   g.heat.reset();
 

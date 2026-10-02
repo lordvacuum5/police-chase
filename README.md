@@ -1226,6 +1226,24 @@ one run at a time and should be read with that in mind.
 The one real effect was on contacts, 27 down to 19, bought with 25 m of extra
 distance — the wrong trade for a complaint about them being too far away.
 
+### Far enough away, in seconds
+
+A car spawns at least 210 m from you and never where you are looking. Out of
+view is not the same as out of the way: 210 m at a crawl is half the map, and
+at 200 km/h it is under four seconds — less, if the spawn is in front of you,
+because then you are driving at it. "They pop into existence with no time to
+react" is a car that was never hidden for long, only hidden until you arrived
+at it.
+
+So the floor is seconds now rather than metres, turned into distance by how
+fast the player is actually going, and it grows faster for a spawn ahead of
+them than one behind, because only one of those is being driven at. The ceiling
+moves with it or there would be no band left to spawn in at speed. Measured at
+200 km/h, the nearest spawn ahead of you goes from 210 m to 747 m, and the
+worst case anywhere from 3.8 seconds of warning to 7.4 — with no spawn
+failures, which is the thing that would show up as a chase quietly thinning
+out.
+
 ### The band, doubled and shortened
 
 With the six fixes all failed, the remaining honest move is a cheat that says

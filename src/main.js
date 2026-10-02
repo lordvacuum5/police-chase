@@ -70,6 +70,12 @@ const NET_CONTACT = 6;   // m
 const ROUTINE_GAP = 12;
 
 /**
+ * Seconds of warning a spawning police car owes the player, turned into metres
+ * by how fast they are going. See Game.spawnPoliceNear.
+ */
+const SPAWN_WARN = 7;
+
+/**
  * Below this, a car is not in the world any more -- see Game._catchFallen.
  *
  * The ground plate's underside is at y = -4, so anything past this has gone
@@ -599,13 +605,34 @@ class Game {
     // up as roadblocks that are called on the radio and then are not there.
     if (this.vehicles.length >= this.vehicleLimit - 4) return null;
     const g = this.graph;
-    const minD = tier === 0 ? 130 : 210;
-    const maxD = tier === 0 ? 360 : 520;
+    // How far away is far enough, in seconds rather than in metres.
+    //
+    // It was a flat 210 m, which at a crawl is half the map and at 200 km/h is
+    // under four seconds -- and less than that if the spawn is in front of
+    // you, because then you are closing on it. That is what "they pop into
+    // existence with no time to react" is: a car that was never hidden for
+    // long, only hidden until you arrived at it. Out of view is not the same
+    // as out of the way.
+    //
+    // So the floor grows with how fast the player is actually going, and grows
+    // faster for a spawn ahead of them than one behind, because only one of
+    // those is being driven at. The ceiling has to move with it or there is no
+    // band left to spawn in at speed.
+    const p = this.player;
+    const sp = p ? p.speed : 0;
+    const warn = sp * SPAWN_WARN;
+    const minBehind = tier === 0 ? 130 : 210;
+    const maxD = (tier === 0 ? 360 : 520) + warn;
 
     let place = null;
     for (let i = 0; i < 80; i++) {
       const n = g.randomNode(this.rng);
       const d = dist2(n.x, n.z, target.x, target.z);
+      // In front of the player, as a fraction: 1 is dead ahead, -1 behind.
+      const ahead = p && d > 1
+        ? ((n.x - target.x) * p.forward.x + (n.z - target.z) * p.forward.z) / d
+        : 0;
+      const minD = minBehind + warn * clamp01((ahead + 0.2) / 1.2);
       if (d < minD || d > maxD) continue;
       // Prefer somewhere with room to get moving.
       if (n.edges.length < 2 && i < 50) continue;

@@ -202,7 +202,12 @@ function approach(off, targetKph, seconds, tweak, keepLog) {
     brk: brk / n,
     both: both / n,
   };
-  g.removeVehicle(car);
+  // Through despawnPolice, not removeVehicle: the callsign has to go back in
+  // the pool. These rigs make officers by hand, and over a session of sweeps
+  // they had taken all 199 of them -- after which every unit in the game is
+  // U0, and the soak's duplicate-callsign check fails on a game that is
+  // perfectly healthy. A test that cries wolf is worse than no test.
+  g.despawnPolice(o);
   g.paused = false;
   return out;
 }
