@@ -1226,20 +1226,49 @@ one run at a time and should be read with that in mind.
 The one real effect was on contacts, 27 down to 19, bought with 25 m of extra
 distance — the wrong trade for a complaint about them being too far away.
 
+### A committed line, tried and not kept
+
+The one the evidence pointed at, and the one that fails most clearly. If the
+trouble is that a unit re-decides its aim every sixtieth of a second and so
+never has a line, give it one: beyond contact range, route to the junction
+nearest where the target is heading and follow that path, the way a unit going
+anywhere else already does. The path supplies an aim point with a lookahead
+along the road instead of a bearing to a moving car, and `planSpeed` gets a
+corner it can see coming and brake for in advance rather than discover.
+
+Over four routes against a 120 km/h target: mean speed 58 km/h down to 44,
+within 60 m of the target 34% of the time down to 30, and 107 m behind becoming
+188. Contacts halved, 29 to 15 — which is the tell. **Driving properly is the
+problem.** A road route is longer than the straight line, and a unit that goes
+round the houses politely while the car it is chasing cuts the corner arrives
+late however well it drove. The direct line is wrong in every way except the
+one that decides a pursuit.
+
 ### What is left
 
-The diagnosis holds: a unit aiming at the car it is chasing is asking for a
-corner, and the limiter is right to charge it for one. Five levers measured and
-rejected: `limitScale` (a direct pursuit never reads it), `offRoadArc` (noise),
-`arcFloor` (helps at 120, catastrophic at 150 — 49 km/h down to 30 and one hit
-up to sixteen), the trail, and the standoff point.
+Six levers measured and rejected: `limitScale` (a direct pursuit never reads
+it), `offRoadArc` (noise), `arcFloor` (helps at 120, catastrophic at 150 — 49
+km/h down to 30 and one hit up to sixteen), the trail, the standoff point and
+the committed line.
 
-What none of them touched is *why the angle is large in the first place*, which
-is that a unit has no plan beyond the next instant: it steers at a point and
-re-decides every frame. A pursuit line worth having would be a short path — the
-next few seconds of road, chosen once and committed to, the way `followPath`
-already works for a unit going somewhere. That is a bigger change than any of
-these, and it is the one the evidence points at.
+The diagnosis is not in doubt — a unit aiming at the car it is chasing is
+asking for a corner, and the limiter is right to charge it for one. What the
+six attempts establish is that it is not a tuning problem and not an aim-point
+problem. Every way of making the line smoother makes the line *longer*, and
+the pursuit is lost on distance before it is won on tidiness.
+
+That leaves three honest options, none of them small:
+
+* **Accept it.** Against a real player — who brakes for corners, and crashes —
+  they are not as far off as the rig suggests. The rig's ghost drives a perfect
+  line at a constant speed and never makes a mistake, which nobody does.
+* **Give them a declared advantage.** The rubber-band boost already exists and
+  already reaches 249 km/h; raising it is a cheat rather than a fix, and it
+  only buys straights, because what actually limits them is cornering.
+* **Rebuild the pursuit as a real planner** — one that optimises the line over
+  the next few seconds against both the road and the target's likely course,
+  rather than choosing a point and charging at it. That is the honest fix and
+  it is a large piece of work.
 
 `tests/keepup.js` is the rig. Its ghost follows the roads' own polylines rather
 than the chords between junctions — the first version cut every bend, so the
