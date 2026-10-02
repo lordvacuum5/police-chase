@@ -1244,6 +1244,38 @@ worst case anywhere from 3.8 seconds of warning to 7.4 — with no spawn
 failures, which is the thing that would show up as a chase quietly thinning
 out.
 
+### The ceiling, measured: the limiter is not what holds them back
+
+Before building a planner, it is worth knowing what one could possibly buy. A
+planner's whole job here would be to let a unit carry more speed — so take the
+speed limiter off altogether and measure that. Whatever it gives is the
+ceiling; no amount of planning can beat simply being allowed to go as fast as
+you like.
+
+Over four routes against a 120 km/h target, `safeSpeed` returning infinity:
+
+| | mean | with it | behind | contacts |
+|---|---|---|---|---|
+| as it is | 59 km/h | 36% | 118 m | 33 |
+| no limiter at all | 56 km/h | 31% | **209 m** | 18 |
+
+**The ceiling is below the floor.** Unlimited, they are slower on average and
+end up nearly twice as far behind. Fewer contacts, too — because they are not
+clipping things in town, they are out in the fields: without the cap they
+arrive at every corner far too fast, understeer wide, leave the road and spend
+the chase getting back onto it. The time lost to that is greater than the time
+the cap ever cost them.
+
+So the limiter is not a restriction on these cars, it is what keeps them on the
+road, and the long chain of reasoning above — aim angle sets the arc, the arc
+sets the speed, therefore fix the aim angle — is true in every link and leads
+nowhere, because the speed it is protecting is speed they cannot use. That is
+also why all six fixes failed, and it is worth more than any of them: the
+remaining problem is car control, not planning. A unit that could place a car
+through a bend at the limit would not need permission to go faster; it would
+simply be faster. That is a much harder thing to build than a planner, and
+nothing here says how much it would be worth.
+
 ### The band, doubled and shortened
 
 With the six fixes all failed, the remaining honest move is a cheat that says
@@ -1307,10 +1339,8 @@ That leaves three honest options, none of them small:
   they are not as far off as the rig suggests. The rig's ghost drives a perfect
   line at a constant speed and never makes a mistake, which nobody does.
 * **Give them a declared advantage.** Taken, and declared: see below.
-* **Rebuild the pursuit as a real planner** — one that optimises the line over
-  the next few seconds against both the road and the target's likely course,
-  rather than choosing a point and charging at it. That is the honest fix and
-  it is a large piece of work.
+* ~~**Rebuild the pursuit as a real planner.**~~ Measured, and it would not
+  help. See below.
 
 `tests/keepup.js` is the rig. Its ghost follows the roads' own polylines rather
 than the chords between junctions — the first version cut every bend, so the
