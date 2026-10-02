@@ -132,6 +132,10 @@ export class Driver {
     // patrol car obeying the signs; a unit in pursuit sets this high and is
     // then bounded only by grip and by what its car will do.
     this.limitScale = 1;
+    // The arc the car assumes it might have to hold if it ends up on the
+    // grass, which sets how fast it may arrive at a verge. Per driver so a
+    // test can sweep it: see tests/keepup.js.
+    this.offRoadArc = OFF_ROAD_ARC;
   }
 
   setPath(points) {
@@ -463,7 +467,7 @@ export class Driver {
         // lot." Out there, what it can see and how hard it is turning -- both
         // already worked out on the grass's own grip -- are the limits.
         if (!this._offRoadNow()) {
-          const off = cornerSpeedLimit(OFF_ROAD_ARC,
+          const off = cornerSpeedLimit(this.offRoadArc,
             TYRE_GRASS.mu * (v.spec.offRoadGrip || 1) * 0.87 * this.skill.grip);
           limit = Math.min(limit, Math.sqrt(off * off + 2 * aBrake * this._runout));
         }

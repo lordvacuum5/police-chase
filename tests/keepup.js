@@ -1,0 +1,180 @@
+// Can they stay with a fast car on real roads?
+//
+// "The police car seems really slow. They need to be able to match the fastest
+// of the fast cars."
+//
+// tests/outrun.js already says the cars are not the problem: an interceptor
+// run flat out in a straight line tops out at 241 km/h against the Stiletto's
+// 240, and 249 with the rubber band at full stretch. So if they cannot keep
+// up, it is the driver and not the machine, and this measures the driver.
+//
+// A ghost target is carried along a route through the road network at a fixed
+// speed -- it cannot crash, so the run is the same length every time and the
+// only thing that varies is how well the pursuit follows it. Two interceptors
+// start on top of it, and what comes back is:
+//
+//   mean      their average speed over the run
+//   behind    how far back they are at the end, averaged
+//   withPct   how much of the run at least one of them was within 60 m, which
+//             is the difference between a pursuit and a search
+//   hits      impacts above a knock, because speed bought by crashing is not
+//             speed -- the lesson of every other change in this file's company
+//
+// Run it at several ghost speeds. 90 km/h is brisk for a town, 150 is what a
+// Stiletto does on a main road, and the gap between those two columns is the
+// thing the player is complaining about.
+window.__runKeepUp = async function (speeds = [90, 120, 150], seconds = 50) {
+  try {
+    await ready();
+    const rows = [];
+    for (const kph of speeds) rows.push(await chase(kph, seconds));
+    window.__res = rows.join('\n');
+    return window.__res;
+  } catch (e) {
+    window.__res = 'EX: ' + e.message + ' | ' + (e.stack || '').slice(0, 300);
+    return window.__res;
+  }
+};
+
+/**
+ * The same run with the spec or the driver patched, for comparing a change
+ * against what is in the game inside one page session.
+ *
+ *   __keepUpSweep((d) => { d.limitScale = 3; })
+ */
+window.__keepUpSweep = async function (tweak, speeds = [90, 120, 150], seconds = 50) {
+  try {
+    await ready();
+    const rows = [];
+    for (const kph of speeds) rows.push(await chase(kph, seconds, tweak));
+    window.__res = rows.join('\n');
+    return window.__res;
+  } catch (e) {
+    window.__res = 'EX: ' + e.message + ' | ' + (e.stack || '').slice(0, 300);
+    return window.__res;
+  }
+};
+
+async function ready() {
+  for (let i = 0; i < 200 && !(window.__game && window.__game.player); i++) {
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
+/** A long route through the road network, the same one every time. */
+function route() {
+  const g = window.__game;
+  const gr = g.graph;
+  if (window.__keepUpRoute) return window.__keepUpRoute;
+  // Deliberately not the game's rng: this has to be the same roads whatever
+  // else has happened in the session before it.
+  let seed = 20260102;
+  const rnd = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  let node = gr.nodes[Math.floor(rnd() * gr.nodes.length)];
+  const pts = [];
+  let from = null;
+  for (let leg = 0; leg < 60; leg++) {
+    const next = [];
+    for (const id of node.edges) {
+      const e = gr.edges[id];
+      const other = gr.nodes[e.a === node.id ? e.b : e.a];
+      if (other && (!from || other.id !== from.id)) next.push(other);
+    }
+    if (!next.length) break;
+    from = node;
+    node = next[Math.floor(rnd() * next.length)];
+    pts.push({ x: node.x, z: node.z });
+  }
+  window.__keepUpRoute = pts;
+  return pts;
+}
+
+function chase(kph, seconds, tweak) {
+  const g = window.__game;
+  const { SKILL, ROLE, Officer } = window.__modules;
+  g.onBusted = () => { g.outcome = null; g.heat.bustTimer = 0; };
+  g.onEscaped = () => { g.outcome = null; };
+  g.paused = true;
+
+  const pts = route();
+  const speed = kph / 3.6;
+  const p = g.player;
+  p.repair();
+  p.teleport({ x: pts[0].x, y: 0.9, z: pts[0].z }, 0);
+  p._readState();
+
+  const units = [];
+  for (const off of [-4, 4]) {
+    const car = g.createVehicle('interceptor', 'interceptor',
+      { x: pts[0].x + off, y: 0.95, z: pts[0].z - 12 }, 0, { police: true });
+    if (!car) continue;
+    const o = new Officer(g, car, { skill: SKILL.pursuit, kind: 'interceptor' });
+    o.setRole(ROLE.PURSUE);
+    o.driver.allowOffRoad = true;
+    car._readState();
+    car.setVelocity({ x: 0, y: 0, z: 0 });
+    units.push(o);
+  }
+
+  // Carry the ghost along the route at a fixed speed.
+  let leg = 0, along = 0, lastAt = new Map();
+  let n = 0, sum = 0, within = 0, hits = 0;
+  for (let i = 0; i < seconds * 60; i++) {
+    const a = leg === 0 ? pts[0] : pts[leg - 1];
+    const b = pts[leg];
+    const len = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+    along += speed / 60;
+    while (along > len && leg < pts.length - 1) { along -= len; leg++; }
+    if (leg >= pts.length - 1) break;
+    const t = Math.min(1, along / len);
+    const x = a.x + (b.x - a.x) * t, z = a.z + (b.z - a.z) * t;
+    const hx = (b.x - a.x) / len, hz = (b.z - a.z) / len;
+    p.teleport({ x, y: 0.9, z }, Math.atan2(hx, hz));
+    p._readState();
+    p.setVelocity({ x: hx * speed, y: 0, z: hz * speed });
+
+    g.heat.value = 5;
+    const k = g.dispatcher.knowledge;
+    k.seen = true;
+    k.position.copy(p.position);
+    k.velocity.set(hx * speed, 0, hz * speed);
+    k.confidence = 1;
+
+    // After the officer's update, not before it: Officer.update writes
+    // allowOffRoad, arcFloor and limitScale onto the driver every frame, so a
+    // tweak applied once at spawn is overwritten before it is ever read. A
+    // whole sweep of arcFloor values was measured that way and came back as
+    // noise, because none of them were in force.
+    for (const o of units) {
+      o.update(1 / 60, p);
+      if (tweak) tweak(o.driver, o, o.vehicle);
+    }
+    g.stepHeadless(1 / 60);
+
+    let near = Infinity;
+    for (const o of units) {
+      n++;
+      sum += o.vehicle.speed * 3.6;
+      near = Math.min(near, o.distanceTo(p.position));
+      const v = o.vehicle;
+      if (v.lastImpactAt && v.lastImpactAt !== lastAt.get(o) && v.lastImpact > 4) {
+        lastAt.set(o, v.lastImpactAt);
+        hits++;
+      }
+    }
+    if (near < 60) within++;
+  }
+
+  const behind = units.map((o) => Math.round(o.distanceTo(p.position)));
+  const damage = units.map((o) => +o.vehicle.damage.toFixed(2));
+  for (const o of units) g.removeVehicle(o.vehicle);
+  g.paused = false;
+  g.heat.reset();
+
+  return `ghost ${String(kph).padStart(3)} kph   mean ${String(Math.round(sum / Math.max(1, n))).padStart(3)} kph   `
+    + `with it ${String(Math.round((within * 200) / Math.max(1, n))).padStart(3)}%   `
+    + `behind ${behind.join('/').padStart(9)} m   hits ${hits}   damage ${damage.join('/')}`;
+}
