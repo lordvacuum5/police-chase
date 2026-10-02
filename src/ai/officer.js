@@ -20,6 +20,12 @@ const LANE_CORNER = 9;
 const CUT_CORNER = 16;
 /** The tightest turn a unit in a hurry plans for. See Driver.arcFloor. */
 const CUT_ARC = 13;
+/**
+ * How far behind a unit has to be for the rubber band to be at full stretch.
+ * `bandReach` and `bandScale` on an officer scale this and the band itself,
+ * for the sweep in tests/keepup.js.
+ */
+const BAND_REACH = 130;
 
 const _aim = new THREE.Vector3();
 const _tmp = new THREE.Vector3();
@@ -1570,11 +1576,32 @@ export class Officer {
   /**
    * Rubber-banding.
    *
-   * A unit closing from a distance gets grip, stability and up to 50% more
-   * speed, scaled by how far behind it is. All of it is gone by 30 m: the part
-   * of the chase you can actually see is fought on the same physics you are.
-   * The taper between 30 and 50 m exists so a unit does not have the floor
-   * pulled out from under it mid-corner and spin on the spot.
+   * A unit closing from a distance gets grip, stability and more speed, scaled
+   * by how far behind it is. All of it is gone by 30 m: the part of the chase
+   * you can actually see is fought on the same physics you are. The taper
+   * between 30 and 50 m exists so a unit does not have the floor pulled out
+   * from under it mid-corner and spin on the spot.
+   *
+   * The band was doubled and shortened after six attempts to fix the pursuit
+   * properly all failed (see the README). It is a cheat and it is declared as
+   * one: what actually holds a unit back is cornering, and no amount of engine
+   * helps with that, so this buys back the straights and nothing else. It used
+   * to reach full stretch at 250 m, which is further than any unit still in a
+   * chase ever is -- at the hundred-odd metres they actually sit at, it was
+   * handing out a third more power when the number on the tin said three
+   * quarters. Full stretch at 160 m now, and worth twice what it was there.
+   *
+   * Measured over four routes against a 120 km/h target, old band against new,
+   * run one after the other: 130 m behind becomes 116. That is the whole of
+   * it. Average speed does not move -- 59 km/h either way -- and nor does the
+   * share of the run spent within 60 m. Contacts go up, 24 to 31, because a
+   * car with more power arrives at the same corner faster.
+   *
+   * So: fourteen metres, for a quarter more crashes. It is worth having
+   * because the complaint is that they are too far away and this is the only
+   * thing that moved that number at all, but it is a small thing honestly
+   * measured, and an earlier reading that showed it buying five km/h as well
+   * did not survive running the two settings back to back.
    */
   _updateAssist(target) {
     const a = this.vehicle.assist;
@@ -1585,12 +1612,12 @@ export class Officer {
     const engaged = clamp01((d - 30) / 20);            // 0 at 30 m, 1 at 50 m
     if (engaged <= 0) { a.boost = 1; a.grip = 1; a.stability = 0; a.shielded = false; return; }
 
-    const far = clamp01((d - 30) / 220);               // 0 at 30 m, 1 at 250 m
+    const far = clamp01((d - 30) / (BAND_REACH * (this.bandReach || 1)));
     // The rubber band tightens with the wanted level too. Giving a first-star
     // patrol the same catch-up help as a five-star pursuit is what let a single
     // car hang on to a flat-out runner it had no business staying with. At the
     // top of the range this is the full 0.75 it always was.
-    a.boost = 1 + (0.25 + 0.50 * this.aggression) * far * engaged;
+    a.boost = 1 + (0.25 + 1.25 * this.aggression) * (this.bandScale || 1) * far * engaged;
     a.grip = 1 + 0.35 * engaged;
     a.stability = engaged;
     // Still on the way: a crash costs this unit time, not its whole chase.

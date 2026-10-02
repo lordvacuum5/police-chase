@@ -1226,6 +1226,32 @@ one run at a time and should be read with that in mind.
 The one real effect was on contacts, 27 down to 19, bought with 25 m of extra
 distance — the wrong trade for a complaint about them being too far away.
 
+### The band, doubled and shortened
+
+With the six fixes all failed, the remaining honest move is a cheat that says
+it is one. The rubber band already existed; it was reaching full stretch at
+250 m, which is further behind than any unit still in a chase ever gets. At the
+hundred-odd metres they actually sit at it was handing out about a third more
+power while the number on the tin said three quarters. It reaches full stretch
+at 160 m now and is worth twice as much there.
+
+What that buys, measured over four routes against a 120 km/h target with the
+old and new settings run back to back: **130 m behind becomes 116**. That is
+all of it. Average speed does not move — 59 km/h either way — and nor does the
+share of the run spent within 60 m. Contacts go up, 24 to 31, because a car
+with more power arrives at the same corner faster.
+
+Fourteen metres for a quarter more crashes. Worth having, because the
+complaint is that they are too far away and this is the only thing that moved
+that number at all, but it is a small thing honestly measured — and an earlier
+reading that showed it buying five km/h as well did not survive running the two
+settings one after the other instead of in separate sessions.
+
+What it cannot do is help with cornering, which is what actually limits them,
+so it buys back the straights and nothing else. And none of it reaches inside
+30 m: the part of the chase you can see is still fought on the same physics
+you are.
+
 ### A committed line, tried and not kept
 
 The one the evidence pointed at, and the one that fails most clearly. If the
@@ -1262,9 +1288,7 @@ That leaves three honest options, none of them small:
 * **Accept it.** Against a real player — who brakes for corners, and crashes —
   they are not as far off as the rig suggests. The rig's ghost drives a perfect
   line at a constant speed and never makes a mistake, which nobody does.
-* **Give them a declared advantage.** The rubber-band boost already exists and
-  already reaches 249 km/h; raising it is a cheat rather than a fix, and it
-  only buys straights, because what actually limits them is cornering.
+* **Give them a declared advantage.** Taken, and declared: see below.
 * **Rebuild the pursuit as a real planner** — one that optimises the line over
   the next few seconds against both the road and the target's likely course,
   rather than choosing a point and charging at it. That is the honest fix and
