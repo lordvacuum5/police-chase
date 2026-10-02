@@ -23,17 +23,8 @@
 // Run it at several ghost speeds. 90 km/h is brisk for a town, 150 is what a
 // Stiletto does on a main road, and the gap between those two columns is the
 // thing the player is complaining about.
-window.__runKeepUp = async function (speeds = [90, 120, 150], seconds = 50) {
-  try {
-    await ready();
-    const rows = [];
-    for (const kph of speeds) rows.push(await chase(kph, seconds));
-    window.__res = rows.join('\n');
-    return window.__res;
-  } catch (e) {
-    window.__res = 'EX: ' + e.message + ' | ' + (e.stack || '').slice(0, 300);
-    return window.__res;
-  }
+window.__runKeepUp = async function (speeds = [90, 120, 150], seconds = 45, routes = 4) {
+  return window.__keepUpSweep(null, speeds, seconds, routes);
 };
 
 /**
@@ -42,11 +33,28 @@ window.__runKeepUp = async function (speeds = [90, 120, 150], seconds = 50) {
  *
  *   __keepUpSweep((d) => { d.limitScale = 3; })
  */
-window.__keepUpSweep = async function (tweak, speeds = [90, 120, 150], seconds = 50) {
+window.__keepUpSweep = async function (tweak, speeds = [90, 120, 150], seconds = 45, routes = 4) {
   try {
     await ready();
     const rows = [];
-    for (const kph of speeds) rows.push(await chase(kph, seconds, tweak));
+    for (const kph of speeds) {
+      // Several different routes, because one is not a measurement. A run is
+      // exactly repeatable -- same roads, same start, same answer -- so
+      // repeating it tells you nothing, and the differences being looked for
+      // here are smaller than the difference between two bits of town.
+      let mean = 0, within = 0, behind = 0, hits = 0, worst = 0;
+      for (let i = 0; i < routes; i++) {
+        const r = chase(kph, seconds, tweak, i);
+        mean += r.mean; within += r.within; behind += r.behind; hits += r.hits;
+        worst = Math.max(worst, r.damage);
+        await new Promise((res) => setTimeout(res, 0));
+      }
+      rows.push(`ghost ${String(kph).padStart(3)} kph, ${routes} routes   `
+        + `mean ${String(Math.round(mean / routes)).padStart(3)} kph   `
+        + `with it ${String(Math.round((within / routes) * 100)).padStart(3)}%   `
+        + `behind ${String(Math.round(behind / routes)).padStart(4)} m   `
+        + `hits ${String(hits).padStart(3)}   worst damage ${worst.toFixed(2)}`);
+    }
     window.__res = rows.join('\n');
     return window.__res;
   } catch (e) {
@@ -71,13 +79,14 @@ async function ready() {
  * a pursuit of something that is not driving on the road, and the first
  * attempt at a fix was judged against exactly that.
  */
-function route() {
+function route(which = 0) {
   const g = window.__game;
   const gr = g.graph;
-  if (window.__keepUpRoute) return window.__keepUpRoute;
+  if (!window.__keepUpRoutes) window.__keepUpRoutes = {};
+  if (window.__keepUpRoutes[which]) return window.__keepUpRoutes[which];
   // Deliberately not the game's rng: this has to be the same roads whatever
   // else has happened in the session before it.
-  let seed = 20260102;
+  let seed = 20260102 + which * 7919;
   const rnd = () => {
     seed = (seed * 1664525 + 1013904223) >>> 0;
     return seed / 4294967296;
@@ -101,18 +110,18 @@ function route() {
     from = node;
     node = pick.other;
   }
-  window.__keepUpRoute = pts;
+  window.__keepUpRoutes[which] = pts;
   return pts;
 }
 
-function chase(kph, seconds, tweak) {
+function chase(kph, seconds, tweak, which) {
   const g = window.__game;
   const { SKILL, ROLE, Officer } = window.__modules;
   g.onBusted = () => { g.outcome = null; g.heat.bustTimer = 0; };
   g.onEscaped = () => { g.outcome = null; };
   g.paused = true;
 
-  const pts = route();
+  const pts = route(which);
   const speed = kph / 3.6;
   const p = g.player;
   p.repair();
@@ -187,7 +196,11 @@ function chase(kph, seconds, tweak) {
   g.paused = false;
   g.heat.reset();
 
-  return `ghost ${String(kph).padStart(3)} kph   mean ${String(Math.round(sum / Math.max(1, n))).padStart(3)} kph   `
-    + `with it ${String(Math.round((within * 200) / Math.max(1, n))).padStart(3)}%   `
-    + `behind ${behind.join('/').padStart(9)} m   hits ${hits}   damage ${damage.join('/')}`;
+  return {
+    mean: sum / Math.max(1, n),
+    within: (within * 2) / Math.max(1, n),
+    behind: (behind[0] + (behind.length > 1 ? behind[1] : behind[0])) / 2,
+    hits,
+    damage: Math.max.apply(null, damage),
+  };
 }

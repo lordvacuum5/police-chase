@@ -1198,12 +1198,51 @@ that has cut a corner is nearest to a piece of trail it has already passed, and
 chasing a fixed breadcrumb eight metres from the next one swings the angle
 about more than aiming at the car ever did.
 
-What is left, for whoever picks this up: the diagnosis above is solid and the
-four levers that do not work are `limitScale` (a direct pursuit never reads
-it), `offRoadArc` (noise), `arcFloor` (helps at 120, catastrophic at 150 — 49
-km/h down to 30 and one hit up to sixteen) and the trail. `tests/keepup.js` is
-the rig, and its ghost follows the roads' own polylines rather than the chords
-between junctions, which matters: the first version cut every bend, so the
+### A standoff point behind them, tried and not kept
+
+The other obvious shape of the same idea, and the better one: rather than
+follow a trail of fixed breadcrumbs, aim at a point a share of the gap *behind*
+the suspect along the way they are actually travelling. It has none of the
+trail's problems — the point moves continuously with the car it is derived
+from, so there is nothing to overshoot — and a car forty metres beyond a corner
+and well off to one side becomes a point near the corner itself, more or less
+straight ahead.
+
+It does what it says to the geometry. The median aim angle came down from 31°
+to 27°, the speed the limiter allowed went from 74 to 88 km/h, and it needed
+one guard to be worth anything at all: a unit that has cut inside is already
+past the point it would be hanging back to, and aiming behind itself is worse
+than anything it was doing before.
+
+And over four routes it is worth nothing. 59 km/h against 57, within 60 m of
+the target 34% of the time either way, 119 m behind against 144. The single run
+that sold it — 199 m behind becoming 96 — was noise, which is the lesson of
+this whole section rather than a footnote to it: **one run of this rig is not a
+measurement.** The route is deterministic, so repeating it answers identically;
+the only way to sample is to run different routes, and `tests/keepup.js` now
+averages four. Several of the numbers quoted earlier in this section were taken
+one run at a time and should be read with that in mind.
+
+The one real effect was on contacts, 27 down to 19, bought with 25 m of extra
+distance — the wrong trade for a complaint about them being too far away.
+
+### What is left
+
+The diagnosis holds: a unit aiming at the car it is chasing is asking for a
+corner, and the limiter is right to charge it for one. Five levers measured and
+rejected: `limitScale` (a direct pursuit never reads it), `offRoadArc` (noise),
+`arcFloor` (helps at 120, catastrophic at 150 — 49 km/h down to 30 and one hit
+up to sixteen), the trail, and the standoff point.
+
+What none of them touched is *why the angle is large in the first place*, which
+is that a unit has no plan beyond the next instant: it steers at a point and
+re-decides every frame. A pursuit line worth having would be a short path — the
+next few seconds of road, chosen once and committed to, the way `followPath`
+already works for a unit going somewhere. That is a bigger change than any of
+these, and it is the one the evidence points at.
+
+`tests/keepup.js` is the rig. Its ghost follows the roads' own polylines rather
+than the chords between junctions — the first version cut every bend, so the
 thing being chased was not driving on the road and nothing measured against it
 meant anything.
 
