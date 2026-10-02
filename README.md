@@ -1168,6 +1168,45 @@ One thing did come free: the Runner used to lose it completely at 170 km/h on
 full lock -- `tests/supercar.js` recorded 0 g there, meaning it spun rather
 than cornered. Standing it up gives 1.47 g instead.
 
+### Following their trail, tried and not kept
+
+The pursuit's own geometry is what holds a unit back, and it is worth writing
+down what that means before the next person tries to fix it.
+
+A unit aims at the car it is chasing. `safeSpeed` then limits it to what the
+arc to that aim point allows, because for a car an aim point off to one side
+*is* a corner. Measured over a 120 km/h pursuit, the angle between a unit's
+nose and its aim point ran 23° at the median, 40° at the third quartile and
+68° at the ninetieth — and at a 41 m aim distance, 40° is a 32 m turn, which on
+tarmac is 74 km/h. That is the whole answer to "why are they so slow": not the
+engine (an interceptor tops out at 241 km/h against the Stiletto's 240), not
+the signs (`planSpeed` is called zero times in a direct pursuit), and not the
+grip. They are cornering, constantly, because they are pointed across the road
+at a car that has already gone round the bend.
+
+So the obvious fix is to follow the line the suspect actually drove instead of
+the car itself: it is on the road, it bends the way the road bends, and a unit
+following it is already pointed along it. Control kept a trail — a point every
+eight metres, the last sixty of them — and a pursuing unit steered at the point
+on it a lookahead ahead of wherever it had got to.
+
+It measures worse, and it keeps measuring worse after the obvious bug in it was
+fixed. Against a 120 km/h target: mean speed 49 km/h down to 39, the speed the
+limiter allowed 83 down to 69, and the aim angle it was supposed to shrink went
+the wrong way — 29° to 36° at the median, 114° to 129° at the ninetieth. A car
+that has cut a corner is nearest to a piece of trail it has already passed, and
+chasing a fixed breadcrumb eight metres from the next one swings the angle
+about more than aiming at the car ever did.
+
+What is left, for whoever picks this up: the diagnosis above is solid and the
+four levers that do not work are `limitScale` (a direct pursuit never reads
+it), `offRoadArc` (noise), `arcFloor` (helps at 120, catastrophic at 150 — 49
+km/h down to 30 and one hit up to sixteen) and the trail. `tests/keepup.js` is
+the rig, and its ghost follows the roads' own polylines rather than the chords
+between junctions, which matters: the first version cut every bend, so the
+thing being chased was not driving on the road and nothing measured against it
+meant anything.
+
 ### More grip on the grass, tried and not kept
 
 *"If you think it will help the routing system, you could improve grip for the

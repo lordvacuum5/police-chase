@@ -61,7 +61,16 @@ async function ready() {
   }
 }
 
-/** A long route through the road network, the same one every time. */
+/**
+ * A long route through the road network, the same one every time.
+ *
+ * Along the roads' own polylines, not from junction to junction. The first
+ * version of this strung the node positions together, which is a chord across
+ * every bend -- so the ghost spent much of the run off the carriageway and
+ * cut corners no car would take. Anything measured against that is measuring
+ * a pursuit of something that is not driving on the road, and the first
+ * attempt at a fix was judged against exactly that.
+ */
 function route() {
   const g = window.__game;
   const gr = g.graph;
@@ -74,19 +83,23 @@ function route() {
     return seed / 4294967296;
   };
   let node = gr.nodes[Math.floor(rnd() * gr.nodes.length)];
-  const pts = [];
+  const pts = [{ x: node.x, z: node.z }];
   let from = null;
   for (let leg = 0; leg < 60; leg++) {
-    const next = [];
+    const options = [];
     for (const id of node.edges) {
       const e = gr.edges[id];
       const other = gr.nodes[e.a === node.id ? e.b : e.a];
-      if (other && (!from || other.id !== from.id)) next.push(other);
+      if (other && (!from || other.id !== from.id)) options.push({ e, other });
     }
-    if (!next.length) break;
+    if (!options.length) break;
+    const pick = options[Math.floor(rnd() * options.length)];
+    // The edge's own points, in the direction of travel, so the ghost follows
+    // the road round its bends instead of cutting across them.
+    const line = pick.e.a === node.id ? pick.e.points : pick.e.points.slice().reverse();
+    for (let i = 1; i < line.length; i++) pts.push({ x: line[i].x, z: line[i].z });
     from = node;
-    node = next[Math.floor(rnd() * next.length)];
-    pts.push({ x: node.x, z: node.z });
+    node = pick.other;
   }
   window.__keepUpRoute = pts;
   return pts;
