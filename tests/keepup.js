@@ -152,8 +152,18 @@ function chase(kph, seconds, tweak, which) {
     while (along > len && leg < pts.length - 1) { along -= len; leg++; }
     if (leg >= pts.length - 1) break;
     const t = Math.min(1, along / len);
-    const x = a.x + (b.x - a.x) * t, z = a.z + (b.z - a.z) * t;
+    let x = a.x + (b.x - a.x) * t, z = a.z + (b.z - a.z) * t;
     const hx = (b.x - a.x) / len, hz = (b.z - a.z) / len;
+    // Weaving, for the case the pursuit actually has trouble with: a target
+    // holding a perfect line never asks a unit to change its mind, and a
+    // player never holds one. The swerve is a few metres either side of the
+    // lane, which is what overtaking parked cars and clipping apexes looks
+    // like from behind.
+    if (window.__keepUpWeave) {
+      const sway = Math.sin(i / 38) * window.__keepUpWeave;
+      x += -hz * sway;
+      z += hx * sway;
+    }
     p.teleport({ x, y: 0.9, z }, Math.atan2(hx, hz));
     p._readState();
     p.setVelocity({ x: hx * speed, y: 0, z: hz * speed });

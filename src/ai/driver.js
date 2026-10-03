@@ -42,6 +42,8 @@ const OFF_ROAD_ARC = 45;
  */
 const TURN_BACK = 1.75;          // radians, about 100 degrees
 const TURN_BACK_EASE = 0.75;
+/** The most of its available lock a unit will ask for once it is moving. */
+const STEER_RESERVE = 0.82;
 
 /**
  * Bumper-to-bumper gap a patrol car stops at behind a car stopped in its way
@@ -792,7 +794,24 @@ export class Driver {
     // every command a fraction of what the driver actually asked for, and the
     // unit would quietly run wide out of every corner.
     const maxAngle = Math.max(0.03, v.steerLimit || v.spec.steering.maxAngle);
-    let steer = clamp(deltaRad / maxAngle, -1, 1);
+
+    // Keep something in hand at speed.
+    //
+    // `steerLimit` is already the grip-limited lock with the spec's overshoot
+    // built into it, so a command of 1 is asking for rather more than the
+    // tyres have. At low speed that is wanted -- it is how a car gets round a
+    // tight junction -- but at pace it means a unit routinely sits at the very
+    // edge with nothing left for a kerb, a verge or another car, and the first
+    // disturbance takes the back end away. Measured in pursuit, 13% of frames
+    // above 80 km/h were at full lock.
+    //
+    // "They turn too much, a little bit, and then completely lose control...
+    // they don't need to overcorrect. As long as they stay roughly on me."
+    // Exactly so: a few degrees off line costs nothing, and the recovery from
+    // a spin costs the chase. So the command is capped below full at speed,
+    // and the reserve is only what it takes to not be at the limit already.
+    const ceiling = this.noReserve ? 1 : lerp(1, STEER_RESERVE, smoothstep(14, 32, v.speed));
+    let steer = clamp(deltaRad / maxAngle, -ceiling, ceiling);
 
     // Reaction lag: the command is held for a short window rather than being
     // recomputed perfectly every frame.

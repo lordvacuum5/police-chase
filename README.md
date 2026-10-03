@@ -1276,6 +1276,41 @@ through a bend at the limit would not need permission to go faster; it would
 simply be faster. That is a much harder thing to build than a planner, and
 nothing here says how much it would be worth.
 
+### Something in hand
+
+*"At high speed they seem to turn too much, a little bit, and then completely
+lose control... they don't need to overcorrect. As long as they stay roughly on
+me."*
+
+The steering command is normalised against the lock currently available, not
+the absolute maximum — and the available lock shrinks with speed, so the same
+small heading error produces a far bigger command at 150 km/h than at 50. That
+figure already has the spec's overshoot built into it, so a command of 1 is
+asking for rather more than the tyres have. Measured in pursuit, 13% of frames
+above 80 km/h were sitting at full lock: at the limit already, with nothing
+left for a kerb, a verge or another car.
+
+So the command is capped below full once the car is moving — 0.82 of what is
+available, faded in between 50 and 115 km/h. A few degrees off line costs
+nothing; the recovery from a spin costs the chase.
+
+The ordinary rig could not see this at all, because a ghost holding a perfect
+line never asks a unit to change its mind and a player never holds one.
+`tests/keepup.js` can weave the target now, which is what overtaking parked
+cars looks like from behind. Against a weaving target at 130 km/h, three
+routes, with and without:
+
+| at speed | without | with |
+|---|---|---|
+| at full lock | 11% | **6%** |
+| losing it (slip > 15°) | 2% | **1%** |
+| spun (slip > 25°) | **1%** | **0%** |
+| contacts | 20 | **15** |
+| time within 60 m | 32% | 32% |
+
+Spins gone, a quarter fewer contacts, the same time on the target, for 3 km/h
+of average speed and 23 m of distance. That is the trade that was asked for.
+
 ### Turning round, and the sine that did not care which way
 
 *"If the police car is on a street to the right of me and a bit in front, they
