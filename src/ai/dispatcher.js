@@ -64,6 +64,12 @@ const TIER = [
   { units: 15, pursue: 5, intercept: 6, pit: true, box: true },
 ];
 
+/**
+ * Seconds between any two things that come at the player -- a PIT, a rolling
+ * block, the van. See Dispatcher.contactCooldown.
+ */
+const CONTACT_GAP = 9;
+
 export class Dispatcher {
   constructor(game) {
     this.game = game;
@@ -85,6 +91,16 @@ export class Dispatcher {
     this.trimTimer = 0;
     this.pitCooldown = 0;
     this.blockCooldown = 0;
+    /**
+     * Shared by every tactic that puts a car in the player's way -- the PIT,
+     * the rolling block and the van. They each had their own timer and nothing
+     * held them apart, so a block could arrive and the van two seconds behind
+     * it: "the police car would appear and try to ram me, and then literally
+     * two seconds afterwards the van will also appear and try to ram me."
+     * Each one is supposed to be a thing that happens to you, and three at
+     * once is just noise.
+     */
+    this.contactCooldown = 0;
     this.blockUnit = null;
     this.rhinoCooldown = 25;
     this.rhinoUnit = null;
@@ -124,6 +140,7 @@ export class Dispatcher {
     this.pitCooldown -= dt;
     this.blockCooldown -= dt;
     this.rhinoCooldown -= dt;
+    this.contactCooldown -= dt;
     this._trackCourse(dt, target);
     this._updateKnowledge(dt, target);
     this._learnHabits(target);
@@ -539,10 +556,12 @@ export class Dispatcher {
     // One tactic at a time across the whole pursuit. A PIT run through a
     // forming box wrecks both: the boxing units are holding station relative
     // to the target and the PIT car arrives across their line.
-    if (rules.pit && !this.activePit && !this.boxAssignment && this.pitCooldown <= 0 && k.seen) {
+    if (rules.pit && !this.activePit && !this.boxAssignment && this.pitCooldown <= 0
+        && this.contactCooldown <= 0 && k.seen) {
       for (const u of pursuers) {
         if (pitViable(u.vehicle, target)) {
           this.activePit = u;
+          this.contactCooldown = CONTACT_GAP;
           u.setRole(ROLE.PIT);
           this.game.say('pit', [
             (v) => `${v.cs}, PIT authorised.`,
@@ -585,7 +604,7 @@ export class Dispatcher {
     // A unit put on the road in front of the target, going the same way but
     // slower. Distinct from an intercept, which races to a junction and waits.
     if (this.tier >= 2 && k.seen && !this.blockUnit && this.blockCooldown <= 0
-        && Math.abs(target.forwardSpeed) > 12) {
+        && this.contactCooldown <= 0 && Math.abs(target.forwardSpeed) > 12) {
       this.blockCooldown = 14;
       const u = this.game.spawnPoliceAhead(target, this.tier);
       // No hidden spot ahead right now -- a straight road in open view. Look
@@ -593,6 +612,7 @@ export class Dispatcher {
       // next corner usually has one.
       if (!u) this.blockCooldown = 3;
       if (u) {
+        this.contactCooldown = CONTACT_GAP;
         this.units.push(u);
         // Also into `available`, which was snapshotted before this unit
         // existed -- otherwise the validation immediately below decides it is
@@ -619,6 +639,7 @@ export class Dispatcher {
     // run and speed, and it is the top of the force's response: four stars up,
     // one at a time, with a long cooldown between attempts.
     if (this.tier >= 4 && k.seen && !this.rhinoUnit && this.rhinoCooldown <= 0
+        && this.contactCooldown <= 0
         && this.straightFor > 3.2 && Math.abs(target.forwardSpeed) > 22) {
       this.rhinoCooldown = 30;
       const u = this.game.spawnRhino(target, this.tier);
@@ -626,6 +647,7 @@ export class Dispatcher {
       // waiting out the whole cooldown.
       if (!u) this.rhinoCooldown = 4;
       if (u) {
+        this.contactCooldown = CONTACT_GAP;
         this.units.push(u);
         available.push(u);
         u.setRole(ROLE.RHINO);

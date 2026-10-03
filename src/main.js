@@ -789,10 +789,16 @@ class Game {
     for (const [id, rec] of reach) {
       const n = g.nodes[id];
       const d = dist2(n.x, n.z, target.position.x, target.position.z);
-      // Out to 340 m, not 240: the nearest sites ahead are usually in plain
+      // Out to 420 m, not 240: the nearest sites ahead are usually in plain
       // view down the street, and the hidden ones -- round a corner, behind a
       // block -- are further on.
-      if (d < 90 || d > 340) continue;
+      //
+      // The near edge was a flat 90 m, which at 180 km/h is under two seconds
+      // and is why these were "appearing right in front of me" while the van,
+      // which has always insisted on 190, was fine. It is seconds of closing
+      // now: four of them at whatever the target is actually doing, and never
+      // nearer than the old figure however slowly they are going.
+      if (d < Math.max(90, target.speed * 3.6) || d > 420) continue;
       // Reachable-going-forwards is not the same as in front: a loop back
       // round the block reaches nodes behind the target quite legitimately,
       // and a car put down there is not a block, it is a tail. Insist the site

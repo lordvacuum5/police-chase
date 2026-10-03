@@ -1226,6 +1226,22 @@ one run at a time and should be read with that in mind.
 The one real effect was on contacts, 27 down to 19, bought with 25 m of extra
 distance — the wrong trade for a complaint about them being too far away.
 
+### One thing at a time
+
+The PIT, the rolling block and the van each had their own cooldown and nothing
+held them apart, so a block could go in and the van arrive two seconds behind
+it: *"the police car would appear and try to ram me, and then literally two
+seconds afterwards the van will also appear and try to ram me."* Each of those
+is meant to be a thing that happens to you; three at once is noise. They share
+a nine-second gap now, set only when a car is actually produced — a tactic that
+finds nowhere to deploy does not spend it.
+
+The rolling block also went in from a flat 90 m whatever the speed, which at
+180 km/h is under two seconds and is why those were the ones appearing on top
+of you while the van, which has always insisted on 190 m, read fine. It is
+seconds of closing now, and never nearer than the old figure: measured, the
+nearest it will go in is 75 m at 50 km/h, 104 at 120 and 159 at 180.
+
 ### On the road you are actually on
 
 A cone in front of the car is not the same thing as the road in front of the
