@@ -1276,6 +1276,39 @@ through a bend at the limit would not need permission to go faster; it would
 simply be faster. That is a much harder thing to build than a planner, and
 nothing here says how much it would be worth.
 
+### Turning round, and the sine that did not care which way
+
+*"If the police car is on a street to the right of me and a bit in front, they
+try to turn around and they just hit a building."*
+
+The pure-pursuit speed limit works off the arc through the aim point, radius
+`Ld / (2 sin alpha)`. The sine is the same at 170 degrees as it is at 10. So
+for a unit that has to turn *round* — pointing up a side street with the
+suspect going past the end of it — the formula reported an enormous radius and
+applied no limit at all, exactly where the car needed to slow more than
+anywhere else. It arrived at the turn flat out and put itself into the building
+on the far side. Every run of the U-turn case in `tests/sidestreet.js` hit
+something.
+
+Past a right angle there is no arc worth the name: the car has to come round,
+and it can only do that at a speed its own turning circle fits. So beyond about
+100 degrees the limit is the tightest turn the driver believes in, and the
+ordinary braking gets it there.
+
+Seven U-turn approaches: contacts 4 down to 2. And it is not a special case
+paid for by the ordinary chase — over four routes against a 120 km/h target,
+with the cap and without, run back to back:
+
+| | mean | with it | behind | contacts | worst damage |
+|---|---|---|---|---|---|
+| without | 58 km/h | 36% | 152 m | 52 | 1.00 — written off |
+| with | 53 km/h | 32% | **138 m** | **22** | 0.45 |
+
+Five km/h slower and nearer the car anyway, with less than half the contacts
+and nothing wrecked. After six attempts at the pursuit that all traded speed
+for crashes in one direction or the other, this is the first that buys both —
+because it is not a tuning choice, it is a term that was missing.
+
 ### Where the time actually goes
 
 The ceiling measurement says the speed limiter is not the constraint. So where

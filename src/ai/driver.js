@@ -36,6 +36,12 @@ const RUNOUT_STEP = 2.5;
  * carriageway. Sets the pace it aims to be down to by the time it gets there.
  */
 const OFF_ROAD_ARC = 45;
+/**
+ * Past this much of a heading change the aim point is behind the car and the
+ * pure-pursuit arc stops meaning anything: see the end of safeSpeed.
+ */
+const TURN_BACK = 1.75;          // radians, about 100 degrees
+const TURN_BACK_EASE = 0.75;
 
 /**
  * Bumper-to-bumper gap a patrol car stops at behind a car stopped in its way
@@ -481,6 +487,24 @@ export class Driver {
     const sa = Math.abs(Math.sin(alpha));
     if (sa > 0.05) {
       limit = Math.min(limit, cornerSpeedLimit(Math.max(this.arcFloor, aimDist / (2 * sa)), mu));
+    }
+
+    // ...except that the sine is the same at 170 degrees as it is at 10, and
+    // the arc through a point *behind* the car is a huge circle the car has no
+    // room to drive. So the one case that needed slowing most got no limit at
+    // all: a unit asked to turn round -- pointing up a side street with the
+    // suspect going past the end of it -- charged at the turn flat out and put
+    // itself into the building on the far side. Every run of the U-turn case in
+    // tests/sidestreet.js hit something, the worst at 14 m/s.
+    //
+    // Past a right angle there is no arc worth the name. The car has to come
+    // round, and it can only do that at a speed its own turning circle fits,
+    // so this asks for the tightest turn it believes in and lets the ordinary
+    // braking get it there. "Turn slightly the other way first to get a bigger
+    // circle" is the other half of the answer and belongs to the steering; this
+    // is the half that stops it arriving too fast to turn at all.
+    if (!this.noTurnBack && Math.abs(alpha) > TURN_BACK) {
+      limit = Math.min(limit, cornerSpeedLimit(this.arcFloor, mu) * TURN_BACK_EASE);
     }
     return limit;
   }
