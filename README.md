@@ -1276,6 +1276,43 @@ through a bend at the limit would not need permission to go faster; it would
 simply be faster. That is a much harder thing to build than a planner, and
 nothing here says how much it would be worth.
 
+### Where the time actually goes
+
+The ceiling measurement says the speed limiter is not the constraint. So where
+does a pursuit lose its time? Sampled over a chase, bucketed by speed:
+
+| speed | share of the chase |
+|---|---|
+| 0–20 km/h | **28%** |
+| 20–40 | 12% |
+| 40–60 | 21% |
+| 60–80 | 14% |
+| 80–100 | 18% |
+| over 100 | 5% |
+
+**More than a quarter of the pursuit is spent under 20 km/h.** And in those
+frames: 61% off the road, 42% within two seconds of a crash, 36% reversing.
+
+That is the answer to "why are they so slow", and it is not cornering, not
+aiming and not planning. They crash, end up in a field, and spend several
+seconds extracting themselves, over and over. The other half of it shows in the
+frames where the limiter is *not* binding — 47% of the chase, with 77 km/h
+available and 36 km/h on the clock — where the car is in first gear at 82%
+throttle making 2.1 m/s², which is less than half what it can do. It is not
+holding back. It is climbing out of a hole.
+
+Shortening the recovery was the obvious next thing and it does not help: the
+unstick waits 1.2 s, reverses for up to 2.6 s and stops after 7 m, and taking
+that to 0.7 s, 1.6 s and 4 m gives 58 km/h against 61, 119 m behind against
+108, with contacts down from 28 to 21. Flat to slightly worse, because the time
+is not going on the reverse manoeuvre — it is going on being off the road at
+all.
+
+So the chain is: cutting across country causes the crashes, the crashes cause
+the off-road crawl, and the crawl is a quarter of the chase. Keeping them on
+the roads fixes the crashes and loses more than it gains (the committed line,
+below). That is the knot, and seven attempts have not untied it.
+
 ### The band, doubled and shortened
 
 With the six fixes all failed, the remaining honest move is a cheat that says
