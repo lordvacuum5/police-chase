@@ -1226,6 +1226,33 @@ one run at a time and should be read with that in mind.
 The one real effect was on contacts, 27 down to 19, bought with 25 m of extra
 distance — the wrong trade for a complaint about them being too far away.
 
+### On the road you are actually on
+
+A cone in front of the car is not the same thing as the road in front of the
+car. Spawn points were picked from anywhere inside the band and the cone, so a
+unit arrived on the street one block over, or out in a field — "just because I
+was kind of facing that direction a minute ago" — and then there was a building
+between it and the chase, which it drove into.
+
+So a spawn in front now comes off a walk up the carriageway instead: from
+wherever the player is, following the road forward and taking the straightest
+way on at each junction, which is what somebody driving takes unless they
+decide otherwise. It carries through an intersection rather than turning off at
+the first one, and stops when the only ways on are real turns. Nothing else is
+allowed in front at all; behind and beside still come from anywhere in the
+band, because those are not being driven at.
+
+A car on your own road beyond a bend also needs less of the warning margin than
+one off to the side: the margin buys time to see something coming, and this one
+is seen the moment you round the bend, at whatever distance that leaves. It
+cannot be in front of you one frame and beside you the next, which is what the
+margin is for.
+
+Measured over 120 spawns on a driven lap: 4% land in front, **all of them on a
+road and all of them over 200 m away**, and nothing fails to find a spot. On a
+dead straight road nothing spawns in front at all, which is correct — there is
+nowhere up there that is not in plain sight.
+
 ### Far enough away, in seconds
 
 A car spawns at least 210 m from you and never where you are looking. Out of

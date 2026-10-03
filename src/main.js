@@ -624,14 +624,42 @@ class Game {
     const minBehind = tier === 0 ? 130 : 210;
     const maxD = (tier === 0 ? 360 : 520) + warn;
 
+    // Somewhere up the road they are actually on, first.
+    //
+    // A cone in front of the car is not the same thing as the road in front of
+    // the car. Picked from anywhere in the cone, a unit lands on the street
+    // one block over, or out in a field, "just because I was kind of facing
+    // that direction a minute ago" -- and then there is a building between it
+    // and the chase, which it drives into. Following the carriageway forward
+    // instead carries straight on through intersections, which is what the
+    // player does, so the car is on the same stretch of road they are.
+    const onRoute = this._roadAhead(target, maxD);
     let place = null;
-    for (let i = 0; i < 80; i++) {
+    for (const n of onRoute) {
+      const d = dist2(n.x, n.z, target.x, target.z);
+      // Less of the warning margin than a spawn off to the side needs. The
+      // margin buys time to see something coming, and a car on your own road
+      // beyond a bend is seen the moment you round it, at whatever distance
+      // that leaves -- it cannot be in front of you one frame and beside you
+      // the next, which is what the margin is for.
+      if (d < minBehind + warn * 0.4 || d > maxD) continue;
+      place = this._placeOnRoad(n);
+      if (place && (this.inView(place.position) || this.nearHuman(place.position))) place = null;
+      if (place) break;
+    }
+
+    // Otherwise anywhere in the band, which is still right for the cars coming
+    // from behind and from the sides -- they are not being driven at.
+    for (let i = 0; !place && i < 80; i++) {
       const n = g.randomNode(this.rng);
       const d = dist2(n.x, n.z, target.x, target.z);
       // In front of the player, as a fraction: 1 is dead ahead, -1 behind.
       const ahead = p && d > 1
         ? ((n.x - target.x) * p.forward.x + (n.z - target.z) * p.forward.z) / d
         : 0;
+      // Nothing in front any more unless it came off the road walk above: a
+      // spawn ahead that is not on their road is the one that goes wrong.
+      if (ahead > 0.35) continue;
       const minD = minBehind + warn * clamp01((ahead + 0.2) / 1.2);
       if (d < minD || d > maxD) continue;
       // Prefer somewhere with room to get moving.
@@ -657,6 +685,60 @@ class Game {
     v.lampPhase = this.rng();
 
     return new Officer(this, v, { skill, kind });
+  }
+
+  /**
+   * The junctions up the road the target is on, in the order they are reached.
+   *
+   * Walks the carriageway forward from wherever the car is, taking the
+   * straightest way on at each junction -- which is what somebody driving
+   * takes unless they decide otherwise, so it stays on the same stretch of
+   * road through an intersection rather than turning off at the first one.
+   * Stops at `reach` metres, or when the road runs out.
+   */
+  _roadAhead(from, reach) {
+    const g = this.graph;
+    const p = this.player;
+    const snap = g.nearestEdge(from.x, from.z, 60);
+    if (!snap || !p) return [];
+
+    let dx = p.forward.x, dz = p.forward.z;
+    // Which end of this edge is in front of us.
+    const ends = [g.nodes[snap.edge.a], g.nodes[snap.edge.b]];
+    let node = null, bestDot = -2;
+    for (const e of ends) {
+      if (!e) continue;
+      const ex = e.x - from.x, ez = e.z - from.z;
+      const len = Math.hypot(ex, ez) || 1;
+      const dot = (ex * dx + ez * dz) / len;
+      if (dot > bestDot) { bestDot = dot; node = e; }
+    }
+    if (!node || bestDot < 0) return [];
+
+    const out = [];
+    let prev = null, acc = dist2(from.x, from.z, node.x, node.z);
+    for (let hop = 0; hop < 24 && acc < reach; hop++) {
+      out.push(node);
+      // Carry straight on: of the ways out of this junction, the one closest
+      // to the heading we arrived on.
+      let next = null, straightest = -2;
+      for (const id of node.edges) {
+        const e = g.edges[id];
+        const other = g.nodes[e.a === node.id ? e.b : e.a];
+        if (!other || (prev && other.id === prev.id)) continue;
+        const ox = other.x - node.x, oz = other.z - node.z;
+        const len = Math.hypot(ox, oz) || 1;
+        const dot = (ox * dx + oz * dz) / len;
+        if (dot > straightest) { straightest = dot; next = { other, ux: ox / len, uz: oz / len }; }
+      }
+      // A right-angle turn is not carrying on, it is a different road.
+      if (!next || straightest < 0.35) break;
+      acc += dist2(node.x, node.z, next.other.x, next.other.z);
+      prev = node;
+      node = next.other;
+      dx = next.ux; dz = next.uz;
+    }
+    return out;
   }
 
   /**
