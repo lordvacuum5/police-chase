@@ -72,7 +72,13 @@ window.__runWoods = async function (seconds = 22, targetKph = 90) {
 window.__woodsSweep = async function (patch = null, targetKph = 90, seconds = 22) {
   try {
     await ready();
-    const tweak = patch ? (car) => { car.spec = Object.assign({}, car.spec, patch); } : null;
+    // A function is used as-is, so a sweep can reach the officer and not just
+    // the spec; an object is merged over the car's spec as before. Passing a
+    // function where a patch was expected used to Object.assign it into the
+    // spec, which is quietly nothing at all -- and two runs that were supposed
+    // to differ came back identical to the digit.
+    const tweak = typeof patch === 'function' ? patch
+      : (patch ? (car) => { car.spec = Object.assign({}, car.spec, patch); } : null);
     let hits = 0, kph = 0, behind = 0, thr = 0, brk = 0, both = 0;
     const offs = [-10, -5, 0, 5, 10];
     for (const off of offs) {
@@ -148,11 +154,12 @@ function approach(off, targetKph, seconds, tweak, keepLog) {
   // The car has to be fixed for the wood to be the thing being measured.
   const car = g.createVehicle('interceptor', 'interceptor',
     { x: site.x + off, y: 0.95, z: start - 30 }, 0, { police: true });
-  if (tweak) tweak(car);
+
   const o = new Officer(g, car, { skill: SKILL.pursuit, kind: 'interceptor' });
   // Not on the dispatcher's roster: it would retask the unit against whatever
   // it currently believes, and the point of this is the pursuit's driving.
   o.setRole(ROLE.PURSUE);
+  if (tweak) tweak(car, o);
   car._readState();
   car.setVelocity({ x: 0, y: 0, z: speed });
 

@@ -1319,6 +1319,53 @@ through a bend at the limit would not need permission to go faster; it would
 simply be faster. That is a much harder thing to build than a planner, and
 nothing here says how much it would be worth.
 
+### Driving the candidates before choosing one
+
+*"I saw a police car avoid a tree and then hit headlong into another tree."*
+
+That is the signature of a reactive avoider, and everything in here was one.
+The wall bias, the avoidance bias, the gap search, the speed clamps — all of
+them answer *what should I do this instant*, from whatever is nearest. Having
+steered away from the first trunk the car is committed to a line with the
+second one in it, and nothing ever looked. `planThrough` was a step up and
+still not enough: its legs are straight lines from where the car is standing,
+so it never asks whether the car could actually turn onto one.
+
+`Driver.planTrajectory` drives the candidates instead. Eleven steering
+fractions, each run forward on a bicycle model for up to three seconds — real
+wheelbase, real available lock, so a line the car cannot take is never offered
+— with the body swept along the result. The winner is the one that survives
+longest, stays on tarmac and ends up nearest the goal. Sixty-six shape casts
+per plan, four times a second per unit, and about 0.6 ms a frame with fifteen
+cars on the board.
+
+Three things fall out of the one mechanism. A path between two trees is found
+because the whole path is tested rather than the first gap in it. The footway
+stops being free, because surface is a cost along the way rather than a
+yes-or-no about where the wheels are now — a direct push off the kerb was tried
+first and made it *worse*, 20% of the chase on paving becoming 23%. And a
+corner is entered at a speed the chosen line can hold, because the line is
+known before the speed is picked rather than after.
+
+In the copse, with and without, same session:
+
+| | contacts | mean | left behind |
+|---|---|---|---|
+| without | 5 | 42 km/h | 383 m |
+| **with** | **4** | **49 km/h** | **322 m** |
+
+Fewer contacts, faster and closer — the first change in this whole section to
+move all three the same way. An ordinary chase after a weaving target at 130
+km/h is slightly better too: 57 km/h against 54, 196 m behind against 203,
+worst damage 0.63 against 0.80.
+
+It was worse than useless on the first measurement — seven contacts against
+five — and the reason is worth keeping. The aim point was interpolated from the
+car toward the plan's far end, which is a chord *across* the arc: the car was
+steered at a line the plan never proposed, cutting the corner of the very thing
+the plan had gone round. Aiming at a point actually on the path turned it from
+a loss into a win without touching anything else.
+
 ### Something in hand
 
 *"At high speed they seem to turn too much, a little bit, and then completely

@@ -1174,7 +1174,15 @@ export class Officer {
     // hitting is no use to anybody.
     this._planFor = (this._planFor || 0) - dt;
     if (d > ramRange + 14) {
-      if (this._planFor <= 0) {
+      // The trajectory planner drives its candidates before choosing one, so
+      // it keeps its own clock and is asked every frame: see
+      // Driver.planTrajectory. The older two-leg search is the fallback for
+      // when it has nothing to say.
+      const drive = this.noPlanner ? null : this.driver.planTrajectory(_aim.x, _aim.z, dt);
+      if (drive) {
+        this._planAim = { x: drive.x, z: drive.z };
+        this._planCap = drive.cap;
+      } else if (this._planFor <= 0) {
         const reach = clamp(18 + v.speed * 2.0, 24, 80);
         const plan = this.driver.planThrough(_aim.x, _aim.z, reach);
         this._planFor = 0.18;

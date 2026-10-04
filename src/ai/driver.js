@@ -46,6 +46,20 @@ const TURN_BACK_EASE = 0.75;
 const STEER_RESERVE = 0.82;
 
 /**
+ * The trajectory planner: how often it re-plans, how many steps it drives each
+ * candidate for, and the fan of steering fractions it tries. Eleven candidates
+ * at six steps is 66 sweeps per plan, four times a second per unit.
+ */
+const PLAN_EVERY = 0.22;
+const PLAN_STEPS = 6;
+const PLAN_FAN = [-1, -0.72, -0.48, -0.28, -0.12, 0, 0.12, 0.28, 0.48, 0.72, 1];
+const PLAN_GRASS_COST = 2.5;
+const PLAN_PAVED_COST = 4.5;
+const PLAN_SWING_COST = 9;
+const PLAN_BLOCKED_COST = 22;
+const PLAN_MIN_CAP = 7;
+
+/**
  * Bumper-to-bumper gap a patrol car stops at behind a car stopped in its way
  * (see holdBehind). Close enough that it is plainly waiting on you.
  */
@@ -590,6 +604,133 @@ export class Driver {
    * or null when the straight line is already clear, which is most of the time
    * and costs one sweep to find out.
    */
+  /**
+   * Pick a way through by driving it first.
+   *
+   * Everything else in here is reactive: it asks "what should I do this
+   * instant" and answers from whatever is nearest. That is why a unit clears
+   * one tree and goes straight into the next -- having steered away from the
+   * first it is committed to a line with the second in it, and it never looked.
+   * `planThrough` is a step up and still not enough, because its legs are
+   * straight lines from where the car is standing: it never asks whether the
+   * car could actually turn onto one.
+   *
+   * This drives the candidates instead. For each of a fan of steering choices
+   * it runs the car forward on a bicycle model -- real wheelbase, real
+   * available lock, so a line it cannot take is never offered -- and sweeps the
+   * body along the result. What comes back is the one that survives longest,
+   * stays on tarmac and ends up nearest the goal.
+   *
+   * Three things fall out of the same mechanism. A path through two trees is
+   * found because the whole path is tested, not the first gap in it. The
+   * footway stops being free, because surface is a cost along the way rather
+   * than a yes-or-no about where the wheels are now. And a corner is entered
+   * at a speed the chosen line can hold, because the line is known before the
+   * speed is chosen rather than after.
+   *
+   * Returns { x, z, clear, cap } -- a point to aim at, how far the plan runs
+   * before anything is in the way, and the speed that plan can be taken at --
+   * or null when it has nothing better to offer than the caller's own aim.
+   */
+  planTrajectory(goalX, goalZ, dt) {
+    const v = this.v;
+    const sim = v.sim;
+    this.planTimer = (this.planTimer || 0) - dt;
+    if (this.planTimer > 0 && this._plan) return this._plan;
+    this.planTimer = PLAN_EVERY;
+
+    const speed = Math.max(v.speed, 6);
+    const horizon = clamp(1.3 + speed * 0.055, 1.5, 2.9);
+    const step = horizon / PLAN_STEPS;
+    const lock = Math.max(0.04, v.steerLimit || v.spec.steering.maxAngle);
+    const hw = this.halfWidth;
+
+    let gx = goalX - v.position.x, gz = goalZ - v.position.z;
+    const goalDist = Math.hypot(gx, gz) || 1;
+    gx /= goalDist; gz /= goalDist;
+
+    const h0 = Math.atan2(v.forward.x, v.forward.z);
+    let best = null;
+
+    for (const frac of PLAN_FAN) {
+      // The steering this candidate holds, as a fraction of the lock the car
+      // actually has at this speed. Anything outside that is a path it cannot
+      // drive, and offering it is how a planner talks a car into a wall.
+      const delta = frac * lock;
+      const yawRate = (speed * Math.tan(delta)) / v.spec.wheelbase;
+
+      let x = v.position.x, z = v.position.z, h = h0;
+      let ran = 0, blocked = false, surfaceCost = 0;
+      const path = [];
+      _origin.set(x, v.position.y + 0.5, z).addScaledVector(v.forward, v.spec.dims.l * 0.45);
+
+      for (let i = 0; i < PLAN_STEPS && !blocked; i++) {
+        const nh = h + yawRate * step;
+        const nx = x + Math.sin((h + nh) * 0.5) * speed * step;
+        const nz = z + Math.cos((h + nh) * 0.5) * speed * step;
+
+        const segX = nx - x, segZ = nz - z;
+        const segLen = Math.hypot(segX, segZ) || 1e-3;
+        _probe.set(segX / segLen, 0, segZ / segLen);
+        _plan.set(x, v.position.y + 0.5, z);
+        if (i === 0) _plan.copy(_origin);
+        const toi = sweepBox(v.world, _plan, _probe, segLen, RAY_GROUNDS, v.body, hw);
+        if (toi < segLen - 0.2) { ran += Math.max(0, toi); blocked = true; break; }
+        ran += segLen;
+
+        // What it would be driving on. Grass is slow and loose; the footway is
+        // neither, which is exactly why units took to living on it -- so it
+        // costs more than the grass does, not less.
+        if (sim && sim.surfaceAt) {
+          const surf = sim.surfaceAt(nx, nz);
+          if (surf === 0) surfaceCost += PLAN_GRASS_COST;
+          else if (surf === 2) surfaceCost += PLAN_PAVED_COST;
+        }
+
+        x = nx; z = nz; h = nh;
+        path.push({ x, z, at: ran });
+      }
+
+      // How much nearer the goal this ends up, and how straight it was.
+      const endDist = Math.hypot(goalX - x, goalZ - z);
+      const gained = goalDist - endDist;
+      const swing = Math.abs(frac);
+      const score = ran * 1.0
+        + gained * 1.6
+        - surfaceCost
+        - swing * PLAN_SWING_COST
+        - (blocked ? PLAN_BLOCKED_COST : 0);
+
+      if (!best || score > best.score) {
+        best = { score, x, z, ran, blocked, frac, surfaceCost, path };
+      }
+    }
+
+    if (!best) { this._plan = null; return null; }
+
+    // Aim at a point that is actually *on* the planned path, at the lookahead.
+    //
+    // The first version interpolated from the car toward the plan's far end,
+    // which is a chord across the arc -- so the car was steered at a line the
+    // plan never proposed, cutting the corner of the very thing the plan went
+    // round. Measured in the wood that was worse than having no planner at
+    // all: seven contacts against five.
+    const look = clamp(8 + speed * 0.5, 10, 34);
+    let aim = best.path.length ? best.path[best.path.length - 1] : { x: best.x, z: best.z };
+    for (const pt of best.path) {
+      if (pt.at >= look) { aim = pt; break; }
+    }
+    this._plan = {
+      x: aim.x,
+      z: aim.z,
+      clear: best.ran,
+      cap: best.blocked
+        ? Math.max(PLAN_MIN_CAP, Math.sqrt(2 * this._mu() * 9.81 * 0.85 * Math.max(0, best.ran - 6)))
+        : Infinity,
+    };
+    return this._plan;
+  }
+
   planThrough(goalX, goalZ, reach) {
     const v = this.v;
     const hw = this.halfWidth;
