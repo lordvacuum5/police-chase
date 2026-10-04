@@ -3973,6 +3973,14 @@ up to five stars with them. Hosting a game nobody has joined yet still counts
 as playing on your own, so the test is of people rather than of sessions, and
 it re-checks itself whenever somebody arrives or leaves.
 
+A police player can use it too, in a game they did not start. The heat is the
+escapee's — it is worked out on their machine and sent out with the world — so
+a guest setting it locally would be overruled by the next packet a twentieth of
+a second later. They send a request instead and the machine that owns the chase
+does it; the answer comes back the ordinary way, so everybody sees the same
+stars. It freezes the score the same as doing it yourself, because it is the
+same free stars.
+
 **Type FIVE** to jump straight to five stars, and with the debug telemetry up
 (F3) the number keys set any level. Using either stops the run scoring, for
 the rest of the run: five stars is worth about sixty points a second, and a

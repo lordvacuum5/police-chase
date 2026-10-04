@@ -1177,16 +1177,35 @@ class Game {
    * it here would be overwritten on the next packet anyway.
    */
   _wantedShortcut(i) {
-    if (session.active && !session.isHost) return;
     let want = null;
     if (i.typed('five')) want = 5;
     if (this.debug) {
       for (let n = 0; n <= 5; n++) if (i.tapped(`Digit${n}`)) want = n;
     }
     if (want === null) return;
+
+    // A police player's copy of the heat is told to it by the escapee, so
+    // setting it here would last until the next packet. Send it instead and
+    // let the machine that owns the chase do it -- the answer comes back the
+    // ordinary way, in the world update, and everybody sees the same stars.
+    if (session.active && !session.isHost) {
+      session.sendEvent('heat', { want });
+      this.hud.toast(want > 0 ? `REQUESTED: ${'★'.repeat(want)}` : 'REQUESTED: CLEAR');
+      return;
+    }
+    this._setWanted(want);
+  }
+
+  /**
+   * Put the wanted level where it has been asked for, and stop the run
+   * scoring. Shared by the shortcut and by a police player's request.
+   */
+  _setWanted(want) {
+    want = clamp(want, 0, 5);
     // Setting your own wanted level is worth about sixty points a second at
-    // five stars, so the run stops scoring the moment it is used. Anything
-    // earned up to here stands.
+    // five stars, so the run stops scoring the moment it is used -- including
+    // when a police player asked for it, since it is the same free stars.
+    // Anything earned up to here stands.
     if (this.score) this.score.freeze();
 
     if (want <= 0) {
@@ -1751,6 +1770,12 @@ class Game {
       // has to hear about a police player hitting it just as much as the
       // other way round.
       if (msg.e === 'hit') { this._netApplyHit(msg); continue; }
+      // A police player asking for a wanted level. The heat is the escapee's
+      // -- it is computed on their machine and sent out with the world -- so a
+      // guest typing FIVE cannot just set it locally; the next packet would
+      // overrule them a twentieth of a second later. They ask, and the machine
+      // that owns the number does it.
+      if (msg.e === 'heat' && session.isHost) { this._setWanted(msg.want | 0); continue; }
       if (session.isHost) continue;                        // the rest is its own doing
       if (msg.e === 'radio') {
         // Said on the escapee's machine; heard on this one too, in the same
