@@ -58,6 +58,9 @@ const PLAN_PAVED_COST = 4.5;
 const PLAN_SWING_COST = 9;
 const PLAN_BLOCKED_COST = 22;
 const PLAN_MIN_CAP = 7;
+// Lookahead along the plan -- see the note where it is used.
+const PLAN_LOOK = 0.5;
+const PLAN_LOOK_MAX = 34;
 
 /**
  * Bumper-to-bumper gap a patrol car stops at behind a car stopped in its way
@@ -154,6 +157,16 @@ export class Driver {
     // patrol car obeying the signs; a unit in pursuit sets this high and is
     // then bounded only by grip and by what its car will do.
     this.limitScale = 1;
+    // Settable so the rigs can sweep them in one page session -- see the note
+    // where they are used.
+    this.planLook = PLAN_LOOK;
+    this.planLookMax = PLAN_LOOK_MAX;
+    // Which speed limit was in force last frame -- see drive(). Reused rather
+    // than rebuilt, because this is written every frame for every unit.
+    this.caps = {
+      asked: 0, safe: 0, wall: 0, way: 0, slide: 0, out: 0,
+      sClear: 0, sTravel: 0, sRunout: 0, sArc: 0, sBack: 0,
+    };
     // The arc the car assumes it might have to hold if it ends up on the
     // grass, which sets how fast it may arrive at a verge. Per driver so a
     // test can sweep it: see tests/keepup.js.
@@ -463,9 +476,14 @@ export class Driver {
 
     const usable = Math.max(0, this._clear - 7);
     let limit = Math.sqrt(2 * aBrake * usable);
+    // Each clause recorded, for the same reason drive() records its own.
+    const c = this.caps;
+    c.sClear = limit; c.sTravel = Infinity; c.sRunout = Infinity;
+    c.sArc = Infinity; c.sBack = Infinity;
 
     // Stopping distance along the line of travel.
-    limit = Math.min(limit, Math.sqrt(2 * aBrake * Math.max(0, this._clearTravel - 7)));
+    c.sTravel = Math.sqrt(2 * aBrake * Math.max(0, this._clearTravel - 7));
+    limit = Math.min(limit, c.sTravel);
 
     // How much road is left in front of us, which is the junction question:
     // arriving somewhere the carriageway ends in thirty metres means being
@@ -491,10 +509,12 @@ export class Driver {
         if (!this._offRoadNow()) {
           const off = cornerSpeedLimit(this.offRoadArc,
             TYRE_GRASS.mu * (v.spec.offRoadGrip || 1) * 0.87 * this.skill.grip);
-          limit = Math.min(limit, Math.sqrt(off * off + 2 * aBrake * this._runout));
+          c.sRunout = Math.sqrt(off * off + 2 * aBrake * this._runout);
+          limit = Math.min(limit, c.sRunout);
         }
       } else {
-        limit = Math.min(limit, cornerSpeedLimit(Math.max(9, this._runout), mu));
+        c.sRunout = cornerSpeedLimit(Math.max(9, this._runout), mu);
+        limit = Math.min(limit, c.sRunout);
       }
     }
 
@@ -502,7 +522,8 @@ export class Driver {
     // an arc of radius Ld / (2 sin alpha), so that arc sets a grip limit too.
     const sa = Math.abs(Math.sin(alpha));
     if (sa > 0.05) {
-      limit = Math.min(limit, cornerSpeedLimit(Math.max(this.arcFloor, aimDist / (2 * sa)), mu));
+      c.sArc = cornerSpeedLimit(Math.max(this.arcFloor, aimDist / (2 * sa)), mu);
+      limit = Math.min(limit, c.sArc);
     }
 
     // ...except that the sine is the same at 170 degrees as it is at 10, and
@@ -520,7 +541,8 @@ export class Driver {
     // circle" is the other half of the answer and belongs to the steering; this
     // is the half that stops it arriving too fast to turn at all.
     if (!this.noTurnBack && Math.abs(alpha) > TURN_BACK) {
-      limit = Math.min(limit, cornerSpeedLimit(this.arcFloor, mu) * TURN_BACK_EASE);
+      c.sBack = cornerSpeedLimit(this.arcFloor, mu) * TURN_BACK_EASE;
+      limit = Math.min(limit, c.sBack);
     }
     return limit;
   }
@@ -715,7 +737,16 @@ export class Driver {
     // plan never proposed, cutting the corner of the very thing the plan went
     // round. Measured in the wood that was worse than having no planner at
     // all: seven contacts against five.
-    const look = clamp(8 + speed * 0.5, 10, 34);
+    // How far along the plan to aim. Settable, because this is the lever on the
+    // pure-pursuit cornering limit, which tests/weave.js shows is the single
+    // biggest thing stopping units threading a gap -- the binding speed limit
+    // for a quarter to a half of every frame. That limit is the grip needed for
+    // an arc of radius Ld / (2 sin alpha), and on a weaving path a near aim
+    // point sits right out to one side, so alpha is large, the radius comes out
+    // tiny and the limit collapses. Looking further along the same path is the
+    // textbook answer: alpha falls, the radius grows, and the limit stops
+    // binding without anything being taken away from it.
+    const look = clamp(8 + speed * this.planLook, 10, this.planLookMax);
     let aim = best.path.length ? best.path[best.path.length - 1] : { x: best.x, z: best.z };
     for (const pt of best.path) {
       if (pt.at >= look) { aim = pt; break; }
@@ -989,8 +1020,17 @@ export class Driver {
     // Never ask for more speed than the surroundings allow. Callers say where
     // they want to go and how quickly; this is what stops that being a licence
     // to drive into a wall.
+    // Each limit is also recorded on `caps`, because which one is actually in
+    // force is not guessable from the outside and this file's rigs kept having
+    // to guess. An afternoon went on the wall clamp on the strength of a
+    // plausible story about it; it was not the one binding. See tests/weave.js,
+    // which prints the tally.
+    const caps = this.caps;
+    caps.asked = requested;
+    caps.safe = Infinity; caps.wall = Infinity; caps.way = Infinity; caps.slide = Infinity;
     if (opts.ignoreSurroundings !== true) {
-      speed = Math.min(speed, this.safeSpeed(s.alpha, s.distance, aim.x, aim.z));
+      caps.safe = this.safeSpeed(s.alpha, s.distance, aim.x, aim.z);
+      speed = Math.min(speed, caps.safe);
     }
 
     // Something solid is genuinely close along the line of travel. This is not
@@ -1014,17 +1054,21 @@ export class Driver {
     if (this.wallNear < 34) {
       const mu = this._mu();
       const usable = Math.max(0, this.wallNear - 6);
-      speed = Math.min(speed, Math.sqrt(2 * mu * 9.81 * 0.75 * usable));
+      caps.wall = Math.sqrt(2 * mu * 9.81 * 0.75 * usable);
+      speed = Math.min(speed, caps.wall);
     }
 
     // Making way for a unit running a manoeuvre -- see avoid(). Moving over is
     // half of it; the other half is not staying in front of them at the same
     // speed all the way to the junction.
     if (this.wayCap < Infinity && opts.holdStill !== true) {
-      speed = Math.min(speed, this.wayCap);
+      caps.way = this.wayCap;
+      speed = Math.min(speed, caps.way);
     }
 
-    speed = Math.min(speed, this.slideLift());
+    caps.slide = this.slideLift();
+    speed = Math.min(speed, caps.slide);
+    caps.out = speed;
     this.speedTarget = speed;
 
     // ---- unstick ----

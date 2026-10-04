@@ -1366,6 +1366,92 @@ steered at a line the plan never proposed, cutting the corner of the very thing
 the plan had gone round. Aiming at a point actually on the path turned it from
 a loss into a win without touching anything else.
 
+### Why they cannot follow you between the buildings
+
+*"I can just go through loads and loads of tight gaps really fast through loads
+of buildings and then they just literally cannot do anything. They lose you
+instantly, even on wanted level five."*
+
+True, and `tests/weave.js` was built to find out why. Every other rig in here
+chases along roads; this one sends a ghost weaving through the gaps of a
+built-up area and asks how long the pursuit stays with it. On Wexbury, six
+routes, a ghost at 110 km/h: at least one unit within 80 m for **30%** of the
+run, the last one dropping past 150 m and staying there after **6.3 seconds**,
+finishing 155 m back.
+
+Getting the rig honest took two goes and both mistakes are worth recording. The
+first version drew a straight line across the town and scored it on how many
+buildings it passed *close to* — and every line it picked went clean through one
+to three of them. A line that clips a building is not a weave, it is a teleport:
+the ghost goes through the wall and no car on earth follows it, so the pursuit
+lost the target at seven seconds whatever the driving did, and the rig could not
+have told a good change from a bad one. Demanding a *clear* straight line then
+found nothing at all, which is the answer to why: there is no such line across a
+town, and the player is not driving one either. So the ghost weaves — eight
+metres at a time, taking the heading nearest its bearing that is actually clear,
+preferring steps that still have a building beside them so it threads the gaps
+instead of strolling out into a field.
+
+What the rig then showed is that they are not crashing and not stuck. One route
+came back with no contacts, nothing reversing, nothing jammed — a clean drive at
+76 km/h that still lost a ghost doing 110. They are simply slower, and
+`Driver.caps` says exactly what makes them slower: each speed limit now records
+itself every frame, and the rigs print the tally. The binding one is the
+pure-pursuit cornering arc, **23% to 53% of all frames**, far ahead of the wall
+clamp at 11–29%. Pure pursuit follows a circle of radius `Ld / (2 sin alpha)`,
+and threading a gap means a large angle at short range, so that radius comes out
+tiny and the grip limit collapses.
+
+That instrumentation is the thing to keep. An afternoon went on the wall clamp
+first, on the strength of a plausible story about it — units braking for
+buildings they were going to steer round anyway. Making that clamp follow the
+arc the car is actually turning on, rather than the straight line it happens to
+point down, is a sound idea and measured as a wash. It was not the limit in
+force. Guessing which clamp is binding does not work; the tally does.
+
+Three ways of relaxing that cornering limit were then measured and none kept:
+
+| | gaps: held on | gaps: hits | road at 150: behind | road: hits |
+|---|---|---|---|---|
+| as committed | 8.3 s | 10 | 215 m | 5 |
+| plan's own radius | 9.4 s | 9 | 341 m | 16 |
+| grip-limited plan fan | 10.2 s | 11 | — | — |
+| longer lookahead | 6.4 s | 10 | — | — |
+
+The first takes the radius from the plan, which chose its own steering angle and
+so knows the curve the car will genuinely drive. In the gaps that is worth a
+second of hanging on; on the road it is a disaster, because a plan knows about
+colliders and nothing else, so a bend in open country reads as straight, its
+radius is enormous, and the units stop slowing for corners at all. One wrote
+itself off completely — damage 1.00 on a rig where nothing else has ever
+exceeded 0.46. Confining it to close scenery fixed almost none of that, because
+in a town there is a building seven metres from the kerb of every road. Gating
+it on the plan being an actual S-bend, and bounding the lift, each recovered
+part of it and not enough.
+
+The second narrows the planner's fan to the steering the tyres can deliver at
+the planning speed, so no line is planned that the car would have to slide to
+take. One route was transformed — from losing the ghost at five seconds and 234
+m back to never losing it at all — and the tightest route collapsed from 50 km/h
+to 21, because at speed nothing grip-feasible fitted through the gap and the
+planner had nothing to offer. Falling back to the full rack when the narrow fan
+came back blocked recovered almost none of that either.
+
+The third is the textbook remedy and the cheapest: look further along the plan,
+so the aim point is less far off to one side, the angle falls and the radius
+grows without anything being taken away. It moves speed and it moves contacts —
+and it does not move how long they hang on at all, 6.3 s against 6.4 s against
+6.3 s across the whole sweep. `planLook` and `planLookMax` are left settable for
+the next person to try.
+
+So the finding is not a fix. They do about 50 km/h through gaps a player takes
+at 110, and every attempt so far to lift that has bought speed with crashes:
+plus two contacts, plus eleven and a write-off, plus three. The limits are tuned
+not to crash and the player is not. The thing that is probably wanted here is
+not better following at all — a real pursuit does not thread the same gaps as
+the car it is chasing, it uses the roads and converges on the far side — and that
+belongs to the dispatcher and the roles, not to `safeSpeed`.
+
 ### Something in hand
 
 *"At high speed they seem to turn too much, a little bit, and then completely

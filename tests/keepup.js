@@ -34,6 +34,14 @@ window.__runKeepUp = async function (speeds = [90, 120, 150], seconds = 45, rout
  *   __keepUpSweep((d) => { d.limitScale = 3; })
  */
 window.__keepUpSweep = async function (tweak, speeds = [90, 120, 150], seconds = 45, routes = 4) {
+  // A sweep takes a couple of minutes, and nothing about window.__res says
+  // whether the answer in it is this sweep's or the last one's. Two settings
+  // were compared without this and came back identical, correctly: it was the
+  // same string read twice. Worse, a second sweep was started on top of a
+  // running one, and both were then driving the same game.
+  if (window.__keepUpBusy) return 'busy: a sweep is already running';
+  window.__keepUpBusy = true;
+  window.__res = null;
   try {
     await ready();
     const rows = [];
@@ -60,6 +68,8 @@ window.__keepUpSweep = async function (tweak, speeds = [90, 120, 150], seconds =
   } catch (e) {
     window.__res = 'EX: ' + e.message + ' | ' + (e.stack || '').slice(0, 300);
     return window.__res;
+  } finally {
+    window.__keepUpBusy = false;
   }
 };
 
