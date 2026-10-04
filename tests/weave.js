@@ -68,7 +68,7 @@ window.__runWeave = async function (seconds = 22, kph = 110, tweak = null, runs 
  * that is actually clear ahead. That is a line through the gaps, which is the
  * thing being complained about and the thing the pursuit has to follow.
  */
-function weavePath(which) {
+export function weavePath(which) {
   const g = window.__game;
   if (!window.__weavePaths) window.__weavePaths = {};
   if (window.__weavePaths[which]) return window.__weavePaths[which];
@@ -179,6 +179,7 @@ function run(which, seconds, kph, tweak) {
   const h0 = Math.atan2(pts[1].x - pts[0].x, pts[1].z - pts[0].z);
   p.repair();
   p.teleport({ x: pts[0].x, y: 0.9, z: pts[0].z }, h0);
+  p.setVelocity({ x: Math.sin(h0) * speed, y: 0, z: Math.cos(h0) * speed });
   p._readState();
 
   const units = [];
@@ -215,8 +216,8 @@ function run(which, seconds, kph, tweak) {
     const hx = (b.x - a.x) / segLen, hz = (b.z - a.z) / segLen;
     p.teleport({ x: a.x + (b.x - a.x) * t, y: 0.9, z: a.z + (b.z - a.z) * t },
       Math.atan2(hx, hz));
-    p._readState();
     p.setVelocity({ x: hx * speed, y: 0, z: hz * speed });
+    p._readState();
     g.heat.value = 5;
     const k = g.dispatcher.knowledge;
     k.seen = true;

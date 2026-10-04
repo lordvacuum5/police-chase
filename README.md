@@ -1452,6 +1452,111 @@ not better following at all — a real pursuit does not thread the same gaps as
 the car it is chasing, it uses the roads and converges on the far side — and that
 belongs to the dispatcher and the roles, not to `safeSpeed`.
 
+### Grip stretches with the band, not just power
+
+The section above ends by saying that nothing tried had closed the gap, and that
+the limit in force is the cornering one. This is the thing that moved it.
+
+The rubber band hands a unit a long way back more power and 35% more grip. The
+power is close to useless, which the band's own note admits: what holds a unit
+back is cornering and no amount of engine helps with that. The grip is the part
+that could, and it was not stretching with the band at all -- a car 300 m behind
+got exactly the same 35% as one at 60 m.
+
+Grip is the right lever for three reasons. `cornerSpeedLimit` goes as the square
+root of it, so this is about 20% more speed through a corner. `Driver._mu()`
+reads `assist.grip`, so the unit *knows* it has more and takes the corner faster
+-- without that it would simply have more in hand and drive the same, which is a
+mistake already recorded one section up. And the tyres get the same multiplier,
+so the speed it takes is a speed it can actually hold. That last point is the
+whole difference between this and the three ways of relaxing the limit directly,
+every one of which bought speed with crashes.
+
+It is distance-scaled like the rest of the band and gone by 30 m, so it is the
+car three hundred metres back that gets it and the one on your bumper that does
+not. The part of the chase you can see is still fought on the same physics you
+are.
+
+Weaving through a housing estate behind a ghost at 110 km/h, six routes:
+
+| | held on | left behind | contacts | mean speed |
+|---|---|---|---|---|
+| without | 6.4 s | 186 m | 11 | 53 km/h |
+| **with** | **7.9 s** | **152 m** | 12 | **60 km/h** |
+
+And on the roads, four routes each, which is where it had to not break anything:
+
+| | mean | with it | behind | contacts | worst damage |
+|---|---|---|---|---|---|
+| 90 km/h ghost, without | 66 | 54% | 103 m | 22 | 0.46 |
+| **90 km/h ghost, with** | **70** | **61%** | **75 m** | **13** | **0.25** |
+| 150 km/h ghost, without | 59 | 30% | 218 m | 20 | 0.44 |
+| **150 km/h ghost, with** | **66** | 29% | **165 m** | 19 | 1.00 |
+
+At 90 km/h it improves every column at once, which nothing else in this file has
+done -- and it halves the contacts rather than paying in them, because a car that
+can hold the corner does not need to hit the outside of it. At 150 it is 53 m
+closer and 7 km/h faster for the same number of contacts, but one unit in eight
+wrote itself off where the worst before was 0.44. That is the declared cost: at
+motorway speed a car with more grip occasionally carries a corner it should not
+have, and the unit is lost rather than merely delayed.
+
+How much is a real question and the gaps rig alone answers it wrong. 0.70 is
+clearly better there -- 132 m instead of 152 -- and ruinous on a road, where
+the contacts go from 13 to 35. 1.12 is worse everywhere. 0.35 is the only value
+that improves both, so that is the number.
+
+### The whole force, not two cars told to follow
+
+Every rig before this one builds its police by hand and tells them to chase.
+That measures following, and following is not the force's only answer: the
+dispatcher predicts where the car will be and sends units to junctions it can
+beat it to, and at five stars the rules allow five pursuers and six of those.
+`tests/force.js` steps the whole game instead -- spawning, heat, roles, radio,
+air support -- with only the player on rails.
+
+It immediately found a bug in all three rigs rather than in the game. They set
+the ghost's velocity *after* reading its state, so `forwardSpeed` was derived
+from the velocity `teleport` had just cleared and the car read as stationary to
+anything that asked how fast it was going. The rolling block and the head-on van
+both want more than 12 m/s and so never fired once in a whole run; the box's
+"slow enough to surround" test was permanently true. Putting the two lines in
+the right order moved the nearest unit from 251 m to 127 m -- which is to say
+most of what the rig had been reporting as the force failing was the force never
+being allowed to try.
+
+What it says once it is honest: with air support on station the dispatcher knows
+where the car is essentially all of the time, so this is not a problem of
+losing sight -- and the force still averages 127 m behind. The intercept solver
+is where it goes wrong. It finds candidate junctions every time, and then
+rejects unit after unit for want of margin, 114 to 226 times for every one it
+places, because against a car doing 110 km/h through a town no unit can beat it
+to anywhere. Two thirds of the force falls through to RESPOND, which means
+driving at where the car is, from behind, which is hopeless. The runs with the
+most INTERCEPT are the runs where the force stays closest: 27% of unit-time on
+intercept keeps the nearest unit at 91 m, 11% leaves it at 213 m.
+
+Widening the window -- a 45 s prediction horizon instead of 24, and 32 s of
+margin allowed instead of 15 -- raises the intercept share and does not reliably
+close the distance, so it is not in. `interceptHorizon` and `interceptMarginMax`
+are left as fields for the next attempt, along with the counters that showed
+this, and the default is what it always was.
+
+Two warnings about this rig, both learned the hard way. It is much noisier than
+the others: the same settings measured twice gave the dispatcher seeing the
+target 100% of one batch and 49% of the next, because spawn positions and the
+aircraft's approach draw on the game's rng and the physics world carries state
+between runs. Reseeding the rng per run fixes the detection half of that and not
+the rest, so it is a diagnostic instrument rather than a way to judge small
+changes -- the two rigs above are for that. And the air search looks like an
+obvious defect and is not: hunting expands the search at 4 m/s round the last
+sighting while a car doing 110 km/h leaves at 30, so on paper it can never catch
+up. Making it run on along the last known heading instead, at half the last
+known speed, measured clearly *worse* -- found the car again in one run of six
+against three or four -- because a car weaving through gaps makes far less
+ground than its speed suggests, and the small circle round where it was last
+seen is a better bet than the direction it was last going.
+
 ### Something in hand
 
 *"At high speed they seem to turn too much, a little bit, and then completely

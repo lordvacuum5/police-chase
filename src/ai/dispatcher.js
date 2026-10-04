@@ -127,6 +127,30 @@ export class Dispatcher {
     // fifth of the time -- twice the old solver -- and sends enough to meet the
     // car at more junctions.
     this.interceptMinProb = 0.03;
+    // How long a hard fix survives losing sight, and how much of the sighting
+    // range is left once it has gone. Fields rather than the constants they
+    // start from, so tests/force.js can sweep them in one page session -- see
+    // the note on the doom loop in _perceive.
+    // Why units end up on RESPOND rather than cutting the target off. Counted
+    // because RESPOND running at two thirds of the force, when the five-star
+    // rules budget it a quarter, says the intercept solver is failing and not
+    // that it was not wanted. See tests/force.js.
+    this.interceptStats = { solved: 0, noShortlist: 0, noMargin: 0, overLimit: 0, candidates: 0 };
+    // How far ahead the target is predicted, and how much time a unit may have
+    // in hand at the junction it is sent to. Both were fixed, and at speed both
+    // were the binding constraint: against a car doing 110 km/h through a town
+    // the solver rejected a unit for want of margin 134 to 193 times for every
+    // one it placed, so two thirds of the force fell through to RESPOND and
+    // chased from behind. Nobody was ever in front. See tests/force.js.
+    // Whether a car can be put in front of the target at all -- see
+    // tests/force.js. Counted because the whole of the force's answer to being
+    // outrun is to get something ahead, and 'ahead' is worked out along the
+    // road network.
+    this.blockStats = { tried: 0, placed: 0, tier: 0, unseen: 0, busy: 0, cooling: 0, contact: 0, slow: 0 };
+    this.interceptHorizon = 24;
+    this.interceptMarginMax = 15;
+    this.trackSeconds = TRACK_SECONDS;
+    this.lostSightScale = 1;
     this._junction = null;
   }
 
@@ -174,7 +198,7 @@ export class Dispatcher {
     // search halfway through -- "it shows that they're searching, but they
     // still need to be in full pursuit of me... not searching until that timer
     // runs out."
-    const hasContact = k.timeSinceSeen < TRACK_SECONDS;
+    const hasContact = k.timeSinceSeen < this.trackSeconds;
     // Searching units get 20% more range than a plain reacquire, and look all
     // the way round rather than through a forward cone -- a crew hunting for a
     // car is scanning every direction, not staring out of the windscreen.
@@ -183,7 +207,9 @@ export class Dispatcher {
     // city block in every direction and far too much for one car that has just
     // been told to look out for you. Same 230 m at five stars, so the top of
     // the range is unchanged.
-    let sightRange = hasContact ? 70 + this.tier * 32 : (55 + this.tier * 10) * 1.2;
+    let sightRange = hasContact
+      ? 70 + this.tier * 32
+      : (55 + this.tier * 10) * 1.2 * this.lostSightScale;
     if (!hasContact && target.speed < 5) sightRange *= 0.6;
 
     // Published for the HUD, which draws it as the detection ring. Taken from
@@ -239,7 +265,7 @@ export class Dispatcher {
       // guess at where that road goes -- and only then does it become a
       // search. Ducking behind one building is not an escape; staying out of
       // sight is.
-      if (k.timeSinceSeen < TRACK_SECONDS) k.position.copy(target.position);
+      if (k.timeSinceSeen < this.trackSeconds) k.position.copy(target.position);
       k.confidence = clamp01(1 - k.timeSinceSeen / SEARCH_SECONDS);
     }
   }
@@ -603,10 +629,19 @@ export class Dispatcher {
     // ---- 5b. rolling block ----
     // A unit put on the road in front of the target, going the same way but
     // slower. Distinct from an intercept, which races to a junction and waits.
+    const bg = this.blockStats;
+    if (this.tier < 2) bg.tier++;
+    else if (!k.seen) bg.unseen++;
+    else if (this.blockUnit) bg.busy++;
+    else if (this.blockCooldown > 0) bg.cooling++;
+    else if (this.contactCooldown > 0) bg.contact++;
+    else if (Math.abs(target.forwardSpeed) <= 12) bg.slow++;
     if (this.tier >= 2 && k.seen && !this.blockUnit && this.blockCooldown <= 0
         && this.contactCooldown <= 0 && Math.abs(target.forwardSpeed) > 12) {
       this.blockCooldown = 14;
+      this.blockStats.tried++;
       const u = this.game.spawnPoliceAhead(target, this.tier);
+      if (u) this.blockStats.placed++;
       // No hidden spot ahead right now -- a straight road in open view. Look
       // again in a few seconds rather than waiting out the whole cooldown; the
       // next corner usually has one.
@@ -712,20 +747,27 @@ export class Dispatcher {
     // come through, and by whether the time is right -- far enough ahead to be
     // worth driving to, near enough that the prediction still means something.
     // Chokepoints still count for extra: there is no way round them.
-    const likely = g.predict(k.position.x, k.position.z, _dir.x, _dir.z, speed, this.straightShare, 24);
+    const horizon = this.interceptHorizon;
+    const likely = g.predict(k.position.x, k.position.z, _dir.x, _dir.z, speed, this.straightShare, horizon);
     const candidates = [];
     for (const [id, rec] of likely) {
-      if (rec.eta < 4.5 || rec.eta > 24 || rec.prob < this.interceptMinProb) continue;
+      if (rec.eta < 4.5 || rec.eta > horizon || rec.prob < this.interceptMinProb) continue;
       const node = g.nodes[id];
       if (node.edges.length < 3 && !node.chokepoint) continue;
-      const timing = rec.eta < 6 ? 0.6 + (rec.eta - 4.5) * 0.27 : rec.eta > 16 ? 1 - (rec.eta - 16) * 0.07 : 1;
+      // Falls away past sixteen seconds, because a prediction that far out is
+      // a guess -- but never to nothing, or a junction a unit could actually
+      // reach first is worth less than one it cannot.
+      const timing = rec.eta < 6 ? 0.6 + (rec.eta - 4.5) * 0.27
+        : rec.eta > 16 ? Math.max(0.35, 1 - (rec.eta - 16) * 0.05) : 1;
       const value = rec.prob * timing * (node.chokepoint ? 1.3 : 1);
       candidates.push({ id, eta: rec.eta, prob: rec.prob, value, x: node.x, z: node.z });
     }
     candidates.sort((a, b) => b.value - a.value);
     const shortlist = candidates.slice(0, 12);
 
+    this.interceptStats.candidates = shortlist.length;
     if (!shortlist.length) {
+      this.interceptStats.noShortlist += free.length;
       for (const u of free) u.setRole(ROLE.RESPOND, { point: k.position.clone() });
       return;
     }
@@ -733,6 +775,7 @@ export class Dispatcher {
     let placed = 0;
     for (const u of free) {
       if (placed >= limit) {
+        this.interceptStats.overLimit++;
         u.setRole(ROLE.RESPOND, { point: k.position.clone() });
         continue;
       }
@@ -759,7 +802,7 @@ export class Dispatcher {
         // Wider than the window a job is taken on (1.2 to 15 s): having
         // committed, a unit sees it through unless it has genuinely fallen
         // out of reach.
-        if (margin !== null && margin >= 0.6 && margin <= 20) {
+        if (margin !== null && margin >= 0.6 && margin <= this.interceptMarginMax + 5) {
           this.claimedNodes.add(held.id);
           placed++;
           continue;
@@ -782,7 +825,7 @@ export class Dispatcher {
         if (!path) continue;
         const t = g.routeTime(path, 0.82);
         const margin = c.eta - t;
-        if (margin < 1.2 || margin > 15) continue;
+        if (margin < 1.2 || margin > this.interceptMarginMax) continue;
         // Prefer arriving with a small but real cushion, somewhere they are
         // actually likely to come through: a certain junction reached with
         // eight seconds to spare beats a coin-toss one reached with four.
@@ -792,6 +835,7 @@ export class Dispatcher {
       }
 
       if (best) {
+        this.interceptStats.solved++;
         this.claimedNodes.add(best.c.id);
         const changed = u.role !== ROLE.INTERCEPT || u.orders.node !== best.c.id;
         u.setRole(ROLE.INTERCEPT, { node: best.c.id });
@@ -816,6 +860,7 @@ export class Dispatcher {
           if (said) u.lastInterceptCall = this.clock;
         }
       } else {
+        this.interceptStats.noMargin++;
         u.setRole(ROLE.RESPOND, { point: k.position.clone() });
       }
     }

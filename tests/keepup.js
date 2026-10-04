@@ -175,8 +175,11 @@ function chase(kph, seconds, tweak, which) {
       z += hx * sway;
     }
     p.teleport({ x, y: 0.9, z }, Math.atan2(hx, hz));
-    p._readState();
+    // Velocity first, then read the state off it: the other way round leaves
+    // forwardSpeed derived from the velocity teleport had just cleared, and the
+    // ghost reads as stationary to anything that asks how fast it is going.
     p.setVelocity({ x: hx * speed, y: 0, z: hz * speed });
+    p._readState();
 
     g.heat.value = 5;
     const k = g.dispatcher.knowledge;

@@ -27,6 +27,38 @@ const CUT_ARC = 13;
  */
 const BAND_REACH = 130;
 
+/**
+ * How much extra grip a unit at full stretch of the rubber band gets, on top of
+ * the 0.35 every engaged unit has. Cornering speed goes as the square root of
+ * grip, so this is about forty per cent more speed through a corner for a car
+ * that is a long way back -- and nothing at all for one on your bumper.
+ *
+ * Swept over six routes of tests/weave.js, against a ghost weaving through the
+ * gaps of a housing estate at 110 km/h:
+ *
+ *   | extra grip | held on | left behind | contacts | mean speed |
+ *   |------------|---------|-------------|----------|------------|
+ *   | 0          |  6.4 s  |    186 m    |    11    |   53 km/h  |
+ *   | 0.35       |  7.9 s  |    152 m    |    12    |   60 km/h  |
+ *   | 0.70       |  7.9 s  |    132 m    |    13    |   63 km/h  |
+ *   | 1.12       |  7.5 s  |    141 m    |    19    |   63 km/h  |
+ *
+ * Past 0.70 the tyres have more than the driver can use: the contacts go up by
+ * half and nothing else moves.
+ *
+ * 0.70 is nonetheless not the number, and the reason is worth keeping: the gaps
+ * rig alone would have chosen it. On a road at 150 km/h it is ruinous -- the
+ * contacts go from 13 to 35 and a unit writes itself off, damage 1.00 where
+ * nothing on that rig has otherwise exceeded 0.46 -- because out there the
+ * corners are quick and a car that takes them half again as fast arrives at the
+ * one after at a speed nothing can retrieve. At 0.35 both rigs improve
+ * together: in the gaps they hold on 1.5 s longer and finish 34 m closer, and
+ * on the road they are 9 m closer and hit *fewer* things, 11 against 14.
+ *
+ * See Officer._updateAssist.
+ */
+const BAND_GRIP = 0.35;
+
 const _aim = new THREE.Vector3();
 const _tmp = new THREE.Vector3();
 const _eye = new THREE.Vector3();
@@ -1626,7 +1658,27 @@ export class Officer {
     // car hang on to a flat-out runner it had no business staying with. At the
     // top of the range this is the full 0.75 it always was.
     a.boost = 1 + (0.25 + 1.25 * this.aggression) * (this.bandScale || 1) * far * engaged;
-    a.grip = 1 + 0.35 * engaged;
+    // Grip stretches with the band too, not just power.
+    //
+    // This is the part of the band that can actually buy back a town. What
+    // holds a unit back is cornering -- measured: the pure-pursuit arc limit is
+    // the binding speed limit for a quarter to a half of every frame of
+    // tests/weave.js -- and engine does nothing for a corner, which is exactly
+    // why the note above says the band is worth fourteen metres and no more.
+    // Grip does: cornerSpeedLimit goes as the square root of it, and because
+    // Driver._mu() reads assist.grip, the unit *knows* it has more and takes
+    // the corner faster, rather than having more in hand and driving the same.
+    // The tyres get the same multiplier, so the speed it takes is a speed it
+    // can hold -- which is the difference between this and the three ways of
+    // simply relaxing the limit, all of which bought speed with crashes.
+    //
+    // Distance-scaled, so it is the car three hundred metres back that gets it
+    // and the one on your bumper that does not: like the rest of the band it is
+    // gone by 30 m, and the part of the chase you can see is still fought on
+    // the same physics you are.
+    a.grip = 1 + 0.35 * engaged
+      + BAND_GRIP * this.aggression * (this.bandGrip === undefined ? 1 : this.bandGrip)
+        * far * engaged;
     a.stability = engaged;
     // Still on the way: a crash costs this unit time, not its whole chase.
     a.shielded = true;
