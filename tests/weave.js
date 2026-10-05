@@ -54,6 +54,29 @@ window.__runWeave = async function (seconds = 22, kph = 110, tweak = null, runs 
 };
 
 /**
+ * One setting after another in a single page session, which is the only way
+ * these differences come out of the noise -- and in one call, because a sweep
+ * driven from the console loses its place every time a poll times out.
+ *
+ *   __weaveSweep([1, 2, 3], (d, o, v, x) => { o.bandGrip = x; })
+ *
+ * Results land in window.__sweep as they finish, so a long sweep can be read
+ * while it is still going.
+ */
+window.__weaveSweep = async function (values, tweak, seconds = 22, kph = 110, runs = 6) {
+  window.__sweep = [];
+  window.__sweepDone = false;
+  for (const x of values) {
+    await window.__runWeave(seconds, kph, (d, o, v) => tweak(d, o, v, x), runs, String(x));
+    const rows = window.__res.split('\n');
+    window.__sweep.push(`${String(x).padStart(6)}  ${rows[rows.length - 1].replace(/^\d+ runs:\s*/, '')}`);
+  }
+  window.__sweepDone = true;
+  window.__res = window.__sweep.join('\n');
+  return window.__res;
+};
+
+/**
  * A weaving path through the gaps of a built-up area, found once per run.
  *
  * Not a straight line. The first version of this drew one across the town and

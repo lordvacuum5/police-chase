@@ -1556,6 +1556,49 @@ spinning. Sliding that fraction with speed -- all of it in a slow tight gap wher
 the point mass is nearly right, less at road speed where it is not -- is the
 obvious refinement and measured worse, putting the write-offs straight back.
 
+### Turning the grip up, and why it stays where it is
+
+With the balance, the easing and the partial belief in place, the obvious next
+question is how much further the bonus can go. *"Yeah turn the grip up more and
+measure it."* The answer is that it does not go further, and the measurement is
+clean enough to be worth keeping.
+
+Six routes weaving through a housing estate, extra grip at full stretch:
+
+| | stayed | held on | left behind | contacts | mean |
+|---|---|---|---|---|---|
+| 0.35 | 33% | 8.8 s | 137 m | 12 | 59 |
+| 0.70 | 34% | 8.6 s | 135 m | 10 | 60 |
+| 1.05 | 35% | 8.3 s | **124 m** | 16 | **64** |
+| 1.40 | **37%** | **9.3 s** | 145 m | 15 | 59 |
+
+In the gaps it genuinely helps, and nothing loses control at any level -- the
+spins stay at three or four and the sliding at one per cent throughout, which is
+the balance fix doing its job. On a road it is a different story. Four routes
+behind a 150 km/h ghost, alternating the two settings so the noise is visible
+rather than inferred:
+
+| | with it | behind | contacts | sliding | lost the back end |
+|---|---|---|---|---|---|
+| 0.35 | 29% | 179 m | 16 | 4% | 3x |
+| 1.05 | 27% | 179 m | 29 | 7% | 7x |
+| 0.35 | 29% | 144 m | 10 | 4% | 3x |
+| 1.05 | 26% | 236 m | 22 | 7% | 9x |
+
+The sliding and the spins repeat to the figure. The contacts roughly double. And
+nothing comes back for it: time spent with the car is flat to slightly worse, and
+the finishing distance is noise in both directions.
+
+Which says something about what the band is for. Tyre force stopped being the
+constraint as soon as there was enough of it to hold the line the driver is
+asking for. Past that point more grip only raises the speed the driver commits
+to, because `Driver._mu()` reads it -- and that speed is spent arriving at the
+next corner too fast. Partial belief is what bounds the overcommitment, and
+raising the grip raises the believed figure in proportion, which hands it back.
+Three attempts in this file have now tried to buy cornering with a bigger number
+and the useful ones have all been about *balance* instead: which axle gets it,
+how fast it may change, and how much of it the driver is allowed to count on.
+
 ### Narrow enough, if you do not mind the scrape
 
 The gaps complaint is a different thing and the simplest fix in this whole

@@ -30,30 +30,32 @@ const BAND_REACH = 130;
 /**
  * How much extra grip a unit at full stretch of the rubber band gets, on top of
  * the 0.35 every engaged unit has. Cornering speed goes as the square root of
- * grip, so this is about forty per cent more speed through a corner for a car
- * that is a long way back -- and nothing at all for one on your bumper.
+ * grip, so this is about a fifth more speed through a corner for a car that is a
+ * long way back -- and nothing at all for one on your bumper.
  *
- * Swept over six routes of tests/weave.js, against a ghost weaving through the
- * gaps of a housing estate at 110 km/h:
+ * Swept again after the three fixes in _updateAssist, on the chance that a
+ * balanced, eased, partly-believed bonus could be turned up where the raw one
+ * could not. It cannot. Four routes behind a 150 km/h ghost, alternating the two
+ * settings so the noise is visible:
  *
- *   | extra grip | held on | left behind | contacts | mean speed |
- *   |------------|---------|-------------|----------|------------|
- *   | 0          |  6.4 s  |    186 m    |    11    |   53 km/h  |
- *   | 0.35       |  7.9 s  |    152 m    |    12    |   60 km/h  |
- *   | 0.70       |  7.9 s  |    132 m    |    13    |   63 km/h  |
- *   | 1.12       |  7.5 s  |    141 m    |    19    |   63 km/h  |
+ *   | extra grip | with it | contacts | sliding | lost the back end |
+ *   |------------|---------|----------|---------|-------------------|
+ *   | 0.35       |   29%   |    16    |    4%   |        3x         |
+ *   | 1.05       |   27%   |    29    |    7%   |        7x         |
+ *   | 0.35       |   29%   |    10    |    4%   |        3x         |
+ *   | 1.05       |   26%   |    22    |    7%   |        9x         |
  *
- * Past 0.70 the tyres have more than the driver can use: the contacts go up by
- * half and nothing else moves.
+ * The sliding and the spins repeat exactly; the contacts roughly double; and
+ * nothing comes back for it -- time spent with the car is flat to slightly worse
+ * and the finishing distance is noise. In the gaps more of it does help, 124 m
+ * behind at 1.05 against 137 at 0.35, but on sixteen contacts against ten.
  *
- * 0.70 is nonetheless not the number, and the reason is worth keeping: the gaps
- * rig alone would have chosen it. On a road at 150 km/h it is ruinous -- the
- * contacts go from 13 to 35 and a unit writes itself off, damage 1.00 where
- * nothing on that rig has otherwise exceeded 0.46 -- because out there the
- * corners are quick and a car that takes them half again as fast arrives at the
- * one after at a speed nothing can retrieve. At 0.35 both rigs improve
- * together: in the gaps they hold on 1.5 s longer and finish 34 m closer, and
- * on the road they are 9 m closer and hit *fewer* things, 11 against 14.
+ * The reason is that tyre force stopped being the constraint once there was
+ * enough of it to hold the line the driver asks for. Beyond that, more grip only
+ * raises the speed the driver commits to -- Driver._mu() reads it -- and that
+ * speed is spent arriving at the *next* corner too fast. Partial belief bounds
+ * the overcommitment; raising the grip raises the believed figure in proportion
+ * and hands it straight back.
  *
  * See Officer._updateAssist.
  */

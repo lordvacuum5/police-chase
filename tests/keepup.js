@@ -76,6 +76,24 @@ window.__keepUpSweep = async function (tweak, speeds = [90, 120, 150], seconds =
   }
 };
 
+/**
+ * One setting after another in a single page session, in a single call -- see the
+ * note on __weaveSweep. Results land in window.__sweep as they finish.
+ */
+window.__keepUpGripSweep = async function (values, tweak, speeds = [150], seconds = 40, routes = 4) {
+  window.__sweep = [];
+  window.__sweepDone = false;
+  for (const x of values) {
+    await window.__keepUpSweep((d, o, v) => tweak(d, o, v, x), speeds, seconds, routes);
+    for (const row of window.__res.split('\n')) {
+      window.__sweep.push(`${String(x).padStart(6)}  ${row}`);
+    }
+  }
+  window.__sweepDone = true;
+  window.__res = window.__sweep.join('\n');
+  return window.__res;
+};
+
 async function ready() {
   for (let i = 0; i < 200 && !(window.__game && window.__game.player); i++) {
     await new Promise((r) => setTimeout(r, 100));
