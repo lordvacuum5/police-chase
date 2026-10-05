@@ -10,7 +10,7 @@ import { Driver, SKILL } from './driver.js';
 import { pitUpdate, relativeTo, boxAim, boxSpeed } from './tactics.js';
 import { hasLineOfSight, sweepBox, raycast, groups, GROUP, RAY_SOLID, RAY_WALL } from '../physics/world.js';
 import { WORLD_HALF } from '../world/common.js';
-import { clamp, clamp01, lerp, dist2, sign } from '../util/math.js';
+import { clamp, clamp01, lerp, dist2, sign, damp } from '../util/math.js';
 
 /**
  * How far back a turn starts, in metres: the tangent length of the fillet the
@@ -58,6 +58,17 @@ const BAND_REACH = 130;
  * See Officer._updateAssist.
  */
 const BAND_GRIP = 0.35;
+
+/**
+ * Over how many metres the band's help fades in above 30 m, how much extra
+ * stability assist a unit at full stretch gets, and how fast grip and stability
+ * are allowed to move. See Officer._updateAssist: the fade used to be 20 m and
+ * the two were applied instantly, which is how a unit closing on the target lost
+ * its grip in the middle of a corner.
+ */
+const BAND_FADE = 38;
+const BAND_STABILITY = 0.6;
+const BAND_EASE = 1.5;
 
 const _aim = new THREE.Vector3();
 const _tmp = new THREE.Vector3();
@@ -278,7 +289,7 @@ export class Officer {
     this.driver.holdBehind(patrolling ? this.game.player : null, dt);
     this._warnIfBlocked(dt, patrolling);
     this.repathTimer -= dt;
-    this._updateAssist(target);
+    this._updateAssist(target, dt);
 
     // A unit that has just backed out of something needs a new line, or it
     // drives straight back into whatever it reversed away from.
@@ -1643,45 +1654,53 @@ export class Officer {
    * measured, and an earlier reading that showed it buying five km/h as well
    * did not survive running the two settings back to back.
    */
-  _updateAssist(target) {
+  _updateAssist(target, dt = 1 / 60) {
     const a = this.vehicle.assist;
     const chasing = target && this.game.heat.tier > 0 && this.role !== ROLE.PATROL;
     if (!chasing) { a.boost = 1; a.grip = 1; a.stability = 0; a.shielded = false; return; }
 
     const d = this.distanceTo(target.position);
-    const engaged = clamp01((d - 30) / 20);            // 0 at 30 m, 1 at 50 m
-    if (engaged <= 0) { a.boost = 1; a.grip = 1; a.stability = 0; a.shielded = false; return; }
-
+    const engaged = clamp01((d - 30) / BAND_FADE);
     const far = clamp01((d - 30) / (BAND_REACH * (this.bandReach || 1)));
-    // The rubber band tightens with the wanted level too. Giving a first-star
-    // patrol the same catch-up help as a five-star pursuit is what let a single
-    // car hang on to a flat-out runner it had no business staying with. At the
-    // top of the range this is the full 0.75 it always was.
+
+    // Power may change as fast as it likes -- nothing spins a car because its
+    // engine got weaker.
     a.boost = 1 + (0.25 + 1.25 * this.aggression) * (this.bandScale || 1) * far * engaged;
-    // Grip stretches with the band too, not just power.
+
+    // Grip and stability may not.
     //
-    // This is the part of the band that can actually buy back a town. What
-    // holds a unit back is cornering -- measured: the pure-pursuit arc limit is
-    // the binding speed limit for a quarter to a half of every frame of
-    // tests/weave.js -- and engine does nothing for a corner, which is exactly
-    // why the note above says the band is worth fourteen metres and no more.
-    // Grip does: cornerSpeedLimit goes as the square root of it, and because
-    // Driver._mu() reads assist.grip, the unit *knows* it has more and takes
-    // the corner faster, rather than having more in hand and driving the same.
-    // The tyres get the same multiplier, so the speed it takes is a speed it
-    // can hold -- which is the difference between this and the three ways of
-    // simply relaxing the limit, all of which bought speed with crashes.
+    // Both of these used to be read straight off the distance, and the distance
+    // changes fast: a unit closing from 50 m to 30 m lost all of its extra grip
+    // and all of its stability assist inside a second, and if it was in a corner
+    // at the time the floor went out from under it. The band's own note above
+    // worried about exactly this and sized the old fade to avoid it; stretching
+    // grip with distance made the drop twice as big and brought the problem
+    // back. "They slide out more now and lose control." Measured on the roads at
+    // 150 km/h: units lost the back end 7 times against 2, and the worst damage
+    // went from 0.51 to a written-off 1.00.
     //
-    // Distance-scaled, so it is the car three hundred metres back that gets it
-    // and the one on your bumper that does not: like the rest of the band it is
-    // gone by 30 m, and the part of the chase you can see is still fought on
-    // the same physics you are.
-    a.grip = 1 + 0.35 * engaged
+    // So they ease. A second or so of lag costs nothing -- a unit that has just
+    // closed to 25 m keeping a little extra grip for a moment is not something
+    // anyone can see -- and it means the help is never whipped away mid-corner.
+    const wantGrip = 1 + 0.35 * engaged
       + BAND_GRIP * this.aggression * (this.bandGrip === undefined ? 1 : this.bandGrip)
         * far * engaged;
-    a.stability = engaged;
-    // Still on the way: a crash costs this unit time, not its whole chase.
-    a.shielded = true;
+    // And the stability assist stretches with the band too, because the thing
+    // being asked of a unit a long way back is to corner harder than it would
+    // otherwise dare, and the assist is what keeps that from ending sideways.
+    const wantStability = engaged
+      * (1 + BAND_STABILITY * (this.bandStab === undefined ? 1 : this.bandStab)
+        * this.aggression * far);
+
+    a.grip = damp(a.grip, wantGrip, BAND_EASE, dt);
+    a.stability = damp(a.stability, wantStability, BAND_EASE, dt);
+    // Still on the way: a crash costs this unit time, not its whole chase. Only
+    // while it is still on the way, though -- inside 30 m a police car takes its
+    // knocks like anything else, or the close fight is against something that
+    // cannot be hurt. Removing the early return that used to carry this made
+    // every chasing unit indestructible and the road rig reported a suspiciously
+    // perfect 0.00 worst damage.
+    a.shielded = engaged > 0;
   }
 
   /** Top speed this unit is willing to run at, given its car and its nerve. */

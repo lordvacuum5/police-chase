@@ -42,6 +42,20 @@ const OFF_ROAD_ARC = 45;
  */
 const TURN_BACK = 1.75;          // radians, about 100 degrees
 const TURN_BACK_EASE = 0.75;
+/**
+ * How much of the rubber band's extra grip the driver counts on when it picks a
+ * speed, once it is going quickly. The tyres get all of it; the difference is
+ * margin. See _mu().
+ */
+const BAND_BELIEF = 0.6;
+
+/**
+ * How wide a unit thinks it is when looking for a way through, as a fraction of
+ * its real width. Below one it will go for gaps it cannot quite clear and take
+ * the scrape. See Driver.squeezeWidth.
+ */
+const SQUEEZE = 0.8;
+
 /** The most of its available lock a unit will ask for once it is moving. */
 const STEER_RESERVE = 0.82;
 
@@ -157,6 +171,11 @@ export class Driver {
     // patrol car obeying the signs; a unit in pursuit sets this high and is
     // then bounded only by grip and by what its car will do.
     this.limitScale = 1;
+    // How much of the band's extra grip the driver counts on -- see _mu().
+    this.bandBelief = BAND_BELIEF;
+    // How much of its own width a unit believes when looking for a way through
+    // -- see squeezeWidth.
+    this.squeeze = SQUEEZE;
     // Settable so the rigs can sweep them in one page session -- see the note
     // where they are used.
     this.planLook = PLAN_LOOK;
@@ -331,7 +350,28 @@ export class Driver {
     // The car's own tyres count too: surfaceMu is the road, gripScale is the rubber.
     // Leaving it out meant a unit given more grip took every corner at the same
     // speed as before and simply had more in hand.
-    return v.surfaceMu * (v.spec.gripScale || 1) * this.skill.grip * 0.87 * assist.grip * this.gripEstimate;
+    // Only part of the band's extra grip counts toward the speed this driver
+    // will commit to. The tyres get all of it -- see Vehicle._assistGrip -- so
+    // the difference is margin: the car can hold more than the driver is asking
+    // of it, which is what lets it gather itself up instead of spinning.
+    //
+    // Not none of it, which is the opposite mistake and is recorded above: a
+    // unit given grip it does not know about takes every corner at the old speed
+    // and simply has more in hand. Believing all of it is how the police came to
+    // "slide out more now and lose control" -- the driver is a point mass with
+    // one number for grip, the car is rear-heavy and at the limit, and the gap
+    // between those two models is where the back end goes.
+    //
+    // Sliding it with speed -- full belief in a slow tight gap where the point
+    // mass is nearly right, less of it at road speed where it is not -- is the
+    // obvious refinement and measured worse. It recovers a little in the gaps,
+    // 141 m behind against 154, and on the roads it puts the write-offs straight
+    // back: damage 1.00 again and 17 to 22 contacts against 12. The honest answer
+    // for the gaps is to let units take the gaps, which is pickGap's business and
+    // not this one.
+    const believed = 1 + (assist.grip - 1) * this.bandBelief;
+    return v.surfaceMu * (v.spec.gripScale || 1) * this.skill.grip * 0.87
+      * believed * this.gripEstimate;
   }
 
   /** Three wheels or more on the grass: the car is off the road, not leaving it. */
@@ -408,7 +448,7 @@ export class Driver {
   clearAhead(dir, maxDist = 70) {
     const v = this.v;
     let best = maxDist;
-    const hw = this.halfWidth;
+    const hw = this.squeezeWidth;
     for (const lateral of [-hw, 0, hw]) {
       _origin.copy(v.position)
         .addScaledVector(v.forward, v.spec.dims.l * 0.5)
@@ -562,7 +602,7 @@ export class Driver {
    */
   pickGap(wantX, wantZ, reach) {
     const v = this.v;
-    const hw = this.halfWidth;
+    const hw = this.squeezeWidth;
 
     let dx = wantX - v.position.x, dz = wantZ - v.position.z;
     const goalDist = Math.hypot(dx, dz) || 1;
@@ -665,7 +705,7 @@ export class Driver {
     const horizon = clamp(1.3 + speed * 0.055, 1.5, 2.9);
     const step = horizon / PLAN_STEPS;
     const lock = Math.max(0.04, v.steerLimit || v.spec.steering.maxAngle);
-    const hw = this.halfWidth;
+    const hw = this.squeezeWidth;
 
     let gx = goalX - v.position.x, gz = goalZ - v.position.z;
     const goalDist = Math.hypot(gx, gz) || 1;
@@ -764,7 +804,7 @@ export class Driver {
 
   planThrough(goalX, goalZ, reach) {
     const v = this.v;
-    const hw = this.halfWidth;
+    const hw = this.squeezeWidth;
 
     let dx = goalX - v.position.x, dz = goalZ - v.position.z;
     const goalDist = Math.hypot(dx, dz) || 1;
@@ -855,6 +895,29 @@ export class Driver {
    */
   get halfWidth() {
     return this.v.spec.dims.w * 0.5 + 0.10;
+  }
+
+  /**
+   * How wide this car considers itself when it is deciding whether to go for a
+   * gap: narrower than it really is, on purpose.
+   *
+   * "They don't seem to know they can fit through tiny gaps, even if they hit the
+   * sides. I'll shoot between two buildings, but I'll slide slightly, so I end up
+   * hitting the side of the building and bouncing off and keep going."
+   *
+   * Every probe that looks for a way through swept the car's real footprint plus
+   * a margin, so a gap a hand's breadth too narrow read as a wall and the unit
+   * went round -- while the player goes through it, clips the brickwork and
+   * carries on. The scrape is not the disaster the sweep treats it as: units on
+   * their way in are shielded precisely so that a knock costs them time rather
+   * than their chase.
+   *
+   * So for *deciding where to go* a unit believes it is this much narrower, and
+   * will commit to a gap it cannot quite clear. The real collision still happens,
+   * which is the point -- it bounces off and keeps going.
+   */
+  get squeezeWidth() {
+    return this.halfWidth * this.squeeze;
   }
 
   /** Unit vector along the way the car is actually moving. */
@@ -1343,7 +1406,7 @@ export class Driver {
     // steer toward.
     _origin.copy(v.position).addScaledVector(v.forward, v.spec.dims.l * 0.45);
     _origin.y += 0.5;
-    const hw = this.halfWidth;
+    const hw = this.squeezeWidth;
     let leftClear = reach, rightClear = reach, nearest = reach;
     for (const ang of [-0.42, 0, 0.42]) {
       const ca = Math.cos(ang), sa = Math.sin(ang);

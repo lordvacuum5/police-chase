@@ -50,10 +50,11 @@ window.__keepUpSweep = async function (tweak, speeds = [90, 120, 150], seconds =
       // exactly repeatable -- same roads, same start, same answer -- so
       // repeating it tells you nothing, and the differences being looked for
       // here are smaller than the difference between two bits of town.
-      let mean = 0, within = 0, behind = 0, hits = 0, worst = 0;
+      let mean = 0, within = 0, behind = 0, hits = 0, worst = 0, sliding = 0, spins = 0;
       for (let i = 0; i < routes; i++) {
         const r = chase(kph, seconds, tweak, i);
         mean += r.mean; within += r.within; behind += r.behind; hits += r.hits;
+        sliding += r.sliding; spins += r.spins;
         worst = Math.max(worst, r.damage);
         await new Promise((res) => setTimeout(res, 0));
       }
@@ -61,7 +62,9 @@ window.__keepUpSweep = async function (tweak, speeds = [90, 120, 150], seconds =
         + `mean ${String(Math.round(mean / routes)).padStart(3)} kph   `
         + `with it ${String(Math.round((within / routes) * 100)).padStart(3)}%   `
         + `behind ${String(Math.round(behind / routes)).padStart(4)} m   `
-        + `hits ${String(hits).padStart(3)}   worst damage ${worst.toFixed(2)}`);
+        + `hits ${String(hits).padStart(3)}   worst damage ${worst.toFixed(2)}   `
+        + `sliding ${String(Math.round((sliding / routes) * 100)).padStart(3)}%   `
+        + `lost it ${spins}x`);
     }
     window.__res = rows.join('\n');
     return window.__res;
@@ -154,6 +157,11 @@ function chase(kph, seconds, tweak, which) {
   // Carry the ghost along the route at a fixed speed.
   let leg = 0, along = 0, lastAt = new Map();
   let n = 0, sum = 0, within = 0, hits = 0;
+  // Sideways and spun. Contacts do not measure "they slide out and lose
+  // control": a unit can spin, gather it up and carry on without touching
+  // anything, and that is still the complaint.
+  let sliding = 0, spins = 0;
+  const spinning = new Map();
   for (let i = 0; i < seconds * 60; i++) {
     const a = leg === 0 ? pts[0] : pts[leg - 1];
     const b = pts[leg];
@@ -205,6 +213,11 @@ function chase(kph, seconds, tweak, which) {
       sum += o.vehicle.speed * 3.6;
       near = Math.min(near, o.distanceTo(p.position));
       const v = o.vehicle;
+      const slip = Math.abs(v.slipAngleBody);
+      if (slip > 0.22 && v.speed > 5) sliding++;
+      if (slip > 1.0 && v.speed > 5) {
+        if (!spinning.get(o)) { spins++; spinning.set(o, true); }
+      } else if (slip < 0.5) spinning.set(o, false);
       if (v.lastImpactAt && v.lastImpactAt !== lastAt.get(o) && v.lastImpact > 4) {
         lastAt.set(o, v.lastImpactAt);
         hits++;
@@ -225,6 +238,8 @@ function chase(kph, seconds, tweak, which) {
   g.heat.reset();
 
   return {
+    sliding: sliding / Math.max(1, n),
+    spins,
     mean: sum / Math.max(1, n),
     within: (within * 2) / Math.max(1, n),
     behind: (behind[0] + (behind.length > 1 ? behind[1] : behind[0])) / 2,

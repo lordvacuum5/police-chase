@@ -1506,6 +1506,82 @@ clearly better there -- 132 m instead of 152 -- and ruinous on a road, where
 the contacts go from 13 to 35. 1.12 is worse everywhere. 0.35 is the only value
 that improves both, so that is the number.
 
+### Why the extra grip made them slide out, and squeezing through gaps
+
+*"The police cars seem to slide out more now and lose control... they also don't
+seem to know that they can fit through tiny gaps, even if they hit the sides.
+I'll shoot between two buildings but I'll slide slightly, so I end up hitting the
+side of the building and bouncing off and keep going... they need to be less
+scared almost of crashing."*
+
+Both true, and the first was the section above's fault. Measured on the roads at
+150 km/h, four routes, with the metric that was missing -- a unit can spin,
+gather it up and carry on without touching anything, and that is still the thing
+being complained about:
+
+| | mean | behind | contacts | worst damage | sliding | lost the back end |
+|---|---|---|---|---|---|---|
+| before the grip change | 61 | 188 m | 13 | 0.51 | 5% | 2x |
+| with it | 62 | 201 m | 15 | 1.00 | 8% | **7x** |
+| **fixed** | **64** | **156 m** | 15 | 0.76 | **4%** | **3x** |
+
+Three things were wrong and one of them is written in this codebase already.
+
+**The bonus went to both axles equally.** Three lines into the high-speed grip
+code in vehicle.js: *"Per axle, where a car needs it. Stiffening the fronts as
+much as the rears on a car with 58% of its weight at the back makes the nose bite
+harder than the tail can follow, and it spins."* A uniform multiplier is a front
+multiplier in everything but name. The same average help pushed rearward --
+`_assistGrip`, 0.65 front against 1.35 rear -- turns the extra grip into
+understeer instead of oversteer and halves the sliding.
+
+**It arrived and left instantly.** A unit closing from 50 m to 30 m lost all its
+extra grip and all its stability assist inside a second, and if it was in a
+corner at the time the floor went out from under it. The band's own note had
+sized the old fade to avoid exactly that; stretching grip with distance made the
+drop twice as big and brought it back. Both now ease with a time constant, over a
+38 m fade rather than 20, and the stability assist stretches with the band too --
+the thing being asked of a distant unit is to corner harder than it would dare,
+and the assist is what stops that ending sideways. (More of it is not better:
+four times the stability took the spins *up*, 5 to 10, because the corrective
+torque starts fighting the driver.)
+
+**The driver believed all of it.** `Driver._mu()` reads `assist.grip`, which is
+what makes a unit actually use the grip rather than have more in hand -- but it is
+a point mass with one number, and the car is rear-heavy and at its limit. The gap
+between those two models is where the back end goes. The tyres now get the whole
+bonus and the driver counts on 60% of it, so the difference is margin: the car can
+hold more than the driver is asking of it, and gathers itself up instead of
+spinning. Sliding that fraction with speed -- all of it in a slow tight gap where
+the point mass is nearly right, less at road speed where it is not -- is the
+obvious refinement and measured worse, putting the write-offs straight back.
+
+### Narrow enough, if you do not mind the scrape
+
+The gaps complaint is a different thing and the simplest fix in this whole
+section. Every probe that looks for a way through swept the car's real footprint
+plus a 10 cm margin, so a gap a hand's breadth too narrow read as a wall and the
+unit went round -- while the player goes through it, clips the brickwork and
+carries on. The scrape is not the disaster the sweep treats it as: units on their
+way in are shielded precisely so a knock costs them time rather than their chase.
+
+So for deciding where to go, a unit now believes it is 80% of its real width and
+will commit to a gap it cannot quite clear. The collision still happens, which is
+the point. Weaving through a housing estate behind a ghost at 110 km/h, six
+routes:
+
+| | held on | left behind | contacts | mean speed |
+|---|---|---|---|---|
+| its true width | 6.8 s | 151 m | 10 | 55 km/h |
+| **80% of it** | **9.0 s** | **138 m** | 12 | **60 km/h** |
+| 65% of it | 9.7 s | 145 m | 14 | 58 km/h |
+
+Two and a bit extra seconds of staying with the car for two more scrapes, and it
+helps on the roads as well -- at a 150 km/h ghost the pack finishes 156 m back
+instead of 235. 65% hangs on a little longer still and gives back the distance and
+the speed, so 80% is the number. This is the one change in the whole file where
+being *less* careful was straightforwardly right.
+
 ### The whole force, not two cars told to follow
 
 Every rig before this one builds its police by hand and tells them to chase.

@@ -19,6 +19,14 @@ import {
 } from './tyre.js';
 import { clamp, clamp01, lerp, damp, sign, moveTowards, smoothstep, TAU } from '../util/math.js';
 
+/**
+ * How the rubber band's extra grip is split front to rear -- see _assistGrip.
+ * They average one, so the total help is unchanged and only the balance moves.
+ */
+const ASSIST_GRIP_FRONT = 0.65;
+const ASSIST_GRIP_REAR = 1.35;
+
+
 /** Indices match the surface grid built in world/citygen.js. */
 const SURFACE_TYRES = [TYRE_GRASS, TYRE_ROAD, TYRE_PAVED];
 
@@ -913,7 +921,7 @@ export class Vehicle {
         const grip = SURFACE_TYRES[w.surface] || TYRE_ROAD;
         const bias = s.gripBias ? (w.front ? s.gripBias.front : s.gripBias.rear) : 1;
         const peak = loadedMu(grip, w.load, w.condition) * (this.sim.wetGrip || 1)
-          * w.load * s.gripScale * bias * this.assist.grip;
+          * w.load * s.gripScale * bias * this._assistGrip(w);
 
         // Closed loop on slip ratio, not a fixed cap on torque. A fixed cap
         // does not work: set at the tyre's peak it sits *above* the force a
@@ -1005,7 +1013,8 @@ export class Vehicle {
         hsGrip = 1 + (axle(hs.grip) - 1) * u;
       }
       const f = tyreForces(tyre, Fs, w.slipRatio, w.slipAngle, w.condition,
-        s.gripScale * bias * this.assist.grip * loose * hsGrip * (this.sim.wetGrip || 1), latStiff);
+        s.gripScale * bias * this._assistGrip(w) * loose * hsGrip * (this.sim.wetGrip || 1),
+        latStiff);
       // Fleet braking rubber. Applied to the longitudinal force only, and only
       // while the pedal is down and the force is opposing motion, so it buys
       // stopping distance and nothing else -- a police car does not corner or
@@ -1125,6 +1134,29 @@ export class Vehicle {
 
   get kmh() { return Math.abs(this.forwardSpeed) * 3.6; }
   get rpmFraction() { return clamp01(this.rpm / this.spec.engine.redline); }
+  /**
+   * The rubber-band grip bonus as this wheel actually gets it: more at the back
+   * than the front.
+   *
+   * Handing both axles the same multiplier is what made police cars slide out
+   * once the band started stretching grip with distance -- "they slide out more
+   * now and lose control", and on the roads at 150 km/h they lost the back end
+   * seven times in four routes against two. The reason is written three lines
+   * into the high-speed grip code above: on a car with 58% of its weight at the
+   * back, stiffening the fronts as much as the rears makes the nose bite harder
+   * than the tail can follow, and it spins. A uniform bonus is a front bonus in
+   * everything but name.
+   *
+   * So the same average help, pushed rearward, which turns the extra grip into
+   * understeer instead of oversteer. Nothing else about the car changes, and a
+   * unit with no band assistance gets exactly 1 either way.
+   */
+  _assistGrip(w) {
+    const extra = this.assist.grip - 1;
+    if (extra === 0) return 1;
+    return 1 + extra * (w.front ? ASSIST_GRIP_FRONT : ASSIST_GRIP_REAR);
+  }
+
   get isDrifting() { return Math.abs(this.slipAngleBody) > 0.22 && this.speed > 8; }
 
   /**

@@ -30,17 +30,19 @@ window.__runWeave = async function (seconds = 22, kph = 110, tweak = null, runs 
       await new Promise((r) => setTimeout(r, 100));
     }
     const rows = [];
-    let stayed = 0, lost = 0, back = 0, hits = 0, spd = 0;
+    let stayed = 0, lost = 0, back = 0, hits = 0, spd = 0, sliding = 0, spins = 0;
     for (let i = 0; i < runs; i++) {
       window.__weaveAt = i;
       const r = run(i, seconds, kph, tweak);
       rows.push(r.line);
       stayed += r.stayed; lost += r.lost; back += r.back; hits += r.hits; spd += r.spd;
+      sliding += r.sliding; spins += r.spins;
       await new Promise((res) => setTimeout(res, 0));
     }
     rows.push(`${runs} runs:  stayed ${Math.round((stayed * 100) / runs)}%  `
       + `held on ${(lost / runs).toFixed(1)}s  ended ${Math.round(back / runs)} m back  `
-      + `hits ${hits}  mean ${Math.round(spd / runs)} kph`);
+      + `hits ${hits}  mean ${Math.round(spd / runs)} kph  `
+      + `sliding ${Math.round((sliding * 100) / runs)}%  lost it ${spins}x`);
     window.__res = (label ? label + '\n' : '') + rows.join('\n');
     window.__weaveDone = true;
     return window.__res;
@@ -201,11 +203,17 @@ function run(which, seconds, kph, tweak) {
   let leg = 1, along = 0, stayed = 0, n = 0, hits = 0, lostAt = null;
   // What they are doing while they lose it, because 'lost at five seconds' does
   // not say whether they crawled, reversed, went the wrong way or hit a wall.
-  const d = { spd: 0, slow: 0, offRoad: 0, reversing: 0, stuck: 0, onRoadWanted: 0, wall: 0, frames: 0,
+  // Sideways and spun, because "they slide out more and lose control" is not
+  // something contacts measure: a unit can spin, gather it up and carry on
+  // without touching anything, and that is still the thing being complained
+  // about. Twenty degrees of body slip is sliding; sixty is gone.
+  const d = { sliding: 0, spun: 0, spins: 0,
+    spd: 0, slow: 0, offRoad: 0, reversing: 0, stuck: 0, onRoadWanted: 0, wall: 0, frames: 0,
     // Which limit was the binding one, counted.
     bind: { asked: 0, safe: 0, wall: 0, way: 0, slide: 0 },
     sub: { sClear: 0, sTravel: 0, sRunout: 0, sArc: 0, sBack: 0 } };
   const lastAt = new Map();
+  const spinning = new Map();
   for (let i = 0; i < seconds * 60; i++) {
     const a = pts[leg - 1], b = pts[leg];
     const segLen = Math.hypot(b.x - a.x, b.z - a.z) || 1;
@@ -258,6 +266,12 @@ function run(which, seconds, kph, tweak) {
         }
       }
       if (o.driver && !o.driver.allowOffRoad) d.onRoadWanted++;
+      const slip = Math.abs(v.slipAngleBody);
+      if (slip > 0.35 && v.speed > 5) d.sliding++;
+      if (slip > 1.0 && v.speed > 5) {
+        d.spun++;
+        if (!spinning.get(o)) { d.spins++; spinning.set(o, true); }
+      } else if (slip < 0.5) spinning.set(o, false);
       if (v.lastImpactAt && v.lastImpactAt !== lastAt.get(o) && v.lastImpact > 4) {
         lastAt.set(o, v.lastImpactAt);
         hits++;
@@ -277,6 +291,7 @@ function run(which, seconds, kph, tweak) {
     + `stayed ${String(Math.round((stayed * 100) / n)).padStart(3)}%  `
     + `lost at ${lostAt === null ? 'never' : `${lostAt.toFixed(1)}s`}  `
     + `ended ${String(behind).padStart(4)} m back  hits ${hits}  `
+    + `| sliding ${pc(d.sliding)}  spun ${pc(d.spun)}  lost it ${d.spins}x  `
     + `| ${String(Math.round(d.spd / Math.max(1, d.frames))).padStart(3)} kph  `
     + `slow ${pc(d.slow)}  off-road ${pc(d.offRoad)}  `
     + `rev ${pc(d.reversing)}  stuck ${pc(d.stuck)}  roadOnly ${pc(d.onRoadWanted)}  `
@@ -293,6 +308,8 @@ function run(which, seconds, kph, tweak) {
     lost: lostAt === null ? seconds : lostAt,
     back: behind,
     hits,
+    sliding: d.sliding / Math.max(1, d.frames),
+    spins: d.spins,
     spd: d.spd / Math.max(1, d.frames),
   };
 }
