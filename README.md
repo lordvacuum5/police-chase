@@ -1536,11 +1536,60 @@ driving at where the car is, from behind, which is hopeless. The runs with the
 most INTERCEPT are the runs where the force stays closest: 27% of unit-time on
 intercept keeps the nearest unit at 91 m, 11% leaves it at 213 m.
 
-Widening the window -- a 45 s prediction horizon instead of 24, and 32 s of
-margin allowed instead of 15 -- raises the intercept share and does not reliably
-close the distance, so it is not in. `interceptHorizon` and `interceptMarginMax`
-are left as fields for the next attempt, along with the counters that showed
-this, and the default is what it always was.
+So the window is the obvious thing to widen, and widening it is not the answer.
+Nor is anything else done to it. Eight routes each, sight held so the rig is
+measuring the orders and not the noisier question of whether they can see you:
+
+| | near | mean nearest | someone in front |
+|---|---|---|---|
+| as committed | 36% | 130 m | 53% |
+| 45 s horizon, 32 s margin | 36% | 130 m | 53% |
+| a junction up to 9 s late still taken | 33% | 124 m | 55% |
+| shortlist by what it could nearly make | 37% | 129 m | 52% |
+| four more interceptors | 36% | 130 m | 53% |
+| 3-to-12 s window | 23% | 149 m | 44% |
+
+Allowing a late arrival is the one with a real argument behind it: a unit that
+cannot quite beat them there is still better pointed at a junction ahead of them
+than at a point they have already left, which is what RESPOND does. It comes out
+neutral. Four more interceptors takes the over-limit refusals to zero and
+changes the outcome not at all. Ranking the shortlist by how nearly each
+junction could be made, rather than by how close it is -- on the reasoning that
+the junctions nearest a unit behind the target are exactly the ones the target
+gets to first -- actually places *fewer*, 129 against 140, because in a town of
+crooked lanes a straight line is a bad guess at road time. Narrowing the window
+is much worse.
+
+**The car goes past 11% of the junctions units are sent to.** That is the number
+that explains all six. The margin arithmetic is sound; the predictions it works
+from are not. `RoadGraph.predict` walks the road network, and a car cutting
+through gardens and car parks is not on it, so the units are being placed
+correctly at the wrong junctions and no amount of placing them better can help.
+
+Two attempts at fixing the prediction itself, both worse:
+
+A car weaving between buildings makes far less ground than it covers. Measured on
+the paths the rig threads through a housing estate, net displacement over fifteen
+seconds is 0.21 to 0.47 of the distance actually driven -- 110 km/h of driving is
+about 45 km/h of getting anywhere. The prediction is handed the speedometer
+reading, so every junction comes out over twice too far up the road. Feeding it
+the truer rate instead, from where the car was six seconds ago against where it
+is now, moved accuracy from 11% to 9% and the chase slightly the wrong way.
+Adding candidates from a cone ahead of the car rather than along the roads was
+worse still, 5% -- for the same reason the helicopter is better off circling the
+last sighting than running on down the last heading. A weaving car does not go
+where it is pointing.
+
+Which is the honest end of it: where the car will be fifteen seconds from now,
+when it is threading a housing estate, is not knowable to within a junction. The
+intercept is the right idea on a road and cannot be made to work off one. What
+closed the gap instead was grip -- the section above -- and that is a different
+kind of answer: not knowing where they will be, just being able to cover the
+ground once you do.
+
+All five parameters are left as fields with the committed defaults, along with
+the counters and the prediction-accuracy figure that showed this, so the next
+attempt starts from the measurement rather than from the same guess.
 
 Two warnings about this rig, both learned the hard way. It is much noisier than
 the others: the same settings measured twice gave the dispatcher seeing the

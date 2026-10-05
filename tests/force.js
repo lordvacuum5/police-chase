@@ -24,7 +24,7 @@
 import { weavePath } from './weave.js?v=31';
 import { makeRng } from '../src/util/math.js';
 
-window.__runForce = async function (seconds = 30, kph = 110, runs = 4, label = '', tweak = null) {
+window.__runForce = async function (seconds = 30, kph = 110, runs = 4, label = '', tweak = null, pinSight = false) {
   window.__forceDone = false;
   window.__forceAt = -1;
   window.__res = null;
@@ -34,21 +34,25 @@ window.__runForce = async function (seconds = 30, kph = 110, runs = 4, label = '
     }
     const rows = [];
     let near = 0, lost = 0, closest = 0, seen = 0, n = 0, cNear = 0, cLost = 0;
-    let meanNear = 0, regained = 0;
+    let meanNear = 0, regained = 0, ahead = 0, picked = 0, reached = 0;
     for (let i = 0; i < runs; i++) {
       window.__forceAt = i;
-      const r = run(i, seconds, kph, tweak);
+      const r = run(i, seconds, kph, tweak, pinSight);
       if (!r) continue;
       rows.push(r.line);
       near += r.near; lost += r.lost; closest += r.closest; seen += r.seen; n++;
       cNear += r.cohortNear; cLost += r.cohortLost;
-      meanNear += r.meanNear; regained += r.regained;
+      meanNear += r.meanNear; regained += r.regained; ahead += r.ahead;
+      picked += r.picked; reached += r.reached;
       await new Promise((res) => setTimeout(res, 0));
     }
     rows.push(`${n} runs:  near ${Math.round((near * 100) / n)}%  `
       + `held on ${(lost / n).toFixed(1)}s  closest ${Math.round(closest / n)} m  `
       + `seen ${Math.round((seen * 100) / n)}%  `
-      + `| mean nearest ${Math.round(meanNear / n)} m  got back on ${regained}x  `
+      + `| mean nearest ${Math.round(meanNear / n)} m  `
+      + `someone in front ${Math.round((ahead * 100) / n)}%  got back on ${regained}x  `
+      + `| predictions: car passed ${reached} of ${picked} junctions sent to `
+      + `(${Math.round((reached * 100) / Math.max(1, picked))}%)  `
       + `| started-with: near ${Math.round((cNear * 100) / n)}%`);
     window.__res = (label ? label + '\n' : '') + rows.join('\n');
     window.__forceDone = true;
@@ -62,7 +66,7 @@ window.__runForce = async function (seconds = 30, kph = 110, runs = 4, label = '
 
 const ROLE_NAMES = {};
 
-function run(which, seconds, kph, tweak) {
+function run(which, seconds, kph, tweak, pinSight) {
   const g = window.__game;
   const { ROLE } = window.__modules;
   for (const k of Object.keys(ROLE)) ROLE_NAMES[ROLE[k]] = k;
@@ -86,6 +90,14 @@ function run(which, seconds, kph, tweak) {
   // looked for. Reseeded per run rather than per batch, so run 3 does not
   // depend on how run 2 went.
   g.rng = makeRng(0xC0FFEE + which * 7919);
+
+  // Everything back on the road. Successive batches of this rig came back worse
+  // and worse -- the second reading of one setting was always below the first,
+  // whichever setting it was -- because damage, debris and bent traffic carry
+  // over, and a chase through a town somebody has already been crashed through
+  // is a different chase. This does not undo knocked-down scenery, so batches
+  // are still best compared from a fresh page.
+  for (const v of g.vehicles) if (v.repair) v.repair();
 
   g.helicopter.reset();
   const k0 = g.dispatcher.knowledge;
@@ -130,9 +142,33 @@ function run(which, seconds, kph, tweak) {
   h.beamLocked = true;
 
   const st = g.dispatcher.interceptStats;
-  st.solved = 0; st.noShortlist = 0; st.noMargin = 0; st.overLimit = 0;
+  st.solved = 0; st.late = 0; st.noShortlist = 0; st.noMargin = 0; st.overLimit = 0;
   const bs = g.dispatcher.blockStats;
   for (const key of Object.keys(bs)) bs[key] = 0;
+
+  // Sight held, when asked, by standing in for the perception pass itself --
+  // pinning the knowledge before the step is useless, because _updateKnowledge
+  // runs inside it and overwrites whatever was put there.
+  //
+  // Whether the force can see the car and what it does once it can are
+  // different questions, and the detection half is much the noisier: the same
+  // settings measured twice came back seeing the target 100% of one batch and
+  // 76% of the next, a bigger swing than any change to the orders is going to
+  // make. Held, the rig measures the driving and the roles and nothing else.
+  const realPerceive = g.dispatcher._updateKnowledge;
+  if (pinSight) {
+    g.dispatcher._updateKnowledge = function (dt, t) {
+      const kk = this.knowledge;
+      kk.seen = true;
+      kk.spotter = this.units[0] || null;
+      kk.position.copy(t.position);
+      kk.velocity.copy(t.linvel);
+      kk.timeSinceSeen = 0;
+      kk.confidence = 1;
+      this.sightRange = 70 + this.tier * 32;
+      this.inContact = true;
+    };
+  }
 
   if (tweak) tweak(g.dispatcher, g);
   // Who was actually chasing at the start. The dispatcher tops the roster up
@@ -154,6 +190,16 @@ function run(which, seconds, kph, tweak) {
   // gave the same figure for each of them to the decimal while the rest of the
   // run differed completely.
   let nearSum = 0, regained = 0, wasLost = false;
+  // Somebody in front of you, which is the whole point of an intercept and the
+  // thing mean distance cannot see: a unit 60 m behind and a unit 60 m ahead
+  // read the same, and only one of them is a problem for the player.
+  let aheadFrames = 0, aheadSum = 0;
+  // Whether the junctions the solver sends units to are places the car actually
+  // goes. Everything in the intercept solver is downstream of RoadGraph.predict,
+  // which walks the road network -- and a player cutting through gardens is not
+  // on it. If the predictions are wrong then no amount of placing units better
+  // can help, because they are being placed correctly at the wrong junctions.
+  const picked = new Map();
   let nearFrames = 0, seenFrames = 0, frames = 0, lostAt = null;
   let cohortNear = 0, cohortLostAt = null;
   let closest = Infinity;
@@ -192,23 +238,39 @@ function run(which, seconds, kph, tweak) {
     const h = g.helicopter;
     if (h && h.active) heliFrames++;
     if (h && h.canSee(p)) heliSee++;
-    let min = Infinity, cmin = Infinity;
+    let min = Infinity, cmin = Infinity, bestAhead = -Infinity;
     for (const u of g.dispatcher.units) {
       const du = u.distanceTo(p.position);
       min = Math.min(min, du);
+      // How far up the road the unit is, measured along the way the player is
+      // going. Positive is in front.
+      const along = (u.position.x - p.position.x) * hx + (u.position.z - p.position.z) * hz;
+      if (du < 150 && along > 0) bestAhead = Math.max(bestAhead, along);
       if (cohort.has(u)) cmin = Math.min(cmin, du);
       const name = ROLE_NAMES[u.role] || String(u.role);
       roleTime[name] = (roleTime[name] || 0) + 1;
+      if (name === 'INTERCEPT' && u.orders && u.orders.node !== undefined
+        && u.orders.node !== null && !picked.has(u.orders.node)) {
+        const nd = g.graph.nodes[u.orders.node];
+        if (nd) picked.set(u.orders.node, { x: nd.x, z: nd.z, reached: false });
+      }
     }
     if (cmin < 80) { cohortNear++; cohortLostAt = null; }
     else if (cohortLostAt === null) cohortLostAt = i / 60;
     nearSum += Math.min(min, 600);
+    for (const j of picked.values()) {
+      if (!j.reached && Math.hypot(j.x - p.position.x, j.z - p.position.z) < 40) j.reached = true;
+    }
+    if (bestAhead > -Infinity) { aheadFrames++; aheadSum += bestAhead; }
     if (min > 150) wasLost = true;
     else if (wasLost && min < 80) { regained++; wasLost = false; }
     if (min < 80) { nearFrames++; lostAt = null; } else if (lostAt === null) lostAt = i / 60;
     if (i > 60) closest = Math.min(closest, min);
   }
 
+  if (pinSight) g.dispatcher._updateKnowledge = realPerceive;
+  let reached = 0;
+  for (const j of picked.values()) if (j.reached) reached++;
   const ended = Math.round(Math.min(...g.dispatcher.units.map((u) => u.distanceTo(p.position))));
   for (const u of g.dispatcher.units) if (!cohort.has(u)) joined++;
   const cohortEnd = Math.round(Math.min(...[...cohort]
@@ -232,13 +294,19 @@ function run(which, seconds, kph, tweak) {
       + `| heli up ${String(Math.round((heliFrames * 100) / frames)).padStart(3)}% `
       + `sees ${String(Math.round((heliSee * 100) / frames)).padStart(3)}%  `
       + `| mean nearest ${String(Math.round(nearSum / frames)).padStart(3)} m  `
+      + `someone in front ${String(Math.round((aheadFrames * 100) / frames)).padStart(3)}% `
+      + `at ${String(Math.round(aheadSum / Math.max(1, aheadFrames))).padStart(3)} m  `
       + `got back on ${regained}x  | ${roles}  `
       + `| intercepts solved ${st.solved} no-junction ${st.noShortlist} `
-      + `no-margin ${st.noMargin} over-limit ${st.overLimit} cands ${st.candidates}  `
+      + `no-margin ${st.noMargin} late-but-sent ${st.late} `
+      + `over-limit ${st.overLimit} cands ${st.candidates}  `
       + `| ahead: tried ${bs.tried} placed ${bs.placed} `
       + `blocked-by ${Object.keys(bs).filter((x) => x !== 'tried' && x !== 'placed' && bs[x])
         .map((x) => `${x} ${bs[x]}`).join(' ') || 'nothing'}`,
     meanNear: nearSum / frames,
+    ahead: aheadFrames / frames,
+    picked: picked.size,
+    reached,
     regained,
     cohortNear: cohortNear / frames,
     cohortLost: cohortLostAt === null ? seconds : cohortLostAt,

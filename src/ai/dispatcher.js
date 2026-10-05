@@ -130,25 +130,59 @@ export class Dispatcher {
     // How long a hard fix survives losing sight, and how much of the sighting
     // range is left once it has gone. Fields rather than the constants they
     // start from, so tests/force.js can sweep them in one page session -- see
-    // the note on the doom loop in _perceive.
+    // the note on the doom loop in _updateKnowledge.
     // Why units end up on RESPOND rather than cutting the target off. Counted
     // because RESPOND running at two thirds of the force, when the five-star
     // rules budget it a quarter, says the intercept solver is failing and not
     // that it was not wanted. See tests/force.js.
-    this.interceptStats = { solved: 0, noShortlist: 0, noMargin: 0, overLimit: 0, candidates: 0 };
-    // How far ahead the target is predicted, and how much time a unit may have
-    // in hand at the junction it is sent to. Both were fixed, and at speed both
-    // were the binding constraint: against a car doing 110 km/h through a town
-    // the solver rejected a unit for want of margin 134 to 193 times for every
-    // one it placed, so two thirds of the force fell through to RESPOND and
-    // chased from behind. Nobody was ever in front. See tests/force.js.
+    this.interceptStats = {
+      solved: 0, late: 0, noShortlist: 0, noMargin: 0, overLimit: 0, candidates: 0,
+    };
     // Whether a car can be put in front of the target at all -- see
     // tests/force.js. Counted because the whole of the force's answer to being
     // outrun is to get something ahead, and 'ahead' is worked out along the
     // road network.
     this.blockStats = { tried: 0, placed: 0, tier: 0, unseen: 0, busy: 0, cooling: 0, contact: 0, slow: 0 };
+
+    // The shape of the intercept window: how soon and how far ahead a junction
+    // is worth predicting, how much time a unit may have in hand when it gets
+    // there, how late it may be and still be sent, and how many units may be on
+    // the job at once.
+    //
+    // All five are fields rather than constants because all five look like the
+    // bug and none of them is. Against a car doing 110 km/h through a town the
+    // solver turns a unit down for want of margin 114 to 226 times for each one
+    // it places, two thirds of the force falls through to RESPOND, and nobody is
+    // ever in front -- so the window is the obvious thing to widen. Measured on
+    // eight routes of tests/force.js, every way of widening or narrowing it came
+    // back neutral or worse: a 45 s horizon with 32 s of margin, letting a unit
+    // take a junction it will reach up to 9 s late, ranking the shortlist by
+    // what the unit could nearly make instead of by distance, four more
+    // interceptors (which does take over-limit refusals to zero and changes the
+    // outcome not at all), and a narrow 3-to-12 s window, which is much worse.
+    //
+    // What they all miss is in the rig's other number: the car goes past 11% of
+    // the junctions units are sent to. The margin arithmetic is sound and the
+    // predictions it works from are not, because this all comes from
+    // RoadGraph.predict walking the road network and a car cutting through
+    // gardens is not on it. Nor is feeding that a slower, truer rate of progress
+    // the answer -- net displacement over fifteen seconds of weaving is only
+    // 0.21 to 0.47 of the distance actually driven, so every junction comes out
+    // over twice too far up the road, and correcting for it moved accuracy 11%
+    // to 9%. Adding candidates from a cone ahead of the car rather than along
+    // the roads was worse still, 5%, for the same reason the helicopter is
+    // better off circling the last sighting than running on down the last
+    // heading: a weaving car does not go where it is pointing.
+    //
+    // So interception is not what is failing the force in a built-up area. Where
+    // the car will be fifteen seconds from now is genuinely not knowable to
+    // within a junction, and what closed the gap instead was giving a unit a
+    // long way back the grip to cover ground -- see Officer._updateAssist.
     this.interceptHorizon = 24;
+    this.interceptEtaMin = 4.5;
     this.interceptMarginMax = 15;
+    this.interceptMarginMin = 1.2;
+    this.interceptLimitBonus = 0;
     this.trackSeconds = TRACK_SECONDS;
     this.lostSightScale = 1;
     this._junction = null;
@@ -703,7 +737,7 @@ export class Dispatcher {
     const free = available.filter((u) => !assigned.has(u));
     if (this.interceptTimer <= 0) {
       this.interceptTimer = 1.0;
-      this._assignIntercepts(free, target, rules.intercept);
+      this._assignIntercepts(free, target, rules.intercept + this.interceptLimitBonus);
     } else {
       // Between reassignments, anyone without a job keeps driving at the last
       // known position rather than idling.
@@ -751,7 +785,8 @@ export class Dispatcher {
     const likely = g.predict(k.position.x, k.position.z, _dir.x, _dir.z, speed, this.straightShare, horizon);
     const candidates = [];
     for (const [id, rec] of likely) {
-      if (rec.eta < 4.5 || rec.eta > horizon || rec.prob < this.interceptMinProb) continue;
+      if (rec.eta < this.interceptEtaMin || rec.eta > horizon
+        || rec.prob < this.interceptMinProb) continue;
       const node = g.nodes[id];
       if (node.edges.length < 3 && !node.chokepoint) continue;
       // Falls away past sixteen seconds, because a prediction that far out is
@@ -802,7 +837,8 @@ export class Dispatcher {
         // Wider than the window a job is taken on (1.2 to 15 s): having
         // committed, a unit sees it through unless it has genuinely fallen
         // out of reach.
-        if (margin !== null && margin >= 0.6 && margin <= this.interceptMarginMax + 5) {
+        if (margin !== null && margin >= this.interceptMarginMin
+          && margin <= this.interceptMarginMax + 5) {
           this.claimedNodes.add(held.id);
           placed++;
           continue;
@@ -811,6 +847,15 @@ export class Dispatcher {
 
       // Pre-filter by straight-line distance so we only pay for a handful of
       // A* runs per unit per second.
+      //
+      // Ranking these by how nearly the unit could make each junction instead
+      // -- its eta less the straight line over the unit's cruise -- was tried on
+      // the reasoning that the junctions nearest a unit behind the target are
+      // the ones the target reaches first, so a nearest-four filter must be
+      // throwing away the ones it could actually beat them to. It placed fewer,
+      // not more: 129 intercepts over eight routes against 140. In a town of
+      // crooked lanes a straight line is a bad guess at road time, and the
+      // ranking it gives is worse than distance rather than better.
       const open = shortlist.filter((c) => !this.claimedNodes.has(c.id));
       const near = open
         .map((c) => Object.assign({ raw: dist2(u.position.x, u.position.z, c.x, c.z) }, c))
@@ -825,17 +870,34 @@ export class Dispatcher {
         if (!path) continue;
         const t = g.routeTime(path, 0.82);
         const margin = c.eta - t;
-        if (margin < 1.2 || margin > this.interceptMarginMax) continue;
+        if (margin < this.interceptMarginMin || margin > this.interceptMarginMax) continue;
         // Prefer arriving with a small but real cushion, somewhere they are
         // actually likely to come through: a certain junction reached with
         // eight seconds to spare beats a coin-toss one reached with four.
-        const cushion = margin < 2.5 ? 0.6 : margin <= 6 ? 1 : 1 - (margin - 6) * 0.07;
+        //
+        // And below that, a junction the unit will *not* quite get to first is
+        // still worth taking. This used to be rejected outright, and against a
+        // car doing 110 km/h through a town that is nearly every unit nearly
+        // every second -- the solver turned one down for want of margin 114 to
+        // 226 times for each one it placed. They all fell through to RESPOND,
+        // which drives at where the car is, from behind, so two thirds of the
+        // force was in a stern chase it could not win. Arriving at a junction
+        // four seconds after they have gone through it is not an interception,
+        // but it is a point on the road in front of them, and it beats aiming
+        // at one they have already left. Scored well below any genuine beat, so
+        // it is only ever taken when there is nothing better.
+        const cushion = margin >= 6 ? Math.max(0.35, 1 - (margin - 6) * 0.07)
+          : margin >= 2.5 ? 1
+          : margin >= 1.2 ? 0.6
+          : 0.3 * clamp01((margin - this.interceptMarginMin)
+            / (1.2 - this.interceptMarginMin));
         const quality = c.prob * cushion;
         if (!best || quality > best.quality) best = { c, path, quality, margin };
       }
 
       if (best) {
-        this.interceptStats.solved++;
+        if (best.margin >= 1.2) this.interceptStats.solved++;
+        else this.interceptStats.late++;
         this.claimedNodes.add(best.c.id);
         const changed = u.role !== ROLE.INTERCEPT || u.orders.node !== best.c.id;
         u.setRole(ROLE.INTERCEPT, { node: best.c.id });
