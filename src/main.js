@@ -10,6 +10,7 @@ import {
 import { WORLD_HALF } from './world/common.js';
 import { appleMode, realApple, setAppleMode } from './core/platform.js';
 import { MAPS, mapById } from './world/maps.js';
+import { buildCutGraph, CUTS_ON } from './world/cutgraph.js';
 import { showMenu, hideMenu, chosenCar, chosenPoliceCar } from './core/menu.js';
 import { takeCarCards } from './game/cards.js';
 import { DRIVE_SIDE } from './world/roadgraph.js';
@@ -231,6 +232,26 @@ class Game {
     this.sim.surfaceAt = built.surfaceAt;
     this.sim.heightAt = built.heightAt;
     this.world.__map = built;
+
+    // The ways through between the buildings, which the road network does not
+    // describe. Has to happen here rather than in the generator: the buildings
+    // only exist as colliders once the generator has finished, and this is built
+    // from the colliders so that it knows what actually got put there. See
+    // world/cutgraph.js for why the police needed it.
+    // The ways through between the buildings. Switched off -- see CUTS_ON, which
+    // explains at length why a correct map of the gaps does not help -- so this
+    // costs nothing unless somebody turns it back on.
+    if (CUTS_ON) {
+      boot.set(0.68, 'finding the ways through…');
+      await frame();
+      // One step first, because Rapier only fills its query pipeline when the
+      // world is stepped and cutgraph measures gap widths by casting across them.
+      // Without this every ray misses, every gap measures as wide open, and the
+      // search returns nothing at all -- which is exactly what it did. Nothing
+      // moves: at this point the world is static geometry and no vehicle exists.
+      this.world.step();
+      this.cuts = buildCutGraph(this.graph, this.world, built.bounds || 1000);
+    }
 
     boot.set(0.72, 'building vehicles…');
     await frame();
@@ -497,6 +518,8 @@ class Game {
     const g = this.graph;
     for (const eid of node.edges) {
       const e = g.edges[eid];
+      // Not down an alley. A cut is a way through, not a place to put a car.
+      if (e.cut) continue;
       const pts = e.a === node.id ? e.points : e.points.slice().reverse();
 
       let remaining = Math.min(14, e.length * 0.45);
@@ -663,7 +686,7 @@ class Game {
       const minD = minBehind + warn * clamp01((ahead + 0.2) / 1.2);
       if (d < minD || d > maxD) continue;
       // Prefer somewhere with room to get moving.
-      if (n.edges.length < 2 && i < 50) continue;
+      if (n.edges.filter((id) => !g.edges[id].cut).length < 2 && i < 50) continue;
       place = this._placeOnRoad(n);
       // Never where you are looking: a car that has to drive in from out of
       // sight is a car arriving, not one appearing.
@@ -724,6 +747,9 @@ class Game {
       let next = null, straightest = -2;
       for (const id of node.edges) {
         const e = g.edges[id];
+        // "The same stretch of road" cannot continue down a gap between two
+        // houses, and a car must never be spawned ahead on one.
+        if (e.cut) continue;
         const other = g.nodes[e.a === node.id ? e.b : e.a];
         if (!other || (prev && other.id === prev.id)) continue;
         const ox = other.x - node.x, oz = other.z - node.z;
@@ -825,7 +851,10 @@ class Game {
     for (const best of candidates.slice(0, 12)) {
       // Face the way the target will be travelling when they reach us.
       let edge = best.via >= 0 ? g.edgeBetween(best.via, best.node.id) : null;
-      if (!edge) { const eid = best.node.edges[0]; edge = eid === undefined ? null : g.edges[eid]; }
+      if (!edge) {
+        const eid = best.node.edges.find((id) => !g.edges[id].cut);
+        edge = eid === undefined ? null : g.edges[eid];
+      }
       if (!edge) continue;
 
       const towardNode = edge.a === best.node.id;
@@ -903,7 +932,10 @@ class Game {
 
     for (const best of candidates.slice(0, 12)) {
       let edge = best.via >= 0 ? g.edgeBetween(best.via, best.node.id) : null;
-      if (!edge) { const eid = best.node.edges[0]; edge = eid === undefined ? null : g.edges[eid]; }
+      if (!edge) {
+        const eid = best.node.edges.find((id) => !g.edges[id].cut);
+        edge = eid === undefined ? null : g.edges[eid];
+      }
       if (!edge) continue;
       // Wide enough for a van to come the other way and still leave room.
       if (edge.width < 9) continue;

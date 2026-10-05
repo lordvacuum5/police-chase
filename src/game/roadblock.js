@@ -185,7 +185,7 @@ export class RoadblockManager {
       let edge = null;
       if (pick.rec.viaNode >= 0) edge = g.edgeBetween(pick.rec.viaNode, pick.id);
       if (!edge) {
-        const eid = pick.node.edges[0];
+        const eid = pick.node.edges.find((id) => !g.edges[id].cut);
         edge = eid === undefined ? null : g.edges[eid];
       }
       if (!edge || edge.width < 7) continue;

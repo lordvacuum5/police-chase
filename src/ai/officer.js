@@ -25,6 +25,18 @@ const CUT_ARC = 13;
  * `bandReach` and `bandScale` on an officer scale this and the band itself,
  * for the sweep in tests/keepup.js.
  */
+/**
+ * How much more than its own width a unit wants before it will be *routed* down a
+ * gap. Wider than Driver.squeezeWidth allows for on the way through, because
+ * committing a whole route to a gap is a bigger decision than deciding to take
+ * one that is in front of you: a scrape is a knock, and a route that does not fit
+ * is a unit stuck in an alley.
+ */
+const CUT_CLEARANCE = 1.2;
+
+/** How far behind a unit has to be before a gap between buildings is worth it. */
+const CUT_FROM = 140;
+
 const BAND_REACH = 130;
 
 /**
@@ -205,11 +217,37 @@ export class Officer {
       // through -- instead of following its lane round the kerb and braking to
       // a walk for every junction: "they slow down loads and then they turn".
       this.driver.allowOffRoad ? CUT_CORNER : LANE_CORNER,
+      // The ways through between buildings, but only for a unit that is allowed
+      // off the carriageway in the first place -- a patrol car threading
+      // somebody's garden looks like a bug whatever it saves -- and only ones
+      // this car actually fits down. See world/cutgraph.js.
+      {
+        cuts: this.driver.allowOffRoad && this._wantsShortcut(),
+        minWidth: v.spec.dims.w
+          + (this.game.graph.cutRoom === undefined ? CUT_CLEARANCE : this.game.graph.cutRoom),
+      },
     );
     if (pts.length < 2) return false;
     this.driver.setPath(pts);
     this.goalNode = goalId;
     return true;
+  }
+
+  /**
+   * Is this unit far enough behind to be worth sending down an alley?
+   *
+   * A shortcut is for making up ground that has already been lost. A unit sixty
+   * metres back in an ordinary pursuit does not need one, and taking one costs it
+   * the contact: measured on the roads behind a 90 km/h ghost, letting every unit
+   * route through gaps dropped the time spent within 60 m from 51% to 43%, twice
+   * over, while the finishing distance did not move. The router thinks a gap is
+   * quick because it costs it by time; what it cannot know is that leaving the
+   * road at all is what loses the car.
+   */
+  _wantsShortcut() {
+    const k = this.game.dispatcher ? this.game.dispatcher.knowledge : null;
+    if (!k) return false;
+    return this.distanceTo(k.position) > CUT_FROM;
   }
 
   setRole(role, orders = {}) {

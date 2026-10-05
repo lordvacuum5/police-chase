@@ -333,7 +333,7 @@ export class Dispatcher {
     if (!snap) return;
     for (const id of [snap.edge.a, snap.edge.b]) {
       const n = g.nodes[id];
-      if (n.edges.length >= 3 && Math.hypot(n.x - x, n.z - z) < 12) {
+      if (g.roadDegree(n) >= 3 && Math.hypot(n.x - x, n.z - z) < 12) {
         this._junction = { x: n.x, z: n.z, hx: vx, hz: vz };
         return;
       }
@@ -788,7 +788,7 @@ export class Dispatcher {
       if (rec.eta < this.interceptEtaMin || rec.eta > horizon
         || rec.prob < this.interceptMinProb) continue;
       const node = g.nodes[id];
-      if (node.edges.length < 3 && !node.chokepoint) continue;
+      if (g.roadDegree(node) < 3 && !node.chokepoint) continue;
       // Falls away past sixteen seconds, because a prediction that far out is
       // a guess -- but never to nothing, or a junction a unit could actually
       // reach first is worth less than one it cannot.

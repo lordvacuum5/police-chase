@@ -24,7 +24,7 @@
 import { weavePath } from './weave.js?v=31';
 import { makeRng } from '../src/util/math.js';
 
-window.__runForce = async function (seconds = 30, kph = 110, runs = 4, label = '', tweak = null, pinSight = false) {
+window.__runForce = async function (seconds = 30, kph = 110, runs = 4, label = '', tweak = null, pinSight = false, kind = 'weave') {
   window.__forceDone = false;
   window.__forceAt = -1;
   window.__res = null;
@@ -37,7 +37,7 @@ window.__runForce = async function (seconds = 30, kph = 110, runs = 4, label = '
     let meanNear = 0, regained = 0, ahead = 0, picked = 0, reached = 0;
     for (let i = 0; i < runs; i++) {
       window.__forceAt = i;
-      const r = run(i, seconds, kph, tweak, pinSight);
+      const r = run(i, seconds, kph, tweak, pinSight, kind);
       if (!r) continue;
       rows.push(r.line);
       near += r.near; lost += r.lost; closest += r.closest; seen += r.seen; n++;
@@ -64,14 +64,85 @@ window.__runForce = async function (seconds = 30, kph = 110, runs = 4, label = '
   }
 };
 
+
+/**
+ * A route across town that uses the shortcuts, which is what a player who knows
+ * the map drives.
+ *
+ * The weave path above threads arbitrary gaps found by its own search, and those
+ * are not the ways through that world/cutgraph.js found -- so a rig built on it
+ * cannot tell whether knowing the gaps helps. It measured the opposite: giving the
+ * predictor the cuts made it *worse*, because it had more branches to spread its
+ * probability over and the ghost was not using any of them. To ask the question
+ * properly the target has to take the shortcuts.
+ *
+ * So this routes over the graph with cuts switched on, hopping between nodes a
+ * few hundred metres apart until the path is long enough, and keeps it only if it
+ * actually goes through one.
+ */
+function cutPath(which) {
+  const g = window.__game;
+  const gr = g.graph;
+  if (!window.__cutPaths) window.__cutPaths = {};
+  if (window.__cutPaths[which] !== undefined) return window.__cutPaths[which];
+
+  let seed = 99173 + which * 5147;
+  const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+
+  const cutEdges = gr.edges.filter((e) => e.cut);
+  if (!cutEdges.length) { window.__cutPaths[which] = null; return null; }
+
+  // Built around the shortcut rather than hoping a route picks one. Letting the
+  // router choose produced a usable path for one seed in eight, because over a
+  // few hundred metres the roads usually win on the router's own costing -- and a
+  // rig that only runs once in eight measures nothing. A player who knows the gap
+  // drives to it, through it, and away, so that is what this strings together.
+  const roadPts = (from, to) => {
+    const path = gr.route(from, to);
+    if (!path || path.length < 2) return null;
+    return gr.pathToPoints(path, 0, true, 9).map((q) => ({ x: q.x, z: q.z }));
+  };
+  const approach = (node, want) => {
+    const here = gr.nodes[node];
+    const far = gr.nodes.filter((n) => {
+      if (!n || !n.edges.length || n.id === node) return false;
+      const d = Math.hypot(n.x - here.x, n.z - here.z);
+      return d > want * 0.6 && d < want * 1.6;
+    });
+    return far.length ? far[Math.floor(rnd() * far.length)] : null;
+  };
+
+  let best = null;
+  for (let attempt = 0; attempt < 80 && (!best || best.used < 2); attempt++) {
+    const cut = cutEdges[Math.floor(rnd() * cutEdges.length)];
+    const flip = rnd() < 0.5;
+    const inNode = flip ? cut.b : cut.a;
+    const outNode = flip ? cut.a : cut.b;
+
+    const before = approach(inNode, 300);
+    const after = approach(outNode, 300);
+    if (!before || !after) continue;
+    const lead = roadPts(before.id, inNode);
+    const tail = roadPts(outNode, after.id);
+    if (!lead || !tail) continue;
+
+    const through = flip ? cut.points.slice().reverse() : cut.points;
+    const pts = lead.concat(through.map((q) => ({ x: q.x, z: q.z })), tail);
+    if (pts.length < 30) continue;
+    if (!best) best = { pts, used: 1 };
+  }
+  window.__cutPaths[which] = best;
+  return best;
+}
+
 const ROLE_NAMES = {};
 
-function run(which, seconds, kph, tweak, pinSight) {
+function run(which, seconds, kph, tweak, pinSight, kind) {
   const g = window.__game;
   const { ROLE } = window.__modules;
   for (const k of Object.keys(ROLE)) ROLE_NAMES[ROLE[k]] = k;
 
-  const W = weavePath(which);
+  const W = kind === 'cuts' ? cutPath(which) : weavePath(which);
   if (!W || W.pts.length < 8) return null;
   const pts = W.pts;
 
@@ -194,6 +265,10 @@ function run(which, seconds, kph, tweak, pinSight) {
   // thing mean distance cannot see: a unit 60 m behind and a unit 60 m ahead
   // read the same, and only one of them is a problem for the player.
   let aheadFrames = 0, aheadSum = 0;
+  // What happens to a unit that is actually routed through a gap: whether it gets
+  // through or sits in it. If knowing the gaps makes the chase worse, this says
+  // whether that is the predictor being diluted or units getting wedged.
+  let onCutFrames = 0, onCutSlow = 0, unitFrames = 0;
   // Whether the junctions the solver sends units to are places the car actually
   // goes. Everything in the intercept solver is downstream of RoadGraph.predict,
   // which walks the road network -- and a player cutting through gardens is not
@@ -249,6 +324,12 @@ function run(which, seconds, kph, tweak, pinSight) {
       if (cohort.has(u)) cmin = Math.min(cmin, du);
       const name = ROLE_NAMES[u.role] || String(u.role);
       roleTime[name] = (roleTime[name] || 0) + 1;
+      unitFrames++;
+      const pth = u.driver.path;
+      if (pth && pth.length && pth.some((q) => q.edge && q.edge.cut)) {
+        onCutFrames++;
+        if (u.vehicle.speed < 4) onCutSlow++;
+      }
       if (name === 'INTERCEPT' && u.orders && u.orders.node !== undefined
         && u.orders.node !== null && !picked.has(u.orders.node)) {
         const nd = g.graph.nodes[u.orders.node];
@@ -296,7 +377,10 @@ function run(which, seconds, kph, tweak, pinSight) {
       + `| mean nearest ${String(Math.round(nearSum / frames)).padStart(3)} m  `
       + `someone in front ${String(Math.round((aheadFrames * 100) / frames)).padStart(3)}% `
       + `at ${String(Math.round(aheadSum / Math.max(1, aheadFrames))).padStart(3)} m  `
-      + `got back on ${regained}x  | ${roles}  `
+      + `got back on ${regained}x  `
+      + `| routed via a gap ${String(Math.round((onCutFrames * 100) / Math.max(1, unitFrames))).padStart(3)}% `
+      + `of unit-time, crawling for ${Math.round((onCutSlow * 100) / Math.max(1, onCutFrames))}% of it  `
+      + `| ${roles}  `
       + `| intercepts solved ${st.solved} no-junction ${st.noShortlist} `
       + `no-margin ${st.noMargin} late-but-sent ${st.late} `
       + `over-limit ${st.overLimit} cands ${st.candidates}  `

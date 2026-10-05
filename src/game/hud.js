@@ -99,6 +99,9 @@ export class Hud {
     for (const kind of order) {
       ctx.strokeStyle = colour[kind];
       for (const e of this.game.graph.edges) {
+        // Cuts are not drawn: the ways through between buildings are something
+        // the player finds, not something the map hands them.
+        if (e.cut) continue;
         if (e.kind !== kind) continue;
         ctx.lineWidth = Math.max(1.4, (ROAD_KIND[kind].width * 0.55) * scale);
         ctx.beginPath();
