@@ -125,10 +125,33 @@ export const ROAD_KIND = {
 };
 
 /**
- * Seconds added to any route that goes through a gap between buildings, on top of
- * its own slow speed. See the costing in route().
+ * Seconds added to any route that goes through a gap between buildings. This is
+ * the *only* thing that makes the router reluctant to take one.
+ *
+ * It used to be a low posted speed on the edge instead, and that was a plain bug:
+ * pathToPoints copies an edge's speed onto every point of the path and the driver
+ * obeys it, so the 8 m/s that was meant to discourage the router was also telling
+ * the car to crawl. Measured in tests/gap.js, the binding limit for 58% of the time
+ * a unit spent inside a gap was its own requested speed, and the mean through was
+ * 28 km/h against the 29 that 8 m/s works out to. One number cannot do both jobs.
+ *
+ * Fourteen seconds was the first attempt, picked to keep the router's behaviour
+ * unchanged while the posted speed went up, and it overshot badly: at fourteen the
+ * router preferred 230 to 300 m of street to a 70 to 150 m gap, so half the gaps
+ * in the rig were never driven at all. Four is enough to stop a marginal cut being
+ * taken, and the reason it can be this low is that taking one is no longer the
+ * gamble it was -- a car goes through a fourteen-metre gap at 62 km/h without
+ * touching anything.
  */
-const CUT_PENALTY = 7;
+const CUT_PENALTY = 4;
+
+/**
+ * How fast a gap can actually be taken, from how wide it is: about 35 km/h through
+ * something a car and a half across, about 60 through fourteen metres.
+ */
+export function cutSpeed(width) {
+  return clamp(3.5 + width * 0.85, 9, 17);
+}
 
 export class RoadGraph {
   constructor(cellSize = 48) {
@@ -218,7 +241,9 @@ export class RoadGraph {
       cut: true,
       width: width || def.width,
       lanes: 1,
-      speed: def.speed,
+      // What a car can do through a gap this wide -- not the router's reluctance,
+      // which is CUT_PENALTY. See cutSpeed.
+      speed: cutSpeed(width || def.width),
       bridge: false,
       y: 0,
     };

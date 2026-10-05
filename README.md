@@ -1556,77 +1556,111 @@ spinning. Sliding that fraction with speed -- all of it in a slow tight gap wher
 the point mass is nearly right, less at road speed where it is not -- is the
 obvious refinement and measured worse, putting the write-offs straight back.
 
-### A map of the gaps, which did not help
+### A map of the gaps, and learning to drive them
 
 *"Why can't the police keep up? They are literally computers. They have perfect
 accuracy. They know everything that's going on. I can chase my friend better than
 they can chase me."*
 
-The answer to the first part was not computation. It was that the entire map the
-AI could plan over was the road network -- streets, avenues, lanes, motorways, and
-nothing else. The gap between two houses was not an edge in that graph, so it did
-not exist: cutting through an estate made the pursuit stop navigating and start
-groping, sweeping a fan of headings and taking the clearest arc three seconds at a
-time. It is also why heading the car off failed, since `RoadGraph.predict` walks
-roads and the junctions units were sent to were on roads the car was not using.
-A human chasing a friend through the same estate does not follow their line at
-all; they know the alley comes out on the next street, so they take the street.
-That is a map, not a reflex.
+The answer to the first part was not computation. The entire map the AI could plan
+over was the road network -- streets, avenues, lanes, motorways, and nothing else.
+The gap between two houses was not an edge in that graph, so it did not exist:
+cutting through an estate made the pursuit stop navigating and start groping,
+sweeping a fan of headings and taking the clearest arc three seconds at a time. It
+is also why heading the car off failed, since `RoadGraph.predict` walks roads and
+the junctions units were sent to were on roads the car was not using. A human
+chasing a friend through the same estate does not follow their line at all; they
+know the alley comes out on the next street, so they take the street. That is a
+map, not a reflex.
 
-So `world/cutgraph.js` builds the part that was missing. A clearance field first:
-how far the nearest solid thing is from every two-metre cell, taken from the
-physics colliders rather than from the generator, so it knows what actually got
-built and works on any map. Then A* across that field between pairs of road nodes,
-kept only where going round by road is at least half again as far, measured at its
-tightest point with a pair of rays, and filtered to things that are genuinely gaps
-between buildings rather than open ground. On Wexbury it finds 41, each saving
-between 30 and 480 m: 636 m round by street against 155 m through a fifteen-metre
-gap, 439 against 107 through a seven-metre one. They go in as ordinary graph
-edges, so the router, `pathFromPosition`, `routeTime` and the predictor all get
-them for nothing, flagged `cut` and kept out of the spatial index so that nothing
-which asks "which road is this" can ever be answered with an alley.
+`world/cutgraph.js` builds the part that was missing. A clearance field first: how
+far the nearest solid thing is from every two-metre cell, taken from the physics
+colliders rather than from the generator, so it knows what actually got built and
+works on any map. Then A* across that field between pairs of road nodes, kept only
+where going round by road is at least half again as far, measured at its tightest
+point with a pair of rays, filtered to things that are genuinely gaps between
+buildings rather than open ground, and finally verified by sweeping a car-shaped
+box along the whole polyline end to end. On Wexbury that leaves 14 of them, each
+saving between 30 and 480 m: 636 m round by street against 155 m through a
+fifteen-metre gap. They go in as ordinary graph edges, so the router,
+`pathFromPosition`, `routeTime` and the predictor all get them for nothing, flagged
+`cut` and kept out of the spatial index so that nothing which asks "which road is
+this" can ever be answered with an alley. The grid city yields none, which is
+correct rather than a failure: a regular grid has no shortcuts worth taking,
+because the roads already go everywhere directly.
 
-It works, and it does not help. Eight routes behind a target deliberately driving
-the shortcuts, each pair measured inside one page session:
+**And on its own it was worth nothing.** Three of four sessions came back worse
+with the gaps than without, and one number said why: a unit routed through a gap
+spent about a third of its time in there under 4 m/s. The shortcut was shorter and
+it was not quicker. The router costs edges by time, so it kept choosing one, and a
+unit crawling down an alley is further from the car than one going round at speed.
 
-| | baseline | with the gaps |
+### Why they crawled, and what each thing cost
+
+`tests/gap.js` drives one car through one gap -- no target, no dispatcher, no
+roster -- and reads which of `Driver.caps` was the binding limit while it was in
+there. Three separate things were holding it back, and the tally found each in
+turn rather than anyone guessing:
+
+| mean through | the binding limit | what it actually was |
 |---|---|---|
-| session 1 | near 67% | 59% |
-| session 2 | near 72% | **77%** |
-| session 3 | near 81% | 67% |
-| session 4 | near 67% | 51% |
+| 28 km/h | its own asked speed, 58% | the edge's posted 8 m/s, set to discourage the *router* and obeyed by the *driver* too |
+| 38 km/h | the aim probe, 58% | "be able to stop in what you can see", aimed at the wall at the far end of the corridor |
+| 37 km/h | the route itself, 44% | the route was never verified at its ends, so the first hop out of the junction clipped a corner |
+| **55 km/h** | its own asked speed, 85% | nothing left in the way |
 
-Three of four say worse. The one that says better is inside the spread: the same
-setting measured in two different sessions gave 67% and 81%, so this rig cannot
-resolve less than about fifteen points at eight runs, and every figure above wants
-reading with that in mind. Restricting it to comfortable gaps only, seven metres
-and up, was worse again -- 51% against 67% in the same session. Letting the
-predictor use the gaps as well as the router was worse still: it only adds
-branches to a guess, and the hit rate on junctions fell from 29% to 18%.
+The first was a plain bug of mine: one number doing two jobs. `pathToPoints` copies
+an edge's speed onto every point of a path and the driver obeys it, so the 8 m/s
+meant to make the router reluctant was also telling the car to crawl. `cutSpeed`
+now gives a gap a posted speed from its width, and `CUT_PENALTY` carries the
+reluctance by itself -- four seconds, and the first attempt at fourteen overshot so
+far that half the gaps were never driven at all.
 
-One real bug fell out of it and is worth keeping. Cuts in `node.edges` inflate the
-node degree, and half a dozen tests ask "does this node have three or more edges"
-meaning *roads* -- is this a junction worth waiting at, is this somewhere to turn
-off. Counting alleys put seventeen more candidates in front of the intercept
+The second is the more interesting one. Both of `safeSpeed`'s probes are straight
+lines, and a corridor that turns at the end has a wall at the end of *any* straight
+line -- so whichever is asked reports a short distance and the car brakes for a
+building it is about to steer round. Swapping one probe for the other moved the
+binding limit and nothing else, 38 km/h to 39. `Driver._pathClear` asks the right
+question instead: sweep the car's own footprint along the path it is actually going
+to drive, segment by segment, and report where that first touches something. On a
+straight road it gives the same answer as before; through a gap it gives the honest
+one. The travel probe stays as it was, because that is the one that catches a car
+which has run wide and is leaving its route -- taking it out as well bought two
+km/h and cost four contacts in fourteen gaps and real damage on the roads.
+
+The third was mine again: the A* works in two-metre cells and its path starts at
+the cell containing the road node rather than at the node, so the hop from the
+junction into the mouth of the gap was unchecked. Harmless while the driver was
+cautious; a unit driving into a wall once it started trusting its route.
+
+With all three, 13 of 14 gaps are driven through at a mean of 55 km/h, never
+dropping to a crawl, with one contact across the fourteen.
+
+### And then the map was worth having
+
+Same rig as before, both orders, eight routes each:
+
+| | near | nearest unit | someone in front | the cars that started |
+|---|---|---|---|---|
+| with the gaps | 71%, 74% | 77, 67 m | 75%, 76% | 65%, 64% |
+| without | 64%, 60% | 84, 86 m | 70%, 68% | 50%, 55% |
+
+Ten points more of the chase spent within 80 m, thirteen metres closer on average,
+and the share of the *original* cars still in touch at the end goes from about half
+to about two thirds. Both orders agree and the two arms do not overlap, which is
+more than can be said for most of what is measured on this rig.
+
+So the answer to the question that started it is not that they lacked the map.
+They did lack it, and giving it to them changed nothing by itself. Knowing the way
+through a gap and being able to drive it are two different pieces of work, and it
+needed both.
+
+One bug fell out along the way and stays regardless. Cuts in `node.edges` inflate
+the node degree, and half a dozen tests ask "does this node have three or more
+edges" meaning *roads* -- is this a junction worth waiting at, is this somewhere to
+turn off. Counting alleys put seventeen more candidates in front of the intercept
 solver and took its hit rate from 31% to 21%. `RoadGraph.roadDegree` is the fix,
-and without any cuts in the graph it is exactly `edges.length`.
-
-The diagnostic that explains the whole result: a unit routed through a gap spends
-about a third of its time in there under 4 m/s. The shortcut is shorter and it is
-not quicker. A player threads a six-metre gap at 110 km/h; a police car crawls
-through it, and the router costs edges by time and cannot know that, so it keeps
-choosing one. A flat seven-second charge on top of a cut's own slow speed, and a
-rule that only a unit more than 140 m behind may take one, each helped -- at a 150
-km/h ghost the charge took the road rig from 23 contacts back to 11 -- and neither
-turned the result positive.
-
-So the honest answer to the original question is not that they lacked the map.
-They have it now, it is correct, and it changes nothing. Knowing the way through a
-gap is worth nothing until you can drive it at speed, and that is the cornering
-limit again -- the same thing that has been binding since the top of this section.
-The work is left in, built and switched off at `CUTS_ON` so it costs nothing on
-the loading screen, with `graph.cutsEnabled` for the rigs. When a unit can take a
-six-metre gap at sixty, it is one line away from being worth having.
+and with no cuts in the graph it is exactly `edges.length`.
 
 ### Turning the grip up, and why it stays where it is
 

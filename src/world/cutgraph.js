@@ -29,7 +29,7 @@
 // for nothing -- `route`, `pathFromPosition`, `routeTime`, and `predict`.
 
 import { dist2 } from '../util/math.js';
-import { GROUP, raycast, RAY_WALL } from '../physics/world.js';
+import { GROUP, raycast, sweepBox, RAY_WALL, RAY_SOLID } from '../physics/world.js';
 
 /** Metres per cell of the clearance field. */
 const CELL = 2;
@@ -58,6 +58,15 @@ const NEAR_PER_NODE = 8;     // candidate partners each node considers
 const MIN_GAP = 3;
 const MAX_GAP = 16;
 const USABLE_MIN = 2.4;
+
+/**
+ * Half-width a cut is verified at. A police car is 0.97, so this leaves about
+ * forty centimetres either side for the path smoothing to wander into.
+ */
+const VERIFY_HALF = 1.4;
+
+const _at = { x: 0, y: 0, z: 0 };
+const _dir = { x: 0, y: 0, z: 0 };
 const MAX_CUTS = 500;
 
 /**
@@ -397,6 +406,41 @@ function simplify(cells, wxOf, wzOf, tol = 1.4) {
 }
 
 /**
+ * Keep only the cuts a car can actually be swept along, end to end.
+ *
+ * The A* works in two-metre cells and its path starts at the cell containing the
+ * road node, not at the node itself, so the first and last hops -- from the
+ * junction into the mouth of the gap -- were never checked against anything. At a
+ * building corner that matters: one cut came out with its very first segment
+ * blocked 2.6 m in, and once the driver started trusting its route as clear (see
+ * Driver._pathClear) that became a unit driving into a wall at speed rather than a
+ * unit being needlessly cautious.
+ *
+ * Swept with room to spare, because the path the driver actually gets has been
+ * through pathToPoints, and rounding the corners of a corridor moves them: a
+ * seven-metre gap that was clear raw had its smoothed form touching a wall.
+ */
+export function verifyCuts(world, graph, cuts, hw = VERIFY_HALF) {
+  const keep = [];
+  for (const c of cuts) {
+    const a = graph.nodes[c.a], b = graph.nodes[c.b];
+    if (!a || !b) continue;
+    const line = [{ x: a.x, z: a.z }].concat(c.points, [{ x: b.x, z: b.z }]);
+    let clear = true;
+    for (let i = 0; i < line.length - 1 && clear; i++) {
+      const dx = line[i + 1].x - line[i].x, dz = line[i + 1].z - line[i].z;
+      const len = Math.hypot(dx, dz);
+      if (len < 0.3) continue;
+      _at.x = line[i].x; _at.y = 1.0; _at.z = line[i].z;
+      _dir.x = dx / len; _dir.y = 0; _dir.z = dz / len;
+      if (sweepBox(world, _at, _dir, len, RAY_SOLID, null, hw) < len - 0.25) clear = false;
+    }
+    if (clear) keep.push(c);
+  }
+  return keep;
+}
+
+/**
  * How wide each cut actually is at its tightest, by looking.
  *
  * The clearance field is quantised to its two-metre cells, which is enough to
@@ -421,46 +465,54 @@ export function measureCuts(world, cuts) {
 }
 
 /**
- * Off, and the reason is the whole point of the file.
+ * On -- but it was off for a while, and why is the useful part.
  *
- * The map gets built, it is correct, and it does not help. On Wexbury it finds 41
- * ways through, each saving between 30 and 480 m against the roads -- 636 m round
- * by street against 159 m through a fifteen-metre gap, and so on -- and the router
- * takes them when asked. The force still does not get closer. Within a single page
- * session, eight routes behind a target that is deliberately using the shortcuts:
+ * The map gets built and on its own it is worth nothing. Measured over eight
+ * routes behind a target deliberately using the shortcuts, three of four sessions
+ * came back *worse* with the gaps than without them, and the reason showed up in
+ * one number: a unit routed through a gap spent about a third of its time in there
+ * under 4 m/s. The shortcut was shorter and it was not quicker. The router costs
+ * edges by time, so it kept choosing one, and a unit crawling down an alley is
+ * further from the car than one going round at speed.
  *
- *   session 1   baseline near 67%   with the gaps 59%
- *   session 2             near 72%                 77%
- *   session 3             near 81%                 67%
- *   session 4             near 67%                 51%
+ * Three things were making them crawl, all found with tests/gap.js, which drives a
+ * single car through a single gap and reads which of Driver.caps was the binding
+ * limit while it was in there.
  *
- * Three of four say worse, and the one that says better is inside the spread --
- * the same setting measured in two sessions gave 67% and 81%, so this rig cannot
- * resolve less than about fifteen points at eight runs and every figure here needs
- * reading with that in mind. Restricting it to comfortable gaps only, seven metres
- * and up, was worse again. Letting the *predictor* use the gaps as well as the
- * router was worse still, because it only adds branches to a guess and makes every
- * other branch less confident.
+ *   mean through a gap   the binding limit        what it was
+ *   28 km/h              its own asked speed 58%  the edge's posted 8 m/s, set to
+ *                                                 discourage the router and
+ *                                                 obeyed by the driver as well
+ *   38 km/h              the aim probe 58%        "be able to stop in what you can
+ *                                                 see", aimed at the wall at the
+ *                                                 far end of the corridor
+ *   37 km/h              the route itself 44%     the route was not verified at
+ *                                                 its ends, so the first hop out
+ *                                                 of the junction clipped a corner
+ *   55 km/h              its own asked speed 85%  nothing left in the way
  *
- * The diagnostic that explains it: a unit routed through a gap spends about a
- * third of its time in there under 4 m/s. The shortcut is shorter and it is not
- * quicker. A player threads a six-metre gap at 110 km/h; a police car crawls
- * through it, and the router -- which costs edges by time and cannot know that --
- * keeps choosing it. On top of that, a unit that can reach junctions it could not
- * reach before gets sent to them, and those are round the back of blocks the car
- * never visits.
+ * So: cutSpeed gives a gap a posted speed from its width and CUT_PENALTY carries
+ * the router's reluctance on its own; Driver._pathClear measures clearance along
+ * the route rather than down a straight line; verifyCuts keeps only cuts a car can
+ * be swept along end to end. With those, 13 of 14 gaps are driven through at a
+ * mean of 55 km/h, never dropping below a walking crawl, with one contact in
+ * fourteen.
  *
- * So the answer to "they are computers, why can they not keep up" is not that they
- * lacked the map. They have it now. It is that knowing the way through a gap is
- * worth nothing until you can drive it at speed, and that is the cornering limit
- * again -- the thing that has been binding all along.
+ * And then the gaps are worth having. Same rig, both orders, eight routes each:
  *
- * Left here, built and switched off, because it costs a third of a second on the
- * loading screen and buys nothing yet. When a unit can take a six-metre gap at
- * sixty, turn it on: that is `CUTS_ON`, and tests/force.js drives it with
- * `graph.cutsEnabled`.
+ *            near   nearest unit   someone in front   the cars that started
+ *   with     71/74%     77/67 m        75/76%              65/64%
+ *   without  64/60%     84/86 m        70/68%              50/55%
+ *
+ * Which is the answer to the question that started this: they did not lack the
+ * map, and the map alone did nothing. Knowing the way through a gap and being able
+ * to drive it are two different pieces of work, and it needed both.
+ *
+ * Nothing is found on the grid city, and that is correct rather than a failure: a
+ * regular grid has no shortcuts worth taking because the roads already go
+ * everywhere directly. This is for towns that grew.
  */
-export const CUTS_ON = false;
+export const CUTS_ON = true;
 
 /**
  * The whole job: find the ways through and put them in the graph.
@@ -470,13 +522,18 @@ export const CUTS_ON = false;
  */
 export function buildCutGraph(graph, world, half = 1000, opts = {}) {
   const field = buildClearance(world, half);
-  const cuts = findCuts(graph, field, world, opts);
+  const cuts = verifyCuts(world, graph, findCuts(graph, field, world, opts));
   for (const c of cuts) {
     // The middle of the polyline only: the ends are the nodes themselves, which
     // addCutThrough puts back.
     const mid = c.points.slice(1, -1);
     const e = graph.addCutThrough(c.a, c.b, mid, c.width);
-    if (e) c.edge = e.id;
+    if (e) {
+      c.edge = e.id;
+      // Carried on the edge so anything holding a cut edge can find its tightest
+      // point without the search that produced it -- tests/gap.js wants it.
+      e.narrowest = c.narrowest;
+    }
   }
   // The field is big -- a megabyte of floats for a two-kilometre map -- and
   // nothing needs it once the cuts are found, so it is not kept.

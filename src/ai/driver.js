@@ -22,6 +22,9 @@ const _origin = new THREE.Vector3();
 const _probe = new THREE.Vector3();
 const _plan = new THREE.Vector3();
 const _run = new THREE.Vector3();
+// Walking a path with swept boxes -- see _pathClear.
+const _arcAt = new THREE.Vector3();
+const _arcDir = new THREE.Vector3();
 
 /**
  * How far ahead the travel-direction checks look, and how finely the surface
@@ -58,6 +61,9 @@ const SQUEEZE = 0.8;
 
 /** The most of its available lock a unit will ask for once it is moving. */
 const STEER_RESERVE = 0.82;
+
+/** Wide enough that the lane terms behave as they always did. */
+const WIDE = 20;
 
 /**
  * The trajectory planner: how often it re-plans, how many steps it drives each
@@ -115,6 +121,8 @@ export class Driver {
     this._clearTimer = 0;
     this.crossTrack = 0;
     this._laneKeep = false;
+    // Width of whatever is being driven down -- see followPath.
+    this._room = WIDE;
     this.needsRepath = false;
     this.reverseFrom = null;
     this.steerHold = 0;
@@ -173,6 +181,8 @@ export class Driver {
     this.limitScale = 1;
     // How much of the band's extra grip the driver counts on -- see _mu().
     this.bandBelief = BAND_BELIEF;
+    // Set by the rigs to put the aim-probe clamp back -- see safeSpeed.
+    this.noPathTrust = false;
     // How much of its own width a unit believes when looking for a way through
     // -- see squeezeWidth.
     this.squeeze = SQUEEZE;
@@ -445,6 +455,50 @@ export class Driver {
    * corner the car's shoulder is about to clip. Vehicles are deliberately not
    * included: this is about the scenery, and other cars are handled by avoid().
    */
+  /**
+   * How far along its own route the car can get before anything solid is in the
+   * way.
+   *
+   * The two straight-line probes -- toward the aim point, and along the direction
+   * of travel -- cannot answer this inside a gap between buildings, and swapping
+   * one for the other does not help: a corridor that turns at the end has a wall
+   * at the end of *any* straight line, so whichever probe is asked reports a short
+   * distance and the car brakes for a building it is about to steer round.
+   * Measured in tests/gap.js, taking the aim probe out of the on-path case simply
+   * moved the binding limit from one to the other and the speed through barely
+   * moved, 38 km/h to 39.
+   *
+   * So follow the route. Sweep the car's own footprint along the path it is
+   * actually going to drive, segment by segment, and report where that first
+   * touches something. On a straight road this is the same answer the forward
+   * probe gives; through a gap it is the honest one.
+   */
+  _pathClear(maxDist) {
+    const v = this.v;
+    const hw = this.squeezeWidth;
+    let x = v.position.x + v.forward.x * v.spec.dims.l * 0.45;
+    let z = v.position.z + v.forward.z * v.spec.dims.l * 0.45;
+    const y = v.position.y + 0.5;
+    let acc = 0;
+    for (let i = this.pathIndex; i < this.path.length && acc < maxDist; i++) {
+      const q = this.path[i];
+      let dx = q.x - x, dz = q.z - z;
+      const len = Math.hypot(dx, dz);
+      // Points the car has effectively reached: stepping to them would sweep a
+      // box backwards.
+      if (len < 0.8) continue;
+      dx /= len; dz /= len;
+      const span = Math.min(len, maxDist - acc);
+      _arcAt.set(x, y, z);
+      _arcDir.set(dx, 0, dz);
+      const toi = sweepBox(v.world, _arcAt, _arcDir, span, RAY_SOLID, v.body, hw);
+      if (toi < span) return acc + toi;
+      acc += span;
+      x = q.x; z = q.z;
+    }
+    return acc;
+  }
+
   clearAhead(dir, maxDist = 70) {
     const v = this.v;
     let best = maxDist;
@@ -468,7 +522,7 @@ export class Driver {
    * bypasses all of that -- which is how units ended up flat out into a
    * building because the car they were chasing happened to be behind it.
    */
-  safeSpeed(alpha, aimDist, aimX, aimZ) {
+  safeSpeed(alpha, aimDist, aimX, aimZ, onPath = false) {
     const v = this.v;
     const mu = this._mu();
     const aBrake = mu * 9.81 * this._brakeFraction(0.85);
@@ -491,6 +545,11 @@ export class Driver {
       // all -- which is the correct answer to "is there anything to slow for".
       const need = clamp(7 + (v.speed * v.speed) / (2 * aBrake) + 25, 70, 220);
 
+      // On a path, both of the probes below have the same and better answer: how
+      // far along the route is clear. See _pathClear.
+      const trustPath = onPath && !this.noPathTrust && this.hasPath;
+      if (trustPath) this._clear = this._pathClear(need);
+
       // Probe toward where we are actually going, not along the nose. A nose
       // probe reads the building on the outside of every corner as a wall to
       // brake for, and the unit crawls round the city at 30 km/h.
@@ -500,7 +559,7 @@ export class Driver {
       // Deliberately not cut short at the aim point any more: the aim point in
       // a pursuit is a moving car, and the road beyond it is the road this
       // car is about to be driving.
-      this._clear = this.clearAhead(_probe, need);
+      if (!trustPath) this._clear = this.clearAhead(_probe, need);
 
       // And a second probe along the direction the car is genuinely
       // travelling. The aim probe answers "is the way I want to go clear";
@@ -509,11 +568,19 @@ export class Driver {
       // in a wall: a unit running alongside its target commits to a speed on
       // the strength of a clear line to the target, the target turns, and the
       // unit arrives at the junction far too fast to take it.
+      // The travel probe stays, on a path as much as off it. It is the one that
+      // catches a car which has run wide and is leaving its route, and taking it
+      // out along with the aim probe cost real damage: on the roads behind a
+      // 90 km/h ghost the worst damage went from 0.45 to 0.80. Inside a corridor
+      // it is no longer the thing holding the car back, because a car that is
+      // tracking the line has its line of travel down the middle of the gap.
       this._travelDir(_probe);
       this._clearTravel = this.clearAhead(_probe, Math.max(RUNOUT_PROBE, need));
       this._runout = this.roadRunout(RUNOUT_PROBE);
     }
 
+    // Stopping distance in what it can see. On a path that is `_pathClear`, which
+    // follows the route; otherwise the straight probes above.
     const usable = Math.max(0, this._clear - 7);
     let limit = Math.sqrt(2 * aBrake * usable);
     // Each clause recorded, for the same reason drive() records its own.
@@ -1014,7 +1081,23 @@ export class Driver {
     // precisely the term that stops a car cutting a corner, and cutting the
     // corner is the point. Enough is left to stop it wandering.
     if (this._laneKeep) {
-      const pull = this.allowOffRoad ? 0.14 : 0.55;
+      // How hard to pull back onto the line depends on how much room there is to
+      // be off it.
+      //
+      // This used to be a flat 0.14 for anything allowed off the carriageway,
+      // which is every pursuing unit, against 0.55 for a patrol car keeping its
+      // lane. On a fifteen-metre street that is right -- a unit in a hurry is
+      // allowed the whole road and should not be fighting the centreline. In a
+      // six-metre gap between two houses it is hopeless: the car tracks loosely,
+      // clips the brickwork, and the route it was given is clear only if it is
+      // actually driven. Measured in tests/gap.js, a unit sent through twenty
+      // verified gaps got out the far side of eight and hit something nine times.
+      //
+      // So it scales with the width of whatever is being driven down. Wide road,
+      // slack as before; corridor, hold the line.
+      const pull = this.allowOffRoad
+        ? lerp(0.62, 0.14, clamp01((this._room - 7) / 8))
+        : 0.55;
       deltaRad -= Math.atan2(this.crossTrack * pull, v.speed + 4);
     }
 
@@ -1071,6 +1154,7 @@ export class Driver {
 
     this._updateGrip(dt);
     this._laneKeep = opts.lane === true;
+    if (!this._laneKeep) this._room = WIDE;
     const s = this.steerToward(aim.x, aim.z, dt);
     out.steer = s.steer;
 
@@ -1092,7 +1176,7 @@ export class Driver {
     caps.asked = requested;
     caps.safe = Infinity; caps.wall = Infinity; caps.way = Infinity; caps.slide = Infinity;
     if (opts.ignoreSurroundings !== true) {
-      caps.safe = this.safeSpeed(s.alpha, s.distance, aim.x, aim.z);
+      caps.safe = this.safeSpeed(s.alpha, s.distance, aim.x, aim.z, this._laneKeep);
       speed = Math.min(speed, caps.safe);
     }
 
@@ -1229,7 +1313,14 @@ export class Driver {
     // now. Otherwise a car braking hard for a junction still aims 30 m past it
     // and cuts the corner it was slowing down for.
     const ref = Math.min(this.v.speed, planned + 4);
-    const look = clamp(4.5 + ref * 0.55 * this.skill.look, 5.5, 26);
+    let look = clamp(4.5 + ref * 0.55 * this.skill.look, 5.5, 26);
+    // How wide the thing being driven down is, which sets both how precisely the
+    // line is held (see the lane term in driveTo) and how far ahead to aim. A long
+    // lookahead cuts corners -- that is what a lookahead is for -- and cutting the
+    // corner of a corridor means touching a building, so in a narrow one the car
+    // looks only as far ahead as the gap is wide.
+    this._room = here && here.edge && here.edge.width ? here.edge.width : WIDE;
+    if (this._room < WIDE) look = Math.min(look, Math.max(4, this._room * 0.9));
     const aim = this._pointAhead(look) || this.path[this.path.length - 1];
     return this.driveTo(aim, planned, dt, Object.assign({ lane: true }, opts));
   }
