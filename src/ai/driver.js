@@ -62,6 +62,33 @@ const SQUEEZE = 0.8;
 /** The most of its available lock a unit will ask for once it is moving. */
 const STEER_RESERVE = 0.82;
 
+/**
+ * How much of the tyre's grip a driver plans against, before its own skill figure
+ * and the rubber band are applied.
+ *
+ * "Do they have like 100% grip? Maybe just give them 100% grip." They effectively
+ * have more than that already: a pursuit driver's skill.grip is 1.08, so 1.08 times
+ * this is 0.94 of the tyre close up, and the band's extra grip takes the figure a
+ * third past 1 at full stretch. cornerSpeedLimit is sqrt(mu g r) with no margin of
+ * its own, so this constant is the only margin there is.
+ *
+ * Raising it makes them slower and crashier, which is worth knowing. Four routes
+ * behind a 150 km/h ghost:
+ *
+ *   | planned against | mean | behind | hits | wrecked | worst | tyre used |
+ *   |-----------------|------|--------|------|---------|-------|-----------|
+ *   | 0.87            |  68  | 134 m  |  20  |    0    | 0.44  |    62%    |
+ *   | 0.95            |  64  | 188 m  |  22  |    1    | 1.00  |    66%    |
+ *   | 1.03            |  58  | 258 m  |  15  |    0    | 0.83  |    63%    |
+ *
+ * The tyre usage barely moves, because they were never grip-limited: what they use
+ * in a corner is 62% of what is available and the clamp in force is the
+ * pure-pursuit arc, 36-48% of the time. All a bigger number buys is corners entered
+ * too fast to hold, and the time lost gathering the car up is more than the time
+ * saved. See Driver._mu().
+ */
+const MU_TRUST = 0.87;
+
 /** Wide enough that the lane terms behave as they always did. */
 const WIDE = 20;
 
@@ -189,6 +216,12 @@ export class Driver {
     // roster up all the way through a run and a tweak applied once only reaches the
     // cars that were already out.
     this.trustRoute = typeof window !== 'undefined' && window.__trustRoute === true;
+    // How much of the tyre the driver plans against, before skill and the band.
+    // "Do they have like 100% grip? Maybe just give them 100% grip." Not quite:
+    // this is the margin a driver keeps for bumps, camber and the fact that a
+    // point mass is not a car. A pursuit driver's own skill.grip is 1.08, so the
+    // two together come to 0.94 of the tyre -- see MU_TRUST.
+    this.muTrust = MU_TRUST;
     // Set by the rigs to put the tree blindness back -- see _pathClear.
     this.treeBlind = false;
     // Set by the rigs to put the three-ray probe back -- see clearAhead.
@@ -392,7 +425,7 @@ export class Driver {
     // for the gaps is to let units take the gaps, which is pickGap's business and
     // not this one.
     const believed = 1 + (assist.grip - 1) * this.bandBelief;
-    return v.surfaceMu * (v.spec.gripScale || 1) * this.skill.grip * 0.87
+    return v.surfaceMu * (v.spec.gripScale || 1) * this.skill.grip * this.muTrust
       * believed * this.gripEstimate;
   }
 
@@ -684,7 +717,7 @@ export class Driver {
         // gap. "When there's a tight gap the police seem to slow down loads."
         if (this._onCarriageway()) {
           const off = cornerSpeedLimit(this.offRoadArc,
-            TYRE_GRASS.mu * (v.spec.offRoadGrip || 1) * 0.87 * this.skill.grip);
+            TYRE_GRASS.mu * (v.spec.offRoadGrip || 1) * this.muTrust * this.skill.grip);
           c.sRunout = Math.sqrt(off * off + 2 * aBrake * this._runout);
           limit = Math.min(limit, c.sRunout);
         }

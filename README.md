@@ -1821,6 +1821,40 @@ most of a chase:
 All fourteen negotiated instead of nine, contacts down from four to one, and no
 single clamp dominating any more.
 
+### Do they have 100% grip?
+
+*"I don't know why they don't go faster through the turns. Do they have like 100%
+grip? Maybe just give them 100% grip."*
+
+They effectively have more than that. `cornerSpeedLimit` is `sqrt(mu g r)` with no
+margin of its own, a pursuit driver's `skill.grip` is 1.08, and the only haircut in
+the chain is `MU_TRUST` at 0.87 -- so the figure they plan against is 0.94 of the
+tyre close up, and the rubber band's extra grip takes it a third past 1 at full
+stretch.
+
+And the rigs now say what they actually use. In corners on the roads it is **62% of
+what is available**, and the clamp in force is the pure-pursuit arc 36-48% of the
+time, the wall clamp 16-24%, the turn-back clamp 8-12%. They are not grip-limited at
+all, which is why handing them more does not help:
+
+| planned against | mean | behind | contacts | wrecked | worst damage | tyre used |
+|---|---|---|---|---|---|---|
+| **0.87** | **68** | **134 m** | 20 | **0** | 0.44 | 62% |
+| 0.95 | 64 | 188 m | 22 | 1 | **1.00** | 66% |
+| 1.03 | 58 | 258 m | 15 | 0 | 0.83 | 63% |
+
+More grip makes them slower *and* crashier. The usage barely moves because the
+binding constraint is elsewhere; all a bigger number buys is corners entered faster
+than they can be held, and the time lost gathering the car up exceeds the time saved.
+At 0.95 a car is written off outright.
+
+Which leaves the pure-pursuit arc as the thing that actually limits a corner, and
+four attempts on it are now recorded in this file: the plan's own radius (worse on
+roads, a unit destroyed), a grip-limited planner fan (transformed one route, ruined
+the tightest), a longer lookahead (moved speed and contacts, moved hanging-on not at
+all), and simply believing more grip (above). The honest state of it is that nobody
+has found a way to relax that clamp that does not cost more than it returns.
+
 ### Turning the grip up, and why it stays where it is
 
 With the balance, the easing and the partial belief in place, the obvious next

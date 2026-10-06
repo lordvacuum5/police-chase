@@ -55,11 +55,15 @@ window.__keepUpSweep = async function (tweak, speeds = [90, 120, 150], seconds =
       let mean = 0, within = 0, behind = 0, hits = 0, worst = 0, sliding = 0, spins = 0;
       let hard = 0, wrecked = 0;
       const what = { tree: 0, building: 0, other: 0 };
+      const bind = {};
+      let lat = 0;
       for (let i = 0; i < routes; i++) {
         const r = chase(kph, seconds, tweak, i);
         mean += r.mean; within += r.within; behind += r.behind; hits += r.hits;
         sliding += r.sliding; spins += r.spins; hard += r.hard; wrecked += r.wrecked;
         for (const k of Object.keys(what)) what[k] += r.what[k];
+        for (const k of Object.keys(r.bind)) bind[k] = (bind[k] || 0) + r.bind[k];
+        lat += r.lat;
         worst = Math.max(worst, r.damage);
         await new Promise((res) => setTimeout(res, 0));
       }
@@ -72,6 +76,11 @@ window.__keepUpSweep = async function (tweak, speeds = [90, 120, 150], seconds =
         + `walls ${String(what.building).padStart(2)}   worst damage ${worst.toFixed(2)}   `
         + `sliding ${String(Math.round((sliding / routes) * 100)).padStart(3)}%   `
         + `lost it ${spins}x`);
+      const tot = Object.values(bind).reduce((a, b) => a + b, 0) || 1;
+      rows.push('    tyre used in corners '
+        + `${Math.round((lat / routes) * 100)}%   capped by `
+        + Object.keys(bind).sort((a, b) => bind[b] - bind[a]).slice(0, 5)
+          .map((k) => `${k} ${Math.round((bind[k] * 100) / tot)}%`).join(' '));
     }
     window.__res = rows.join('\n');
     return window.__res;
@@ -198,6 +207,13 @@ function chase(kph, seconds, tweak, which) {
   // being wrecked outright, so those are counted apart.
   let hard = 0, wrecked = 0;
   const dead = new Set();
+  // Which limit is in force, and how much of the tyre is actually being used.
+  // "I don't know why they don't go faster through the turns. Do they have like
+  // 100% grip?" They have about 94% of it close up and more than 100% at range, so
+  // if they are slow through a corner the cornering limit is not what is doing it --
+  // and this says what is.
+  const bind = {};
+  let latSum = 0, latN = 0;
   // What they hit, not just how often. takeImpact only gets the speed change, so
   // attribution happens here: at the moment of a knock, look round the car with a
   // props-only mask and a buildings-only one and see which is closer. Crude, and
@@ -270,6 +286,29 @@ function chase(kph, seconds, tweak, which) {
       sum += o.vehicle.speed * 3.6;
       near = Math.min(near, o.distanceTo(p.position));
       const v = o.vehicle;
+      const c = o.driver.caps;
+      if (c) {
+        let who = 'asked', low = c.asked;
+        for (const key of ['safe', 'wall', 'way', 'slide']) {
+          if (c[key] < low - 0.01) { low = c[key]; who = key; }
+        }
+        if (who === 'safe') {
+          let w2 = 'sClear', l2 = c.sClear;
+          for (const key of ['sTravel', 'sRunout', 'sArc', 'sBack']) {
+            if (c[key] < l2 - 0.01) { l2 = c[key]; w2 = key; }
+          }
+          who = w2.slice(1);
+        }
+        bind[who] = (bind[who] || 0) + 1;
+      }
+      // Lateral acceleration as a share of what the tyres can give, while the car
+      // is actually turning. One is the limit; well under one and the corner is
+      // being taken slowly for some reason other than grip.
+      if (v.speed > 8 && Math.abs(v.yawRate) > 0.08) {
+        const lat = Math.abs(v.yawRate * v.speed);
+        latSum += lat / Math.max(1, o.driver._mu() * 9.81);
+        latN++;
+      }
       const slip = Math.abs(v.slipAngleBody);
       if (slip > 0.22 && v.speed > 5) sliding++;
       if (slip > 1.0 && v.speed > 5) {
@@ -301,6 +340,8 @@ function chase(kph, seconds, tweak, which) {
     hard,
     wrecked,
     what,
+    bind,
+    lat: latN ? latSum / latN : 0,
     sliding: sliding / Math.max(1, n),
     spins,
     mean: sum / Math.max(1, n),
