@@ -1589,6 +1589,8 @@ this" can ever be answered with an alley. The grid city yields none, which is
 correct rather than a failure: a regular grid has no shortcuts worth taking,
 because the roads already go everywhere directly.
 
+All of it is switched off at `CUTS_ON`, for a reason two sections below.
+
 **And on its own it was worth nothing.** Three of four sessions came back worse
 with the gaps than without, and one number said why: a unit routed through a gap
 spent about a third of its time in there under 4 m/s. The shortcut was shorter and
@@ -1636,31 +1638,48 @@ cautious; a unit driving into a wall once it started trusting its route.
 With all three, 13 of 14 gaps are driven through at a mean of 55 km/h, never
 dropping to a crawl, with one contact across the fourteen.
 
-### And then the map was worth having
+### And then it was switched off again, for an interaction
 
-Same rig as before, both orders, eight routes each:
+It was switched on, and the whole-force rig appeared to agree: near 71% and 74%
+with the gaps against 64% and 60% without, both orders, arms that did not overlap.
 
-| | near | nearest unit | someone in front | the cars that started |
-|---|---|---|---|---|
-| with the gaps | 71%, 74% | 77, 67 m | 75%, 76% | 65%, 64% |
-| without | 64%, 60% | 84, 86 m | 70%, 68% | 50%, 55% |
+That comparison was wrong, and the way it was wrong is the lesson. It toggled the
+gaps and left the driver trusting its route as clear in *both* arms, so the second
+half of the change was never varied at all. And the rig did not count damage, which
+is the one number that would have shown it. "They seem to crash way more, like way
+more." Done properly, six routes each:
 
-Ten points more of the chase spent within 80 m, thirteen metres closer on average,
-and the share of the *original* cars still in touch at the end goes from about half
-to about two thirds. Both orders agree and the two arms do not overlap, which is
-more than can be said for most of what is measured on this rig.
+| | contacts | hard | worst damage | near | nearest unit |
+|---|---|---|---|---|---|
+| gaps + route trust | **71** | 2 | **0.49** | 58% | 86 m |
+| gaps only | 9 | 0 | 0.03 | 63% | 73 m |
+| route trust only | 14 | 0 | 0.00 | 69% | 63 m |
+| **neither** | 22 | 0 | 0.04 | **77%** | **56 m** |
 
-So the answer to the question that started it is not that they lacked the map.
-They did lack it, and giving it to them changed nothing by itself. Knowing the way
-through a gap and being able to drive it are two different pieces of work, and it
-needed both.
+Either change on its own *reduces* contacts. Together they treble them, do real
+damage, and leave the force further away than with neither. That is an interaction,
+and it is why neither single-factor test caught it.
 
-One bug fell out along the way and stays regardless. Cuts in `node.edges` inflate
-the node degree, and half a dozen tests ask "does this node have three or more
-edges" meaning *roads* -- is this a junction worth waiting at, is this somewhere to
-turn off. Counting alleys put seventeen more candidates in front of the intercept
-solver and took its hit rate from 31% to 21%. `RoadGraph.roadDegree` is the fix,
-and with no cuts in the graph it is exactly `edges.length`.
+The mechanism is specific. A cut is a tight corridor; `_pathClear` sweeps the route
+and reports it clear; the car commits at speed. But a cut is verified to
+`VERIFY_HALF` -- about forty centimetres of slack either side -- and the corner
+rounding in `pathToPoints` moves the line by more than that. A cautious unit
+survived the discrepancy because it was braking for the wall anyway. A committed
+one clips the brickwork.
+
+So both go back off: `CUTS_ON` is false and route-following speed comes off the
+straight probes again, which is the state this had before any of it. The gap
+machinery is all kept and still measured by `tests/gap.js` -- 13 of 14 driven at a
+mean of 55 km/h -- and the thing to fix before turning it on again is the one named
+above: verify a cut as the driver will actually be handed it, smoothed and with the
+lane offset applied, rather than as the search produced it.
+
+Two smaller things worth keeping from the attempt. `Driver.caps`, which made every
+"why is it slow here" question readable instead of guessable. And the realisation
+that the road rigs could not have found this: they build their officers by hand and
+drive them straight at the target, so path following -- the thing that changed --
+barely runs in them. The force rig is the only one where it dominates, and it was
+the only one not counting crashes.
 
 ### Believing your own width, except when choosing a gap
 
@@ -1766,6 +1785,41 @@ so what gets hit there is kerbs and other police cars -- at a 150 km/h ghost,
 seventeen contacts over four routes and not one of them a tree or a building. That
 is why `tests/trees.js` exists, and why the rigs now attribute a contact to a tree
 or a wall instead of just counting it.
+
+### Paving is not grass, and a gap is not a verge
+
+Two more from the same report: *"when there's a tight gap, the police seem to slow
+down loads"*, and *"there's just one single tree, and they hit it"* -- in a paved
+courtyard.
+
+Both are the same mistake in two places. `_offRoadNow` asks whether the wheels are
+on *grass*, which is the right question for grip, and it was being used for two
+questions that are not about grip:
+
+- the brake clamp counts trees only when off the carriageway -- but a courtyard, a
+  car park and a paved yard are surface 2, not grass, so the clamp stayed blind
+  exactly where the single tree was;
+- the "road is running out, slow for the verge" clause releases once the car is off
+  the road -- but on paving it never released, so a unit threading a paved gap was
+  held to an arriving-at-the-verge pace the whole way through. It bound 23% of the
+  time a car spent inside one.
+
+`_onCarriageway` is the question those two actually wanted: is there a road under
+the wheels. Separately, the straight probe toward the aim point was binding 60% of
+the time in a gap, and `pickGap` had already swept a box the car's own width along
+the heading it chose -- the same question, better aimed -- so that measurement is
+now used when the aim point came from it.
+
+Driving straight at something through fourteen gaps, which is what a unit does for
+most of a chase:
+
+| | got through | mean in the gap | contacts | what was binding |
+|---|---|---|---|---|
+| before | 9/14 | 75 km/h | 4 | aim probe 60%, runout 23% |
+| **after** | **14/14** | 75 km/h | **1** | nothing over 35% |
+
+All fourteen negotiated instead of nine, contacts down from four to one, and no
+single clamp dominating any more.
 
 ### Turning the grip up, and why it stays where it is
 

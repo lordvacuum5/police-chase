@@ -465,54 +465,42 @@ export function measureCuts(world, cuts) {
 }
 
 /**
- * On -- but it was off for a while, and why is the useful part.
+ * Off, and the honest reason is an interaction nobody measured.
  *
- * The map gets built and on its own it is worth nothing. Measured over eight
- * routes behind a target deliberately using the shortcuts, three of four sessions
- * came back *worse* with the gaps than without them, and the reason showed up in
- * one number: a unit routed through a gap spent about a third of its time in there
- * under 4 m/s. The shortcut was shorter and it was not quicker. The router costs
- * edges by time, so it kept choosing one, and a unit crawling down an alley is
- * further from the car than one going round at speed.
+ * The map gets built, it is correct, and the gaps are genuinely drivable: with the
+ * fixes in the commit that enabled this, 13 of 14 were taken at a mean of 55 km/h
+ * with one contact between them. On the strength of that it was switched on, and
+ * the whole-force rig appeared to agree -- near 71/74% with the gaps against
+ * 64/60% without.
  *
- * Three things were making them crawl, all found with tests/gap.js, which drives a
- * single car through a single gap and reads which of Driver.caps was the binding
- * limit while it was in there.
+ * That comparison was wrong. It toggled the gaps and left `Driver` trusting its
+ * route as clear in *both* arms, so the thing that mattered was never varied. Done
+ * properly, six routes each:
  *
- *   mean through a gap   the binding limit        what it was
- *   28 km/h              its own asked speed 58%  the edge's posted 8 m/s, set to
- *                                                 discourage the router and
- *                                                 obeyed by the driver as well
- *   38 km/h              the aim probe 58%        "be able to stop in what you can
- *                                                 see", aimed at the wall at the
- *                                                 far end of the corridor
- *   37 km/h              the route itself 44%     the route was not verified at
- *                                                 its ends, so the first hop out
- *                                                 of the junction clipped a corner
- *   55 km/h              its own asked speed 85%  nothing left in the way
+ *                      hits  hard  worst  near   nearest unit
+ *   gaps + route trust    71     2   0.49   58%       86 m
+ *   gaps only              9     0   0.03   63%       73 m
+ *   route trust only      14     0   0.00   69%       63 m
+ *   neither               22     0   0.04   77%       56 m
  *
- * So: cutSpeed gives a gap a posted speed from its width and CUT_PENALTY carries
- * the router's reluctance on its own; Driver._pathClear measures clearance along
- * the route rather than down a straight line; verifyCuts keeps only cuts a car can
- * be swept along end to end. With those, 13 of 14 gaps are driven through at a
- * mean of 55 km/h, never dropping below a walking crawl, with one contact in
- * fourteen.
+ * Either change on its own *reduces* contacts. Together they treble them and do
+ * real damage, and the force ends up further away than with neither. The reason is
+ * specific: a cut is a tight corridor, Driver._pathClear sweeps the route and
+ * reports it clear, the car commits at speed -- and the route is only verified to
+ * VERIFY_HALF, about forty centimetres of slack, which is less than the corner
+ * rounding in pathToPoints moves it. Cautious units survived that; committed ones
+ * clip the brickwork. "They seem to crash way more, like way more."
  *
- * And then the gaps are worth having. Same rig, both orders, eight routes each:
+ * So the gaps stay off until a cut's geometry is verified as the driver will
+ * actually be given it -- smoothed, with the lane offset applied -- rather than as
+ * the search produced it. Everything else here is kept and switched on by this one
+ * flag, and tests/gap.js drives it.
  *
- *            near   nearest unit   someone in front   the cars that started
- *   with     71/74%     77/67 m        75/76%              65/64%
- *   without  64/60%     84/86 m        70/68%              50/55%
- *
- * Which is the answer to the question that started this: they did not lack the
- * map, and the map alone did nothing. Knowing the way through a gap and being able
- * to drive it are two different pieces of work, and it needed both.
- *
- * Nothing is found on the grid city, and that is correct rather than a failure: a
- * regular grid has no shortcuts worth taking because the roads already go
- * everywhere directly. This is for towns that grew.
+ * Nothing is found on the grid city either way, which is correct rather than a
+ * failure: a regular grid has no shortcuts worth taking because the roads already
+ * go everywhere directly. This is for towns that grew.
  */
-export const CUTS_ON = true;
+export const CUTS_ON = false;
 
 /**
  * The whole job: find the ways through and put them in the graph.

@@ -182,7 +182,13 @@ export class Driver {
     // How much of the band's extra grip the driver counts on -- see _mu().
     this.bandBelief = BAND_BELIEF;
     // Set by the rigs to put the aim-probe clamp back -- see safeSpeed.
-    this.noPathTrust = false;
+    // Whether the speed limit follows the route instead of a straight probe -- see
+    // _pathClear. Off: it is only a win alongside the gap graph, and alongside the
+    // gap graph the pair of them crash. Read from a global at construction so a rig
+    // can switch it for units that do not exist yet, because the force rig tops its
+    // roster up all the way through a run and a tweak applied once only reaches the
+    // cars that were already out.
+    this.trustRoute = typeof window !== 'undefined' && window.__trustRoute === true;
     // Set by the rigs to put the tree blindness back -- see _pathClear.
     this.treeBlind = false;
     // Set by the rigs to put the three-ray probe back -- see clearAhead.
@@ -398,6 +404,23 @@ export class Driver {
   }
 
   /**
+   * Is the car on a carriageway?
+   *
+   * Not the same question as `_offRoadNow`, which asks about grass because what it
+   * is for is grip. This asks whether there is a road under the wheels, because
+   * what it is for is whether a tree ahead is scenery beside a street or a thing
+   * about to be hit. A courtyard, a car park and a paved yard are all surface 2:
+   * not grass, so `_offRoadNow` says the car is on the road, so the brake clamp
+   * went on ignoring trees. "I just went through a few tight gaps in almost the
+   * green courtyard, and there's just one single tree, and they hit it."
+   */
+  _onCarriageway() {
+    let n = 0;
+    for (const w of this.v.wheels) if (w.surface === 1) n++;
+    return n >= 3;
+  }
+
+  /**
    * Speed ceiling while the car is sideways.
    *
    * Asking a car that is already sliding for the speed that put it there just
@@ -573,7 +596,7 @@ export class Driver {
 
       // On a path, both of the probes below have the same and better answer: how
       // far along the route is clear. See _pathClear.
-      const trustPath = onPath && !this.noPathTrust && this.hasPath;
+      const trustPath = onPath && this.trustRoute && this.hasPath;
       if (trustPath) this._clear = this._pathClear(need);
 
       // Probe toward where we are actually going, not along the nose. A nose
@@ -585,7 +608,22 @@ export class Driver {
       // Deliberately not cut short at the aim point any more: the aim point in
       // a pursuit is a moving car, and the road beyond it is the road this
       // car is about to be driving.
-      if (!trustPath) this._clear = this.clearAhead(_probe, need);
+      if (!trustPath) {
+        this._clear = this.clearAhead(_probe, need);
+        // And when the aim point came out of the gap search this frame, take its
+        // measurement instead if it is the longer one.
+        //
+        // pickGap has already swept a box the car's own width along the heading it
+        // chose, which is the same question this probe asks and a better-aimed
+        // version of it: the probe runs from the nose to the aim point, and in a
+        // corridor that line ends on the wall at the far side of the way out. It
+        // was the binding limit for 60% of the time a unit spent in a gap while
+        // driving straight at something, and the gap search had already decided the
+        // way through was clear.
+        if (this._aimFromGap && this.gapClear > this._clear) {
+          this._clear = this.gapClear;
+        }
+      }
 
       // And a second probe along the direction the car is genuinely
       // travelling. The aim probe answers "is the way I want to go clear";
@@ -639,7 +677,12 @@ export class Driver {
         // 190. "When I go off-road, the police cars suddenly slow down a
         // lot." Out there, what it can see and how hard it is turning -- both
         // already worked out on the grass's own grip -- are the limits.
-        if (!this._offRoadNow()) {
+        // Released once there is no road under the wheels, not once there is grass.
+        // A gap between buildings, a courtyard and a car park are all paving, so a
+        // unit threading one was still being held to an arriving-at-the-verge pace
+        // the whole way through -- it bound a quarter of the time a car spent in a
+        // gap. "When there's a tight gap the police seem to slow down loads."
+        if (this._onCarriageway()) {
           const off = cornerSpeedLimit(this.offRoadArc,
             TYRE_GRASS.mu * (v.spec.offRoadGrip || 1) * 0.87 * this.skill.grip);
           c.sRunout = Math.sqrt(off * off + 2 * aBrake * this._runout);
@@ -730,6 +773,7 @@ export class Driver {
 
     this.gapClear = bestClear;
     this.gapAngle = bestAng;
+
     const ca = Math.cos(bestAng), sa = Math.sin(bestAng);
     const gx = dx * ca - dz * sa, gz = dx * sa + dz * ca;
     // Aim into the gap rather than at its far end, so the car keeps steering
@@ -1193,6 +1237,9 @@ export class Driver {
     this._updateGrip(dt);
     this._laneKeep = opts.lane === true;
     if (!this._laneKeep) this._room = WIDE;
+    // Said by the caller, because only the caller knows whether the aim point it is
+    // handing over came out of pickGap this frame -- see safeSpeed.
+    this._aimFromGap = opts.gap === true;
     const s = this.steerToward(aim.x, aim.z, dt);
     out.steer = s.steer;
 
@@ -1594,11 +1641,15 @@ export class Driver {
     // hauls off the speed mid-corner for a trunk it was never going to touch is a
     // unit that loses the back end.
     //
-    // Among the trunks it is the opposite. A wood is the one place a tree *is* the
-    // thing in front of you, and there it costs nothing to admit it: crossings of
-    // a thirty-eight-trunk wood went from three tree contacts to one at exactly
-    // the same mean speed, 47 km/h either way.
-    const trees = this.wallSeesTrees || this._offRoadNow();
+    // Off it, it is the opposite. A wood is the one place a tree *is* the thing in
+    // front of you, and there it costs nothing to admit it: crossings of a
+    // thirty-eight-trunk wood went from three tree contacts to one at exactly the
+    // same mean speed, 47 km/h either way.
+    //
+    // "Off it" means no road under the wheels, not grass under them -- see
+    // _onCarriageway. Gating this on grass left the clamp blind in a paved
+    // courtyard, which is where it was reported from.
+    const trees = this.wallSeesTrees || !this._onCarriageway();
     this.wallNear = sweepBox(v.world, _origin, _probe, reach,
       trees ? RAY_GROUNDS : RAY_SOLID, v.body, hw);
     return this.wallBias;

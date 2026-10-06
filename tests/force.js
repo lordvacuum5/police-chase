@@ -35,6 +35,7 @@ window.__runForce = async function (seconds = 30, kph = 110, runs = 4, label = '
     const rows = [];
     let near = 0, lost = 0, closest = 0, seen = 0, n = 0, cNear = 0, cLost = 0;
     let meanNear = 0, regained = 0, ahead = 0, picked = 0, reached = 0;
+    let hits = 0, hard = 0, wrecked = 0, worst = 0;
     for (let i = 0; i < runs; i++) {
       window.__forceAt = i;
       const r = run(i, seconds, kph, tweak, pinSight, kind);
@@ -44,6 +45,7 @@ window.__runForce = async function (seconds = 30, kph = 110, runs = 4, label = '
       cNear += r.cohortNear; cLost += r.cohortLost;
       meanNear += r.meanNear; regained += r.regained; ahead += r.ahead;
       picked += r.picked; reached += r.reached;
+      hits += r.hits; hard += r.hard; wrecked += r.wrecked; worst = Math.max(worst, r.worst);
       await new Promise((res) => setTimeout(res, 0));
     }
     rows.push(`${n} runs:  near ${Math.round((near * 100) / n)}%  `
@@ -51,6 +53,7 @@ window.__runForce = async function (seconds = 30, kph = 110, runs = 4, label = '
       + `seen ${Math.round((seen * 100) / n)}%  `
       + `| mean nearest ${Math.round(meanNear / n)} m  `
       + `someone in front ${Math.round((ahead * 100) / n)}%  got back on ${regained}x  `
+      + `| hits ${hits} hard ${hard} wrecked ${wrecked} worst ${worst.toFixed(2)}  `
       + `| predictions: car passed ${reached} of ${picked} junctions sent to `
       + `(${Math.round((reached * 100) / Math.max(1, picked))}%)  `
       + `| started-with: near ${Math.round((cNear * 100) / n)}%`);
@@ -269,6 +272,13 @@ function run(which, seconds, kph, tweak, pinSight, kind) {
   // through or sits in it. If knowing the gaps makes the chase worse, this says
   // whether that is the predictor being diluted or units getting wedged.
   let onCutFrames = 0, onCutSlow = 0, unitFrames = 0;
+  // Damage, which this rig never counted -- and it is the only one where units
+  // that *follow paths* dominate, so it is the only one that could have seen what
+  // route-trust did to them. The road rigs build their officers by hand and drive
+  // them straight at the target, which is a different code path entirely.
+  let hits = 0, hard = 0, wrecked = 0, worst = 0;
+  const lastHit = new Map();
+  const dead = new Set();
   // Whether the junctions the solver sends units to are places the car actually
   // goes. Everything in the intercept solver is downstream of RoadGraph.predict,
   // which walks the road network -- and a player cutting through gardens is not
@@ -325,6 +335,14 @@ function run(which, seconds, kph, tweak, pinSight, kind) {
       const name = ROLE_NAMES[u.role] || String(u.role);
       roleTime[name] = (roleTime[name] || 0) + 1;
       unitFrames++;
+      const vv = u.vehicle;
+      if (vv.lastImpactAt && vv.lastImpactAt !== lastHit.get(u) && vv.lastImpact > 4) {
+        lastHit.set(u, vv.lastImpactAt);
+        hits++;
+        if (vv.lastImpact > 25) hard++;
+      }
+      if (vv.damage > worst) worst = vv.damage;
+      if (vv.damage >= 0.99 && !dead.has(u)) { dead.add(u); wrecked++; }
       const pth = u.driver.path;
       if (pth && pth.length && pth.some((q) => q.edge && q.edge.cut)) {
         onCutFrames++;
@@ -378,6 +396,8 @@ function run(which, seconds, kph, tweak, pinSight, kind) {
       + `someone in front ${String(Math.round((aheadFrames * 100) / frames)).padStart(3)}% `
       + `at ${String(Math.round(aheadSum / Math.max(1, aheadFrames))).padStart(3)} m  `
       + `got back on ${regained}x  `
+      + `| hits ${String(hits).padStart(3)} hard ${String(hard).padStart(2)} `
+      + `wrecked ${wrecked} worst ${worst.toFixed(2)}  `
       + `| routed via a gap ${String(Math.round((onCutFrames * 100) / Math.max(1, unitFrames))).padStart(3)}% `
       + `of unit-time, crawling for ${Math.round((onCutSlow * 100) / Math.max(1, onCutFrames))}% of it  `
       + `| ${roles}  `
@@ -388,6 +408,10 @@ function run(which, seconds, kph, tweak, pinSight, kind) {
       + `blocked-by ${Object.keys(bs).filter((x) => x !== 'tried' && x !== 'placed' && bs[x])
         .map((x) => `${x} ${bs[x]}`).join(' ') || 'nothing'}`,
     meanNear: nearSum / frames,
+    hits,
+    hard,
+    wrecked,
+    worst,
     ahead: aheadFrames / frames,
     picked: picked.size,
     reached,

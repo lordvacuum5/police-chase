@@ -20,7 +20,7 @@ import { buildCutGraph } from '../src/world/cutgraph.js';
 /** How close to the narrowest point counts as being in the gap. */
 const INSIDE = 26;
 
-window.__runGap = async function (kph = 70, tweak = null, label = '', limit = 20) {
+window.__runGap = async function (kph = 70, tweak = null, label = '', limit = 20, mode = 'path') {
   window.__gapDone = false;
   window.__res = null;
   try {
@@ -45,7 +45,7 @@ window.__runGap = async function (kph = 70, tweak = null, label = '', limit = 20
     let through = 0, n = 0, sum = 0, slowest = 99, crawl = 0, hits = 0;
     const bind = {};
     for (let i = 0; i < cuts.length; i++) {
-      const r = run(cuts[i], kph, tweak);
+      const r = run(cuts[i], kph, tweak, mode);
       if (!r) continue;
       n++;
       if (r.through) through++;
@@ -70,7 +70,7 @@ window.__runGap = async function (kph = 70, tweak = null, label = '', limit = 20
   }
 };
 
-function run(cut, kph, tweak) {
+function run(cut, kph, tweak, mode) {
   const g = window.__game;
   const gr = g.graph;
   const { SKILL, ROLE, Officer } = window.__modules;
@@ -96,10 +96,23 @@ function run(cut, kph, tweak) {
   car.setVelocity({ x: Math.sin(h) * speed, y: 0, z: Math.cos(h) * speed });
   car._readState();
 
-  // The way through, as the router gives it.
-  const path = gr.route(cut.a, cut.b, Infinity, { cuts: true, minWidth: 2.4 });
-  if (!path || path.length < 2) { g.despawnPolice(o); g.paused = false; return null; }
-  o.driver.setPath(gr.pathToPoints(path, 0, true, 9));
+  // Two ways of being sent through, because they are different code. With a route,
+  // the driver follows a path and Driver._pathClear measures clearance along it.
+  // Driving straight at something it can see -- which is what a unit does for most
+  // of a chase -- there is no path at all, and the speed comes off the straight
+  // probes instead. "When there's a tight gap, the police seem to slow down loads."
+  // That complaint is about the second case and the rig only had the first.
+  let ghost = null;
+  if (mode === 'direct') {
+    // A target parked just beyond the far end, in plain sight through the gap.
+    const b = gr.nodes[cut.b];
+    ghost = { x: b.x, z: b.z };
+    o.driver.setPath([]);
+  } else {
+    const path = gr.route(cut.a, cut.b, Infinity, { cuts: true, minWidth: 2.4 });
+    if (!path || path.length < 2) { g.despawnPolice(o); g.paused = false; return null; }
+    o.driver.setPath(gr.pathToPoints(path, 0, true, 9));
+  }
 
   const bEnd = gr.nodes[cut.b];
   let frames = 0, inside = 0, sum = 0, min = 999, crawl = 0, hits = 0;
@@ -109,7 +122,12 @@ function run(cut, kph, tweak) {
     // Band assistance needs a target to scale against; there is none here, so the
     // car runs on its own merits. That is the honest test of the driving.
     o.driver.allowOffRoad = true;
-    const ctl = o.driver.followPath(1 / 60, car.spec.topSpeedHint);
+    // Through the officer's own _driveDirect, not straight into driveTo: that is
+    // the method the game uses when a unit can see what it is chasing, and it is
+    // the one that runs the gap search and hands its measurement on.
+    const ctl = ghost
+      ? o._driveDirect(1 / 60, ghost, car.spec.topSpeedHint)
+      : o.driver.followPath(1 / 60, car.spec.topSpeedHint);
     if (tweak) tweak(o.driver, o, car);
     car.setControls(ctl);
     g.stepHeadless(1 / 60);

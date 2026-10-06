@@ -1017,7 +1017,9 @@ export class Officer {
     const aim = d.pickGap(goal.x, goal.z, reach);
     _aim.set(aim.x, 0, aim.z);
     d.setPath([]);
-    return d.driveTo(_aim, speed, dt, { allowHandbrake: false });
+    // `gap` says the aim point is the gap search's, so safeSpeed may use the swept
+    // measurement that came with it rather than probing the same line again worse.
+    return d.driveTo(_aim, speed, dt, { allowHandbrake: false, gap: true });
   }
 
   /**
