@@ -23,6 +23,8 @@
 // Run it at several ghost speeds. 90 km/h is brisk for a town, 150 is what a
 // Stiletto does on a main road, and the gap between those two columns is the
 // thing the player is complaining about.
+import { sweepBox, groups, GROUP, RAY_WALL } from '../src/physics/world.js';
+
 window.__runKeepUp = async function (speeds = [90, 120, 150], seconds = 45, routes = 4) {
   return window.__keepUpSweep(null, speeds, seconds, routes);
 };
@@ -52,10 +54,12 @@ window.__keepUpSweep = async function (tweak, speeds = [90, 120, 150], seconds =
       // here are smaller than the difference between two bits of town.
       let mean = 0, within = 0, behind = 0, hits = 0, worst = 0, sliding = 0, spins = 0;
       let hard = 0, wrecked = 0;
+      const what = { tree: 0, building: 0, other: 0 };
       for (let i = 0; i < routes; i++) {
         const r = chase(kph, seconds, tweak, i);
         mean += r.mean; within += r.within; behind += r.behind; hits += r.hits;
         sliding += r.sliding; spins += r.spins; hard += r.hard; wrecked += r.wrecked;
+        for (const k of Object.keys(what)) what[k] += r.what[k];
         worst = Math.max(worst, r.damage);
         await new Promise((res) => setTimeout(res, 0));
       }
@@ -64,7 +68,8 @@ window.__keepUpSweep = async function (tweak, speeds = [90, 120, 150], seconds =
         + `with it ${String(Math.round((within / routes) * 100)).padStart(3)}%   `
         + `behind ${String(Math.round(behind / routes)).padStart(4)} m   `
         + `hits ${String(hits).padStart(3)}   hard ${String(hard).padStart(2)}   `
-        + `wrecked ${wrecked}   worst damage ${worst.toFixed(2)}   `
+        + `wrecked ${wrecked}   trees ${String(what.tree).padStart(2)}   `
+        + `walls ${String(what.building).padStart(2)}   worst damage ${worst.toFixed(2)}   `
         + `sliding ${String(Math.round((sliding / routes) * 100)).padStart(3)}%   `
         + `lost it ${spins}x`);
     }
@@ -98,6 +103,9 @@ window.__keepUpGripSweep = async function (values, tweak, speeds = [150], second
 
 /** An impact above this is a crash rather than a scrape. */
 const HARD = 25;
+
+/** Trees and the like, and buildings, each on their own. */
+const PROPS_ONLY = groups(0xFFFF, GROUP.PROP);
 
 async function ready() {
   for (let i = 0; i < 200 && !(window.__game && window.__game.player); i++) {
@@ -190,6 +198,27 @@ function chase(kph, seconds, tweak, which) {
   // being wrecked outright, so those are counted apart.
   let hard = 0, wrecked = 0;
   const dead = new Set();
+  // What they hit, not just how often. takeImpact only gets the speed change, so
+  // attribution happens here: at the moment of a knock, look round the car with a
+  // props-only mask and a buildings-only one and see which is closer. Crude, and
+  // enough to tell a tree from a wall, which is the question.
+  const what = { tree: 0, building: 0, other: 0 };
+  const DIRS = [
+    { x: 1, y: 0, z: 0 }, { x: -1, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }, { x: 0, y: 0, z: -1 },
+    { x: 0.7, y: 0, z: 0.7 }, { x: -0.7, y: 0, z: 0.7 },
+    { x: 0.7, y: 0, z: -0.7 }, { x: -0.7, y: 0, z: -0.7 },
+  ];
+  const blame = (v) => {
+    const o = { x: v.position.x, y: v.position.y + 0.5, z: v.position.z };
+    let tree = 99, wall = 99;
+    for (const d of DIRS) {
+      tree = Math.min(tree, sweepBox(v.world, o, d, 4, PROPS_ONLY, v.body, 0.3));
+      wall = Math.min(wall, sweepBox(v.world, o, d, 4, RAY_WALL, v.body, 0.3));
+    }
+    if (tree < 4 && tree <= wall) what.tree++;
+    else if (wall < 4) what.building++;
+    else what.other++;
+  };
   for (let i = 0; i < seconds * 60; i++) {
     const a = leg === 0 ? pts[0] : pts[leg - 1];
     const b = pts[leg];
@@ -250,6 +279,7 @@ function chase(kph, seconds, tweak, which) {
         lastAt.set(o, v.lastImpactAt);
         hits++;
         if (v.lastImpact > HARD) hard++;
+        blame(v);
       }
       if (v.damage >= 0.99 && !dead.has(o)) { dead.add(o); wrecked++; }
     }
@@ -270,6 +300,7 @@ function chase(kph, seconds, tweak, which) {
   return {
     hard,
     wrecked,
+    what,
     sliding: sliding / Math.max(1, n),
     spins,
     mean: sum / Math.max(1, n),

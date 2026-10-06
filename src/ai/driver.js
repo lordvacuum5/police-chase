@@ -183,6 +183,12 @@ export class Driver {
     this.bandBelief = BAND_BELIEF;
     // Set by the rigs to put the aim-probe clamp back -- see safeSpeed.
     this.noPathTrust = false;
+    // Set by the rigs to put the tree blindness back -- see _pathClear.
+    this.treeBlind = false;
+    // Set by the rigs to put the three-ray probe back -- see clearAhead.
+    this.rayProbe = false;
+    // Whether the last-resort brake clamp counts trees -- see _avoidScenery.
+    this.wallSeesTrees = false;
     // How much of its own width a unit believes when looking for a way through
     // -- see squeezeWidth.
     this.squeeze = SQUEEZE;
@@ -491,7 +497,13 @@ export class Driver {
       const span = Math.min(len, maxDist - acc);
       _arcAt.set(x, y, z);
       _arcDir.set(dx, 0, dz);
-      const toi = sweepBox(v.world, _arcAt, _arcDir, span, RAY_SOLID, v.body, hw);
+      // RAY_GROUNDS, so this sees trees. It was RAY_SOLID, which is buildings and
+      // terrain only, and that made every tree on the route invisible to the one
+      // clamp that decides how fast to take it: probed at a trunk 29 m away,
+      // RAY_SOLID reported the full 60 m clear. "They still seem to crash into
+      // trees a lot." The clamp this replaced used RAY_GROUNDS and did see them.
+      const toi = sweepBox(v.world, _arcAt, _arcDir, span,
+        this.treeBlind ? RAY_SOLID : RAY_GROUNDS, v.body, hw);
       if (toi < span) return acc + toi;
       acc += span;
       x = q.x; z = q.z;
@@ -501,17 +513,31 @@ export class Driver {
 
   clearAhead(dir, maxDist = 70) {
     const v = this.v;
-    let best = maxDist;
-    const hw = this.halfWidth;
-    for (const lateral of [-hw, 0, hw]) {
-      _origin.copy(v.position)
-        .addScaledVector(v.forward, v.spec.dims.l * 0.5)
-        .addScaledVector(v.left, lateral);
-      _origin.y += 0.6;
-      const hit = raycast(v.world, _origin, dir, maxDist, RAY_GROUNDS, v.body);
-      if (hit && hit.toi < best) best = hit.toi;
+    _origin.copy(v.position)
+      .addScaledVector(v.forward, v.spec.dims.l * 0.5);
+    _origin.y += 0.6;
+    // One swept box, not three rays.
+    //
+    // Three rays -- centre and either shoulder -- were meant to catch the
+    // building corner a single centre ray misses. They do, and they thread
+    // straight past a tree: a trunk is narrower than the 1.1 m between them, so
+    // probed at one from 30 m, the centre ray found it at 29.1 and both shoulder
+    // rays reported nothing at all in 60 m. Slide the trunk a foot off centre and
+    // all three miss it. The swept box is the car's own cross-section and catches
+    // it at 28.9, which is the question actually being asked -- and it is one
+    // shape cast where there were three rays.
+    if (this.rayProbe) {
+      // The old three rays, kept only so a rig can measure them against the sweep.
+      let best = maxDist;
+      const hw = this.halfWidth;
+      for (const lateral of [-hw, 0, hw]) {
+        _probe.copy(_origin).addScaledVector(v.left, lateral);
+        const hit = raycast(v.world, _probe, dir, maxDist, RAY_GROUNDS, v.body);
+        if (hit && hit.toi < best) best = hit.toi;
+      }
+      return best;
     }
-    return best;
+    return sweepBox(v.world, _origin, dir, maxDist, RAY_GROUNDS, v.body, this.halfWidth);
   }
 
   /**
@@ -1559,7 +1585,22 @@ export class Driver {
     // is something to miss, not something to stop for, and counting them here
     // had units crawling through anywhere wooded.
     this._travelDir(_probe);
-    this.wallNear = sweepBox(v.world, _origin, _probe, reach, RAY_SOLID, v.body, hw);
+    // Braking distance ignores trees on a road and counts them off it.
+    //
+    // The note above is right about a carriageway: there is a tree beside every
+    // other street, braking for one is braking for nothing, and it is worse than
+    // useless -- measured, counting them everywhere took the road rig from 11
+    // contacts to 32 at a 150 km/h ghost and wrecked two cars, because a unit that
+    // hauls off the speed mid-corner for a trunk it was never going to touch is a
+    // unit that loses the back end.
+    //
+    // Among the trunks it is the opposite. A wood is the one place a tree *is* the
+    // thing in front of you, and there it costs nothing to admit it: crossings of
+    // a thirty-eight-trunk wood went from three tree contacts to one at exactly
+    // the same mean speed, 47 km/h either way.
+    const trees = this.wallSeesTrees || this._offRoadNow();
+    this.wallNear = sweepBox(v.world, _origin, _probe, reach,
+      trees ? RAY_GROUNDS : RAY_SOLID, v.body, hw);
     return this.wallBias;
   }
 

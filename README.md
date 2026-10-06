@@ -1709,6 +1709,64 @@ unaffected -- still 13 of 14 driven through at a mean of 55 km/h, and the one
 contact in fourteen is now none. The weave rig gives back about a second and a half
 of hanging on, which is the honest price of honest avoidance.
 
+### The trees, and what the probes were allowed to see
+
+*"They still seem to crash into trees a lot... I wonder if they don't know the size
+of their cars."*
+
+They know their size. The swept plate every probe uses is the car's own width --
+`halfWidth` is half the collider plus ten centimetres -- and it starts at
+`dims.l * 0.45` with a 0.25 m half-depth, so its front face lands within four
+centimetres of the real nose. That was worth checking and it was not the problem.
+What was wrong is what the probes were allowed to *see*.
+
+Trees are `GROUP.PROP`, and `RAY_SOLID` is terrain and buildings only. Probed
+straight at a trunk from 30 m: **`RAY_SOLID` reports the full 60 m clear** while
+`RAY_GROUNDS` finds it at 28.9. `Driver._pathClear` -- the clamp that decides how
+fast the route ahead can be taken, added the day before -- was written with
+`RAY_SOLID`, copied from the wall clamp without thinking about it. The probe it
+replaced used `RAY_GROUNDS` and did see trees. So every tree on a unit's route
+became invisible to the one thing that sets its speed.
+
+The second one is older and subtler. `clearAhead` threaded three rays -- centre and
+either shoulder -- to catch the building corner a single centre ray misses. A trunk
+is narrower than the 1.1 m between them: from 30 m the centre ray found it at 29.1
+and **both shoulder rays reported nothing at all in 60 m**. Slide the trunk a foot
+off centre and all three miss. One swept box of the car's cross-section catches it
+at 28.9, is the question actually being asked, and is one shape cast where there
+were three rays. It is also *less* conservative where it matters, because a ray
+offset to the shoulder reports trees the car will drive past: crossing a wood went
+from 15 km/h to 47 and the share of the run stopped from 61% to 23%.
+
+The third is a lesson in this file being right in one place and wrong in another.
+The last-resort brake clamp deliberately ignores trees, because there is a tree
+beside every other street and braking for one is braking for nothing -- counting
+them everywhere took the road rig from 11 contacts to 32 at a 150 km/h ghost and
+wrecked two cars, since a unit that hauls the speed off mid-corner for a trunk it
+was never going to touch is a unit that loses the back end. Among the trunks it is
+the opposite: a wood is the one place a tree *is* the thing in front of you. So it
+now counts them when the car is off the carriageway and not when it is on one,
+which costs nothing on the road and takes the tree contacts in a wood from three to
+one at exactly the same mean speed.
+
+Six crossings of the densest wood on the map, 38 trunks thick, at 80 km/h:
+
+| | contacts | of them trees | mean speed | stopped |
+|---|---|---|---|---|
+| as shipped | 2 | 1 | 15 km/h | 61% |
+| swept probe, clamp still blind | 3 | 3 | 47 km/h | 26% |
+| **swept probe, clamp sees trees off-road** | **1** | **1** | **47 km/h** | **23%** |
+
+Same number of trees touched as the version that crawled, at three times the speed.
+The roads are unchanged -- twelve contacts against eleven at a 150 km/h ghost, and
+nothing wrecked in either.
+
+One note on measuring this at all: the road rigs cannot. Their routes are on roads,
+so what gets hit there is kerbs and other police cars -- at a 150 km/h ghost,
+seventeen contacts over four routes and not one of them a tree or a building. That
+is why `tests/trees.js` exists, and why the rigs now attribute a contact to a tree
+or a wall instead of just counting it.
+
 ### Turning the grip up, and why it stays where it is
 
 With the balance, the easing and the partial belief in place, the obvious next
