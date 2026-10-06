@@ -475,7 +475,7 @@ export class Driver {
    */
   _pathClear(maxDist) {
     const v = this.v;
-    const hw = this.squeezeWidth;
+    const hw = this.halfWidth;
     let x = v.position.x + v.forward.x * v.spec.dims.l * 0.45;
     let z = v.position.z + v.forward.z * v.spec.dims.l * 0.45;
     const y = v.position.y + 0.5;
@@ -502,7 +502,7 @@ export class Driver {
   clearAhead(dir, maxDist = 70) {
     const v = this.v;
     let best = maxDist;
-    const hw = this.squeezeWidth;
+    const hw = this.halfWidth;
     for (const lateral of [-hw, 0, hw]) {
       _origin.copy(v.position)
         .addScaledVector(v.forward, v.spec.dims.l * 0.5)
@@ -982,6 +982,18 @@ export class Driver {
    * So for *deciding where to go* a unit believes it is this much narrower, and
    * will commit to a gap it cannot quite clear. The real collision still happens,
    * which is the point -- it bounces off and keeps going.
+   *
+   * Only for deciding where to go. It was first applied to every probe in this
+   * file, including the ones that brake for scenery and steer away from it, and
+   * that is not being brave about a gap -- it is a car that has stopped believing
+   * its own width while deciding whether it is about to hit a building. "They keep
+   * on crashing." Measured on the roads behind a 150 km/h ghost, with the car's
+   * true width there were ten contacts, none of them hard and nothing written off;
+   * at 0.8 across every probe there were 23, two hard, and a unit destroyed.
+   *
+   * `pickGap`, `planTrajectory` and `planThrough` choose a line and use this.
+   * `clearAhead`, `_avoidScenery` and `_pathClear` decide whether to brake or
+   * steer, and use the real figure.
    */
   get squeezeWidth() {
     return this.halfWidth * this.squeeze;
@@ -1497,7 +1509,7 @@ export class Driver {
     // steer toward.
     _origin.copy(v.position).addScaledVector(v.forward, v.spec.dims.l * 0.45);
     _origin.y += 0.5;
-    const hw = this.squeezeWidth;
+    const hw = this.halfWidth;
     let leftClear = reach, rightClear = reach, nearest = reach;
     for (const ang of [-0.42, 0, 0.42]) {
       const ca = Math.cos(ang), sa = Math.sin(ang);

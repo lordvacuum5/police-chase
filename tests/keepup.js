@@ -51,10 +51,11 @@ window.__keepUpSweep = async function (tweak, speeds = [90, 120, 150], seconds =
       // repeating it tells you nothing, and the differences being looked for
       // here are smaller than the difference between two bits of town.
       let mean = 0, within = 0, behind = 0, hits = 0, worst = 0, sliding = 0, spins = 0;
+      let hard = 0, wrecked = 0;
       for (let i = 0; i < routes; i++) {
         const r = chase(kph, seconds, tweak, i);
         mean += r.mean; within += r.within; behind += r.behind; hits += r.hits;
-        sliding += r.sliding; spins += r.spins;
+        sliding += r.sliding; spins += r.spins; hard += r.hard; wrecked += r.wrecked;
         worst = Math.max(worst, r.damage);
         await new Promise((res) => setTimeout(res, 0));
       }
@@ -62,7 +63,8 @@ window.__keepUpSweep = async function (tweak, speeds = [90, 120, 150], seconds =
         + `mean ${String(Math.round(mean / routes)).padStart(3)} kph   `
         + `with it ${String(Math.round((within / routes) * 100)).padStart(3)}%   `
         + `behind ${String(Math.round(behind / routes)).padStart(4)} m   `
-        + `hits ${String(hits).padStart(3)}   worst damage ${worst.toFixed(2)}   `
+        + `hits ${String(hits).padStart(3)}   hard ${String(hard).padStart(2)}   `
+        + `wrecked ${wrecked}   worst damage ${worst.toFixed(2)}   `
         + `sliding ${String(Math.round((sliding / routes) * 100)).padStart(3)}%   `
         + `lost it ${spins}x`);
     }
@@ -93,6 +95,9 @@ window.__keepUpGripSweep = async function (values, tweak, speeds = [150], second
   window.__res = window.__sweep.join('\n');
   return window.__res;
 };
+
+/** An impact above this is a crash rather than a scrape. */
+const HARD = 25;
 
 async function ready() {
   for (let i = 0; i < 200 && !(window.__game && window.__game.player); i++) {
@@ -180,6 +185,11 @@ function chase(kph, seconds, tweak, which) {
   // anything, and that is still the complaint.
   let sliding = 0, spins = 0;
   const spinning = new Map();
+  // A scrape and a crash are not the same event and "hits" counts both. What a
+  // player calls crashing is a car hitting something hard enough to stop it, or
+  // being wrecked outright, so those are counted apart.
+  let hard = 0, wrecked = 0;
+  const dead = new Set();
   for (let i = 0; i < seconds * 60; i++) {
     const a = leg === 0 ? pts[0] : pts[leg - 1];
     const b = pts[leg];
@@ -239,7 +249,9 @@ function chase(kph, seconds, tweak, which) {
       if (v.lastImpactAt && v.lastImpactAt !== lastAt.get(o) && v.lastImpact > 4) {
         lastAt.set(o, v.lastImpactAt);
         hits++;
+        if (v.lastImpact > HARD) hard++;
       }
+      if (v.damage >= 0.99 && !dead.has(o)) { dead.add(o); wrecked++; }
     }
     if (near < 60) within++;
   }
@@ -256,6 +268,8 @@ function chase(kph, seconds, tweak, which) {
   g.heat.reset();
 
   return {
+    hard,
+    wrecked,
     sliding: sliding / Math.max(1, n),
     spins,
     mean: sum / Math.max(1, n),

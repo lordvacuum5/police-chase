@@ -1662,6 +1662,53 @@ turn off. Counting alleys put seventeen more candidates in front of the intercep
 solver and took its hit rate from 31% to 21%. `RoadGraph.roadDegree` is the fix,
 and with no cuts in the graph it is exactly `edges.length`.
 
+### Believing your own width, except when choosing a gap
+
+*"They keep on crashing."*
+
+They were, and it was the gap change above doing it. Letting a unit believe it is
+80% of its real width was applied to *every* probe in the driver, including the
+ones that brake for scenery and steer away from it -- and that is not being brave
+about a gap, it is a car that has stopped believing its own width while deciding
+whether it is about to hit a building.
+
+What made it legible was separating a scrape from a crash. "Contacts" counts both,
+and the whole point of the gap change was to accept scrapes, so the number going up
+looked like the change working. Counting impacts hard enough to stop a car, and
+cars destroyed outright, says something different. Four routes behind a 150 km/h
+ghost:
+
+| believed width | contacts | hard | wrecked | worst damage | left behind |
+|---|---|---|---|---|---|
+| its real one | 10 | **0** | **0** | 0.44 | 233 m |
+| 90% of it | 22 | 3 | 1 | 1.00 | 177 m |
+| 80% of it | 23 | 2 | 1 | 1.00 | 169 m |
+
+At its real width, nothing hard and nothing written off. At 80%, a unit destroyed.
+That is what reached the player, and the road rig had been saying so for two days
+in a column nobody was reading: contacts had gone from 10 to 23 and were waved
+through as the intended cost of being less careful.
+
+The split is the fix, and it is the distinction that should have been there from the
+start. `pickGap`, `planTrajectory` and `planThrough` choose a line -- they may
+believe the car is narrow and commit to a gap it cannot quite clear, because the
+scrape is the point. `clearAhead`, `_avoidScenery` and `_pathClear` decide whether
+to brake and which way to steer -- they use the real figure, because a car that
+lies to itself there does not scrape, it crashes.
+
+With that, no arm of the road rig has a single hard impact or a single wreck, and
+the squeeze is now straightforwardly worth having rather than a trade:
+
+| | contacts | hard | wrecked | left behind |
+|---|---|---|---|---|
+| real width, 150 km/h ghost | 31 | 0 | 0 | 242 m |
+| **80% for choosing, 150 km/h** | **18** | **0** | **0** | **158 m** |
+
+Eighty-four metres closer, fewer contacts, and none of them hard. The gaps are
+unaffected -- still 13 of 14 driven through at a mean of 55 km/h, and the one
+contact in fourteen is now none. The weave rig gives back about a second and a half
+of hanging on, which is the honest price of honest avoidance.
+
 ### Turning the grip up, and why it stays where it is
 
 With the balance, the easing and the partial belief in place, the obvious next
