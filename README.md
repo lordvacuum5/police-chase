@@ -1821,6 +1821,61 @@ most of a chase:
 All fourteen negotiated instead of nine, contacts down from four to one, and no
 single clamp dominating any more.
 
+### Three more things that should have worked
+
+All three came from the same place -- watching them corner and concluding something
+must be missing -- and the rigs turned all three down. They are recorded because the
+instinct behind each is good and the next person will have it too.
+
+**A better turning circle at high speed.** The lock a car has is
+`atan(wheelbase · latLimit / v²)`, grip-limited by construction, and `assist.steer`
+can scale it for police only, still clamped to the rack's real maximum. Four routes
+behind a 150 km/h ghost:
+
+| extra lock | mean | with it | behind | contacts | wrecked | tyre used |
+|---|---|---|---|---|---|---|
+| **none** | **69** | **27%** | **167 m** | 15 | 0 | 59% |
+| +25% | 62 | 24% | 248 m | 27 | **1** | 73% |
+| +50% | 68 | 23% | 170 m | 15 | 0 | 70% |
+
+The tyre usage climbs ten points and more, so the lock is being used. Time spent with
+the car falls. They were never short of lock.
+
+**Predicting the turn instead of the straight line.** *"If I'm turning this much I
+have no option except to crash or go between these two buildings. Do they do that?"*
+They did not: the aim point was `position + velocity × time`, which is where the car
+would be if it carried straight on, and mid-corner that is the outside of the bend.
+`Officer._leadAim` will integrate the turn instead -- heading plus yaw rate is a
+constant-radius arc over the second this ever asks for. Measured across the share of
+the turn followed, the straight line wins or ties nearly everywhere, and following the
+whole arc is the worst of the three at speed: three hard impacts and seven spins
+against one and two. Aiming at the true inside of somebody's line is aiming at the
+kerb, and the wall clamp then fires on the inside of every bend. It is also a smaller
+correction than it sounds -- about two and a half metres over a one-second lead.
+
+That one came with a rig bug worth remembering. The first reading had it *reducing*
+spins, and the ghost is teleported along a polyline, so its yaw rate had to be
+synthesised -- and the raw frame-to-frame heading change spikes to several radians a
+second where two segments meet. Smoothing it to something a car could do reversed the
+result. The rigs keep the synthesised yaw rate, because a ghost that never appears to
+turn is useless to anything that predicts a line, and that is why none of them could
+have found this before.
+
+**More grip**, which is the section above.
+
+So the arc clamp has now turned away six attempts: the plan's own radius, a
+grip-limited planner fan, a longer lookahead, more believed grip, a cornering lead,
+and more steering lock. What they all have in common is that they try to make the car
+better at the corner. The clamp is not about the corner -- it is about the speed the
+car arrives at it, and it is computed from a chord to a moving aim point. Whatever
+finally works will probably be about that chord.
+
+One more thing worth knowing about the contacts, since they look alarming and mostly
+are not: the rigs attribute each one, and on road routes it is neither trees nor
+buildings. Fifteen to twenty-four contacts over four routes, and the tally comes back
+trees 0, walls 0 -- they are kerbs and other police cars. A pack converging on one
+target bumps itself.
+
 ### Do they have 100% grip?
 
 *"I don't know why they don't go faster through the turns. Do they have like 100%

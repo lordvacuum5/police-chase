@@ -37,6 +37,15 @@ const CUT_CLEARANCE = 1.2;
 /** How far behind a unit has to be before a gap between buildings is worth it. */
 const CUT_FROM = 140;
 
+/** The most of a turn a lead point will follow round, in radians. */
+const ARC_LEAD_MAX = 1.2;
+
+/** How much of the target's turn the lead point follows -- see Officer._leadAim. */
+const ARC_LEAD_SHARE = 0.6;
+
+/** Whether to follow it at all. Off: measured, see Officer._leadAim. */
+const ARC_LEAD = false;
+
 const BAND_REACH = 130;
 
 /**
@@ -83,6 +92,29 @@ const BAND_GRIP = 0.35;
 const BAND_FADE = 38;
 const BAND_STABILITY = 0.6;
 const BAND_EASE = 1.5;
+
+/**
+ * Extra steering lock at full stretch of the band, above what the grip limit
+ * allows. Zero, and the measurement is the point.
+ *
+ * "Give them a better turning circle at high speed." It can be given -- the limit is
+ * atan(wheelbase * latLimit / v^2), and `assist.steer` scales it, police only, still
+ * clamped to the rack's own maximum -- and it does make them turn harder. It does
+ * not make them better. Four routes behind a 150 km/h ghost:
+ *
+ *   | extra lock | mean | with it | behind | hits | wrecked | tyre used |
+ *   |------------|------|---------|--------|------|---------|-----------|
+ *   | none       |  69  |   27%   | 167 m  |  15  |    0    |    59%    |
+ *   | +25%       |  62  |   24%   | 248 m  |  27  |    1    |    73%    |
+ *   | +50%       |  68  |   23%   | 170 m  |  15  |    0    |    70%    |
+ *
+ * The tyre usage goes up by ten points and more, so the lock is being used; the time
+ * spent with the car goes down. They were never short of lock. What decides a corner
+ * here is the speed they arrive at it, and that is the pure-pursuit arc clamp, which
+ * has now turned away six separate attempts: the plan's radius, a grip-limited
+ * planner fan, a longer lookahead, more believed grip, a cornering lead, and this.
+ */
+const BAND_STEER = 0;
 
 const _aim = new THREE.Vector3();
 const _tmp = new THREE.Vector3();
@@ -185,6 +217,12 @@ export class Officer {
     this.recoverTimer = 0;
     this.lastRole = null;
     this.stuckOnPath = 0;
+    // Whether the lead point follows the target's turn -- see _leadAim, where the
+    // measurement that keeps it off is written down. From a global so a rig can
+    // switch it for units that do not exist yet.
+    this.arcLead = typeof window !== 'undefined'
+      ? window.__arcLead === true
+      : ARC_LEAD;
   }
 
   get position() { return this.vehicle.position; }
@@ -231,6 +269,67 @@ export class Officer {
     this.driver.setPath(pts);
     this.goalNode = goalId;
     return true;
+  }
+
+  /**
+   * Where the target will be in `lead` seconds, on the arc it is actually on.
+   *
+   * This used to be position plus velocity times time, which is where the car
+   * would be if it carried straight on. Mid-corner it is not: a straight-line lead
+   * points at the *outside* of the bend, which is where the wall is, so a unit aims
+   * wide, has to correct, and sometimes does not correct in time. "Maybe they need
+   * to predict where I'm going. If I'm turning this much I have no option except to
+   * crash or go between these two buildings."
+   *
+   * So integrate the turn: the car has a heading and a yaw rate, which is a
+   * constant-radius arc over the second or so this ever asks for.
+   *
+   * Measured, and off. It is a smaller correction than it sounds -- over a one-second
+   * lead at road speed the aim point moves about two and a half metres -- and the
+   * rigs say it costs more than it returns. Four routes at each of two ghost speeds,
+   * with the share of the turn followed swept:
+   *
+   *   | share | 90: with it | behind | damage | 150: with it | behind | hard | spun |
+   *   |-------|-------------|--------|--------|--------------|--------|------|------|
+   *   | 0     |     59%     |  58 m  |  0.26  |     29%      | 137 m  |   1  |   2  |
+   *   | 0.6   |     46%     |  76 m  |  0.32  |     23%      | 231 m  |   0  |   2  |
+   *   | 1.0   |     58%     |  54 m  |  0.41  |     25%      | 185 m  |   3  |   7  |
+   *
+   * The straight line wins or ties nearly everywhere, and following the whole arc is
+   * worst of the three at speed -- three hard impacts and seven spins. Aiming at the
+   * true inside of the target's line is aiming at the kerb, and the wall clamp then
+   * fires on the inside of every bend.
+   *
+   * An earlier reading had it reducing spins, and that was an artefact of the rig:
+   * the ghost is teleported along a polyline, so its yaw rate had to be synthesised,
+   * and the raw frame-to-frame heading change spikes to several radians a second
+   * where two segments meet. Smoothing it to something a car could actually do
+   * reversed the result. The rigs keep the yaw rate, because a ghost that never
+   * appears to turn is no use to anything that predicts a line, and this is left
+   * behind `arcLead` for the next attempt.
+   */
+  _leadAim(target, lead, out) {
+    const sp = target.speed;
+    const om = target.yawRate || 0;
+    if (!this.arcLead || sp < 3 || Math.abs(om) < 0.05) {
+      return out.copy(target.position).addScaledVector(target.linvel, lead);
+    }
+    const h = Math.atan2(target.linvel.x, target.linvel.z);
+    // Capped, so a car that is spinning rather than cornering does not produce an
+    // aim point somewhere behind itself.
+    // Part of the way round, not all of it. Following the whole arc aims at the
+    // true inside of the target's line, which is where the kerb is: it cut the spins
+    // but put the pack 20% further back, because the wall clamp started firing on
+    // the inside of every bend. See ARC_LEAD_SHARE.
+    const share = this.arcLeadShare === undefined ? ARC_LEAD_SHARE : this.arcLeadShare;
+    const turn = clamp(om * lead * share, -ARC_LEAD_MAX, ARC_LEAD_MAX);
+    const r = sp / om;
+    out.set(
+      target.position.x + r * (Math.cos(h) - Math.cos(h + turn)),
+      target.position.y,
+      target.position.z + r * (Math.sin(h + turn) - Math.sin(h)),
+    );
+    return out;
   }
 
   /**
@@ -1214,7 +1313,7 @@ export class Officer {
     // Lead the target by roughly the time it takes to cover the gap.
     const closing = Math.max(4, v.speed);
     const lead = clamp(d / closing, 0, 1.15);
-    _aim.copy(target.position).addScaledVector(target.linvel, lead);
+    this._leadAim(target, lead, _aim);
 
     // Hang slightly off to one side once close, so a following unit is already
     // positioned for a PIT rather than square behind the boot -- but only the
@@ -1699,7 +1798,10 @@ export class Officer {
   _updateAssist(target, dt = 1 / 60) {
     const a = this.vehicle.assist;
     const chasing = target && this.game.heat.tier > 0 && this.role !== ROLE.PATROL;
-    if (!chasing) { a.boost = 1; a.grip = 1; a.stability = 0; a.shielded = false; return; }
+    if (!chasing) {
+      a.boost = 1; a.grip = 1; a.stability = 0; a.steer = 1; a.shielded = false;
+      return;
+    }
 
     const d = this.distanceTo(target.position);
     const engaged = clamp01((d - 30) / BAND_FADE);
@@ -1734,6 +1836,10 @@ export class Officer {
       * (1 + BAND_STABILITY * (this.bandStab === undefined ? 1 : this.bandStab)
         * this.aggression * far);
 
+    // More steering lock than the grip limit allows, for a car a long way back.
+    // "Give them a better turning circle at high speed."
+    a.steer = 1 + BAND_STEER * (this.bandSteer === undefined ? 1 : this.bandSteer)
+      * this.aggression * far * engaged;
     a.grip = damp(a.grip, wantGrip, BAND_EASE, dt);
     a.stability = damp(a.stability, wantStability, BAND_EASE, dt);
     // Still on the way: a crash costs this unit time, not its whole chase. Only

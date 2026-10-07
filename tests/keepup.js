@@ -24,6 +24,15 @@
 // Stiletto does on a main road, and the gap between those two columns is the
 // thing the player is complaining about.
 import { sweepBox, groups, GROUP, RAY_WALL } from '../src/physics/world.js';
+import { clamp } from '../src/util/math.js';
+
+/** Shortest signed angle between two headings. */
+function angleWrap(a) {
+  let x = a;
+  while (x > Math.PI) x -= Math.PI * 2;
+  while (x < -Math.PI) x += Math.PI * 2;
+  return x;
+}
 
 window.__runKeepUp = async function (speeds = [90, 120, 150], seconds = 45, routes = 4) {
   return window.__keepUpSweep(null, speeds, seconds, routes);
@@ -196,6 +205,7 @@ function chase(kph, seconds, tweak, which) {
 
   // Carry the ghost along the route at a fixed speed.
   let leg = 0, along = 0, lastAt = new Map();
+  let lastHead = null, yaw = 0;
   let n = 0, sum = 0, within = 0, hits = 0;
   // Sideways and spun. Contacts do not measure "they slide out and lose
   // control": a unit can spin, gather it up and carry on without touching
@@ -255,11 +265,25 @@ function chase(kph, seconds, tweak, which) {
       x += -hz * sway;
       z += hx * sway;
     }
-    p.teleport({ x, y: 0.9, z }, Math.atan2(hx, hz));
+    const head = Math.atan2(hx, hz);
+    p.teleport({ x, y: 0.9, z }, head);
     // Velocity first, then read the state off it: the other way round leaves
     // forwardSpeed derived from the velocity teleport had just cleared, and the
     // ghost reads as stationary to anything that asks how fast it is going.
     p.setVelocity({ x: hx * speed, y: 0, z: hz * speed });
+    // And the yaw rate its own path implies, because teleport leaves it at zero and
+    // a ghost with no yaw rate is a car that never appears to be turning. Anything
+    // that predicts where the target is going -- Officer._leadAim -- reads this, so
+    // without it the rigs could not have seen a cornering lead at all.
+    // Smoothed, because the route is a polyline and its corners are instant: the
+    // raw frame-to-frame heading change spikes to several radians a second where
+    // two segments meet, which no car does. A real yaw rate builds and decays, and
+    // feeding the unsmoothed version to anything that predicts the target's line
+    // judges it on a jerk rather than a corner.
+    const raw = lastHead === null ? 0 : angleWrap(head - lastHead) * 60;
+    lastHead = head;
+    yaw += (clamp(raw, -3, 3) - yaw) * 0.12;
+    p.body.setAngvel({ x: 0, y: yaw, z: 0 }, true);
     p._readState();
 
     g.heat.value = 5;

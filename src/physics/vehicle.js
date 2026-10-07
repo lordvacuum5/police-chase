@@ -135,10 +135,11 @@ export class Vehicle {
     // equal terms.
     //   boost     multiplies engine torque and divides drag -> higher top speed
     //   grip      multiplies tyre grip
+    //   steer     multiplies the grip-limited steering lock
     //   stability 0..1, how hard the car resists getting out of shape
     //   shielded  true while a unit is still on its way -- a crash en route
     //             should cost it time, not put it out of the chase entirely
-    this.assist = { boost: 1, grip: 1, stability: 0, shielded: false };
+    this.assist = { boost: 1, grip: 1, stability: 0, steer: 1, shielded: false };
 
     // ---- condition ----
     this.damage = 0;          // 0 pristine .. 1 wrecked
@@ -549,7 +550,12 @@ export class Vehicle {
     // degree or two of slip quietly hand back lock at motorway speed, which
     // feeds straight back into more slip.
     const counter = Math.abs(this.slipAngleBody) * 1.1;
-    const limit = clamp(Math.max(gripLimit, counter, st.minAngle), st.minAngle, st.maxAngle);
+    // `assist.steer` is the rubber band's share of this: more lock than the grip
+    // limit allows, for a police car closing from a distance. Still clamped to the
+    // rack's own maximum, so it can never ask for a wheel angle the car does not
+    // have. See Officer._updateAssist.
+    const limit = clamp(Math.max(gripLimit * (this.assist.steer || 1), counter, st.minAngle),
+      st.minAngle, st.maxAngle);
     // Published so the AI can scale its commands to the lock actually on offer
     // rather than to the absolute maximum.
     this.steerLimit = limit;
