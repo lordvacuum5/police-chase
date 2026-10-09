@@ -14,6 +14,10 @@ as before.
 | `runner.glb` | the Runner, the car the game was built around |
 | `offroad.glb` | the Badger, the 4x4 |
 
+The helicopter is not a car and has its own brief and its own loader: see
+`HELICOPTER.md` here and `src/game/helimodel.js`. It is `police_helicopter.glb`,
+and what it needs that a car does not is two separately named rotors.
+
 Other kinds can be added to `CAR_MODELS` in `src/game/carmodel.js`.
 
 ## What the file should contain

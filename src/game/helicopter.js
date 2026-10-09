@@ -13,6 +13,7 @@
 import * as THREE from 'three';
 import { clamp, clamp01, lerp, damp } from '../util/math.js';
 import { MeshBuilder, vertexColorMaterial } from '../util/meshbuild.js';
+import { loadHelicopterModel, buildImportedHelicopter } from './helimodel.js';
 
 /** Cruise height above the ground. */
 const ALTITUDE = 62;
@@ -71,6 +72,12 @@ const UP = new THREE.Vector3(0, 1, 0);
 export class Helicopter {
   constructor(game) {
     this.game = game;
+    // Fetched now, used whenever it next launches. The aircraft does not
+    // appear until five stars, so in practice it is always ready; if it is
+    // not, the generated body flies this sortie and the model takes over on
+    // the next one.
+    this._model = null;
+    loadHelicopterModel().then((m) => { this._model = m; });
     this.active = false;
     this.pos = new THREE.Vector3(0, ALTITUDE, 0);
     this.vel = new THREE.Vector3();
@@ -129,7 +136,7 @@ export class Helicopter {
     if (this.active) return;
     this.active = true;
     if (!this.mesh) {
-      this.mesh = buildHelicopterMesh();
+      this.mesh = buildImportedHelicopter(this._model) || buildHelicopterMesh();
       const lit = buildBeam();
       this.mesh.userData.beam = lit.beam;
       this.mesh.userData.pool = lit.pool;
@@ -335,8 +342,12 @@ export class Helicopter {
     m.rotateX(clamp(Math.hypot(this.vel.x, this.vel.z) * 0.004, 0, 0.18));
 
     const { main, tail, beam, pool } = m.userData;
-    if (main) main.rotation.z = this.rotor;
-    if (tail) tail.rotation.y = this.rotor * 1.7;
+    // Which axis each rotor turns about is the body's to say: the generated
+    // one builds discs lying in particular planes, an imported one is measured
+    // (see helimodel.js). The tail rotor turns faster than the main, as it
+    // does on the real thing.
+    if (main) main.rotation[m.userData.mainAxis || 'z'] = this.rotor;
+    if (tail) tail.rotation[m.userData.tailAxis || 'y'] = this.rotor * 1.7;
 
     // The beam is a child of the scene, not of the airframe, because it points
     // where the crew aim it rather than where the aircraft happens to be
@@ -447,6 +458,8 @@ function buildHelicopterMesh() {
   tail.position.set(0.36, 1.0, -5.5);
   group.add(tail);
 
+  group.userData.mainAxis = 'z';
+  group.userData.tailAxis = 'y';
   group.userData.main = main;
   group.userData.tail = tail;
   return group;
