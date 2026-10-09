@@ -152,6 +152,38 @@ window.__runFlyHeli = async function () {
       say(`  mark, then mark again at once: ${first}, then ${second}`);
     }
 
+    // ---- it has to answer everything the game asks of a player ----
+    //
+    // The aircraft is handed to code that was written for a car: placing a
+    // police player, recovering one that fell out of the world, patching one
+    // up. A method missing there is not a graceful degradation, it is an
+    // exception inside the frame loop every frame -- which is precisely what
+    // shipped: joining as the pilot threw out of _netPlaceNearSuspect, and
+    // the helicopter then flew perfectly on every screen except the one
+    // flying it. So the surface is checked rather than remembered.
+    {
+      const h = make();
+      const NEEDS = ['teleport', 'setControls', 'repair', 'setVelocity', '_readState', 'update'];
+      const missing = NEEDS.filter((m) => typeof h[m] !== 'function');
+      const FIELDS = ['position', 'quaternion', 'linvel', 'forward', 'up', 'left',
+        'speed', 'forwardSpeed', 'damage', 'wheels', 'spec', 'specKey',
+        'prevPos', 'prevQuat', 'angvel', 'steerAngle'];
+      const absent = FIELDS.filter((f) => h[f] === undefined);
+      say(`player surface: ${missing.length ? 'MISSING ' + missing.join(' ') : 'all methods present'}`
+        + `   ${absent.length ? 'MISSING ' + absent.join(' ') : 'all fields present'}`);
+
+      // And that they actually run, not merely exist.
+      let threw = null;
+      try {
+        h.repair();
+        h.setVelocity({ x: 1, y: 2, z: 3 });
+        h._readState();
+        h.setControls({ throttle: 1 });
+        h.teleport({ x: 10, y: 50, z: 10 }, 1);
+      } catch (e) { threw = e.message; }
+      say(`  called in anger: ${threw ? 'THREW ' + threw : 'all fine'}`);
+    }
+
     window.__res = rows.join(String.fromCharCode(10));
     window.__flyDone = true;
     return window.__res;

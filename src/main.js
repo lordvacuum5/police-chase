@@ -1441,13 +1441,53 @@ class Game {
     if (this.audio) this.audio.setHeld(this.paused);
     if (this.pauseMenu) this.pauseMenu.frame();
 
+    // The picture is drawn even if the simulation fell over.
+    //
+    // _render used to sit after a bare _update, so anything that threw inside
+    // the frame took the drawing with it -- and because the loop reschedules
+    // at the top, it threw again on the next frame and every frame after.
+    // What that looks like is not a crash: it is a game that keeps running,
+    // keeps taking input and never redraws. "I have to press pause and then
+    // unpause and it would update its position, but then still be frozen on
+    // frame" -- pausing skips the update, so the one thing that still worked
+    // got a turn.
+    //
+    // It was a police player joining in the helicopter, on their own machine
+    // only, and it took a report to find because nothing anywhere said a word.
+    // So now it says so: the frame still draws, and the error is surfaced
+    // rather than swallowed.
     if (!this.paused) {
-      this._update(dt);
+      try {
+        this._update(dt);
+      } catch (e) {
+        this._updateBroke(e);
+      }
     }
 
     this._render(dt);
     this.input.endFrame();
   };
+
+  /**
+   * Something threw inside the simulation. Say so, once, and carry on drawing.
+   *
+   * Deliberately not silent and deliberately not a hundred toasts: the first
+   * one goes on screen and to the console, and after that it counts them, so
+   * a repeating fault is visible in the debug readout without burying the
+   * console it needs to be diagnosed from.
+   */
+  _updateBroke(e) {
+    this.updateErrors = (this.updateErrors || 0) + 1;
+    if (this.updateErrors === 1) {
+      this.updateError = String((e && e.message) || e);
+      // eslint-disable-next-line no-console
+      console.error('[update]', e);
+      if (this.hud) this.hud.toast('SIMULATION ERROR');
+    } else if (this.updateErrors % 300 === 0) {
+      // eslint-disable-next-line no-console
+      console.error(`[update] still failing (${this.updateErrors})`, e);
+    }
+  }
 
   /**
    * Run the simulation without waiting on the render loop. Used by the
@@ -1701,7 +1741,11 @@ class Game {
       this.netPlacedAt = this.clock;
       this._netPlaceNearSuspect();
     }
-    if (session.role === 'police' && this.netPlaced) this._netKeepClear();
+    // Not for an aircraft: it cannot overlap anybody, being two hundred feet
+    // above all of them.
+    if (session.role === 'police' && this.netPlaced && !this.player.isAircraft) {
+      this._netKeepClear();
+    }
 
     // What the rest of the game asks the dispatcher for. On a police player's
     // machine nothing has updated it, so the suspect's own car is the answer.
@@ -1873,6 +1917,19 @@ class Game {
   _netPlaceNearSuspect() {
     const s = this.netSuspect;
     if (!s) return;
+    // Air support does not get put down on a side street. It arrives the way
+    // it does in single player -- up, and a little way off -- which is also
+    // the only sensible reading of "near" for something that does not use
+    // the roads.
+    if (this.player.isAircraft) {
+      const a = this.rng() * Math.PI * 2;
+      this.player.teleport({
+        x: s.position.x + Math.cos(a) * 260,
+        y: 150,
+        z: s.position.z + Math.sin(a) * 260,
+      }, Math.atan2(-Math.cos(a), -Math.sin(a)));
+      return;
+    }
     let best = null;
     for (let i = 0; i < 60; i++) {
       const node = this.graph.randomNode(this.rng, 'street');

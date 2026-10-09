@@ -374,6 +374,30 @@ export class FlyingHelicopter {
    */
   setControls(c) { this.stick = c; }
 
+  /**
+   * The rest of what the game calls on whatever it is holding as "the player".
+   *
+   * An aircraft is not a car, but it is handed to the same code that places a
+   * police player, recovers one that has fallen out of the world and patches
+   * one up, and a missing method there is not a graceful degradation -- it is
+   * an exception inside the frame loop, every frame. Which is exactly what it
+   * was: joining a game as the pilot threw out of _netPlaceNearSuspect on the
+   * pilot's own machine and nowhere else, so the helicopter flew perfectly on
+   * every screen except the one flying it.
+   */
+  repair() {
+    this.damage = 0;
+    this.disabled = false;
+    this.fuel = Math.max(this.fuel, ENDURANCE * 0.5);
+  }
+
+  setVelocity(v) {
+    this.linvel.set(v.x || 0, v.y || 0, v.z || 0);
+  }
+
+  /** Nothing to read: this aircraft is its own state, not a rigid body's. */
+  _readState() {}
+
   /** Put it somewhere, stopped and level. */
   teleport(at, heading = 0) {
     this.position.set(at.x, at.y, at.z);
