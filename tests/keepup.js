@@ -65,14 +65,15 @@ window.__keepUpSweep = async function (tweak, speeds = [90, 120, 150], seconds =
       let hard = 0, wrecked = 0;
       const what = { tree: 0, building: 0, other: 0 };
       const bind = {};
-      let lat = 0;
+      let lat = 0, wide = 0, drifting = 0, off = 0, offBad = 0;
       for (let i = 0; i < routes; i++) {
         const r = chase(kph, seconds, tweak, i);
         mean += r.mean; within += r.within; behind += r.behind; hits += r.hits;
         sliding += r.sliding; spins += r.spins; hard += r.hard; wrecked += r.wrecked;
         for (const k of Object.keys(what)) what[k] += r.what[k];
         for (const k of Object.keys(r.bind)) bind[k] = (bind[k] || 0) + r.bind[k];
-        lat += r.lat;
+        lat += r.lat; wide += r.wide; drifting += r.drifting;
+        off += r.off; offBad += r.offBad;
         worst = Math.max(worst, r.damage);
         await new Promise((res) => setTimeout(res, 0));
       }
@@ -86,7 +87,11 @@ window.__keepUpSweep = async function (tweak, speeds = [90, 120, 150], seconds =
         + `sliding ${String(Math.round((sliding / routes) * 100)).padStart(3)}%   `
         + `lost it ${spins}x`);
       const tot = Object.values(bind).reduce((a, b) => a + b, 0) || 1;
-      rows.push('    tyre used in corners '
+      rows.push(`    off the road ${Math.round((wide / routes) * 100)}%   `
+        + `aim off ${((off / routes) * 57.3).toFixed(0)} deg `
+        + `(badly ${Math.round((offBad / routes) * 100)}%)   `
+        + `sideways ${Math.round((drifting / routes) * 100)}%   `
+        + `tyre used in corners `
         + `${Math.round((lat / routes) * 100)}%   capped by `
         + Object.keys(bind).sort((a, b) => bind[b] - bind[a]).slice(0, 5)
           .map((k) => `${k} ${Math.round((bind[k] * 100) / tot)}%`).join(' '));
@@ -224,6 +229,16 @@ function chase(kph, seconds, tweak, which) {
   // and this says what is.
   const bind = {};
   let latSum = 0, latN = 0;
+  // Running wide, which is what "they overshoot turn-ins and keep going off route"
+  // looks like from the outside: time spent off the carriageway, and time spent
+  // genuinely sideways, which is the drift the assist is meant to produce.
+  let wide = 0, drifting = 0;
+  // Off the carriageway is not the same thing as off line. A unit cutting a
+  // corner across a verge is off the carriageway and doing exactly what it
+  // should; one that overshot a turn-in is pointing somewhere its target is not.
+  // So: the pure-pursuit aim angle, mean and the share of frames past 35 degrees,
+  // which is what overshooting a turn-in looks like from the numbers.
+  let offSum = 0, offN = 0, offBad = 0;
   // What they hit, not just how often. takeImpact only gets the speed change, so
   // attribution happens here: at the moment of a knock, look round the car with a
   // props-only mask and a buildings-only one and see which is closer. Crude, and
@@ -333,7 +348,16 @@ function chase(kph, seconds, tweak, which) {
         latSum += lat / Math.max(1, o.driver._mu() * 9.81);
         latN++;
       }
+      let onRoad = 0;
+      for (const wh of v.wheels) if (wh.surface === 1) onRoad++;
+      if (onRoad < 3) wide++;
+      if (v.speed > 8) {
+        const off = Math.abs(o.driver.aimError || 0);
+        offSum += off; offN++;
+        if (off > 0.6) offBad++;
+      }
       const slip = Math.abs(v.slipAngleBody);
+      if (slip > 0.22 && v.speed > 8) drifting++;
       if (slip > 0.22 && v.speed > 5) sliding++;
       if (slip > 1.0 && v.speed > 5) {
         if (!spinning.get(o)) { spins++; spinning.set(o, true); }
@@ -366,6 +390,10 @@ function chase(kph, seconds, tweak, which) {
     what,
     bind,
     lat: latN ? latSum / latN : 0,
+    wide: wide / Math.max(1, n),
+    off: offN ? offSum / offN : 0,
+    offBad: offN ? offBad / offN : 0,
+    drifting: drifting / Math.max(1, n),
     sliding: sliding / Math.max(1, n),
     spins,
     mean: sum / Math.max(1, n),

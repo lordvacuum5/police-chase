@@ -120,7 +120,7 @@ const ZERO = { Fx: 0, Fy: 0, load: 0, saturation: 0, stiffness: 0 };
  *          1.0 is exactly at the limit.
  */
 export function tyreForces(tyre, Fz, slipRatio, slipAngle, condition = 1, gripScale = 1,
-  latStiffness = 1) {
+  latStiffness = 1, holdPeak = false) {
   if (Fz <= 1) return ZERO;
 
   if (!tyre._cc) tyre._cc = combinedCoefficients(tyre.slidingFriction);
@@ -142,7 +142,14 @@ export function tyreForces(tyre, Fz, slipRatio, slipAngle, condition = 1, gripSc
   }
 
   // One curve for the magnitude; the direction opposes the slip vector.
-  const F = peak * magicFormula(s, cc.B, cc.C, cc.E);
+  //
+  // `holdPeak` stops the curve falling away past its peak -- the tyre saturates
+  // instead of giving force back. It buys nothing below the limit, where s < 1
+  // and this changes nothing at all; what it does is make a big slip angle free.
+  // That is the staged half of the police drift assist, and the only honest place
+  // to put it: a car held sideways on purpose should not also be punished with the
+  // understeer that being sideways would really cost. See Vehicle._driftHold.
+  const F = peak * magicFormula(holdPeak ? Math.min(s, 1) : s, cc.B, cc.C, cc.E);
 
   return {
     Fx: F * (sx / s),

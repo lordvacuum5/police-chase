@@ -43,6 +43,16 @@ const OFF_ROAD_ARC = 45;
  * Past this much of a heading change the aim point is behind the car and the
  * pure-pursuit arc stops meaning anything: see the end of safeSpeed.
  */
+/**
+ * Drift: the slowest speed worth being sideways at, the aim angle that counts as
+ * a turn-in rather than a lane change, and the slip angle a committed corner
+ * asks for -- about 14 degrees, which looks like a drift and is still inside
+ * what the counter-steer floor in Vehicle can catch. See _wantDrift.
+ */
+const DRIFT_SPEED = 14;
+const DRIFT_ALPHA = 0.30;
+const DRIFT_SLIP = 0.25;
+
 const TURN_BACK = 1.75;          // radians, about 100 degrees
 const TURN_BACK_EASE = 0.75;
 /**
@@ -171,6 +181,9 @@ export class Driver {
     this.needsRepath = false;
     this.reverseFrom = null;
     this.steerHold = 0;
+    /** Signed slip angle this driver would like; see _wantDrift. */
+    this.driftWish = 0;
+    this.noDrift = typeof window !== 'undefined' && window.__noDrift === true;
     this.speedTarget = 0;
     this.avoidBias = 0;
     // Steering push away from scenery, and how close the nearest solid thing
@@ -1500,7 +1513,37 @@ export class Driver {
     }
 
     out.clutchKick = false;
+    this._wantDrift(s, v, skill);
     return out;
+  }
+
+  /**
+   * How sideways this driver would like to be, as a signed slip angle. Read by
+   * Officer._updateAssist, which is what actually hands it to the car -- so it
+   * stays police-only, like every other assist.
+   *
+   * The trigger is corner geometry, not distance: drifting is a driving style,
+   * and the rubber band is for catching up. The player asked to see them drift
+   * round corners, and the corners they can see are the near ones.
+   */
+  _wantDrift(s, v, skill) {
+    this.driftWish = 0;
+    // Published for the rigs: how far off the nose the car's own aim point is.
+    // In a pursuit there is no path to measure a cross-track error against --
+    // units aim at the target, not along a route -- so this is what "they
+    // overshoot the turn-in" has to be measured with.
+    this.aimError = s.alpha;
+    if (this.noDrift || v.speed < DRIFT_SPEED) return;
+    // A real turn-in, not a lane change: the pure-pursuit aim angle has to be
+    // past a few degrees and the car has to be committed to a corner rather than
+    // drifting its way down a straight.
+    const turn = Math.abs(s.alpha);
+    if (turn < DRIFT_ALPHA) return;
+    // Scale with how hard the corner is and how good the driver is. A rookie
+    // holding 20 degrees of slip is a rookie in a hedge.
+    const hard = clamp01((turn - DRIFT_ALPHA) / 0.45);
+    this.driftWish = -sign(s.alpha) * DRIFT_SLIP * hard
+      * lerp(0.35, 1, skill.throttleControl);
   }
 
   /** Follow the assigned path at the planned speed. */

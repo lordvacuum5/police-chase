@@ -23,6 +23,21 @@ import { clamp, clamp01, lerp, damp, sign, moveTowards, smoothstep, TAU } from '
  * How the rubber band's extra grip is split front to rear -- see _assistGrip.
  * They average one, so the total help is unchanged and only the balance moves.
  */
+/**
+ * The rotation assist: the speed below which a car is manoeuvring rather than
+ * cornering, and how hard the help pushes. See the assist in the force update.
+ */
+const ROTATE_FROM = 9;
+const ROTATE_FORCE = 7;
+
+/**
+ * The drift assist. Not the same thing as the rotation assist above: that one
+ * makes up a yaw-rate shortfall, this one holds a chosen slip angle through a
+ * corner. Below this speed a slide is a spin, not a drift.
+ */
+const DRIFT_FROM = 12;
+const DRIFT_FORCE = 9;
+
 const ASSIST_GRIP_FRONT = 0.65;
 const ASSIST_GRIP_REAR = 1.35;
 
@@ -137,9 +152,12 @@ export class Vehicle {
     //   grip      multiplies tyre grip
     //   steer     multiplies the grip-limited steering lock
     //   stability 0..1, how hard the car resists getting out of shape
+    //   rotate    0..1, how hard it is helped *into* a corner it is running wide of
     //   shielded  true while a unit is still on its way -- a crash en route
     //             should cost it time, not put it out of the chase entirely
-    this.assist = { boost: 1, grip: 1, stability: 0, steer: 1, shielded: false };
+    this.assist = {
+      boost: 1, grip: 1, stability: 0, steer: 1, rotate: 0, drift: 0, shielded: false,
+    };
 
     // ---- condition ----
     this.damage = 0;          // 0 pristine .. 1 wrecked
@@ -171,6 +189,7 @@ export class Vehicle {
     this.grounded = 0;        // number of wheels touching
     this.airborne = false;
     this.maxSlip = 0;         // worst wheel, drives smoke and skid marks
+    this._driftHold = false;  // tyres saturate instead of falling off; see _driftHold
 
     this._prevVel = new THREE.Vector3();
     this._prevYaw = 0;
@@ -903,6 +922,10 @@ export class Vehicle {
     const reflected = s.engine.inertia * ratio * ratio;
 
     this.maxSlip = 0;
+    // While a drift is commanded and the car is actually at an angle, the tyres
+    // saturate rather than falling off past their peak -- see tyreForces. This is
+    // what keeps the staged drift from costing the corner it is decorating.
+    this._driftHold = this.assist.drift !== 0 && Math.abs(this.slipAngleBody) > 0.10;
 
     for (let i = 0; i < 4; i++) {
       const w = this.wheels[i];
@@ -1020,7 +1043,7 @@ export class Vehicle {
       }
       const f = tyreForces(tyre, Fs, w.slipRatio, w.slipAngle, w.condition,
         s.gripScale * bias * this._assistGrip(w) * loose * hsGrip * (this.sim.wetGrip || 1),
-        latStiff);
+        latStiff, this._driftHold);
       // Fleet braking rubber. Applied to the longitudinal force only, and only
       // while the pedal is down and the force is opposing motion, so it buys
       // stopping distance and nothing else -- a police car does not corner or
@@ -1115,8 +1138,62 @@ export class Vehicle {
 
     // Stability assist: only intervenes once the car is genuinely out of
     // shape, so ordinary cornering is untouched but the back never steps out.
+    // Rotation assist: the stability assist's opposite, for the opposite problem.
+    //
+    // A unit that carries speed into a corner understeers -- the wheels are turned
+    // and the car is not coming round -- and runs wide out of the far side. "They
+    // do overshoot turn-ins a lot. They keep going off route." The bicycle model
+    // says what the steering is asking for, speed times tan of the road-wheel angle
+    // over the wheelbase; if the car is yawing slower than that, this makes up some
+    // of the difference.
+    //
+    // Which also happens to look like a drift, and that was the request: "it
+    // doesn't have to be proper drifting, it can just look like drifting." The back
+    // steps out, the car rotates toward the apex, the tyre smoke the renderer
+    // already keys off slip does the rest. Police only, through the band, so it
+    // fades out by 30 m like everything else -- the part of the chase you can see is
+    // still fought on the same physics you are.
+    if (this.assist.rotate > 0 && this.speed > ROTATE_FROM) {
+      const demand = (this.speed * Math.tan(this.steerAngle)) / this.spec.wheelbase;
+      // Only when it is genuinely not turning enough, and only in a real corner.
+      const shortfall = demand - this.angvel.y;
+      if (Math.abs(demand) > 0.1 && shortfall * sign(demand) > 0) {
+        const yaw = clamp(shortfall, -1, 1) * this.assist.rotate * s.mass * ROTATE_FORCE;
+        _v1.set(0, yaw, 0);
+        this.body.addTorque(_v1, true);
+      }
+    }
+
+    // Drift assist. assist.drift is a signed *target* slip angle: hold the car
+    // this far sideways while it is going round. Where the rotation assist above
+    // chases a yaw rate, this chases an attitude, which is what reads as a drift
+    // from outside the car -- the nose pointing at the apex while the car travels
+    // past it. "It doesn't have to be proper drifting, it can just look like
+    // drifting": this is the staged version, and it is staged in the honest place.
+    // The path and the speed are still whatever the cornering limit allows, so the
+    // car gains nothing from being sideways; it only looks like it does.
+    //
+    // slipAngleBody is positive when the car is travelling to its own left, and a
+    // positive yaw torque rotates the nose that way, so building slip in a
+    // direction needs torque *against* its sign -- hence the negation.
+    const want = this.assist.drift;
+    if (want !== 0 && this.speed > DRIFT_FROM) {
+      const err = want - this.slipAngleBody;
+      if (err * sign(want) > 0) {
+        const yaw = -clamp(err, -0.5, 0.5) * s.mass * DRIFT_FORCE;
+        _v1.set(0, yaw, 0);
+        this.body.addTorque(_v1, true);
+      }
+    }
+
     if (this.assist.stability > 0 && this.speed > 4) {
-      const excess = Math.abs(this.slipAngleBody) - 0.09;   // beyond ~5 degrees
+      // The stability assist straightens a car that is sideways, so while a drift
+      // is wanted it has to stop being a straightener and become a limiter: it
+      // only acts on slip past the target. Without this the two assists fight,
+      // one pushing the car round and the other pulling it back, and the car ends
+      // up neither sideways nor on line.
+      const band = Math.max(0.09, Math.abs(want) * 1.15);
+      const excess = Math.abs(this.slipAngleBody) - band;
       if (excess > 0) {
         const yaw = sign(this.slipAngleBody) * Math.min(excess, 0.5)
           * this.assist.stability * s.mass * 7.5;

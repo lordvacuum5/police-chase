@@ -116,6 +116,64 @@ const BAND_EASE = 1.5;
  */
 const BAND_STEER = 0;
 
+/**
+ * The share of the driver's asked-for slip angle that is actually given -- off,
+ * because a *physical* drift costs them the corner it decorates. Measured three
+ * ways on `tests/keepup.js`, 8 routes at 90 kph, each pair inside one page session:
+ *
+ * | | with it | behind | hits | lost it | sideways |
+ * |---|---|---|---|---|---|
+ * | rotate 1, no drift | 67% | 67 m | 43 | 11x | 2% |
+ * | rotate 1, drift    | 63% | 93 m | 53 | 17x | 3% |
+ * | rotate 2, no drift | 61% | 86 m | 42 | 10x | 4% |
+ * | rotate 2, drift    | 59% | 113 m | 49 | 11x | 2% |
+ *
+ * and then again with the tyre held at its peak past the slip peak, so that being
+ * sideways gives nothing away (Vehicle._driftHold, tyreForces' `holdPeak`):
+ *
+ * | | with it | behind | hits | lost it | sideways |
+ * |---|---|---|---|---|---|
+ * | no drift | 63% | 98 m | 37 | 5x | 2% |
+ * | drift    | 62% | 111 m | 46 | 15x | 3% |
+ *
+ * Worse every time, and barely sideways for it: 2% of the chase at an angle
+ * becomes 3%. The reason is the rest of the car. The driver counter-steers against
+ * slip (Driver._wantDrift's own steering unwinds as the angle builds), the
+ * stability assist limits it, and the tyre direction still opposes the slip
+ * vector -- so the yaw torque spends itself fighting three things, the car hovers
+ * near straight, and when it does let go it lets go properly: spins triple.
+ *
+ * The request was "it can just look like drifting, it's kind of fake", and the
+ * honest reading of these numbers is that the fake has to be faker than this:
+ * a rendered attitude, not a real one. That is the next thing to build; the
+ * machinery below stays, measured and off, because it is what says why.
+ *
+ * DRIFT_EASE is slow on purpose: a yaw torque that arrives in one frame is a
+ * flick, and a drift that ends in one frame is a snap. See _updateAssist.
+ */
+const BAND_DRIFT = 0;
+const DRIFT_EASE = 2.5;
+
+/** How hard a unit at full stretch is helped round a corner -- see _updateAssist. */
+/**
+ * The rotation assist's share -- see Vehicle, where the torque is applied.
+ * Swept on `tests/keepup.js` at 90 kph. Four routes said 0.5 was worth 7 points
+ * of with-it and 1.0 another 6; eight routes said most of that was which bit of
+ * town, and the real effect is smaller and elsewhere:
+ *
+ * | | mean | with it | behind | hits | lost it |
+ * |---|---|---|---|---|---|
+ * | 0   | 55 kph | 62% | 80 m | 55 | 13x |
+ * | 0.5 | 56 kph | 62% | 73 m | 48 | 11x |
+ * | 1.0 | 58 kph | 68% | 47 m | 49 | 7x  |
+ * | 2.0 | 56 kph | 61% | 86 m | 42 | 10x |
+ *
+ * 1.0, and the thing it really buys is fewer spins: a car that is rotated into
+ * the corner does not understeer to the limit and then snap. Above that it
+ * rotates more than the corner asked for and gives the ground back.
+ */
+const BAND_ROTATE = 1;
+
 const _aim = new THREE.Vector3();
 const _tmp = new THREE.Vector3();
 const _eye = new THREE.Vector3();
@@ -1816,7 +1874,8 @@ export class Officer {
     const a = this.vehicle.assist;
     const chasing = target && this.game.heat.tier > 0 && this.role !== ROLE.PATROL;
     if (!chasing) {
-      a.boost = 1; a.grip = 1; a.stability = 0; a.steer = 1; a.shielded = false;
+      a.boost = 1; a.grip = 1; a.stability = 0; a.steer = 1; a.rotate = 0;
+      a.drift = 0; a.shielded = false;
       return;
     }
 
@@ -1857,6 +1916,19 @@ export class Officer {
     // "Give them a better turning circle at high speed."
     a.steer = 1 + BAND_STEER * (this.bandSteer === undefined ? 1 : this.bandSteer)
       * this.aggression * far * engaged;
+    // Helped round a corner it is running wide of -- see the rotation assist in
+    // Vehicle. Eased like the grip, because a yaw torque that arrives in one frame
+    // is a flick, not a drift.
+    const wantRotate = BAND_ROTATE * (this.bandRotate === undefined ? 1 : this.bandRotate)
+      * this.aggression * far * engaged;
+    a.rotate = damp(a.rotate, wantRotate, BAND_EASE, dt);
+    // The drift the driver has asked for -- see Driver._wantDrift. Deliberately
+    // not scaled by the band: being sideways is a driving style, not a catch-up
+    // cheat, and the whole point of the request was to watch them do it, which
+    // means doing it close up where the band has faded to nothing.
+    const wantDrift = (this.driver.driftWish || 0) * BAND_DRIFT
+      * (this.bandDrift === undefined ? 1 : this.bandDrift) * this.aggression;
+    a.drift = damp(a.drift, wantDrift, DRIFT_EASE, dt);
     a.grip = damp(a.grip, wantGrip, BAND_EASE, dt);
     a.stability = damp(a.stability, wantStability, BAND_EASE, dt);
     // Still on the way: a crash costs this unit time, not its whole chase. Only
