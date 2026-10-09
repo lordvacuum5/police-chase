@@ -11,9 +11,9 @@ Drop the finished model in here as `helicopter.glb`.
 
 ## The short version
 
-A police helicopter, nose along **+Z**, **Y up**, in **metres**, standing on
-its own wheels with the origin on the ground between them. Main and tail rotors
-as separate named nodes with their origins on their hubs. Livery baked in. No
+A police helicopter, nose along **+Z**, **Y up**, in **metres**, sitting on its
+skids with the origin on the ground between them. Main and tail rotors as
+separate named nodes with their origins on their hubs. Livery baked in. No
 animation in the file.
 
 ## Format
@@ -37,10 +37,11 @@ Same as the cars (see `README.md` in this folder):
   **2.5 m** wide — a light police twin, not a Chinook. Anywhere near that is
   right, and the game can scale it, but modelling to life size means the
   scale factor comes out at 1.00 and nothing has to be guessed.
-* **Origin at ground level, centred between the wheels**, with the aircraft
-  standing on them. The cars are fitted by their wheels for exactly this
-  reason: it is the only way the game can put a machine on the ground at the
-  right height without being told.
+* **Origin at ground level, centred between the skids**, with the skids resting
+  on y = 0. The cars are fitted by their wheels, because that is the only way
+  to stand a car on the road at the right height without being told; a
+  helicopter on skids has no such landmark, so the model has to say where the
+  ground is, and it says it by sitting on it.
 * A model built facing the wrong way is a one-line `yaw` setting, so it is not
   fatal — but +Z is what the rest of the project uses.
 
@@ -62,26 +63,20 @@ real blades are there to begin with.
 
 Everything else can be one mesh.
 
-## Wheels
+## Skids
 
-Wheeled, not skids — a tricycle gear, which is what a wheeled police helicopter
-has:
+Skids, not wheels. Wheeled gear was considered and dropped for the simple
+reason that almost no light police helicopter has it — the references are all
+skids, and skids are what the generated one already has.
 
-| node | where |
-|---|---|
-| `wheel_nose` | under the nose |
-| `wheel_l` | left main, under the cabin |
-| `wheel_r` | right main, under the cabin |
+Nothing about them needs naming or separating: they are part of the hull, and
+the only thing the game asks of them is that **they are what the model is
+resting on**, so their underside is y = 0 and the aircraft sits level.
 
-Name any sub-parts after their wheel (`wheel_l_tyre`, `wheel_l_hub`) and they
-will be grouped with it, the same as the cars.
-
-**On suspension:** the cars' wheels have real spring and damper travel, and the
-same system can carry the helicopter, so the gear compresses when it puts
-weight on and the aircraft settles on the pad instead of snapping to it. That
-only matters while it is on the ground, which is landing and refuelling. Worth
-having, cheap to do, and it needs nothing from the model beyond the three
-wheels being separate nodes with their origins at the axle.
+This also takes a whole problem away. Wheeled gear would have wanted the cars'
+spring and damper travel so it compressed under weight on landing; skids are
+rigid, so a landing is the airframe meeting the ground and nothing has to be
+modelled, named or tuned for it.
 
 ## What not to put in
 
