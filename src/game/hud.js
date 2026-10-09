@@ -192,25 +192,8 @@ export class Hud {
         const el = this.tyreEls[i];
         if (el.style.background !== col) el.style.background = col;
       }
-      this._airDamage(player);
-      return;
-    }
-
-    const g = player.gear === -1 ? 'R' : player.gear === 0 ? 'N' : String(player.gear);
-    if (this.gearEl.textContent !== g) this.gearEl.textContent = g;
-
-    // ---- tyres ----
-    for (let i = 0; i < 4; i++) {
-      const w = player.wheels[i];
-      const s = clamp01(w.slip);
-      const el = this.tyreEls[i];
-      // A flat tyre -- a stinger -- flashes red until it is fixed.
-      const flat = w.condition < 0.8 && (performance.now() % 700) < 420;
-      const col = flat ? '#ff3b30'
-        : !w.grounded ? '#3a4048'
-        : s > 0.6 ? `rgb(255,${Math.round(90 + (1 - s) * 120)},40)`
-          : `rgb(${Math.round(50 + s * 200)},${Math.round(110 + s * 60)},${Math.round(120 - s * 60)})`;
-      if (el.style.background !== col) el.style.background = col;
+    } else {
+      this._carGearAndTyres(player);
     }
 
     // ---- damage ----
@@ -312,7 +295,10 @@ export class Hud {
     const S = this.speedo.width;
     const cx = S / 2, cy = S / 2, r = S * 0.42;
 
-    this.smoothSpeed = lerp(this.smoothSpeed, Math.abs(toMph(v.forwardSpeed)), 1 - Math.exp(-14 * dt));
+    // An aircraft's needle is its speed through the air, not its speed along
+    // its nose: it can fly sideways, and 80 km/h of drift is still 80 km/h.
+    const through = v.isAircraft ? v.speed : v.forwardSpeed;
+    this.smoothSpeed = lerp(this.smoothSpeed, Math.abs(toMph(through)), 1 - Math.exp(-14 * dt));
     this.smoothRpm = lerp(this.smoothRpm, v.rpmFraction, 1 - Math.exp(-18 * dt));
 
     ctx.clearRect(0, 0, S, S);
@@ -509,15 +495,25 @@ export class Hud {
     this.roadEl.classList.toggle('off', !name);
   }
 
-  /** The damage bar, which an aircraft has too -- it can be landed badly. */
-  _airDamage(player) {
-    const dmg = Math.round((player.damage || 0) * 100);
-    if (dmg === this._lastDmg) return;
-    this._lastDmg = dmg;
-    this.dmgFill.style.width = dmg + '%';
-    this.dmgFill.style.background = dmg > 70 ? '#ff3b30' : dmg > 35 ? '#ffb020' : '#35d0a5';
-    this.dmgPct.textContent = dmg + '%';
-    this.dmgPct.className = dmg > 70 ? 'bad' : dmg > 35 ? 'warn' : '';
+  /** Gear and the four tyre lights: the car's half of that corner of the HUD. */
+  _carGearAndTyres(player) {
+    const g = player.gear === -1 ? 'R' : player.gear === 0 ? 'N' : String(player.gear);
+    if (this.gearEl.textContent !== g) this.gearEl.textContent = g;
+    if (this.gearLabel && this.gearLabel.textContent !== 'GEAR') {
+      this.gearLabel.textContent = 'GEAR';
+    }
+    for (let i = 0; i < 4; i++) {
+      const w = player.wheels[i];
+      const s = clamp01(w.slip);
+      const el = this.tyreEls[i];
+      // A flat tyre -- a stinger -- flashes red until it is fixed.
+      const flat = w.condition < 0.8 && (performance.now() % 700) < 420;
+      const col = flat ? '#ff3b30'
+        : !w.grounded ? '#3a4048'
+          : s > 0.6 ? `rgb(255,${Math.round(90 + (1 - s) * 120)},40)`
+            : `rgb(${Math.round(50 + s * 200)},${Math.round(110 + s * 60)},${Math.round(120 - s * 60)})`;
+      if (el.style.background !== col) el.style.background = col;
+    }
   }
 
   // --------------------------------------------------------------- minimap

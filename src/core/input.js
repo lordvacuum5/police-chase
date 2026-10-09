@@ -237,15 +237,29 @@ export class Input {
       roll: keyRoll || this.cyclicX,
     };
 
+    // ---- the pad ----
+    //
+    // Both sticks, the way every helicopter in every game flies: left stick up
+    // and down is the collective, left stick across is the pedals, and the
+    // right stick is the cyclic. The triggers do the collective as well, for
+    // anyone who would rather climb with a finger.
+    //
+    // Checked before `usingPad`, not after it: that flag is only set by the
+    // driving sampler noticing a steering axis move, so a pad picked up in
+    // the air would do nothing at all until it had first been used to drive.
     const pad = this._pad();
-    if (pad && this.usingPad) {
-      const dead = (v) => (Math.abs(v) < 0.12 ? 0 : v);
+    if (pad) {
+      const dead = (v) => (Math.abs(v) < 0.15 ? 0 : (v - Math.sign(v) * 0.15) / 0.85);
+      const lx = dead(pad.axes[0] || 0), ly = dead(pad.axes[1] || 0);
+      const rx = dead(pad.axes[2] || 0), ry = dead(pad.axes[3] || 0);
       const rt = pad.buttons[7] ? pad.buttons[7].value : 0;
       const lt = pad.buttons[6] ? pad.buttons[6].value : 0;
+      if (lx || ly || rx || ry || rt > 0.05 || lt > 0.05) this.usingPad = true;
+      // Stick up is negative, and up should climb.
+      if (ly) out.collective = -ly;
       if (rt > 0.05 || lt > 0.05) out.collective = rt - lt;
-      const lx = dead(pad.axes[0] || 0);
+      // Pad left is negative and should yaw left, which is positive here.
       if (lx) out.yaw = -lx;
-      const rx = dead(pad.axes[2] || 0), ry = dead(pad.axes[3] || 0);
       if (rx) out.roll = rx;
       if (ry) out.pitch = ry;
     }
@@ -259,6 +273,29 @@ export class Input {
       if (t.steering) out.roll = t.steer;
     }
     return out;
+  }
+
+  /**
+   * Ask for the pointer, so the mouse can fly rather than wander off the page.
+   *
+   * Nothing used to ask, which made the mouse cyclic dead code and left the
+   * arrow keys as the only way to fly -- "the controls of the helicopter are
+   * very hard to use on keyboard", and no wonder. The browser only grants
+   * this inside a gesture, so it is asked for on a click rather than when the
+   * aircraft spawns, and refusing or pressing escape simply falls back to the
+   * keys.
+   */
+  grabPointer(el) {
+    const target = el || document.body;
+    if (this.pointerHeld || !target.requestPointerLock) return;
+    try {
+      const r = target.requestPointerLock();
+      if (r && r.catch) r.catch(() => { /* refused: the keys still fly it */ });
+    } catch (e) { /* refused */ }
+  }
+
+  releasePointer() {
+    if (document.exitPointerLock) document.exitPointerLock();
   }
 
   dispose() {

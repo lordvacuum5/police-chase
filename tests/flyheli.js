@@ -184,6 +184,45 @@ window.__runFlyHeli = async function () {
       say(`  called in anger: ${threw ? 'THREW ' + threw : 'all fine'}`);
     }
 
+    // ---- buildings stop it, and never keep it ----
+    //
+    // Two failures, and the second is worse than the first. "You can fly
+    // through buildings" was one. Then the fix collided as the rotor disc and
+    // took the whole velocity away on contact, which wedged the aircraft in
+    // mid-air with no way to climb off or back out -- a pilot stuck for the
+    // rest of the game, saying nothing.
+    //
+    // Flown at a wall put here for the purpose rather than at the city,
+    // because a tower block is surrounded by other tower blocks and the
+    // question "did it go through that one" stops having a clean answer. A
+    // slab on open ground, well away from everything, asks exactly what is
+    // being asked.
+    {
+      const g = window.__game;
+      const { addStaticBox, GROUP } = await import('../src/physics/world.js');
+      const X = 760, Z = 760, Y = 60;            // out in the empty corner
+      addStaticBox(g.world, X, Y, Z, 40, 40, 2, GROUP.BUILDING);
+      g.world.step();                            // or the query pipeline cannot see it
+
+      const h = new FlyingHelicopter(g, {});
+      h.teleport({ x: X, y: Y, z: Z - 110 }, 0);
+      fly(h, 16, { collective: 0.42, pitch: 1 });
+      const gap = Z - 2 - h.position.z;          // to the near face
+      const through = h.position.z > Z;
+
+      // And then off it: climb, and back away.
+      const atWall = { y: h.position.y, z: h.position.z };
+      fly(h, 7, { collective: 1 });
+      const climbed = h.position.y - atWall.y;
+      fly(h, 7, { collective: 0.4, pitch: -1 });
+      const away = atWall.z - h.position.z;
+
+      say(`a wall 110 m ahead: ${through ? 'FLEW THROUGH IT' : `stopped ${gap.toFixed(1)} m short`}`
+        + `   damage ${h.damage.toFixed(2)}`);
+      say(`  and off it again: climbed ${Math.round(climbed)} m, backed off ${Math.round(away)} m `
+        + `(${climbed > 8 || away > 8 ? 'got away' : 'TRAPPED'})`);
+    }
+
     window.__res = rows.join(String.fromCharCode(10));
     window.__flyDone = true;
     return window.__res;

@@ -27,6 +27,16 @@ const GAP = 3;
 /** The bay, in the lot's own frame: u along the road, v away from it. */
 const BAY = { u0: 7.7, u1: 12.3, v0: 1.0, v1: 10.0 };
 
+/**
+ * The helipad on the workshop roof. The roof slab is 12.4 square centred on
+ * (10, 5.5) with its top at KERB_H + 6, so the pad sits in the middle of it
+ * with a metre to spare all round.
+ */
+const PAD_U = 10;
+const PAD_V = 5.5;
+const PAD_R = 5.2;
+const PAD_Y = KERB_H + 6.0;
+
 /** Seconds of sitting still before the work starts. */
 const HOLD = 3;
 /** Damage mended per second: a written-off car takes about twenty seconds. */
@@ -245,6 +255,29 @@ export class Garage {
     b.addBox(12.4, 0.4, 12.4, 10, y0 + 5.8, 5.5, 0x5b6068);
     b.addBox(12.4, 0.7, 0.3, 10, y0 + 5.35, -0.55, 0x2f7d4c);             // fascia over the door
 
+    // ---- the helipad, on the workshop roof ----
+    //
+    // Air support has to come down somewhere, and the one place on the map
+    // that already means "stop here and be mended" is the right place for the
+    // one that means "stop here and be fuelled". It also solves where to put
+    // a helicopter at the start of a game: on a roof, clear of the traffic,
+    // rather than on a street where it sits in somebody's way.
+    //
+    // No collider. The aircraft is not a rigid body and lands by asking how
+    // high the ground is beneath it (FlyingHelicopter.groundY), so the pad is
+    // a height and a radius, and a car cannot reach it anyway.
+    const padTex = new THREE.CanvasTexture(helipadCanvas());
+    padTex.colorSpace = THREE.SRGBColorSpace;
+    const pad = new THREE.Mesh(
+      new THREE.CircleGeometry(PAD_R, 40),
+      new THREE.MeshBasicMaterial({ map: padTex, transparent: true, depthWrite: false }),
+    );
+    pad.rotation.x = -Math.PI / 2;
+    // The group is already in the lot's frame -- u across, v away -- and
+    // carries the site's heading, so this is placed in u and v like the bay.
+    pad.position.set(PAD_U, PAD_Y + 0.02, PAD_V);
+    group.add(pad);
+
     // Parking lines along the front of the shop, a little life on the forecourt.
     for (let u = -15.5; u <= -4.5; u += 2.75) {
       flat.addQuadY(u - 0.06, 2.2, u + 0.06, 2.2, u + 0.06, 4.6, u - 0.06, 4.6, y0 + 0.012, LINE_WHITE);
@@ -399,9 +432,45 @@ export class Garage {
   get marker() {
     return this.site ? this.toWorld(0, 0) : null;
   }
+
+  /**
+   * The landing pad on the workshop roof: where a helicopter starts, and the
+   * one place it can refuel. A height and a radius rather than a collider --
+   * see the note where it is built.
+   */
+  get helipad() {
+    if (!this.site) return null;
+    const at = this.toWorld(PAD_U, PAD_V);
+    return { x: at.x, z: at.z, y: PAD_Y, r: PAD_R };
+  }
 }
 
 // ---------------------------------------------------------------- textures
+
+/** A landing pad: a ring, an H, and a touch of wear. */
+function helipadCanvas() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.clearRect(0, 0, 256, 256);
+  // The deck itself, darker than the roof so the circle reads from above.
+  g.fillStyle = 'rgba(28,32,38,0.92)';
+  g.beginPath();
+  g.arc(128, 128, 126, 0, Math.PI * 2);
+  g.fill();
+  // The ring.
+  g.strokeStyle = 'rgba(248,250,252,0.92)';
+  g.lineWidth = 11;
+  g.beginPath();
+  g.arc(128, 128, 101, 0, Math.PI * 2);
+  g.stroke();
+  // The H.
+  g.fillStyle = 'rgba(248,250,252,0.95)';
+  g.fillRect(74, 62, 20, 132);
+  g.fillRect(162, 62, 20, 132);
+  g.fillRect(74, 117, 108, 22);
+  return c;
+}
 
 function bayCanvas() {
   const c = document.createElement('canvas');

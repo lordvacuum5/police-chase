@@ -23,7 +23,7 @@
 
 import * as THREE from 'three';
 import { clamp, clamp01, lerp, damp, angleDelta } from '../util/math.js';
-import { hasLineOfSight } from '../physics/world.js';
+import { hasLineOfSight, sweepBox, RAY_SOLID } from '../physics/world.js';
 
 /** Gravity, which the rotor has to beat to go up. */
 const G = 9.81;
@@ -92,6 +92,24 @@ export const REFUEL_TIME = 12;
 const SKID = 1.05;
 
 /**
+ * What the aircraft collides with buildings as.
+ *
+ * Not the rotor disc, which is the tempting answer -- a real helicopter hits
+ * things with its blades long before its body, and 6.2 m is what the disc
+ * measures. Tried that first and it is unflyable: a twelve-metre plate in a
+ * city of towers is inside something most of the time, and a shape that
+ * starts a sweep already touching reports nowhere to go in any direction, so
+ * the aircraft wedged in mid-air and could not climb off or back out.
+ *
+ * So: a bit more than the fuselage. It stops you at the face of a building,
+ * which is the thing that was wrong, and it lets you fly down a street.
+ */
+const HULL_R = 2.2;
+/** How far short of a surface to stop, so the next sweep is not already touching. */
+const CONTACT_GAP = 0.15;
+const AXES = ['x', 'y', 'z'];
+
+/**
  * The mark: how close the aircraft has to be to call a car in, how far off the
  * nose it may be, and how long before another one can be sent.
  *
@@ -150,6 +168,13 @@ export class FlyingHelicopter {
     this.markFlash = 0;
     this.markResult = '';
 
+    /**
+     * Which way each axis is up against something, as a sign. See _moveAndHit:
+     * it is what tells "cannot push further into this wall" apart from
+     * "cannot move along this axis at all".
+     */
+    this._blocked = { x: 0, y: 0, z: 0 };
+
     /** Set while the aircraft has touched something hard. */
     this.damage = 0;
     this.disabled = false;
@@ -174,12 +199,32 @@ export class FlyingHelicopter {
   }
 
   get kmh() { return this.speed * 3.6; }
+  /**
+   * The dial's inner ring, which on a car is the rev counter. A rotor turns
+   * at one speed whatever else is happening, so what is worth showing there
+   * is how much of it is being asked for.
+   */
+  get rpmFraction() { return clamp01(this.collective); }
   /** Metres above the ground directly below, which is what a pilot flies on. */
   get radarAlt() { return this.position.y - this.groundY; }
 
   get groundY() {
     const h = this.game.sim && this.game.sim.heightAt;
-    return (h ? h(this.position.x, this.position.z) : 0) || 0;
+    const ground = (h ? h(this.position.x, this.position.z) : 0) || 0;
+    // The workshop roof at the garage is a landing surface, not scenery. The
+    // aircraft is not a rigid body -- it lands by asking how high the ground
+    // is beneath it -- so a pad is simply a disc where the answer is higher.
+    const pad = this.onPad();
+    return pad ? Math.max(ground, pad.y) : ground;
+  }
+
+  /** The landing pad, if the aircraft is over it. */
+  onPad() {
+    const g = this.game.garage;
+    const pad = g && g.helipad;
+    if (!pad) return null;
+    const dx = this.position.x - pad.x, dz = this.position.z - pad.z;
+    return dx * dx + dz * dz <= pad.r * pad.r ? pad : null;
   }
 
   /**
@@ -242,7 +287,7 @@ export class FlyingHelicopter {
     this.linvel.z *= 1 - DRAG * dt;
     this.linvel.y *= 1 - DRAG_UP * dt;
 
-    this.position.addScaledVector(this.linvel, dt);
+    this._moveAndHit(dt);
 
     // ---- the ground, and the sky ----
     const floor = this.groundY + SKID;
@@ -348,14 +393,92 @@ export class FlyingHelicopter {
   }
 
   /**
-   * Sitting on the pad at the garage fills the tank. The same place the cars
-   * get repaired, because a second map feature for one role is a second thing
-   * to find, and the garage is already somewhere you have to go and be still.
+   * Move, and do not go through buildings.
+   *
+   * "You can fly through buildings." You could: the aircraft is not a rigid
+   * body, so nothing in the physics world was ever going to stop it, and the
+   * only solid thing it knew about was the ground under it.
+   *
+   * It is not given a collider even now -- a dynamic body with a rotor is a
+   * different and much worse problem -- but it does sweep its own rotor disc
+   * along the step it is about to take. Hitting something stops the part of
+   * the motion going into it and keeps the part going along it, so a clumsy
+   * approach scrapes down a wall rather than stopping dead, and costs a
+   * little damage rather than ending the sortie.
+   *
+   * The disc, not the fuselage: the rotor is the widest part of a helicopter
+   * by a factor of five and is the thing that actually hits the building.
+   */
+  _moveAndHit(dt) {
+    const world = this.game.world;
+    if (!world) { this.position.addScaledVector(this.linvel, dt); return; }
+
+    // One axis at a time, which is what lets a pilot get out again.
+    //
+    // The first version swept along the direction of travel and, on contact,
+    // took the whole velocity along that direction away -- which is not a
+    // slide, it is a full stop, and since the direction of travel is by
+    // definition the direction of the velocity it removed all of it. Every
+    // frame. An aircraft that so much as brushed a wall was pinned against it
+    // for good: it could not climb off, could not back away, and did not say
+    // why. Separating the axes means a wall takes away the component going
+    // into it and leaves the two that are not, so the aircraft slides along
+    // the face and can always fly back out the way it came.
+    for (const axis of AXES) {
+      const move = this.linvel[axis] * dt;
+      const dist = Math.abs(move);
+      if (dist < 1e-6) continue;
+      const sign = move < 0 ? -1 : 1;
+
+      // Backing off whatever stopped us is always allowed, and is the whole
+      // reason the blocked direction is remembered: refuse everything while
+      // touching and the aircraft is welded to the wall for the rest of the
+      // game, which is worse than flying through it.
+      if (this._blocked[axis] && this._blocked[axis] !== sign) {
+        this.position[axis] += move;
+        this._blocked[axis] = 0;
+        continue;
+      }
+
+      _v.set(0, 0, 0);
+      _v[axis] = sign;
+      const toi = sweepBox(world, this.position, _v, dist + CONTACT_GAP, RAY_SOLID, null, HULL_R);
+      // Room to move, keeping the gap. Swept a little further than the step
+      // so that resting against something is seen as no room rather than as
+      // a clear step: at a hundredth of a metre a frame, every step fits
+      // inside the gap, and an aircraft stopped dead against a wall crept
+      // through it two millimetres at a time while reporting itself clear.
+      const room = Math.max(0, toi - CONTACT_GAP);
+      // The epsilon is not decoration. With a clear way ahead the sweep
+      // returns exactly the distance it was given, so room works out as dist
+      // minus a rounding error -- and an aircraft that is blocked by its own
+      // floating point stops dead in open air five metres from where it set
+      // off, with every axis pinned.
+      if (room >= dist - 1e-6) {
+        this.position[axis] += move;
+        this._blocked[axis] = 0;
+        continue;
+      }
+
+      this.position[axis] += sign * room;
+      this._blocked[axis] = sign;
+      const into = Math.abs(this.linvel[axis]);
+      if (into > 8) {
+        this.damage = clamp01(this.damage + (into - 8) / 90);
+        this.hitAt = performance.now();
+      }
+      this.linvel[axis] = 0;
+    }
+  }
+
+  /**
+   * Sitting on the pad fills the tank. It is on the workshop roof at the
+   * garage -- the same place the cars get mended, because a second map
+   * feature for one role is a second thing to find, and the garage is already
+   * somewhere you have to go and be still.
    */
   _refuel(dt) {
-    const g = this.game.garage && this.game.garage.marker;
-    const near = g && this.onGround
-      && Math.hypot(this.position.x - g.x, this.position.z - g.z) < 22;
+    const near = this.onGround && this.onPad();
     if (!near || this.speed > 2) { this.refuelling = 0; return; }
     this.refuelling += dt;
     this.fuel = Math.min(ENDURANCE, this.fuel + dt * (ENDURANCE / REFUEL_TIME));

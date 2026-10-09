@@ -296,6 +296,10 @@ class Game {
     this.heliGrounded = false;
     // The garage before the props, so nothing is stood across its entrance.
     this.garage = new Garage(this);
+    // The pad only exists once the garage does, and the player is built
+    // before it -- so an aircraft is put on the roof now rather than left
+    // standing in the road where _initPlayer had to leave it.
+    if (this.aircraft) this._landOnPad();
     // Props first: the signals hand their posts to it to be knocked over.
     this.props = new StreetProps(this);
     this.signals = new TrafficLights(this);
@@ -467,13 +471,23 @@ class Game {
    * lifting off is a nicer first second than being dropped in at altitude.
    */
   _spawnAircraft(place) {
-    const g = this.garage && this.garage.marker;
-    const at = g ? { x: g.x, y: 0, z: g.z } : { x: place.position.x, y: 0, z: place.position.z };
-    at.y = (this.sim.heightAt ? this.sim.heightAt(at.x, at.z) || 0 : 0) + 1.05;
+    // On the pad on the workshop roof, which is where it refuels and the one
+    // place on the map that is meant for it. Starting it on the street put it
+    // down among the traffic -- and, on a map where the garage is near the
+    // start, on top of somebody.
+    const pad = this.garage && this.garage.helipad;
+    const at = pad
+      ? { x: pad.x, y: pad.y + 1.05, z: pad.z }
+      : {
+        x: place.position.x,
+        z: place.position.z,
+        y: (this.sim.heightAt ? this.sim.heightAt(place.position.x, place.position.z) || 0 : 0) + 1.05,
+      };
     const heli = new FlyingHelicopter(this, { heading: place.heading });
     heli.teleport(at, place.heading);
     this.player = heli;
     this.aircraft = heli;
+    this._wireAirPointer();
     this.startPlace = place;
 
     // Its body is the same model the AI flies, and the same fallback when
@@ -558,6 +572,30 @@ class Game {
       if (d < bestD) { bestD = d; best = v; }
     }
     return best;
+  }
+
+  /**
+   * Click anywhere to take the controls, escape to let go.
+   *
+   * Only while flying: capturing the pointer in a car would take the mouse
+   * away from somebody who has no use for it.
+   */
+  _wireAirPointer() {
+    if (this._airPointerWired) return;
+    this._airPointerWired = true;
+    this.renderer.domElement.addEventListener('pointerdown', () => {
+      if (this.aircraft && !this.paused && !this.outcome) {
+        this.input.grabPointer(this.renderer.domElement);
+      }
+    });
+  }
+
+  /** Put the aircraft on the helipad, if there is one. */
+  _landOnPad() {
+    const pad = this.garage && this.garage.helipad;
+    if (!pad || !this.aircraft) return false;
+    this.aircraft.teleport({ x: pad.x, y: pad.y + 1.05, z: pad.z }, this.aircraft.yaw || 0);
+    return true;
   }
 
   _initDebug() {
