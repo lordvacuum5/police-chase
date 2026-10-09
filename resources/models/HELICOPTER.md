@@ -9,6 +9,19 @@ the force uses it depends on this file.
 
 Drop the finished model in here as `helicopter.glb`.
 
+## Work from the player's reference pictures
+
+**The player has gathered reference pictures of the helicopter they want. Ask
+for them, look at all of them, and build to them.** They are the brief for what
+it should *look* like — the shape of the cabin and nose, the tail boom and fin,
+the skids, the proportions, the livery and markings. Do not invent a
+helicopter, and do not copy the faceted box version the game generates now.
+
+Everything below is the technical side only: format, orientation, scale, and
+the handful of nodes the game needs by name. Where the two ever disagree, the
+pictures win on how it looks and this document wins on how it is put together —
+they should not actually conflict, because nothing here constrains the shape.
+
 ## The short version
 
 A police helicopter, nose along **+Z**, **Y up**, in **metres**, sitting on its
