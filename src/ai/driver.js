@@ -99,6 +99,14 @@ const WIDE = 20;
 const COURSE_LIFT = 3;
 
 /**
+ * The braking clamp's margins: metres kept in hand short of whatever is ahead, and
+ * the share of the tyre it assumes for the stop. Both are pure margin -- see the
+ * wall clause in drive().
+ */
+const WALL_KEEP = 6;
+const WALL_GRIP = 0.75;
+
+/**
  * The trajectory planner: how often it re-plans, how many steps it drives each
  * candidate for, and the fan of steering fractions it tries. Eleven candidates
  * at six steps is 66 sweeps per plan, four times a second per unit.
@@ -157,6 +165,9 @@ export class Driver {
     // Width of whatever is being driven down -- see followPath.
     this._room = WIDE;
     this._courseRadius = null;
+    // The braking clamp's margins, settable so the rigs can sweep them.
+    this.wallKeep = WALL_KEEP;
+    this.wallGrip = WALL_GRIP;
     this.needsRepath = false;
     this.reverseFrom = null;
     this.steerHold = 0;
@@ -1369,8 +1380,35 @@ export class Driver {
     // down as they bunched up behind each other.
     if (this.wallNear < 34) {
       const mu = this._mu();
-      const usable = Math.max(0, this.wallNear - 6);
-      caps.wall = Math.sqrt(2 * mu * 9.81 * 0.75 * usable);
+      // Be able to stop before whatever is ahead, keeping WALL_KEEP in hand and
+      // assuming only WALL_GRIP of the tyre.
+      //
+      // Once the cornering clamp was fixed this became the next biggest limit, a
+      // fifth to a quarter of a run, and "when they're near an obstacle they
+      // suddenly slow down so much" is exactly what it feels like -- something
+      // twelve metres ahead holds a unit to 34 km/h. Three ways at it, all measured,
+      // none kept:
+      //
+      //   the probe, walking the car's arc instead of its line of travel: twice,
+      //     and worse both times. On a bend the arc hugs the inside and finds the
+      //     inside kerb sooner than the straight line finds anything -- mean
+      //     59 km/h against 68, and 257 m back against 174.
+      //   an open flank as a way round, so a car that can steer past need not stop
+      //     short: neutral. When this probe sees something inside 34 m the side
+      //     probes are usually looking at the same wall, so there is rarely a flank
+      //     to exploit -- the clamp bound 22% of the run against 23%, and the mean
+      //     fell 64.5 to 59.
+      //   cutting the margins, 6 m and 0.75 of the tyre down to 3/0.9 and 1.5/1.0:
+      //     worse. At 90 the contacts went 16 to 32 and the spins 4 to 10; at 150
+      //     the pack fell from 140 m back to 207, with a car written off at 3/0.9.
+      //     The clamp stopped binding and `Clear` and `Travel` took over, so the
+      //     margin was never the constraint.
+      //
+      // The pattern is the one from the grip sweep: close the gap to an obstacle and
+      // the car arrives needing to brake harder than it saved, which costs more time
+      // than the margin was worth.
+      const usable = Math.max(0, this.wallNear - this.wallKeep);
+      caps.wall = Math.sqrt(2 * mu * 9.81 * this.wallGrip * usable);
       speed = Math.min(speed, caps.wall);
     }
 
@@ -1715,6 +1753,20 @@ export class Driver {
     // Braking distance comes from a separate sweep that ignores props. A tree
     // is something to miss, not something to stop for, and counting them here
     // had units crawling through anywhere wooded.
+    //
+    // Straight down the line of travel, and that is not a mistake here even though
+    // it was for the cornering clamp. Walking the arc the car's yaw rate describes
+    // was tried twice: on a bend the arc hugs the inside, finds the inside kerb
+    // sooner than the straight line finds anything, and the car ends up slower --
+    // mean 59 km/h against 68 and 257 m back against 174. The straight line brakes
+    // for the outside of a corner, the arc brakes for the inside, and neither is
+    // the question.
+    //
+    // Nor is the demand. Letting an open flank relax it is neutral, because when
+    // this probe sees something inside 34 m the side probes are usually looking at
+    // the same wall; and cutting its margins makes them slower still. The figures
+    // are with the clamp in drive(). Three ways at this clamp and it was already
+    // about right.
     this._travelDir(_probe);
     // Braking distance ignores trees on a road and counts them off it.
     //

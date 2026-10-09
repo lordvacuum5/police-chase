@@ -1878,6 +1878,42 @@ That makes seven attempts on this clamp and the first that holds. What the other
 had in common is that they tried to make the car better at the corner. This one
 stopped asking it to corner when there was no corner.
 
+### The braking clamp, three ways, none kept
+
+With the cornering chord fixed, the braking clamp became the next biggest limit --
+a fifth to a quarter of a run -- and it is what *"when they're near an obstacle they
+suddenly slow down so much"* describes. It asks the car to be able to stop before
+whatever the forward probe sees, keeping 6 m in hand and assuming three quarters of
+the tyre, so something twelve metres ahead holds a unit to 34 km/h. Three attempts:
+
+**The probe, following the car's arc instead of its line of travel.** The same fix
+that worked for the chord, and it fails here, twice measured. The straight line
+brakes for the outside of a corner; the arc hugs the inside and finds the inside
+kerb *sooner*. Mean 59 km/h against 68, and 257 m back against 174.
+
+**An open flank as a way round.** Stopping is not the only option -- the car can
+steer, and the avoidance fan has already measured both flanks for exactly that
+reason. Neutral, and the reason is worth knowing: when the forward probe sees
+something inside 34 m, the side probes are usually looking at the same wall. There
+is rarely an open flank to exploit. The clamp bound 22% of the run against 23%, and
+the mean fell 64.5 to 59.
+
+**Cutting the margins**, 6 m and 0.75 of the tyre down to 3 m / 0.9 and 1.5 m / 1.0:
+
+| kept in hand | 90: mean | behind | contacts | spun | 150: mean | behind | wrecked |
+|---|---|---|---|---|---|---|---|
+| **6 m, 0.75** | **63** | **125 m** | **16** | **4** | **74** | **140 m** | **0** |
+| 3 m, 0.9 | 56 | 176 m | 15 | 4 | 62 | 207 m | **1** |
+| 1.5 m, 1.0 | 61 | 118 m | 32 | 10 | 72 | 217 m | 0 |
+
+The clamp stops binding -- 25% down to 11-16% -- and `Clear` and `Travel` take over,
+so the margin was never the constraint. What the car gains in approach speed it pays
+back braking harder, and at 1.5 m it doubles the contacts and spins.
+
+That is the same shape as the grip sweep: close the gap to an obstacle and the car
+arrives needing to brake harder than it saved. The clamp was already about right,
+and the figures are in the comment beside it so nobody has to find that out again.
+
 ### Three more things that should have worked
 
 All three came from the same place -- watching them corner and concluding something
