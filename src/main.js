@@ -32,6 +32,11 @@ import { FlyingHelicopter } from './game/flyheli.js';
  * being chased. Read once, here, because the player is built before anything
  * on the game object exists.
  */
+// Scratch for a mark arriving over the wire.
+const _markAt = new THREE.Vector3();
+const _markVel = new THREE.Vector3();
+const _qN = new THREE.Quaternion();
+
 const SOLO_AIR = typeof location !== 'undefined'
   && new URLSearchParams(location.search).get('air') === '1';
 import { TrafficLights, SIGNAL } from './game/trafficlights.js';
@@ -477,6 +482,82 @@ class Game {
       heli.view = buildImportedHelicopter(m) || buildHelicopterMesh();
       this.scene.add(heli.view);
     });
+  }
+
+  /**
+   * The pilot calls the car in.
+   *
+   * This is the only way air support puts anything on anybody's map, and it
+   * is a single fix rather than a feed: the dispatcher's knowledge takes a
+   * position and a confidence that then decays on its own, which is the same
+   * machinery that already handles losing sight of a car on the ground. So a
+   * mark means "he was there, just now", and ages into a search area exactly
+   * as it should.
+   *
+   * On a police player's machine the chase belongs to the host, so the fix is
+   * sent rather than applied -- the answer comes back in the ordinary world
+   * update and everybody sees the same thing.
+   */
+  _callItIn() {
+    const air = this.aircraft;
+    if (!air) return;
+    const target = this.netSuspect || this._soloQuarry();
+    const how = air.mark(target);
+    if (how === 'wait') return;
+    if (how !== 'sent') {
+      this.hud.toast('NOTHING TO REPORT');
+      return;
+    }
+
+    if (session.active && !session.isHost) {
+      session.sendEvent('mark', {
+        x: Math.round(target.position.x * 10) / 10,
+        z: Math.round(target.position.z * 10) / 10,
+        vx: Math.round(target.linvel.x * 10) / 10,
+        vz: Math.round(target.linvel.z * 10) / 10,
+      });
+    } else {
+      this.applyMark(target.position, target.linvel);
+    }
+    this.hud.toast('CONTACT CALLED IN');
+    this.say('heli-mark', [
+      'India 99, I have eyes on, passing a position now.',
+      'India 99 has the vehicle, sending a fix.',
+      'From the air: target located, position passed.',
+    ], {}, true);
+  }
+
+  /**
+   * Put a called-in fix into what the force knows. Shared by the pilot's own
+   * machine and by a mark arriving over the wire.
+   */
+  applyMark(position, velocity) {
+    const k = this.dispatcher.knowledge;
+    k.position.copy(position);
+    if (velocity) k.velocity.copy(velocity);
+    k.timeSinceSeen = 0;
+    k.confidence = 1;
+    this.dispatcher.markedAt = this.clock;
+  }
+
+  /**
+   * Something to practise on with `?air=1`, where there is no chase at all:
+   * the nearest ordinary car on the ground. It is not a suspect and marking
+   * it achieves nothing, but it is a thing to find, point at and identify,
+   * which is the skill the role is made of.
+   */
+  _soloQuarry() {
+    if (!SOLO_AIR) return null;
+    let best = null, bestD = Infinity;
+    for (const v of this.vehicles) {
+      if (v === this.player) continue;
+      // Anything on wheels will do. On your own there is no chase and nothing
+      // civilian about either, so the patrol cars pottering around their beat
+      // are the only thing to point at.
+      const d = dist2(v.position.x, v.position.z, this.player.position.x, this.player.position.z);
+      if (d < bestD) { bestD = d; best = v; }
+    }
+    return best;
   }
 
   _initDebug() {
@@ -1416,6 +1497,8 @@ class Game {
     if (i.tapped('KeyP')) this.paused = !this.paused;
     if (i.tapped('KeyH')) this.hud.toggleHelp();
     if (i.tapped('KeyC')) this.camera3.cycle();
+    // The only thing a pilot can actually do. See _callItIn.
+    if (this.aircraft && (i.tapped('Space') || i.tapped('KeyF'))) this._callItIn();
     // N, not M: M is the menu, and was checked first, so muting could never happen.
     if ((i.tapped('KeyN') || i.tapped('Mute')) && this.audio) {
       // Said out loud on screen, not just written to the radio log -- the log
@@ -1463,6 +1546,46 @@ class Game {
       this.netOver = true;
       this.hud.showOverlay('GAME OVER', session.error || 'The game ended.', { canRestart: false });
     }
+  }
+
+  /**
+   * Draw another player's helicopter.
+   *
+   * Interpolated toward the packet rather than snapped to it, the same as the
+   * cars are, because at thirty packets a second and a hundred and fifty
+   * km/h the raw positions are three metres apart.
+   */
+  _netRemoteAir(car, dt) {
+    if (!this.netAir) this.netAir = new Map();
+    let a = this.netAir.get(car.id);
+    if (!a) {
+      a = { view: null, pos: new THREE.Vector3(car.x, car.y, car.z), quat: new THREE.Quaternion(), rotor: 0 };
+      this.netAir.set(car.id, a);
+      loadHelicopterModel().then((m) => {
+        a.view = buildImportedHelicopter(m) || buildHelicopterMesh();
+        this.scene.add(a.view);
+      });
+    }
+    _markAt.set(car.x, car.y, car.z);
+    a.pos.lerp(_markAt, 1 - Math.exp(-11 * dt));
+    _qN.set(car.qx, car.qy, car.qz, car.qw);
+    a.quat.slerp(_qN, 1 - Math.exp(-11 * dt));
+    a.rotor += dt * 34;
+    if (a.view) {
+      a.view.position.copy(a.pos);
+      a.view.quaternion.copy(a.quat);
+      const ud = a.view.userData;
+      if (ud.main) ud.main.rotation[ud.mainAxis || 'z'] = a.rotor;
+      if (ud.tail) ud.tail.rotation[ud.tailAxis || 'y'] = a.rotor * 1.7;
+    }
+  }
+
+  /** Take a departed player's helicopter out of the sky. */
+  _netDropAir(id) {
+    const a = this.netAir && this.netAir.get(id);
+    if (!a) return;
+    if (a.view) this.scene.remove(a.view);
+    this.netAir.delete(id);
   }
 
   /**
@@ -1517,6 +1640,10 @@ class Game {
     for (const car of session.sample(this.player.position)) {
       if (car.id === session.id) continue;                 // our own, echoed
       seen.add(car.id);
+      // Somebody else's helicopter. Not a vehicle: no collider, no wheels and
+      // nothing for the dispatcher to send anywhere, so it is drawn and
+      // nothing more.
+      if (car.kind === 'helicopter') { this._netRemoteAir(car, dt); continue; }
       let v = this.netCars.get(car.id);
       if (!v) {
         const police = (car.flags & FLAG.POLICE) !== 0;
@@ -1551,6 +1678,9 @@ class Game {
 
     // Gone: a despawned AI car, or a player who left.
     for (const id of session.prune()) seen.delete(id);
+    if (this.netAir) {
+      for (const id of [...this.netAir.keys()]) if (!seen.has(id)) this._netDropAir(id);
+    }
     for (const [id, v] of [...this.netCars]) {
       if (seen.has(id) || session.tracks.has(id)) continue;
       this.netCars.delete(id);
@@ -1864,6 +1994,15 @@ class Game {
       // overrule them a twentieth of a second later. They ask, and the machine
       // that owns the number does it.
       if (msg.e === 'heat' && session.isHost) { this._setWanted(msg.want | 0); continue; }
+      // Air support calling a car in. Only the escapee's machine runs the
+      // chase, so a pilot's fix is applied here and reaches everybody else
+      // the ordinary way, in the world update.
+      if (msg.e === 'mark' && session.isHost) {
+        _markAt.set(msg.x || 0, 0, msg.z || 0);
+        _markVel.set(msg.vx || 0, 0, msg.vz || 0);
+        this.applyMark(_markAt, _markVel);
+        continue;
+      }
       if (session.isHost) continue;                        // the rest is its own doing
       if (msg.e === 'radio') {
         // Said on the escapee's machine; heard on this one too, in the same

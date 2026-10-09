@@ -124,6 +124,34 @@ window.__runFlyHeli = async function () {
         + `(${(ENDURANCE / 60).toFixed(0)} min tank, ${(ENDURANCE / burnt).toFixed(1)} min real)`);
     }
 
+    // ---- the mark ----
+    // The rule the whole role balances on: close enough to tell what it is,
+    // in front of you, and actually visible. Checked against a stand-in car
+    // rather than the real thing, because what is being tested is the rule.
+    {
+      const h = make();
+      h.position.set(0, 120, 0);
+      h.yaw = 0; h.pitch = 0; h.roll = 0; h._applyAttitude();
+      const at = (x, y, z) => ({ position: new (window.__modules.THREE.Vector3)(x, y, z) });
+      const tests = [
+        ['150 m ahead and below', at(0, 2, 150)],
+        ['400 m ahead', at(0, 2, 400)],
+        ['150 m behind', at(0, 2, -150)],
+        ['150 m off to one side', at(150, 2, 0)],
+        ['directly below', at(0, 2, 0)],
+        ['60 m below, 40 m to the side', at(40, 60, 0)],
+        ['above the aircraft', at(0, 200, 60)],
+      ];
+      for (const [what, t] of tests) {
+        const range = Math.round(h.position.distanceTo(t.position));
+        say(`  identify ${what} (${range} m): ${h.canIdentify(t) ? 'YES' : 'no'}`);
+      }
+      // And the cooldown: one call, then nothing for a while.
+      const first = h.mark(at(0, 2, 150));
+      const second = h.mark(at(0, 2, 150));
+      say(`  mark, then mark again at once: ${first}, then ${second}`);
+    }
+
     window.__res = rows.join(String.fromCharCode(10));
     window.__flyDone = true;
     return window.__res;

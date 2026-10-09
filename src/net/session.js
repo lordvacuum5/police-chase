@@ -67,7 +67,12 @@ export const SEND_HZ = 30;
  * Car kinds, as an index: a snapshot is a list of numbers, and the kind is the
  * only string in it. Append only -- the position in this list is on the wire.
  */
-const KINDS = ['runner', 'supercar', 'offroad', 'patrol', 'interceptor', 'suv', 'van', 'unmarked'];
+const KINDS = ['runner', 'supercar', 'offroad', 'patrol', 'interceptor', 'suv', 'van', 'unmarked',
+  // Air support, which is not a car at all -- it has no collider and no
+  // wheels, and the receiving end draws it as a model rather than building a
+  // vehicle for it. On the wire it is the same sixteen numbers: a position, a
+  // rotation and a velocity is all anybody else needs to draw a helicopter.
+  'helicopter'];
 
 export const FLAG = { POLICE: 1, UNMARKED: 2, DISABLED: 4, BLIP: 8 };
 

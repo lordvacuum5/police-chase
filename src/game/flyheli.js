@@ -22,7 +22,8 @@
 // so that the thing can be flown with four keys and a mouse.
 
 import * as THREE from 'three';
-import { clamp, clamp01, lerp, damp } from '../util/math.js';
+import { clamp, clamp01, lerp, damp, angleDelta } from '../util/math.js';
+import { hasLineOfSight } from '../physics/world.js';
 
 /** Gravity, which the rotor has to beat to go up. */
 const G = 9.81;
@@ -90,6 +91,26 @@ export const REFUEL_TIME = 12;
 /** Ground clearance of the skids, so it lands on them rather than in them. */
 const SKID = 1.05;
 
+/**
+ * The mark: how close the aircraft has to be to call a car in, how far off the
+ * nose it may be, and how long before another one can be sent.
+ *
+ * This is the whole role, and the range is the whole balance. There is no
+ * detection of any kind -- seeing the car on your screen does nothing, and
+ * there is no searchlight -- so the only way the ground units learn anything
+ * is a pilot deciding they have identified the car and pressing the key.
+ *
+ * 300 m sounds generous and is not. From a thousand feet you can see half the
+ * town and cannot tell one dark hatchback from another, so a mark means
+ * descending to where the flying is hard and the rooftops are in the way, and
+ * the pilot who sits high and safe is a pilot who reports nothing. That is the
+ * trade the role is made of, and it falls out of the range rather than being
+ * enforced anywhere.
+ */
+const MARK_RANGE = 300;
+const MARK_CONE = 0.95;          // radians off the nose, a generous windscreen
+const MARK_COOLDOWN = 7;
+
 const _v = new THREE.Vector3();
 const _up = new THREE.Vector3();
 const _fwd = new THREE.Vector3();
@@ -123,6 +144,11 @@ export class FlyingHelicopter {
     this.fuel = ENDURANCE;
     this.refuelling = 0;
     this.onGround = true;
+
+    /** Seconds until another mark may be sent, and how the last one went. */
+    this.markCooldown = 0;
+    this.markFlash = 0;
+    this.markResult = '';
 
     /** Set while the aircraft has touched something hard. */
     this.damage = 0;
@@ -260,6 +286,65 @@ export class FlyingHelicopter {
     this.forwardSpeed = this.linvel.dot(_fwd);
     this.angvel.set(0, -this.yawRate, 0);
     this.rotor += dt * 34 * this.spin;
+
+    this.markCooldown = Math.max(0, this.markCooldown - dt);
+    this.markFlash = Math.max(0, this.markFlash - dt);
+  }
+
+  /**
+   * Can this aircraft identify that car from here, right now?
+   *
+   * Three questions, all of them about the pilot rather than about the game:
+   * is it close enough to tell what it is, is it in front of me, and can I
+   * actually see it. Nothing here knows whether it is the right car -- that
+   * is the pilot's problem, and getting it wrong is how a pilot wastes
+   * everybody's time.
+   */
+  canIdentify(target) {
+    if (!target) return false;
+    const dx = target.position.x - this.position.x;
+    const dz = target.position.z - this.position.z;
+    const down = this.position.y - target.position.y;
+    // You have to be above it. A helicopter looking up at a car is not a
+    // situation that needs supporting.
+    if (down < 2) return false;
+    const flat = Math.hypot(dx, dz);
+    if (Math.hypot(flat, down) > MARK_RANGE) return false;
+
+    // The cone is a bearing, not a direction in space.
+    //
+    // Measured off the nose in three dimensions, a helicopter hovering
+    // directly over the car could not see it -- straight down is ninety
+    // degrees off the nose -- which is exactly backwards, since looking down
+    // is the entire job. A crew looks out and down through a bubble canopy,
+    // so what matters is which way the car is from here on the map, and
+    // anything steeply below is in view whichever way the nose happens to
+    // point.
+    // Steeper than about forty degrees below the horizon is out of the chin
+    // and side glass and counts whichever way the nose points; shallower than
+    // that is out of the windscreen, and the pilot has to be pointing at it.
+    if (flat > down * 1.2) {
+      const bearing = Math.atan2(dx, dz);
+      if (Math.abs(angleDelta(this.yaw, bearing)) > MARK_CONE) return false;
+    }
+
+    const world = this.game.world;
+    if (!world) return true;
+    _v.copy(this.position);
+    return hasLineOfSight(world, _v, target.position, 0.6);
+  }
+
+  /**
+   * Call it in. Returns what happened, so the HUD can say so: a fix only
+   * leaves the aircraft when the pilot could actually see the car.
+   */
+  mark(target) {
+    if (this.markCooldown > 0) return 'wait';
+    this.markCooldown = MARK_COOLDOWN;
+    this.markFlash = 1.4;
+    const ok = this.canIdentify(target);
+    this.markResult = ok ? 'sent' : 'nothing';
+    return this.markResult;
   }
 
   /**
