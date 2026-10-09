@@ -121,6 +121,52 @@ export class ChaseCamera {
   }
 
   cycle() { this.mode = (this.mode + 1) % CAM_MODES.length; }
+
+  /**
+   * Behind and above an aircraft, pointed where its nose is.
+   *
+   * Deliberately loose: the camera lags the aircraft's heading rather than
+   * being bolted to it, so a pedal turn swings the world past you instead of
+   * snapping, and the lag is what makes a fast yaw read as a fast yaw. It
+   * does not follow pitch or roll at all -- a camera that rolls with the
+   * aircraft is how flight games make people ill, and the horizon tilting
+   * against a steady camera is the clearer way to show a bank.
+   */
+  _air(dt, v, alpha = 1) {
+    const back = 17, up = 5.4;
+    _carPos.copy(v.prevPos || v.position).lerp(v.position, alpha);
+    const nose = v.yaw !== undefined ? v.yaw : Math.atan2(v.forward.x, v.forward.z);
+    this.heading += angleDelta(this.heading, nose) * (1 - Math.exp(-3.4 * dt));
+
+    const sh = Math.sin(this.heading), ch = Math.cos(this.heading);
+    // Rise with speed so the ground stays in shot in a dash across town, and
+    // drop in the hover where the pilot is looking at something below.
+    const lift = up + smoothstep(10, 60, v.speed) * 3.5;
+    this.pos.set(_carPos.x - sh * back, _carPos.y + lift, _carPos.z - ch * back);
+    // Look a little past the aircraft and a little down, which puts the
+    // ground -- the thing the job is about -- in the middle of the screen.
+    this.look.copy(_carPos).addScaledVector(AXIS_F.clone().set(sh, 0, ch), 12);
+    this.look.y -= 3.0 + smoothstep(0, 160, _carPos.y - (v.groundY || 0)) * 10;
+
+    const wantFov = 64 + smoothstep(20, 80, v.speed) * 8;
+    this.fov = damp(this.fov, wantFov, 3.5, dt);
+
+    this.camera.position.copy(this.pos);
+    if (this.shake > 0.001) {
+      const sk = this.shake * this.shake * 0.45;
+      this.camera.position.x += (Math.random() - 0.5) * sk;
+      this.camera.position.y += (Math.random() - 0.5) * sk;
+      this.camera.position.z += (Math.random() - 0.5) * sk;
+    }
+    this.camera.lookAt(this.look);
+    // Bank the picture a little with the aircraft -- a fraction of the real
+    // roll, which reads as a turn without taking the horizon away.
+    this.camera.rotateZ(clamp(-(v.roll || 0) * 0.35, -0.3, 0.3));
+    if (this.camera.fov !== this.fov) {
+      this.camera.fov = this.fov;
+      this.camera.updateProjectionMatrix();
+    }
+  }
   get modeName() { return CAM_MODES[this.mode]; }
 
   /** Add a jolt -- called on impacts. */
@@ -148,6 +194,13 @@ export class ChaseCamera {
   update(dt, v, alpha = 1) {
     const mode = CAM_MODES[this.mode];
     this.shake = Math.max(0, this.shake - dt * 2.2);
+
+    // An aircraft is not a car and the car camera is wrong for it in one
+    // specific way: it swings toward the direction of travel, which is right
+    // for something that mostly goes where it points and useless for
+    // something that can fly sideways, backwards and straight down. The air
+    // camera sits behind the nose and stays there.
+    if (v.isAircraft) { this._air(dt, v, alpha); return; }
 
     _carPos.copy(v.prevPos).lerp(v.position, alpha);
     _carQuat.copy(v.prevQuat).slerp(v.quaternion, alpha);

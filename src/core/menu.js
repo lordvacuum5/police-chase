@@ -131,7 +131,108 @@ export const POLICE_CARS = [
       ['Toughness', 22, 'hits'],
     ],
   },
+  {
+    id: 'helicopter',
+    name: 'Air Support',
+    tag: 'EYES ONLY',
+    colour: '#1b2432',
+    roof: '#e8c33a',
+    shape: 'heli',
+    stats: [
+      ['Top speed', 137, 'mph'],
+      ['Climb', 10, 'm/s'],
+      ['Endurance', 6, 'min'],
+      ['Arrests', 0, ''],
+    ],
+  },
 ];
+
+/**
+ * The helicopter card. The car profile above is all body outline, glass run
+ * and wheels, none of which this has, so it draws its own: a cabin, a tail
+ * boom with a fin, skids, and the rotor as a line, which is what a rotor
+ * looks like from the side at any speed worth drawing.
+ */
+function drawHeliProfile(canvas, car) {
+  const ctx = base(canvas);
+  const W = canvas.width, H = canvas.height;
+  const ground = H - 26;
+  const len = W * 0.78, x0 = (W - len) * 0.5;
+  const px = (u) => x0 + u * len;
+  const tall = 104;
+  const py = (v) => ground - v * tall;
+
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.beginPath();
+  ctx.ellipse(W * 0.5, ground + 4, len * 0.34, 7, 0, 0, TAU);
+  ctx.fill();
+
+  // Cabin, nose to the right, with the boom running back off to the left.
+  ctx.fillStyle = car.colour;
+  ctx.beginPath();
+  const body = [[0.30, 0.30], [0.28, 0.52], [0.33, 0.70], [0.46, 0.78], [0.62, 0.76],
+    [0.74, 0.64], [0.78, 0.46], [0.74, 0.32], [0.60, 0.24], [0.40, 0.24]];
+  body.forEach(([u, v], i) => (i ? ctx.lineTo(px(u), py(v)) : ctx.moveTo(px(u), py(v))));
+  ctx.closePath();
+  ctx.fill();
+
+  // Tail boom and fin.
+  ctx.beginPath();
+  [[0.30, 0.56], [0.04, 0.62], [0.02, 0.86], [0.00, 0.86], [0.00, 0.56],
+    [0.04, 0.50], [0.30, 0.44]]
+    .forEach(([u, v], i) => (i ? ctx.lineTo(px(u), py(v)) : ctx.moveTo(px(u), py(v))));
+  ctx.closePath();
+  ctx.fill();
+
+  // The yellow top, which is how it reads as this aircraft and not any other.
+  if (car.roof) {
+    ctx.fillStyle = car.roof;
+    ctx.beginPath();
+    [[0.38, 0.76], [0.62, 0.76], [0.74, 0.64], [0.72, 0.60], [0.40, 0.66]]
+      .forEach(([u, v], i) => (i ? ctx.lineTo(px(u), py(v)) : ctx.moveTo(px(u), py(v))));
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Glazed nose.
+  ctx.fillStyle = 'rgba(150,200,235,0.55)';
+  ctx.beginPath();
+  [[0.62, 0.72], [0.73, 0.62], [0.76, 0.46], [0.66, 0.40], [0.62, 0.56]]
+    .forEach(([u, v], i) => (i ? ctx.lineTo(px(u), py(v)) : ctx.moveTo(px(u), py(v))));
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(232,237,244,0.85)';
+  ctx.lineWidth = 3;
+  // Mast and main rotor.
+  ctx.beginPath();
+  ctx.moveTo(px(0.52), py(0.78));
+  ctx.lineTo(px(0.52), py(0.92));
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(px(0.06), py(0.94));
+  ctx.lineTo(px(0.98), py(0.94));
+  ctx.stroke();
+  // Tail rotor.
+  ctx.beginPath();
+  ctx.moveTo(px(0.01), py(0.44));
+  ctx.lineTo(px(0.01), py(0.94));
+  ctx.stroke();
+
+  // Skids.
+  ctx.lineWidth = 3.5;
+  ctx.strokeStyle = 'rgba(190,205,220,0.9)';
+  ctx.beginPath();
+  ctx.moveTo(px(0.30), py(0.02));
+  ctx.lineTo(px(0.76), py(0.02));
+  ctx.stroke();
+  for (const u of [0.38, 0.66]) {
+    ctx.beginPath();
+    ctx.moveTo(px(u), py(0.26));
+    ctx.lineTo(px(u - 0.01), py(0.02));
+    ctx.stroke();
+  }
+}
 
 const CAR_KEY = 'pc.car';
 const POLICE_KEY = 'pc.policecar';
@@ -629,6 +730,7 @@ function drawCar(canvas, car) {
  * two shapes are easy to compare by eye.
  */
 function drawCarProfile(canvas, car) {
+  if (car.shape === 'heli') { drawHeliProfile(canvas, car); return; }
   const ctx = base(canvas);
   const W = canvas.width, H = canvas.height;
   const ground = H - 26;

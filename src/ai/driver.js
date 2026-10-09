@@ -1882,7 +1882,10 @@ export class Driver {
     this.holdCap = Infinity;
     this.heldBy = false;
     const v = this.v, o = obstacle;
-    if (!o || o === v) { this._guardRecent = 0; return; }
+    // An aircraft is not traffic. It has no collider, it is two hundred feet
+    // up, and queueing behind it would be a car stopping in the road for a
+    // helicopter -- which is funny once and then is a bug.
+    if (!o || o === v || o.isAircraft) { this._guardRecent = 0; return; }
 
     // ---- never into them ----
     // Whatever else happens below, if carrying on means touching the car in

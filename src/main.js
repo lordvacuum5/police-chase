@@ -21,7 +21,19 @@ import {
 import { Driver, SKILL } from './ai/driver.js';
 import { Heat } from './game/heat.js';
 import { RoadblockManager } from './game/roadblock.js';
-import { Helicopter } from './game/helicopter.js';
+import { Helicopter, buildHelicopterMesh } from './game/helicopter.js';
+import { loadHelicopterModel, buildImportedHelicopter } from './game/helimodel.js';
+import { FlyingHelicopter } from './game/flyheli.js';
+
+/**
+ * `?air=1`: fly the helicopter on your own, with no chase and nobody to report
+ * to. How the flying gets tested without two machines and a friend, and the
+ * only way to fly it in single player -- in an ordinary game you are the one
+ * being chased. Read once, here, because the player is built before anything
+ * on the game object exists.
+ */
+const SOLO_AIR = typeof location !== 'undefined'
+  && new URLSearchParams(location.search).get('air') === '1';
 import { TrafficLights, SIGNAL } from './game/trafficlights.js';
 import { StreetProps } from './game/streetprops.js';
 import { Garage } from './game/garage.js';
@@ -408,12 +420,24 @@ class Game {
     // they are not an ambient patrol car that happened to be nearby, they are
     // a unit that has been sent. Which of the three they turn up in is the one
     // thing the join screen asks; an interceptor if it was never asked.
+    // `?air=1` puts you in the helicopter on your own, with no chase and
+    // nobody to report to. It is how the flying gets tested without two
+    // machines and a friend, and it is the only way to fly it in single
+    // player -- in an ordinary game you are the one being chased.
+    if (SOLO_AIR) { this._spawnAircraft(place); return; }
+
     if (session.active && session.role === 'police') {
       // Driveable by a person rather than by the speed planner, and heavy
       // enough to shove with: see drivablePoliceSpec. Only this car, and only
       // on this machine.
       // A marked car, always: a police player is a unit that has been sent,
       // and the unmarked pursuit car stays the AI's to drive.
+      // Air support is one of the things on the join screen, and it is not a
+      // car: no collider, no wheels, no spec. See flyheli.js.
+      if (chosenPoliceCar() === 'helicopter') {
+        this._spawnAircraft(place);
+        return;
+      }
       const kind = SPECS[chosenPoliceCar()] ? chosenPoliceCar() : 'interceptor';
       this.player = this.createVehicle(kind, kind, place.position, place.heading,
         { police: true, spec: drivablePoliceSpec(kind) });
@@ -428,6 +452,31 @@ class Game {
     this.player = this.createVehicle(car, car, place.position, place.heading, {});
     this._syncApple();
     this.startPlace = place;
+  }
+
+  /**
+   * Put the player in a helicopter instead of a car.
+   *
+   * It starts on the ground at the garage, rotors turning, because the one
+   * place on the map with fuel is the obvious place to begin and because
+   * lifting off is a nicer first second than being dropped in at altitude.
+   */
+  _spawnAircraft(place) {
+    const g = this.garage && this.garage.marker;
+    const at = g ? { x: g.x, y: 0, z: g.z } : { x: place.position.x, y: 0, z: place.position.z };
+    at.y = (this.sim.heightAt ? this.sim.heightAt(at.x, at.z) || 0 : 0) + 1.05;
+    const heli = new FlyingHelicopter(this, { heading: place.heading });
+    heli.teleport(at, place.heading);
+    this.player = heli;
+    this.aircraft = heli;
+    this.startPlace = place;
+
+    // Its body is the same model the AI flies, and the same fallback when
+    // there is no model to load.
+    loadHelicopterModel().then((m) => {
+      heli.view = buildImportedHelicopter(m) || buildHelicopterMesh();
+      this.scene.add(heli.view);
+    });
   }
 
   _initDebug() {
@@ -1881,7 +1930,15 @@ class Game {
     const player = this.player;
 
     // ---- player input ----
-    if (this.outcome) {
+    // An aircraft takes a different set of controls and is stepped here
+    // rather than by the physics world -- it has no collider and nothing to
+    // solve against. See flyheli.js.
+    if (player.isAircraft) {
+      const stick = this.outcome
+        ? { collective: -1, pitch: 0, roll: 0, yaw: 0 }
+        : this.input.sampleAir(dt);
+      player.update(dt, stick);
+    } else if (this.outcome) {
       player.setControls({ throttle: 0, brake: 1, steer: 0, handbrake: 1 });
     } else if (this.forceControls) {
       // Scripted input, used for tuning and automated handling tests.
@@ -2117,6 +2174,18 @@ class Game {
     const alpha = clamp01(this.accumulator / FIXED);
     let wi = 0;
     this.lights.begin(dt);
+
+    // The player's aircraft, if they are flying one. Not in `vehicles` -- it
+    // has no collider and no wheels -- so it is drawn here, the same way and
+    // between the same two steps.
+    const air = this.aircraft;
+    if (air && air.view) {
+      air.view.position.lerpVectors(air.prevPos, air.position, alpha);
+      air.view.quaternion.copy(air.prevQuat).slerp(air.quaternion, alpha);
+      const ud = air.view.userData;
+      if (ud.main) ud.main.rotation[ud.mainAxis || 'z'] = air.rotor;
+      if (ud.tail) ud.tail.rotation[ud.tailAxis || 'y'] = air.rotor * 1.7;
+    }
 
     for (const v of this.vehicles) {
       v.view.position.lerpVectors(v.prevPos, v.position, alpha);

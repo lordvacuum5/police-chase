@@ -26,7 +26,26 @@ const KEYMAP = {
   right: ['KeyD', 'ArrowRight'],
   handbrake: ['Space'],
   clutch: ['ShiftLeft', 'ShiftRight'],
+  // Flying. W/S is the collective and A/D the pedals, as in every helicopter
+  // in every game with one; the cyclic is the mouse, with the arrows for
+  // anyone who would rather not grab the pointer. See sampleAir.
+  climb: ['KeyW'],
+  sink: ['KeyS'],
+  yawLeft: ['KeyA'],
+  yawRight: ['KeyD'],
+  noseDown: ['ArrowUp'],
+  noseUp: ['ArrowDown'],
+  bankLeft: ['ArrowLeft'],
+  bankRight: ['ArrowRight'],
 };
+
+/**
+ * Mouse travel, in pixels, for full cyclic deflection. Low enough to fly with
+ * a wrist and high enough that a touchpad is not hopeless.
+ */
+const CYCLIC_PX = 260;
+/** How fast the cyclic returns to centre when the mouse stops moving. */
+const CYCLIC_RETURN = 1.9;
 
 export class Input {
   constructor() {
@@ -34,6 +53,10 @@ export class Input {
     this.pressed = new Set();
     this.word = '';              // the last few letters typed: see typed()
     this.steerAxis = 0;
+    /** Cyclic, -1..1 each way. Driven by the mouse while the pointer is held. */
+    this.cyclicX = 0;
+    this.cyclicY = 0;
+    this.pointerHeld = false;
     this.gamepadIndex = null;
     this.usingPad = false;
     this.touch = null;
@@ -56,6 +79,21 @@ export class Input {
     window.addEventListener('keydown', this._onDown);
     window.addEventListener('keyup', this._onUp);
     window.addEventListener('blur', this._onBlur);
+    // Mouse cyclic. Only while the pointer is actually locked to the page --
+    // otherwise moving the mouse to reach a menu would fly the aircraft.
+    this._onMove = (e) => {
+      if (!this.pointerHeld) return;
+      this.cyclicX = clamp(this.cyclicX + (e.movementX || 0) / CYCLIC_PX, -1, 1);
+      this.cyclicY = clamp(this.cyclicY + (e.movementY || 0) / CYCLIC_PX, -1, 1);
+      this._movedAt = performance.now();
+    };
+    this._onLockChange = () => {
+      this.pointerHeld = document.pointerLockElement != null;
+      if (!this.pointerHeld) { this.cyclicX = 0; this.cyclicY = 0; }
+    };
+    document.addEventListener('mousemove', this._onMove);
+    document.addEventListener('pointerlockchange', this._onLockChange);
+
     window.addEventListener('gamepadconnected', (e) => { this.gamepadIndex = e.gamepad.index; });
     window.addEventListener('gamepaddisconnected', () => { this.gamepadIndex = null; });
   }
@@ -169,7 +207,63 @@ export class Input {
     return out;
   }
 
+  /**
+   * The flying controls, which are a different set from the driving ones.
+   *
+   * Collective on W/S, pedals on A/D, cyclic on the mouse -- push forward to
+   * put the nose down and go, pull back to flare, left and right to bank. The
+   * arrow keys do the cyclic too, for a touchpad or for anyone who does not
+   * want the pointer captured.
+   *
+   * The mouse cyclic self-centres when the mouse stops moving. A real cyclic
+   * is a stick that stays where it is put and a mouse is not, so holding a
+   * lean would mean holding the mouse still at an offset the pilot cannot see;
+   * centring it means a lean is something you keep asking for, which is both
+   * flyable and roughly what flying one is actually like.
+   */
+  sampleAir(dt) {
+    const keyPitch = (this.down('noseDown') ? 1 : 0) + (this.down('noseUp') ? -1 : 0);
+    const keyRoll = (this.down('bankRight') ? 1 : 0) + (this.down('bankLeft') ? -1 : 0);
+
+    if (this.pointerHeld && performance.now() - (this._movedAt || 0) > 40) {
+      this.cyclicX = moveTowards(this.cyclicX, 0, CYCLIC_RETURN * dt);
+      this.cyclicY = moveTowards(this.cyclicY, 0, CYCLIC_RETURN * dt);
+    }
+
+    const out = {
+      collective: (this.down('climb') ? 1 : 0) + (this.down('sink') ? -1 : 0),
+      yaw: (this.down('yawLeft') ? 1 : 0) + (this.down('yawRight') ? -1 : 0),
+      pitch: keyPitch || this.cyclicY,
+      roll: keyRoll || this.cyclicX,
+    };
+
+    const pad = this._pad();
+    if (pad && this.usingPad) {
+      const dead = (v) => (Math.abs(v) < 0.12 ? 0 : v);
+      const rt = pad.buttons[7] ? pad.buttons[7].value : 0;
+      const lt = pad.buttons[6] ? pad.buttons[6].value : 0;
+      if (rt > 0.05 || lt > 0.05) out.collective = rt - lt;
+      const lx = dead(pad.axes[0] || 0);
+      if (lx) out.yaw = -lx;
+      const rx = dead(pad.axes[2] || 0), ry = dead(pad.axes[3] || 0);
+      if (rx) out.roll = rx;
+      if (ry) out.pitch = ry;
+    }
+
+    // Touch: the throttle and brake pedals are the collective, and the
+    // steering stick is the cyclic. Nothing new to learn and nothing new to
+    // draw -- the controls that are already on screen mean the nearest thing.
+    const t = this.touch;
+    if (t && t.enabled) {
+      if (t.throttle || t.brake) out.collective = t.throttle - t.brake;
+      if (t.steering) out.roll = t.steer;
+    }
+    return out;
+  }
+
   dispose() {
+    document.removeEventListener('mousemove', this._onMove);
+    document.removeEventListener('pointerlockchange', this._onLockChange);
     window.removeEventListener('keydown', this._onDown);
     window.removeEventListener('keyup', this._onUp);
     window.removeEventListener('blur', this._onBlur);

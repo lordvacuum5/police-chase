@@ -9,6 +9,7 @@ import { clamp, clamp01, lerp, toMph } from '../util/math.js';
 import { ROAD_KIND } from '../world/roadgraph.js';
 import { WORLD_HALF } from '../world/common.js';
 import { TRACK_SECONDS } from '../ai/dispatcher.js';
+import { ENDURANCE as AIR_TANK } from './flyheli.js';
 
 const MAP_PX = 1200;          // offscreen map resolution
 const MAP_SPAN = 470;         // metres visible on the minimap
@@ -32,6 +33,7 @@ export class Hud {
     this.heatFill = document.getElementById('heatfill');
     this.statusEl = document.getElementById('status');
     this.gearEl = document.getElementById('gear');
+    this.gearLabel = document.getElementById('gearlabel');
     this.radioEl = document.getElementById('radiolog');
     this.overlay = document.getElementById('overlay');
     this.otitle = document.getElementById('otitle');
@@ -168,7 +170,32 @@ export class Hud {
     if (this.statusEl.textContent !== st.text) this.statusEl.textContent = st.text;
     if (this.statusEl.className !== st.cls) this.statusEl.className = st.cls;
 
-    // ---- gear ----
+    // ---- gear, or height ----
+    // An aircraft has no gearbox and no tyres, and what a pilot actually
+    // wants in that corner is how far off the ground they are -- so the gear
+    // readout becomes a radar altimeter and the four tyre lights become a
+    // fuel gauge. Same four boxes, filling up from the left.
+    if (player.isAircraft) {
+      const alt = Math.max(0, Math.round(player.radarAlt));
+      const g2 = alt >= 1000 ? (alt / 1000).toFixed(1) + 'k' : String(alt);
+      if (this.gearEl.textContent !== g2) this.gearEl.textContent = g2;
+      if (this.gearLabel && this.gearLabel.textContent !== 'HEIGHT') {
+        this.gearLabel.textContent = 'HEIGHT';
+      }
+      const left = clamp01(player.fuel / AIR_TANK);
+      for (let i = 0; i < 4; i++) {
+        const lit = left > i / 4;
+        const low = left < 0.2;
+        const col = !lit ? '#3a4048'
+          : low && (performance.now() % 700) < 420 ? '#ff3b30'
+            : low ? '#ff8c2a' : '#35d0a5';
+        const el = this.tyreEls[i];
+        if (el.style.background !== col) el.style.background = col;
+      }
+      this._airDamage(player);
+      return;
+    }
+
     const g = player.gear === -1 ? 'R' : player.gear === 0 ? 'N' : String(player.gear);
     if (this.gearEl.textContent !== g) this.gearEl.textContent = g;
 
@@ -480,6 +507,17 @@ export class Hud {
     }
     this.roadEl.hidden = !this._roadName;
     this.roadEl.classList.toggle('off', !name);
+  }
+
+  /** The damage bar, which an aircraft has too -- it can be landed badly. */
+  _airDamage(player) {
+    const dmg = Math.round((player.damage || 0) * 100);
+    if (dmg === this._lastDmg) return;
+    this._lastDmg = dmg;
+    this.dmgFill.style.width = dmg + '%';
+    this.dmgFill.style.background = dmg > 70 ? '#ff3b30' : dmg > 35 ? '#ffb020' : '#35d0a5';
+    this.dmgPct.textContent = dmg + '%';
+    this.dmgPct.className = dmg > 70 ? 'bad' : dmg > 35 ? 'warn' : '';
   }
 
   // --------------------------------------------------------------- minimap

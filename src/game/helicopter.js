@@ -417,7 +417,7 @@ export class Helicopter {
  * A recognisable police helicopter in the same faceted style as the cars:
  * cabin, tail boom, skids, and two rotor discs that spin.
  */
-function buildHelicopterMesh() {
+export function buildHelicopterMesh() {
   const group = new THREE.Group();
   const b = new MeshBuilder();
 
