@@ -275,6 +275,8 @@ class Game {
     this.roadblocks = new RoadblockManager(this);
     this.score = new Score(this);
     this.helicopter = new Helicopter(this);
+    /** Set while the wanted level was typed in rather than earned. */
+    this.heliGrounded = false;
     // The garage before the props, so nothing is stood across its entrance.
     this.garage = new Garage(this);
     // Props first: the signals hand their posts to it to be knocked over.
@@ -1239,6 +1241,10 @@ class Game {
     // when a police player asked for it, since it is the same free stars.
     // Anything earned up to here stands.
     if (this.score) this.score.freeze();
+    // Asked-for stars ground the helicopter for the rest of the run -- see
+    // Helicopter.wanted. The shortcut exists to test the chase, and the chase
+    // being tested is the one on the roads.
+    this.heliGrounded = want > 0;
 
     if (want <= 0) {
       this.heat.reset();
@@ -1252,7 +1258,7 @@ class Game {
     if (this.heat.value <= 0) this.heat.bump(1, 'a request from the control room');
     this.heat.value = want;
     this.heat.peak = Math.max(this.heat.peak, want);
-    this.hud.toast(`WANTED: ${'★'.repeat(want)} · NO SCORE`);
+    this.hud.toast(`WANTED: ${'★'.repeat(want)} · NO SCORE · NO AIR`);
   }
 
   /**
@@ -1272,6 +1278,7 @@ class Game {
     this.dispatcher.reset();
     this.roadblocks.reset();
     this.helicopter.reset();
+    this.heliGrounded = false;
     this.props.reset();
     this.signals.reset();
     this.commentary.reset();

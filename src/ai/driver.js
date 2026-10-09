@@ -49,6 +49,29 @@ const OFF_ROAD_ARC = 45;
  * asks for -- about 14 degrees, which looks like a drift and is still inside
  * what the counter-steer floor in Vehicle can catch. See _wantDrift.
  */
+/**
+ * The handbrake turn. Locking the rears really does rotate the car -- unlike the
+ * yaw torque the drift assist tried -- so this is the one rotation trick in here
+ * that is not staged at all. These are the window it is allowed in.
+ *
+ * "They need to be good at tight turn drifting." Widening the window is the
+ * obvious way to ask for that, and it was swept on the grid map, eight routes at
+ * 90 kph, where right-angle junctions are the whole problem:
+ *
+ * | alpha / speed / dist | mean | with it | behind | hits | lost it |
+ * |---|---|---|---|---|---|
+ * | 1.15 / 19 / 26 | 70 kph | 35% | 117 m | 29 | 0x |
+ * | 0.80 / 26 / 34 | 69 kph | 38% | 118 m | 26 | 4x |
+ * | 0.55 / 34 / 45 | 71 kph | 34% |  91 m | 33 | 7x |
+ *
+ * Nothing worth having. The flick rotates the car and loses the speed that was
+ * carrying it -- at 26 m/s a locked rear axle is a spin recovery, not a corner --
+ * so the window stays where it was.
+ */
+const FLICK_ALPHA = 1.15;        // radians, about 66 degrees off the nose
+const FLICK_SPEED = 19;          // m/s, 68 km/h
+const FLICK_DIST = 26;           // m to the corner
+
 const DRIFT_SPEED = 14;
 const DRIFT_ALPHA = 0.30;
 const DRIFT_SLIP = 0.25;
@@ -115,6 +138,23 @@ const COURSE_LIFT = 3;
  */
 const WALL_KEEP = 6;
 const WALL_GRIP = 0.75;
+/**
+ * How much of the stopping demand a turn in progress is credited with. Zero: the
+ * fifth attack on this clamp and the most clearly wrong, swept on the grid map
+ * over eight routes at 90 kph --
+ *
+ * | credit | mean | with it | behind | hits |
+ * |---|---|---|---|---|
+ * | 0   | 70 kph | 37% | 106 m | 32 |
+ * | 0.6 | 65 kph | 30% | 134 m | 37 |
+ * | 1.2 | 61 kph | 25% | 154 m | 33 |
+ *
+ * -- monotone worse, and the clamp barely stopped binding for it: 26% of the run
+ * to 24%, with the cornering limit picking up what it let go. The argument was
+ * sound and the answer is the same as every other time: let a unit carry more
+ * speed into a corner and it arrives needing to brake harder than it saved.
+ */
+const WALL_TURN = 0;
 
 /**
  * The trajectory planner: how often it re-plans, how many steps it drives each
@@ -178,12 +218,19 @@ export class Driver {
     // The braking clamp's margins, settable so the rigs can sweep them.
     this.wallKeep = WALL_KEEP;
     this.wallGrip = WALL_GRIP;
+    this.wallTurn = WALL_TURN;
     this.needsRepath = false;
     this.reverseFrom = null;
     this.steerHold = 0;
     /** Signed slip angle this driver would like; see _wantDrift. */
     this.driftWish = 0;
     this.noDrift = typeof window !== 'undefined' && window.__noDrift === true;
+    // The handbrake-turn window: how far off the nose the corner has to be, the
+    // speed above which locking the rears is a spin rather than a turn, and how
+    // close the corner has to be. See the flick in drive(), and FLICK_* above.
+    this.flickAlpha = FLICK_ALPHA;
+    this.flickSpeed = FLICK_SPEED;
+    this.flickDist = FLICK_DIST;
     this.speedTarget = 0;
     this.avoidBias = 0;
     // Steering push away from scenery, and how close the nearest solid thing
@@ -1420,7 +1467,20 @@ export class Driver {
       // The pattern is the one from the grip sweep: close the gap to an obstacle and
       // the car arrives needing to brake harder than it saved, which costs more time
       // than the margin was worth.
-      const usable = Math.max(0, this.wallNear - this.wallKeep);
+      // A fifth attempt, and a different kind: not a smaller margin or a better
+      // probe, but noticing that the clamp asks the wrong question. It asks
+      // whether the car could *stop* before the thing ahead. Going round a tight
+      // corner, nobody stops -- they turn, and the wall straight ahead is the one
+      // they are turning away from. So the stopping distance is credited with how
+      // far off the nose the car is already aiming: at full lock away from the
+      // obstacle the demand relaxes, pointing straight at it it does not move.
+      //
+      // Which is the one thing the arc probe got right and paid for elsewhere: it
+      // looked where the car was going, and then found the inside kerb there.
+      // This keeps the straight-ahead probe and only softens what is demanded of
+      // it, so there is no new geometry to be wrong about.
+      const relief = 1 + this.wallTurn * Math.min(Math.abs(s.alpha), 1.2);
+      const usable = Math.max(0, this.wallNear - this.wallKeep) * relief;
       caps.wall = Math.sqrt(2 * mu * 9.81 * this.wallGrip * usable);
       speed = Math.min(speed, caps.wall);
     }
@@ -1507,7 +1567,8 @@ export class Driver {
     // ---- handbrake turn for genuinely tight corners at moderate speed ----
     out.handbrake = 0;
     if (opts.allowHandbrake !== false
-        && Math.abs(s.alpha) > 1.15 && v.speed > 5 && v.speed < 19 && s.distance < 26) {
+        && Math.abs(s.alpha) > this.flickAlpha && v.speed > 5 && v.speed < this.flickSpeed
+        && s.distance < this.flickDist) {
       out.handbrake = 1;
       out.throttle *= 0.3;
     }

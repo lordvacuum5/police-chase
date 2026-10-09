@@ -114,6 +114,12 @@ export class Helicopter {
    * with a radio call each way.
    */
   get wanted() {
+    // Grounded while the stars were asked for rather than earned. Typing `five`
+    // is how the ground chase gets tested, and an air unit watching from above
+    // means the routing never has to work: every car is handed your position
+    // whatever the roads are doing. Earn five stars the ordinary way and it
+    // flies. See Game._setWanted.
+    if (this.game.heliGrounded) return false;
     return this.game.heat.tier >= (this.active ? 4 : 5) && this.refuelTimer <= 0;
   }
 

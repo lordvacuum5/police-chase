@@ -19,6 +19,24 @@ import { clamp, clamp01, lerp, dist2, sign, damp } from '../util/math.js';
 const LANE_CORNER = 9;
 const CUT_CORNER = 16;
 /** The tightest turn a unit in a hurry plans for. See Driver.arcFloor. */
+/**
+ * The tightest turn a pursuit unit's speed limiter will believe in, in metres --
+ * 13 of them is 38 km/h. Raising it is the most direct possible answer to "they
+ * need to go round corners extremely fast", and it does not work. Grid map,
+ * eight routes at 90 kph:
+ *
+ * | floor | mean | with it | behind | hits | lost it |
+ * |---|---|---|---|---|---|
+ * | 13 m | 70 kph | 35% | 117 m | 29 | 0x  |
+ * | 19 m | 63 kph | 34% | 156 m | 21 | 2x  |
+ * | 26 m | 66 kph | 35% | 138 m | 46 | 10x |
+ *
+ * At 19 they are five metres further off the road and 39 m further back; at 26
+ * the contacts half again and ten of them spin. They believe the corner is
+ * wider than it is, arrive at a speed the corner will not take, and run out of
+ * road -- which is the same finding as the grip sweep, the lookahead sweep, the
+ * wall-clamp margins and WALL_TURN.
+ */
 const CUT_ARC = 13;
 /**
  * How far behind a unit has to be for the rubber band to be at full stretch.
@@ -151,6 +169,23 @@ const BAND_STEER = 0;
  * DRIFT_EASE is slow on purpose: a yaw torque that arrives in one frame is a
  * flick, and a drift that ends in one frame is a snap. See _updateAssist.
  */
+/**
+ * How much of the rotation assist a corner on its own can call up, rather than
+ * distance behind. Worth trying because the rotation assist is the one thing that
+ * has helped and the band switches it off inside 30 m, which is where the tight
+ * corners are. Grid map, eight routes at 90 kph:
+ *
+ * | | mean | with it | behind | hits | lost it |
+ * |---|---|---|---|---|---|
+ * | 0   | 70 kph | 35% | 117 m | 29 | 0x |
+ * | 0.5 | 68 kph | 36% | 123 m | 24 | 2x |
+ * | 1.0 | 70 kph | 35% | 133 m | 45 | 7x |
+ *
+ * 0.5 buys five fewer contacts and nothing else; 1.0 rotates them into things.
+ * Off, because a knob that changes nothing is worse than no knob.
+ */
+const ROTATE_CORNER = 0;
+
 const BAND_DRIFT = 0;
 const DRIFT_EASE = 2.5;
 
@@ -524,7 +559,7 @@ export class Officer {
     // A unit that may use the width of the road turns like one: see
     // Driver.arcFloor. A patrol car on its beat keeps the tight one and takes
     // its junctions properly.
-    this.driver.arcFloor = this.driver.allowOffRoad ? CUT_ARC : 6;
+    this.driver.arcFloor = this.driver.allowOffRoad ? (this.cutArc || CUT_ARC) : 6;
 
     // Off the hard surface: getting back onto it is the only job.
     //
@@ -1919,8 +1954,18 @@ export class Officer {
     // Helped round a corner it is running wide of -- see the rotation assist in
     // Vehicle. Eased like the grip, because a yaw torque that arrives in one frame
     // is a flick, not a drift.
+    //
+    // Two reasons to want it, and the assist takes the larger. The band's is
+    // distance: a unit a long way back is allowed more of everything. The other
+    // is the corner itself, which does not care how far back the unit is -- and
+    // the band's version is zero inside 30 m, which is where the tight corners
+    // are and where you are watching. ROTATE_CORNER is how much of the assist a
+    // corner alone can call up. See Driver.aimError.
+    const need = clamp01((Math.abs(this.driver.aimError || 0) - 0.25) / 0.5);
+    const reason = Math.max(far * engaged,
+      (this.rotateCorner === undefined ? ROTATE_CORNER : this.rotateCorner) * need);
     const wantRotate = BAND_ROTATE * (this.bandRotate === undefined ? 1 : this.bandRotate)
-      * this.aggression * far * engaged;
+      * this.aggression * reason;
     a.rotate = damp(a.rotate, wantRotate, BAND_EASE, dt);
     // The drift the driver has asked for -- see Driver._wantDrift. Deliberately
     // not scaled by the band: being sideways is a driving style, not a catch-up
