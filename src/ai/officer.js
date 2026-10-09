@@ -37,6 +37,24 @@ const CUT_CORNER = 16;
  * road -- which is the same finding as the grip sweep, the lookahead sweep, the
  * wall-clamp margins and WALL_TURN.
  */
+/**
+ * The close-chase racing line: how far inside the target's own arc to aim, in
+ * metres at a full bite, and the widest corner worth cutting. See _cutInside.
+ *
+ * Swept on tests/keepup.js, eight town routes against a 90 km/h ghost:
+ *
+ * | metres | mean | with it | behind | hits | wrecked |
+ * |---|---|---|---|---|---|
+ * |  0 | 53 kph | 65% | 72 m | 51 | 1 |
+ * |  7 | 56 kph | 67% | 61 m | 44 | 0 |
+ * | 12 | 57 kph | 64% | 75 m | 47 | 1 |
+ *
+ * Seven. Twelve is quicker in a straight line and gives the distance back --
+ * cut that hard and the chord leaves the road the target is on.
+ */
+const CUT_INSIDE = 7;
+const CUT_INSIDE_MAXR = 70;
+
 const CUT_ARC = 13;
 /**
  * How far behind a unit has to be for the rubber band to be at full stretch.
@@ -213,6 +231,10 @@ const _aim = new THREE.Vector3();
 const _tmp = new THREE.Vector3();
 const _eye = new THREE.Vector3();
 const _aim2 = new THREE.Vector3();
+// Scratch for _cutInside.
+const _cut = new THREE.Vector3();
+const _from = new THREE.Vector3();
+const _to = new THREE.Vector3();
 const _dirTmp = new THREE.Vector3();
 const _origin2 = new THREE.Vector3();
 
@@ -1443,6 +1465,8 @@ export class Officer {
       _aim.addScaledVector(target.forward, lerp(0.6, 2.6, ram) * clamp01(1 - d / (ramRange + 8)));
     }
 
+    this._cutInside(target, d, _aim);
+
     this.driver.setPath([]);
 
     // ---- a line through whatever is between here and there ----
@@ -1513,6 +1537,74 @@ export class Officer {
       speed, this._chaseSpeed() * lerp(1, 1.15, ram), this._gapCap(target),
       this._planCap === undefined ? Infinity : this._planCap,
     ), dt, { courseRadius: this._courseRadius });
+  }
+
+  /**
+   * The close-chase half of the racing line.
+   *
+   * Driver._raceLine only works on a route, and in the last stretch of a chase
+   * there is no route -- a unit aims at the car, `setPath([])`. Aiming at a car
+   * that is cornering is a pursuit curve: the chaser turns in later than the
+   * target did, ends up outside its arc, and spends the exit of every corner
+   * recovering. "They literally cannot cut corners."
+   *
+   * The arc the target is on is already known, from its speed and its yaw rate
+   * (`_courseRadius`, used by the cornering clamp). The inside of that arc is
+   * the target's own left or right, depending which way it is turning, so the
+   * line is one step: move the aim point that way. The chaser then drives the
+   * chord inside their arc instead of following them round the outside of it.
+   *
+   * Not a lead: predicting where the car will be was built twice and measured
+   * away (ARC_LEAD). This does not guess at the future at all -- it aims at a
+   * different place on the corner that is happening now.
+   *
+   * Bounded by a sweep of the car's own width at the displaced point, because
+   * the inside of a corner in a town is where the building on the corner is,
+   * and an aim point inside a wall is worse than no line: the speed clamp
+   * probes toward the aim, so it would slow them down as well as point them
+   * wrong.
+   */
+  _cutInside(target, d, aim) {
+    this._cutBy = 0;
+    const R = this._courseRadius;
+    const strength = this.cutInside === undefined ? CUT_INSIDE : this.cutInside;
+    if (!strength || !R || !Number.isFinite(R)) return;
+    // A corner, not a motorway curve and not a spin.
+    if (R > CUT_INSIDE_MAXR || R < 9) return;
+    const yaw = target.yawRate || 0;
+    if (Math.abs(yaw) < 0.08) return;
+    // Hard corner, far back: both are reasons to cut more. Close up the aim is
+    // already being nudged for a PIT and a contact, and fighting that with a
+    // line is how a unit ends up neither following nor hitting.
+    const bite = clamp01((CUT_INSIDE_MAXR - R) / CUT_INSIDE_MAXR)
+      * clamp01((d - 12) / 26);
+    if (bite <= 0.02) return;
+    let by = strength * bite * this.aggression;
+    if (by < 0.3) return;
+
+    // Inside of the turn: a positive yaw rate turns the car toward its own
+    // left, so that is the side the centre of its arc is on.
+    const s = sign(yaw);
+    _cut.copy(target.left).multiplyScalar(s);
+    // Room for it, swept from the car at its own width. Anything in the way and
+    // the line gives way to the wall, which is the right order of priority.
+    _from.copy(this.vehicle.position);
+    _from.y += 0.5;
+    _to.copy(aim).addScaledVector(_cut, by).sub(_from);
+    const want = _to.length();
+    if (want > 0.5) {
+      _to.multiplyScalar(1 / want);
+      const toi = sweepBox(this.vehicle.world, _from, _to, want, RAY_SOLID,
+        this.vehicle.body, this.driver.halfWidth);
+      if (toi < want) {
+        // Scale the cut back to what fits, and drop it entirely if that is
+        // nothing much.
+        by *= clamp01((toi - 3) / Math.max(1, want - 3));
+        if (by < 0.3) return;
+      }
+    }
+    aim.addScaledVector(_cut, by);
+    this._cutBy = by;
   }
 
   /**

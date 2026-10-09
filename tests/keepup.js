@@ -65,7 +65,7 @@ window.__keepUpSweep = async function (tweak, speeds = [90, 120, 150], seconds =
       let hard = 0, wrecked = 0;
       const what = { tree: 0, building: 0, other: 0 };
       const bind = {};
-      let lat = 0, wide = 0, drifting = 0, off = 0, offBad = 0;
+      let lat = 0, wide = 0, drifting = 0, off = 0, offBad = 0, skips = 0;
       for (let i = 0; i < routes; i++) {
         const r = chase(kph, seconds, tweak, i);
         mean += r.mean; within += r.within; behind += r.behind; hits += r.hits;
@@ -73,7 +73,7 @@ window.__keepUpSweep = async function (tweak, speeds = [90, 120, 150], seconds =
         for (const k of Object.keys(what)) what[k] += r.what[k];
         for (const k of Object.keys(r.bind)) bind[k] = (bind[k] || 0) + r.bind[k];
         lat += r.lat; wide += r.wide; drifting += r.drifting;
-        off += r.off; offBad += r.offBad;
+        off += r.off; offBad += r.offBad; skips += r.skips;
         worst = Math.max(worst, r.damage);
         await new Promise((res) => setTimeout(res, 0));
       }
@@ -90,6 +90,7 @@ window.__keepUpSweep = async function (tweak, speeds = [90, 120, 150], seconds =
       rows.push(`    off the road ${Math.round((wide / routes) * 100)}%   `
         + `aim off ${((off / routes) * 57.3).toFixed(0)} deg `
         + `(badly ${Math.round((offBad / routes) * 100)}%)   `
+        + `route skips ${skips}   `
         + `sideways ${Math.round((drifting / routes) * 100)}%   `
         + `tyre used in corners `
         + `${Math.round((lat / routes) * 100)}%   capped by `
@@ -239,6 +240,11 @@ function chase(kph, seconds, tweak, which) {
   // So: the pure-pursuit aim angle, mean and the share of frames past 35 degrees,
   // which is what overshooting a turn-in looks like from the numbers.
   let offSum = 0, offN = 0, offBad = 0;
+  // Route skips: a frame that moved the car's place on its own route further
+  // than the car could possibly have driven. See Driver._trackPath -- the index
+  // jumping a loop of the route is what makes a unit stop turning and drive at
+  // the building between the two halves of its own plan.
+  let skips = 0;
   // What they hit, not just how often. takeImpact only gets the speed change, so
   // attribution happens here: at the moment of a knock, look round the car with a
   // props-only mask and a buildings-only one and see which is closer. Crude, and
@@ -351,6 +357,7 @@ function chase(kph, seconds, tweak, which) {
       let onRoad = 0;
       for (const wh of v.wheels) if (wh.surface === 1) onRoad++;
       if (onRoad < 3) wide++;
+      if (o.driver.pathAdvance > v.speed / 60 + 6) skips++;
       if (v.speed > 8) {
         const off = Math.abs(o.driver.aimError || 0);
         offSum += off; offN++;
@@ -391,6 +398,7 @@ function chase(kph, seconds, tweak, which) {
     bind,
     lat: latN ? latSum / latN : 0,
     wide: wide / Math.max(1, n),
+    skips,
     off: offN ? offSum / offN : 0,
     offBad: offN ? offBad / offN : 0,
     drifting: drifting / Math.max(1, n),

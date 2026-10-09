@@ -169,6 +169,37 @@ const RACE_EASE = 2.2;
 /** Tighter than this and it is a junction, not a bend. See _raceLine. */
 const RACE_MIN_R = 15;
 
+/**
+ * How far along its own route a unit may get in one frame, beyond what the car
+ * actually drove: `PATH_STEP` metres of slack on the nearest-waypoint search,
+ * and `PATH_SKIP` metres on the loop that drops waypoints behind the car. Both
+ * were unbounded, counted in waypoints rather than metres. See _trackPath.
+ *
+ * Measured on tests/force.js, whole force, six 40-second chases on the town map,
+ * with a wrapper round _trackPath counting frames that moved a unit further
+ * along its route than its own speed allows:
+ *
+ * | | unbounded | bounded |
+ * |---|---|---|
+ * | worst single-frame jump | 188 m | **17.9 m** |
+ * | contacts | 50 | **19** |
+ * | of those, hard | 8 | **0** |
+ * | of those, trees | 6 | **0** |
+ * | nearest unit, mean | 143 m | **121 m** |
+ * | longest hold on the car | 17.5 s | **21.8 s** |
+ * | someone in front of you | 45% | **61%** |
+ *
+ * Not the lane-keeping. The player's guess was the slack lane term -- "a thing I
+ * asked you to add about them not needing to freak out if they go slightly off
+ * the road" -- and that is still there, still slack, and was not the problem. A
+ * unit was not drifting off its line and failing to correct; its *idea of where
+ * it was on its route* was jumping the best part of two hundred metres, after
+ * which the aim point sat past the corner and the car drove at whatever stood
+ * between the two halves of its own plan.
+ */
+const PATH_STEP = 4;
+const PATH_SKIP = 18;
+
 const DODGE_LOOK = 12;
 const DODGE_ROOM = 3;
 
@@ -252,6 +283,18 @@ export class Driver {
     this._room = WIDE;
     /** Where on the road the racing line wants to be -- see _raceLine. */
     this.lineOffset = 0;
+    /**
+     * Slack on how far along the route one frame may move the index, in metres
+     * on top of what the car actually travelled. 0 puts the old unbounded
+     * nearest-waypoint search back, for the sweep.
+     */
+    this.pathStep = PATH_STEP;
+    /**
+     * Route length one frame may skip while dropping waypoints that are behind
+     * the car, in metres. 0 puts the old unbounded version back.
+     */
+    this.pathSkip = PATH_SKIP;
+    this.pathAdvance = 0;
     this.raceLine = RACE_LINE;
     this.raceApex = RACE_APEX;
     this.raceEntry = RACE_ENTRY;
@@ -396,10 +439,39 @@ export class Driver {
     const v = this.v;
     let best = this.pathIndex;
     let bestD = Infinity;
+    // How far along the route the car is allowed to have got since the last
+    // frame: what it could actually have driven, and a few metres of slack.
+    //
+    // This used to be a flat twenty-four waypoints with no bound on distance,
+    // and a nearest-point search over that window is wrong wherever a route
+    // passes near itself -- a crescent, a dead end, the far side of a
+    // roundabout. The nearest waypoint is then one a long way further on, the
+    // index jumps the whole loop, and the aim point lands past the corner. The
+    // car stops turning and drives at whatever is between the two parts of its
+    // own route, which on a market-town map is a building.
+    //
+    // "They all kind of decided not to turn too hard and just smashed straight
+    // into a building. I think because they deviated." That is this, and they do
+    // it together because they are all on the same shape of route.
+    //
+    // Progress cannot be faster than the car, so bounding the search by distance
+    // travelled rules the jump out without changing anything in the ordinary
+    // case, where the next waypoint is a metre or two ahead.
+    let reach = this.pathStep ? v.speed / 60 + this.pathStep : Infinity;
+    let acc = 0;
     const scan = Math.min(this.path.length, this.pathIndex + 24);
     for (let i = this.pathIndex; i < scan; i++) {
+      if (i > this.pathIndex) {
+        acc += dist2(this.path[i - 1].x, this.path[i - 1].z, this.path[i].x, this.path[i].z);
+        if (acc > reach) break;
+      }
       const d = dist2(v.position.x, v.position.z, this.path[i].x, this.path[i].z);
       if (d < bestD) { bestD = d; best = i; }
+    }
+    // Published for the rigs: how far along the route this frame moved the car.
+    this.pathAdvance = 0;
+    for (let i = this.pathIndex; i < best; i++) {
+      this.pathAdvance += dist2(this.path[i].x, this.path[i].z, this.path[i + 1].x, this.path[i + 1].z);
     }
     this.pathIndex = best;
 
@@ -434,13 +506,30 @@ export class Driver {
     // Never aim at a waypoint that is behind us or sitting on the bonnet:
     // pure pursuit responds to a target behind the car by turning as hard as
     // it can, which in a city means into the nearest wall.
+    // Bounded by route length, not by a count of waypoints. Fourteen of them is
+    // a few metres where the route bends and a couple of hundred down a straight,
+    // and this is where the 188 m single-frame jump came from: measured in a
+    // whole-force chase on the town map, 805 frames in six runs moved a unit
+    // further along its own route than the car could possibly have driven, the
+    // worst of them most of the way to the next district.
+    //
+    // The loop still has its job -- a waypoint behind the car has to be dropped,
+    // or pure pursuit turns as hard as it can to get back to it -- so it keeps
+    // skipping, just not past a corner it has not driven yet.
     const limit = Math.min(this.path.length - 1, best + 14);
+    let eaten = 0;
     while (this.pathIndex < limit) {
       const q = this.path[this.pathIndex];
       const dx = q.x - v.position.x, dz = q.z - v.position.z;
       const ahead = dx * v.forward.x + dz * v.forward.z;
       if (ahead > 0 && dx * dx + dz * dz > 6) break;
+      const n = this.path[this.pathIndex + 1];
+      if (this.pathSkip && n) {
+        eaten += dist2(q.x, q.z, n.x, n.z);
+        if (eaten > this.pathSkip) break;
+      }
       this.pathIndex++;
+      this.pathAdvance += n ? dist2(q.x, q.z, n.x, n.z) : 0;
     }
     return bestD;
   }

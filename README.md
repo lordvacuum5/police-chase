@@ -3939,6 +3939,68 @@ It only applies to a unit driving a route. In the last few lengths of a chase
 there is no route — units aim at the car — so there is no line to take, and
 that is the next thing to look at.
 
+### Straight into a building, together
+
+*"They were doing pretty well keeping up with me, but then for some reason they
+all kind of decided not to turn too hard and just smashed straight into a
+building. I think because they deviated. It was a thing I asked you to add about
+them not needing to freak out if they slightly go off the road. Maybe you should
+fix that."*
+
+Good instinct, wrong suspect. The slack lane-keeping is still there and was not
+it. What a unit had lost was not its line but its *place* on its route.
+
+`Driver._trackPath` puts the car's index on its route each frame. It did that
+twice, both bounded by a count of waypoints and neither by distance: a nearest
+waypoint search over the next 24, and then a loop dropping up to 14 more that
+had ended up behind the car. Fourteen waypoints is a few metres where a route
+bends and a couple of hundred down a straight, and a nearest-point search is
+wrong wherever a route passes near itself — a crescent, a dead end, the far side
+of a roundabout.
+
+So the index jumped. Wrapping `_trackPath` and watching it through six
+whole-force chases on the town map, 805 frames moved a unit further along its
+route than its own speed could possibly carry it, and the worst single frame
+moved it **188 metres**. After a jump like that the aim point sits past the
+corner, the car stops turning, and it drives at whatever stands between the two
+halves of its own plan — which in a market town is a building. They do it
+together because they are all on the same shape of route, which is exactly what
+it looked like from the driver's seat.
+
+Progress cannot outrun the car, so both searches are now bounded in metres.
+Nothing changes in the ordinary case, where the next waypoint is a metre ahead:
+
+| | unbounded | bounded |
+|---|---|---|
+| worst single-frame jump | 188 m | **17.9 m** |
+| contacts | 50 | **19** |
+| of those, hard | 8 | **0** |
+| of those, trees | 6 | **0** |
+| nearest unit, mean | 143 m | **121 m** |
+| longest hold on the car | 17.5 s | **21.8 s** |
+| someone in front of you | 45% | **61%** |
+
+### Cutting inside, in the last few lengths
+
+The racing line above only works on a route, and in the close part of a chase
+there is no route — a unit aims at the car. Aiming at a cornering car is a
+pursuit curve: the chaser turns in later than the target did, ends up outside its
+arc and spends every corner exit recovering.
+
+The arc the target is on is already known, from its speed and its yaw rate, and
+it is already used by the cornering clamp. The inside of that arc is simply the
+target's own left or right, so `Officer._cutInside` is one step: move the aim
+point that way, so the chaser drives the chord inside their arc rather than
+following them round the outside of it. Swept over eight town routes, seven
+metres at a full bite came out closest — 61 m against 72 with no line, 44
+contacts against 51, and nothing written off. Twelve metres is quicker in a
+straight line and gives the distance back, because a chord cut that hard leaves
+the road the target is on.
+
+Deliberately not a prediction. Guessing where the car will be was built twice
+and measured away both times (see "Guessing where you are going"); this aims at
+a different place on the corner that is happening now.
+
 ### Dodging a car into a tree
 
 *"When I had outrun basically all of them, somehow it crashed into a tree. It
