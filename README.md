@@ -4891,6 +4891,20 @@ Every road is registered in a graph with widths, speeds and junction types, whic
 is what the AI routes over. The minimap is heading-up: the map turns under a
 fixed marker, with an `N` pointer for orientation.
 
+**Tap it to open it.** It doubles in size and shows 1150 m across instead of
+470 — six times the ground, not the same ground larger. *"It just enlarges it,
+it doesn't actually enlarge the area that I can see."* Open, it turns north-up,
+because dragging around a map that rotates under you is horrible, and it can be
+dragged: it follows the car until you move it, then stays where you put it, and
+cannot be pulled past the edge of the world. A press that does not move is still
+a tap, so it closes the way it always did, and a press anywhere else closes it
+too.
+
+All of that is one angle in the drawing code. The projection turns the world so
+that a given bearing points up the screen, and north is simply `PI` where the
+car's heading used to go — so the markers, the police tails, the sight ring and
+the `N` itself all follow a north-up map without a single special case.
+
 ### The edge of the map
 
 The ground is a plate 2.4 km square, 200 m of open field wider than the road

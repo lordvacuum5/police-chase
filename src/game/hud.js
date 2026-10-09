@@ -12,6 +12,14 @@ import { TRACK_SECONDS } from '../ai/dispatcher.js';
 
 const MAP_PX = 1200;          // offscreen map resolution
 const MAP_SPAN = 470;         // metres visible on the minimap
+/**
+ * Metres visible once it is expanded. Enlarging the picture without widening
+ * the crop was the original behaviour and it is not what anybody wants from
+ * tapping a map: "it just enlarges it, it doesn't actually enlarge the area
+ * that I can see." The world is 2 km across, so this is over half of it in one
+ * view, and the rest is a drag away.
+ */
+const BIG_SPAN = 1150;
 
 export class Hud {
   constructor(game) {
@@ -65,6 +73,10 @@ export class Hud {
     this.sctx = this.speedo.getContext('2d');
     this.minimap = document.getElementById('minimap');
     this.mctx = this.minimap.getContext('2d');
+    /** Expanded, and where it is looking if it has been dragged off the car. */
+    this.mapBig = false;
+    this.mapCentre = { x: 0, z: 0 };
+    this.mapDragged = false;
     this._wireMinimapTap();
 
     this.messages = [];
@@ -379,21 +391,66 @@ export class Hud {
   }
 
   /**
-   * Tap the map to make it twice the size; tap anything else to put it back.
+   * Tap the map to open it; drag it about; tap anything else to put it back.
    *
-   * The canvas is 380 pixels square behind a 190 px picture, so the big one is
-   * drawn pixel for pixel rather than blown up. Pointer events, so a finger
-   * and a mouse both do it, and the collapse listens on the document -- a
-   * press anywhere else, including the map's own second press, closes it.
+   * Open, it is twice the size *and* shows two and a half times the ground --
+   * the canvas is 380 pixels square behind a 190 px picture, so the big one is
+   * drawn pixel for pixel rather than blown up, and the extra ground comes from
+   * a wider crop rather than a bigger picture. It also turns north-up, because
+   * dragging around a map that is rotating under you is horrible.
+   *
+   * Dragging moves the view and pins it there; without a drag it stays on the
+   * car. A press that does not move is still a tap, so the map closes the way
+   * it always did, and a press anywhere else closes it from the document.
    */
   _wireMinimapTap() {
     const wrap = document.getElementById('mapwrap');
     if (!wrap) return;
+    const open = (on) => {
+      this.mapBig = on;
+      wrap.classList.toggle('big', on);
+      if (!on) this.mapDragged = false;
+    };
+    let press = null;
     wrap.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
-      wrap.classList.toggle('big');
+      if (!this.mapBig) { open(true); return; }
+      press = { x: e.clientX, y: e.clientY, moved: false };
+      if (wrap.setPointerCapture) wrap.setPointerCapture(e.pointerId);
     });
-    document.addEventListener('pointerdown', () => wrap.classList.remove('big'));
+    wrap.addEventListener('pointermove', (e) => {
+      if (!press || !this.mapBig) return;
+      const dx = e.clientX - press.x, dy = e.clientY - press.y;
+      // A few pixels of slop, so a shaky tap is still a tap.
+      if (!press.moved && Math.hypot(dx, dy) < 4) return;
+      press.x = e.clientX; press.y = e.clientY;
+      if (!press.moved) {
+        press.moved = true;
+        // Take over from wherever the view had got to following the car.
+        const p = this.game.player;
+        if (!this.mapDragged && p) { this.mapCentre.x = p.position.x; this.mapCentre.z = p.position.z; }
+        this.mapDragged = true;
+      }
+      // Metres per screen pixel, off the canvas's own box so the CSS scale is
+      // already in it. North-up, so screen x is world x and screen y is world z.
+      const rect = this.minimap.getBoundingClientRect();
+      const m = BIG_SPAN / Math.max(1, rect.width);
+      this.mapCentre.x -= dx * m;
+      this.mapCentre.z -= dy * m;
+      const lim = Math.max(0, WORLD_HALF - BIG_SPAN / 2);
+      this.mapCentre.x = clamp(this.mapCentre.x, -lim, lim);
+      this.mapCentre.z = clamp(this.mapCentre.z, -lim, lim);
+    });
+    const release = (e) => {
+      if (press && !press.moved) open(false);
+      if (press && wrap.releasePointerCapture) {
+        try { wrap.releasePointerCapture(e.pointerId); } catch (_) { /* gone already */ }
+      }
+      press = null;
+    };
+    wrap.addEventListener('pointerup', release);
+    wrap.addEventListener('pointercancel', release);
+    document.addEventListener('pointerdown', () => open(false));
   }
 
   // ------------------------------------------------------------- road sign
@@ -437,11 +494,40 @@ export class Hud {
     const W = this.minimap.width;
     const src = this.mapCanvas;
 
+    // Expanded, the map is north-up and shows a lot more ground; small, it is
+    // heading-up and centred on the car as it always was.
+    //
+    // One angle does all of that. The projection below turns the world so that
+    // `ang` points up the screen, and north here is -z, which is `ang = PI` --
+    // so passing PI instead of the car's heading gives a north-up map and every
+    // marker, tail and the N itself follow without a single special case.
+    const big = this.mapBig;
+    const span = big ? BIG_SPAN : MAP_SPAN;
     const heading = Math.atan2(player.forward.x, player.forward.z);
-    const OVER = 1.45;
-    const spanPx = MAP_SPAN * this.mapScale * OVER;
-    const sx = (player.position.x + WORLD_HALF) * this.mapScale - spanPx / 2;
-    const sy = (player.position.z + WORLD_HALF) * this.mapScale - spanPx / 2;
+    const ang = big ? Math.PI : heading;
+
+    // What the view is centred on. Expanded it starts on the car and follows it
+    // around, until it is dragged -- after which it stays where it was put,
+    // because a map that slides out from under the finger is no use for looking
+    // at the far side of town. Clamped so the edge of the world cannot be
+    // dragged into the middle of the picture.
+    let cx = player.position.x, cz = player.position.z;
+    if (big && this.mapDragged) { cx = this.mapCentre.x; cz = this.mapCentre.z; }
+    if (big) {
+      const lim = Math.max(0, WORLD_HALF - span / 2);
+      cx = clamp(cx, -lim, lim);
+      cz = clamp(cz, -lim, lim);
+    }
+
+    // Published so what the map is actually showing can be checked rather than
+    // assumed: metres across the view, and where its middle is.
+    this.mapSpanNow = span;
+    this.mapCentreNow = { x: cx, z: cz };
+
+    const OVER = big ? 1 : 1.45;
+    const spanPx = span * this.mapScale * OVER;
+    const sx = (cx + WORLD_HALF) * this.mapScale - spanPx / 2;
+    const sy = (cz + WORLD_HALF) * this.mapScale - spanPx / 2;
 
     ctx.fillStyle = '#0d1116';
     ctx.fillRect(0, 0, W, W);
@@ -450,17 +536,17 @@ export class Hud {
     ctx.translate(W / 2, W / 2);
     // The map image has +x to the right and +z downward. Rotating by
     // heading + PI turns the car's forward vector to point up the screen.
-    ctx.rotate(heading + Math.PI);
+    ctx.rotate(ang + Math.PI);
     const D = W * OVER;
     ctx.drawImage(src, sx, sy, spanPx, spanPx, -D / 2, -D / 2, D, D);
     ctx.restore();
 
-    const k = W / MAP_SPAN;          // pixels per metre on the minimap
-    // Project a world point into the rotated frame: forward is up, and the
-    // car's right is to the right.
-    const sh = Math.sin(heading), ch = Math.cos(heading);
+    const k = W / span;              // pixels per metre on the minimap
+    // Project a world point into the rotated frame: `ang` is up, and its right
+    // is to the right.
+    const sh = Math.sin(ang), ch = Math.cos(ang);
     const toMap = (x, z) => {
-      const dx = x - player.position.x, dz = z - player.position.z;
+      const dx = x - cx, dz = z - cz;
       const fwd = dx * sh + dz * ch;
       const right = -dx * ch + dz * sh;
       return { x: W / 2 + right * k, y: W / 2 - fwd * k };
@@ -476,18 +562,21 @@ export class Hud {
     // clear, so a unit inside the ring with a building between you cannot see
     // you -- but a unit outside it cannot see you at all, whatever is in the
     // way. That is the whole point of drawing it.
+    // Centred on the car, which is the middle of the picture until the map has
+    // been dragged off it.
+    const me = toMap(player.position.x, player.position.z);
     if (heat.tier > 0 && dispatcher.inContact && dispatcher.sightRange) {
       const rad = dispatcher.sightRange * k;
       ctx.save();
       ctx.beginPath();
-      ctx.arc(W / 2, W / 2, rad, 0, Math.PI * 2);
+      ctx.arc(me.x, me.y, rad, 0, Math.PI * 2);
       ctx.strokeStyle = 'rgba(255,59,48,0.55)';
       ctx.lineWidth = 2;
       ctx.setLineDash([7, 6]);
       ctx.stroke();
       ctx.setLineDash([]);
       // A wash inside it, so "inside the ring" reads at a glance.
-      const grd = ctx.createRadialGradient(W / 2, W / 2, rad * 0.55, W / 2, W / 2, rad);
+      const grd = ctx.createRadialGradient(me.x, me.y, rad * 0.55, me.x, me.y, rad);
       grd.addColorStop(0, 'rgba(255,59,48,0)');
       grd.addColorStop(1, 'rgba(255,59,48,0.13)');
       ctx.fillStyle = grd;
@@ -673,16 +762,25 @@ export class Hud {
     ctx.textBaseline = 'middle';
     ctx.fillText('N', nx, ny);
 
-    // ---- player: fixed, always pointing up ----
-    const c = W / 2;
+    // ---- player ----
+    // On the small map this is the middle of the picture pointing straight up,
+    // as it always was, and the maths below says so on its own: the car's own
+    // heading is what the frame is turned by. Expanded and dragged, the car is
+    // somewhere off in the picture and pointing wherever it is pointing, so the
+    // marker is drawn where it actually is and turned to match.
+    const pf = player.forward;
+    ctx.save();
+    ctx.translate(me.x, me.y);
+    ctx.rotate(Math.atan2(-pf.x * ch + pf.z * sh, pf.x * sh + pf.z * ch));
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.moveTo(c, c - 14);
-    ctx.lineTo(c + 9, c + 10);
-    ctx.lineTo(c, c + 5);
-    ctx.lineTo(c - 9, c + 10);
+    ctx.moveTo(0, -14);
+    ctx.lineTo(9, 10);
+    ctx.lineTo(0, 5);
+    ctx.lineTo(-9, 10);
     ctx.closePath();
     ctx.fill();
+    ctx.restore();
 
     // frame
     ctx.strokeStyle = 'rgba(140,170,200,0.25)';
