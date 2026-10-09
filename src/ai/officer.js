@@ -223,6 +223,10 @@ export class Officer {
     this.arcLead = typeof window !== 'undefined'
       ? window.__arcLead === true
       : ARC_LEAD;
+    // Set by the rigs to put the old bearing-based cornering clamp back -- see the
+    // arc clause in Driver.safeSpeed. From a global, so it reaches units that are
+    // spawned later in a run.
+    this.noCourseClamp = typeof window !== 'undefined' && window.__noCourseClamp === true;
   }
 
   get position() { return this.vehicle.position; }
@@ -1309,6 +1313,18 @@ export class Officer {
       return this._driveDirect(dt, target.position, this._chaseSpeed());
     }
 
+    // Where the target is going, for the cornering clamp -- see safeSpeed. Not the
+    // bearing to it, which on a straight road is a lateral offset and not a corner.
+    const tsp = target.speed;
+    // The radius of the corner the target is on: its speed over its yaw rate.
+    // Infinity when it is going straight, which is what lets a follower use the
+    // road rather than being held to the chord between them. undefined when it is
+    // not to be trusted -- too slow to have a course, or the rig has switched this
+    // off -- and then the driver falls back to the chord.
+    const tom = target.yawRate || 0;
+    this._courseRadius = this.noCourseClamp || tsp < 4 ? undefined
+      : (Math.abs(tom) < 0.04 ? Infinity : Math.abs(tsp / tom));
+
     const r = relativeTo(target, v);
     // Lead the target by roughly the time it takes to cover the gap.
     const closing = Math.max(4, v.speed);
@@ -1390,7 +1406,8 @@ export class Officer {
       this._mode = 'reset';
       const drop = clamp((runUp - d) * 1.5, 1.5, lerp(4, 10, ram));
       return this.driver.driveTo(target.position,
-        Math.min(Math.max(0, target.forwardSpeed - drop), this._gapCap(target)), dt);
+        Math.min(Math.max(0, target.forwardSpeed - drop), this._gapCap(target)), dt,
+        { courseRadius: this._courseRadius });
     }
     // Closing speed for the hit. It was mostly proportional to the gap -- 35%
     // of it -- so at ten metres a unit was closing at three or four metres a
@@ -1402,7 +1419,7 @@ export class Officer {
     return this.driver.driveTo(_aim, Math.min(
       speed, this._chaseSpeed() * lerp(1, 1.15, ram), this._gapCap(target),
       this._planCap === undefined ? Infinity : this._planCap,
-    ), dt);
+    ), dt, { courseRadius: this._courseRadius });
   }
 
   /**

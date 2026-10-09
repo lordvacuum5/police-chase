@@ -1821,6 +1821,63 @@ most of a chase:
 All fourteen negotiated instead of nine, contacts down from four to one, and no
 single clamp dominating any more.
 
+### The chord that thought a lateral offset was a corner
+
+*"Mainly it's not fast enough. They just cannot keep up. Even if I just drive around
+a few corners, they cannot cut corners and they cannot keep on the speed."*
+
+This is the one. The cornering clamp is `cornerSpeedLimit(Ld / (2 sin alpha))`, the
+radius of the circle through the car and its aim point -- and a car *behind* another
+car has an alpha that comes mostly from lateral offset, not from any corner. On a
+dead straight road:
+
+| behind | sideways | chord radius | allowed |
+|---|---|---|---|
+| 10 m | 3 m | 17 m | **47 km/h** |
+| 20 m | 5 m | 41 m | 72 km/h |
+| 40 m | 8 m | 102 m | 114 km/h |
+
+A unit ten metres back and three metres across was limited to 47 km/h on a straight.
+Closing a lateral offset is a flick of steering and then straight again, not a circle
+to sit on, and this was the binding limit for 42% of every run.
+
+The quantity that matters is the corner the *target* is on -- its speed over its yaw
+rate -- because that is the curvature a follower actually has to hold. Infinity when
+the target is going straight, which is the common case and the one the chord was
+getting wrong. The chord is now relaxed toward it, bounded by `COURSE_LIFT`:
+
+```
+radius = max(chord, min(targetRadius, chord * 3))
+```
+
+Taking the target's radius outright is better where it matters and dangerous where it
+bites -- at a 90 km/h ghost the pack finished 45 m back against 61 and tyre usage went
+63% to 72%, but at 150 usage went to 85%, the pack fell to 227 m from 154, and a car
+was written off. The clamp was doing real work at speed. Bounded, it is not.
+
+Alternating arms at 90 km/h, four routes each, because the finishing distance on this
+rig swings wildly on its own (the chord arm gave 138 m and 58 m in the same series):
+
+| | with it | behind | mean | tyre used | arc binding |
+|---|---|---|---|---|---|
+| chord | 50%, 59% | 138, 58 m | 61, 70 | 67% | **42%** |
+| **lifted** | 53%, 54% | 68, 83 m | 65, 66 | **72%** | **27%** |
+
+Averaged, the finishing distance goes 98 m to 76, the mean speed is level, time spent
+with the car is a wash, and the clamp's grip on them is halved. At 150 it is better on
+both: 140 m against 154 and 74 km/h against 70, with nothing wrecked. On the whole
+force the contacts fall from 45 to 17 with no damage either way.
+
+One dead end on the way, worth keeping because it sounds more right than it is:
+differencing the car's *own* travel direction against the target's course. A
+converging car's travel direction already contains the convergence, so the difference
+reproduces the chord's angle and then some -- arc binding went *up*, 42% to 52%, and
+the pack fell to 288 m. The angle has to come from the target alone.
+
+That makes seven attempts on this clamp and the first that holds. What the other six
+had in common is that they tried to make the car better at the corner. This one
+stopped asking it to corner when there was no corner.
+
 ### Three more things that should have worked
 
 All three came from the same place -- watching them corner and concluding something

@@ -93,6 +93,12 @@ const MU_TRUST = 0.87;
 const WIDE = 20;
 
 /**
+ * How far the pure-pursuit chord may be relaxed toward the corner the target is
+ * genuinely on. See the arc clause in safeSpeed.
+ */
+const COURSE_LIFT = 3;
+
+/**
  * The trajectory planner: how often it re-plans, how many steps it drives each
  * candidate for, and the fan of steering fractions it tries. Eleven candidates
  * at six steps is 66 sweeps per plan, four times a second per unit.
@@ -150,6 +156,7 @@ export class Driver {
     this._laneKeep = false;
     // Width of whatever is being driven down -- see followPath.
     this._room = WIDE;
+    this._courseRadius = null;
     this.needsRepath = false;
     this.reverseFrom = null;
     this.steerHold = 0;
@@ -729,9 +736,48 @@ export class Driver {
 
     // And no faster than the corner we are turning into. Pure pursuit follows
     // an arc of radius Ld / (2 sin alpha), so that arc sets a grip limit too.
+    //
+    // From the turn the car has to *hold*, not from the bearing to the aim point.
+    // Those are the same thing on the approach to a corner and wildly different
+    // behind a car on a straight: a unit 10 m back and 3 m to one side has an alpha
+    // of 17 degrees, which is a 17 m arc, which is 47 km/h -- on a straight road. 20
+    // m back and 5 m across is 72. That is a lateral offset, and closing it is a
+    // flick of steering followed by going straight again, not a circle the car has
+    // to sit on. It was crushing their speed for the whole of every pursuit: "they
+    // just cannot keep up... they cannot keep on the speed."
+    //
+    // The sustained turn is the angle between where this car is going and where the
+    // target is going. On a straight that is zero however far across the road the
+    // target sits; into a bend it is the bend, which is what the clamp is for. The
+    // steering is untouched -- it still aims at the point, and the offset still gets
+    // closed. Only the speed limit stops pretending the offset is a corner.
+    // The corner the *target* is taking, when the caller knows it, because that is
+    // the curvature a follower has to hold. The chord to the aim point is not: a
+    // unit 10 m back and 3 m to one side has a 17 m chord radius, which is 47 km/h
+    // on a dead straight road, and closing a lateral offset is a flick of steering
+    // rather than a circle to sit on.
+    //
+    // Differencing this car's own travel direction against the target's course was
+    // tried first and is worse, which is worth recording: a converging car's travel
+    // direction already contains the convergence, so the difference reproduces the
+    // chord's angle and then some. Arc binding went from 42% of the run to 52% and
+    // the pack finished 288 m back instead of 154.
     const sa = Math.abs(Math.sin(alpha));
     if (sa > 0.05) {
-      c.sArc = cornerSpeedLimit(Math.max(this.arcFloor, aimDist / (2 * sa)), mu);
+      let radius = aimDist / (2 * sa);
+      // Lifted toward the corner the target is actually on, and bounded.
+      //
+      // Taking the target's radius outright is better where it matters and worse
+      // where it bites: at a 90 km/h ghost the pack finished 45 m back against 61
+      // and the tyre usage went from 63% to 72%, but at 150 it went to 85%, the
+      // pack fell to 227 m from 154, and a car was written off. The clamp was doing
+      // real work up there. So the chord may be relaxed toward the target's line by
+      // this much and no further, which keeps a limit in force at speed while
+      // ending the nonsense at close range.
+      if (this._courseRadius) {
+        radius = Math.max(radius, Math.min(this._courseRadius, radius * COURSE_LIFT));
+      }
+      c.sArc = cornerSpeedLimit(Math.max(this.arcFloor, radius), mu);
       limit = Math.min(limit, c.sArc);
     }
 
@@ -1273,6 +1319,11 @@ export class Driver {
     // Said by the caller, because only the caller knows whether the aim point it is
     // handing over came out of pickGap this frame -- see safeSpeed.
     this._aimFromGap = opts.gap === true;
+    // The direction the thing being chased is actually travelling, when the caller
+    // knows it. See the arc clause in safeSpeed.
+    // The radius of the corner the target is on, from the caller. Infinity means it
+    // is going straight, which is a real answer and not a missing one.
+    this._courseRadius = opts.courseRadius === undefined ? null : opts.courseRadius;
     const s = this.steerToward(aim.x, aim.z, dt);
     out.steer = s.steer;
 
