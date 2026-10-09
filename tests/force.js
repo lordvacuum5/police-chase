@@ -22,7 +22,28 @@
 //   roles       unit-seconds in each role, so an intercept that never happens
 //               is visible rather than assumed
 import { weavePath } from './weave.js?v=31';
+import { sweepBox, groups, GROUP, RAY_WALL } from '../src/physics/world.js';
 import { makeRng } from '../src/util/math.js';
+
+const PROPS_ONLY = groups(0xFFFF, GROUP.PROP);
+const BLAME_DIRS = [
+  { x: 1, y: 0, z: 0 }, { x: -1, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }, { x: 0, y: 0, z: -1 },
+  { x: 0.7, y: 0, z: 0.7 }, { x: -0.7, y: 0, z: 0.7 },
+  { x: 0.7, y: 0, z: -0.7 }, { x: -0.7, y: 0, z: -0.7 },
+];
+
+/** Tree, wall or neither, at the moment of a knock. */
+function blame(v, what) {
+  const o = { x: v.position.x, y: v.position.y + 0.5, z: v.position.z };
+  let tree = 99, wall = 99;
+  for (const d of BLAME_DIRS) {
+    tree = Math.min(tree, sweepBox(v.world, o, d, 4, PROPS_ONLY, v.body, 0.3));
+    wall = Math.min(wall, sweepBox(v.world, o, d, 4, RAY_WALL, v.body, 0.3));
+  }
+  if (tree < 4 && tree <= wall) what.tree++;
+  else if (wall < 4) what.building++;
+  else what.other++;
+}
 
 window.__runForce = async function (seconds = 30, kph = 110, runs = 4, label = '', tweak = null, pinSight = false, kind = 'weave') {
   window.__forceDone = false;
@@ -36,6 +57,7 @@ window.__runForce = async function (seconds = 30, kph = 110, runs = 4, label = '
     let near = 0, lost = 0, closest = 0, seen = 0, n = 0, cNear = 0, cLost = 0;
     let meanNear = 0, regained = 0, ahead = 0, picked = 0, reached = 0;
     let hits = 0, hard = 0, wrecked = 0, worst = 0;
+    const what = { tree: 0, building: 0, other: 0 };
     for (let i = 0; i < runs; i++) {
       window.__forceAt = i;
       const r = run(i, seconds, kph, tweak, pinSight, kind);
@@ -46,6 +68,7 @@ window.__runForce = async function (seconds = 30, kph = 110, runs = 4, label = '
       meanNear += r.meanNear; regained += r.regained; ahead += r.ahead;
       picked += r.picked; reached += r.reached;
       hits += r.hits; hard += r.hard; wrecked += r.wrecked; worst = Math.max(worst, r.worst);
+      for (const k of Object.keys(what)) what[k] += r.what[k];
       await new Promise((res) => setTimeout(res, 0));
     }
     rows.push(`${n} runs:  near ${Math.round((near * 100) / n)}%  `
@@ -53,7 +76,8 @@ window.__runForce = async function (seconds = 30, kph = 110, runs = 4, label = '
       + `seen ${Math.round((seen * 100) / n)}%  `
       + `| mean nearest ${Math.round(meanNear / n)} m  `
       + `someone in front ${Math.round((ahead * 100) / n)}%  got back on ${regained}x  `
-      + `| hits ${hits} hard ${hard} wrecked ${wrecked} worst ${worst.toFixed(2)}  `
+      + `| hits ${hits} hard ${hard} (trees ${what.tree} walls ${what.building}) `
+      + `wrecked ${wrecked} worst ${worst.toFixed(2)}  `
       + `| predictions: car passed ${reached} of ${picked} junctions sent to `
       + `(${Math.round((reached * 100) / Math.max(1, picked))}%)  `
       + `| started-with: near ${Math.round((cNear * 100) / n)}%`);
@@ -277,6 +301,7 @@ function run(which, seconds, kph, tweak, pinSight, kind) {
   // route-trust did to them. The road rigs build their officers by hand and drive
   // them straight at the target, which is a different code path entirely.
   let hits = 0, hard = 0, wrecked = 0, worst = 0;
+  const what = { tree: 0, building: 0, other: 0 };
   const lastHit = new Map();
   const dead = new Set();
   // Whether the junctions the solver sends units to are places the car actually
@@ -340,6 +365,11 @@ function run(which, seconds, kph, tweak, pinSight, kind) {
         lastHit.set(u, vv.lastImpactAt);
         hits++;
         if (vv.lastImpact > 25) hard++;
+        // What it hit, not just that it did. "It crashed into a tree" is a
+        // different failure from clipping another unit, and the whole-force
+        // number hides it: look round the car with a props-only mask and a
+        // buildings-only one and see which is closer.
+        blame(vv, what);
       }
       if (vv.damage > worst) worst = vv.damage;
       if (vv.damage >= 0.99 && !dead.has(u)) { dead.add(u); wrecked++; }
@@ -397,6 +427,7 @@ function run(which, seconds, kph, tweak, pinSight, kind) {
       + `at ${String(Math.round(aheadSum / Math.max(1, aheadFrames))).padStart(3)} m  `
       + `got back on ${regained}x  `
       + `| hits ${String(hits).padStart(3)} hard ${String(hard).padStart(2)} `
+      + `(trees ${what.tree} walls ${what.building}) `
       + `wrecked ${wrecked} worst ${worst.toFixed(2)}  `
       + `| routed via a gap ${String(Math.round((onCutFrames * 100) / Math.max(1, unitFrames))).padStart(3)}% `
       + `of unit-time, crawling for ${Math.round((onCutSlow * 100) / Math.max(1, onCutFrames))}% of it  `
@@ -409,6 +440,7 @@ function run(which, seconds, kph, tweak, pinSight, kind) {
         .map((x) => `${x} ${bs[x]}`).join(' ') || 'nothing'}`,
     meanNear: nearSum / frames,
     hits,
+    what,
     hard,
     wrecked,
     worst,

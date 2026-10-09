@@ -136,6 +136,42 @@ const COURSE_LIFT = 3;
  * the share of the tyre it assumes for the stop. Both are pure margin -- see the
  * wall clause in drive().
  */
+/**
+ * The abeam sweeps that keep a unit from dodging another car into the scenery:
+ * how far out to look, and the clearance a full dodge wants. See _dodgeRoom.
+ */
+/**
+ * The racing line -- see _raceLine. `TIGHT` turns a curvature into a 0-1 demand
+ * (1/35 m is a corner worth a line), `APEX` and `ENTRY` are how much of the
+ * available room each half of it may use, and `EASE` is how fast the car moves
+ * between them.
+ */
+const RACE_LINE = true;
+const RACE_TIGHT = 35;
+const RACE_APEX = 1;
+/**
+ * The entry half, swept on tests/keepup.js over eight Wexbury routes at 90 kph
+ * with the apex at full:
+ *
+ * | | mean | with it | behind | hits | hard | lost it |
+ * |---|---|---|---|---|---|---|
+ * | no line  | 55 kph | 60% | 97 m | 51 | 2 | 11x |
+ * | entry 0   | 54 kph | 67% | 69 m | 47 | 2 |  9x |
+ * | entry 0.4 | 56 kph | 66% | 65 m | 43 | 1 |  8x |
+ * | entry 0.8 | 53 kph | 65% | 73 m | 35 | 3 |  8x |
+ *
+ * All three beat no line at all. 0.8 takes the most contacts off but gives
+ * ground back and starts hitting things hard; 0.4 is the closest, with nothing
+ * written off.
+ */
+const RACE_ENTRY = 0.4;
+const RACE_EASE = 2.2;
+/** Tighter than this and it is a junction, not a bend. See _raceLine. */
+const RACE_MIN_R = 15;
+
+const DODGE_LOOK = 12;
+const DODGE_ROOM = 3;
+
 const WALL_KEEP = 6;
 const WALL_GRIP = 0.75;
 /**
@@ -214,6 +250,12 @@ export class Driver {
     this._laneKeep = false;
     // Width of whatever is being driven down -- see followPath.
     this._room = WIDE;
+    /** Where on the road the racing line wants to be -- see _raceLine. */
+    this.lineOffset = 0;
+    this.raceLine = RACE_LINE;
+    this.raceApex = RACE_APEX;
+    this.raceEntry = RACE_ENTRY;
+    this.raceMinR = RACE_MIN_R;
     this._courseRadius = null;
     // The braking clamp's margins, settable so the rigs can sweep them.
     this.wallKeep = WALL_KEEP;
@@ -233,6 +275,11 @@ export class Driver {
     this.flickDist = FLICK_DIST;
     this.speedTarget = 0;
     this.avoidBias = 0;
+    /** Clearance abeam, left and right -- see the sweeps in _avoidScenery. */
+    this.roomLeft = DODGE_LOOK;
+    this.roomRight = DODGE_LOOK;
+    /** How much room a full sideways dodge wants. See _dodgeRoom. */
+    this.dodgeRoom = DODGE_ROOM;
     // Steering push away from scenery, and how close the nearest solid thing
     // is along the line of travel.
     this.wallBias = 0;
@@ -552,6 +599,91 @@ export class Driver {
     const severity = clamp01((slip - 0.20) / 0.45);
     const keep = lerp(0.96, 0.68, severity * lerp(1.15, 0.75, this.skill.throttleControl));
     return v.speed * keep;
+  }
+
+  /**
+   * Signed curvature of the route `dist` metres ahead, in 1/m. Positive turns
+   * left, by the same convention as `crossTrack`.
+   */
+  _curveAt(dist) {
+    const p = this.path;
+    let acc = 0, i = this.pathIndex;
+    for (; i < p.length - 3; i++) {
+      const d = dist2(p[i].x, p[i].z, p[i + 1].x, p[i + 1].z);
+      if (acc + d >= dist) break;
+      acc += d;
+    }
+    if (i > p.length - 3) return 0;
+    const a = p[i], b = p[i + 1], c = p[i + 2];
+    const R = curveRadius(a.x, a.z, b.x, b.z, c.x, c.z);
+    if (!R || !Number.isFinite(R)) return 0;
+    // Which way it turns: the second leg's leftness relative to the first.
+    const left = (c.x - b.x) * (b.z - a.z) - (c.z - b.z) * (b.x - a.x);
+    return (left >= 0 ? 1 : -1) / R;
+  }
+
+  /**
+   * The racing line, as an offset from the route in metres -- positive to the
+   * left of it. Folded into the lane-keeping term in driveTo, which until now
+   * pulled toward the middle of the road and held the car there all the way
+   * round every corner.
+   *
+   * "They just cannot cut corners... they do overshoot turn-ins a lot." Both of
+   * those are the same thing, and it is not a speed limit: four sweeps of
+   * letting them carry more speed into a corner all came out worse (see
+   * CUT_ARC, WALL_TURN, the handbrake window, ROTATE_CORNER), and the tyre is
+   * only 71% used in corners while they do it. They are not short of grip or of
+   * permission. They are in the wrong place: aimed at a target round the corner,
+   * a unit holds the middle of the road, turns in where the corner starts, and
+   * runs out of road on the exit.
+   *
+   * So move where it sits rather than how fast it goes. Out to the outside while
+   * the bend is still ahead, across to the inside at the apex, which is a bigger
+   * radius through the same corner and therefore a faster one at the same grip.
+   * Bounded by the road: half the width of whatever is being driven down, less
+   * the car. In a corridor there is no room for a line and this returns nothing,
+   * which is correct -- a racing line through a gap between two houses is how
+   * you hit a house.
+   */
+  _raceLine(dt) {
+    const v = this.v;
+    let want = 0;
+    if (this.raceLine && this.allowOffRoad && this.hasPath && v.speed > 7) {
+      const room = (this._room || WIDE) * 0.5 - this.halfWidth - 0.4;
+      if (room > 0.4) {
+        // Where the car is about to be, and where it is about to be after that.
+        const kn = this._curveAt(Math.max(5, v.speed * 0.55));
+        const kf = this._curveAt(Math.max(13, v.speed * 1.7));
+        // A bend, not a junction. Anything tighter than raceMinR is a corner
+        // taken at walking pace with a kerb on the inside of it, and apexing
+        // that is just cutting across the kerb: on the grid map, where every
+        // corner is a right angle and there are no bends at all, the line with
+        // no such bound was worth nothing and cost contacts (22 to 29), while on
+        // the town map, which is all bends, it was worth six points of keeping
+        // up. The band is what tells the two apart.
+        const want_ = (k) => (Math.abs(k) * this.raceMinR > 1
+          ? 0 : clamp01(Math.abs(k) * RACE_TIGHT));
+        const cn = want_(kn);
+        const cf = want_(kf);
+        // Inside at the apex; outside while the bend is still in front. The
+        // entry term is what is left of the far curvature once the near
+        // curvature has caught up with it, so it fades out as the corner
+        // arrives and the apex term takes over.
+        const apex = sign(kn) * cn * this.raceApex;
+        const entry = -sign(kf) * clamp01(cf - cn) * this.raceEntry;
+        want = room * clamp(apex + entry, -1, 1);
+        // Bounded by what is actually out there, not by the width the road
+        // claims. The edge width is a number on a graph; the outside of a bend
+        // in a market town has a kerb, a wall or a tree on it, and the first
+        // version of this line put units into all three -- 57 contacts against
+        // 45 with it off. These are the abeam sweeps from _avoidScenery, which
+        // are already being paid for.
+        const free = (side) => Math.max(0, side - this.halfWidth - 0.6);
+        want = clamp(want, -free(this.roomRight), free(this.roomLeft));
+      }
+    }
+    // Eased: the line is a place to be, not a flick of the wheel.
+    this.lineOffset = lerp(this.lineOffset, want, 1 - Math.exp(-RACE_EASE * dt));
   }
 
   planSpeed(roadCap = Infinity) {
@@ -1330,7 +1462,9 @@ export class Driver {
       const pull = this.allowOffRoad
         ? lerp(0.62, 0.14, clamp01((this._room - 7) / 8))
         : 0.55;
-      deltaRad -= Math.atan2(this.crossTrack * pull, v.speed + 4);
+      // Not toward the route line, but toward where on it this driver wants to
+      // be -- which through a corner is not the middle. See _raceLine.
+      deltaRad -= Math.atan2((this.crossTrack - this.lineOffset) * pull, v.speed + 4);
     }
 
     // Lateral bias injected by collision avoidance, and by scenery the car is
@@ -1633,6 +1767,9 @@ export class Driver {
     this._room = here && here.edge && here.edge.width ? here.edge.width : WIDE;
     if (this._room < WIDE) look = Math.min(look, Math.max(4, this._room * 0.9));
     const aim = this._pointAhead(look) || this.path[this.path.length - 1];
+    // Needs `_room`, which is set just above, and feeds the lane term inside
+    // driveTo, so it goes between the two.
+    this._raceLine(dt);
     return this.driveTo(aim, planned, dt, Object.assign({ lane: true }, opts));
   }
 
@@ -1832,6 +1969,28 @@ export class Driver {
         rightClear = Math.min(rightClear, toi);
       }
     }
+    // Room abeam, which is a different question from room ahead and the one the
+    // collision-avoidance bias needs answered.
+    //
+    // "It had outrun basically all of them and somehow it crashed into a tree.
+    // How does it do that? I had 100% grip." Grip was never in it. The sweeps
+    // above look along the line of travel and twenty-four degrees either side, so
+    // they answer "is the way ahead clear". A unit dodging another car is not
+    // going where it is pointing -- it is being pushed sideways by avoidBias,
+    // into ground nothing has looked at. A trunk square off the wing is outside
+    // every cone until the car has already turned into it.
+    //
+    // One car on its own never shows this: driven straight at an isolated tree it
+    // misses, at 80 and at 150, and eight 400 m cross-country runs touched
+    // nothing (tests/lonetree.js). It takes the pack, which is what the player
+    // had around them.
+    for (const ang of [-1.45, 1.45]) {
+      const ca = Math.cos(ang), sa = Math.sin(ang);
+      _probe.set(_run.x * ca - _run.z * sa, 0, _run.x * sa + _run.z * ca);
+      const toi = sweepBox(v.world, _origin, _probe, DODGE_LOOK, RAY_GROUNDS, v.body, hw);
+      if (ang < 0) this.roomLeft = toi; else this.roomRight = toi;
+    }
+
     // A hit dead ahead lands on both flanks, so the difference is zero and the
     // tie has to be broken by looking further round.
     if (nearest < reach * 0.7 && Math.abs(leftClear - rightClear) < 0.5) {
@@ -1893,6 +2052,18 @@ export class Driver {
     this.wallNear = sweepBox(v.world, _origin, _probe, reach,
       trees ? RAY_GROUNDS : RAY_SOLID, v.body, hw);
     return this.wallBias;
+  }
+
+  /**
+   * How much of a sideways dodge the room on that side will take: nothing with a
+   * trunk against the wing, all of it with a lane spare. `dodgeRoom` is the
+   * clearance a full dodge wants, and 0 switches the whole thing off for the
+   * sweep.
+   */
+  _dodgeRoom(room) {
+    if (!this.dodgeRoom) return 1;
+    const have = (room === undefined ? DODGE_LOOK : room) - this.halfWidth;
+    return clamp01(have / this.dodgeRoom);
   }
 
   avoid(others, dt, ignore = null) {
@@ -1961,6 +2132,16 @@ export class Driver {
       const urgency = (1 - ahead / range) * clamp01(closing / 12);
       bias += (side >= 0 ? -1 : 1) * urgency * 0.22;
     }
+    // Do not dodge a car into a tree. A positive bias steers left, so it is the
+    // room on the left that has to be there for it -- see the abeam sweeps in
+    // _avoidScenery. Scaled rather than switched, because a veto that snaps on
+    // and off is a car that saws at the thing it is trying to miss.
+    //
+    // Only the dodge is held back, never the scenery term: wallBias has looked
+    // where it is sending the car, and this has not.
+    if (bias > 0) bias *= this._dodgeRoom(this.roomLeft);
+    else if (bias < 0) bias *= this._dodgeRoom(this.roomRight);
+
     this.avoidBias = lerp(this.avoidBias, clamp(bias, -0.35, 0.35), 1 - Math.exp(-8 * dt));
     return this.avoidBias;
   }

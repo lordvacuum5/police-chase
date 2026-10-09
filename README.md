@@ -3879,6 +3879,111 @@ intercept, which is routing and nothing else; the physics help (more power,
 more grip, a stability aid, no damage on the way in) applies only to a unit
 *more* than 30 m away and is gone by the time it is close enough to touch you.
 
+### A line through the corner
+
+*"They just cannot cut corners. They literally just cannot keep on the speed."*
+*"They do overshoot turn-ins a lot. They keep going off route."*
+
+Four separate attempts to fix this by letting units carry more speed into a
+corner all came out worse, and they are worth listing because together they
+rule out a whole class of answer: the tightest turn the limiter believes in
+(13 m to 19 and 26), the handbrake-turn window (66° and 19 m/s out to 31° and
+34 m/s), crediting the braking clamp with the turn already in progress, and
+letting a corner rather than distance call up the rotation assist. Every one of
+them cost ground. Meanwhile the tyre sits 65–72% used *in corners* — they were
+never at the limit of anything.
+
+They were in the wrong place. A unit aimed at a car round the corner holds the
+middle of the road, turns in where the corner starts and runs out of road on
+the way out. Nothing was choosing a line, because the lane-keeping term pulled
+toward the centre of the lane all the way round every bend.
+
+So `Driver._raceLine` moves the target the lane term aims for: the outside of
+the bend while it is still ahead, the inside at the apex. Same corner, bigger
+radius, and therefore more speed at the same grip. Three things bound it:
+
+* **The room measured, not the room on the map.** The first version used the
+  road's own width and put cars into the kerbs and walls on the outside of
+  Wexbury's bends — 57 contacts against 45 with it switched off. It now clamps
+  to the abeam sweeps added for the dodge veto below, so it never aims at
+  something that is there.
+* **Bends only, not junctions.** Anything tighter than 15 m of radius is a
+  right-angle turn with a kerb on the inside, and apexing that is cutting
+  across the kerb. Unbounded, the line was worth nothing on the grid map and
+  cost contacts; with the bend band it is a win on both.
+* **A corridor gets no line at all.** Half the width, less the car — between
+  two houses that is nothing, which is correct.
+
+Measured on `tests/keepup.js`, eight routes against a 90 km/h ghost, each pair
+inside one page session:
+
+| Ashfield City (grid) | off | on |
+|---|---|---|
+| time with a unit in touch | 32% | **40%** |
+| nearest pair, mean | 113 m | **105 m** |
+| contacts | 25 | **19** |
+| of those, walls | 3 | **0** |
+
+| Wexbury (bends) | off | on |
+|---|---|---|
+| mean speed | 55 km/h | **59 km/h** |
+| nearest pair, mean | 89 m | **69 m** |
+| spins | 10 | **8** |
+| off the carriageway | 31% | **29%** |
+
+The entry half was swept separately (0, 0.4, 0.8 of the available room, with the
+apex at full): all three beat no line at all, and 0.4 came out closest with no
+hard hits, so that is what is in the game.
+
+It only applies to a unit driving a route. In the last few lengths of a chase
+there is no route — units aim at the car — so there is no line to take, and
+that is the next thing to look at.
+
+### Dodging a car into a tree
+
+*"When I had outrun basically all of them, somehow it crashed into a tree. It
+was relatively far away from me. It was one tree. I had 100% grip. How did it
+do that?"*
+
+Grip was never in it. The scenery avoidance sweeps three boxes, down the line of
+travel and 24° either side, and steers toward whichever flank has more room. A
+unit dodging another car is not going where it is pointing — `avoidBias` pushes
+it sideways, into ground nothing has looked at. A trunk square off the wing is
+outside every cone until the car has already turned into it.
+
+One car on its own never shows this, which is why the rigs had never caught it.
+`tests/lonetree.js` drives a unit straight at an isolated tree from 110 m: it
+misses, at 80 km/h and at 150, every time. Eight 400 m cross-country runs at full
+stretch touched nothing. It takes the pack, which is what the player had around
+them.
+
+So the dodge now asks whether that side is empty, through two more sweeps 83° off
+the line of travel, and is scaled down to nothing as the room runs out. Only the
+dodge: the scenery term has looked where it is sending the car, and this has not.
+Measured on `tests/force.js`, whole force, ten 40-second chases per arm:
+
+| Wexbury | dodge unchecked | checked |
+|---|---|---|
+| time with a unit in touch | 35% | **41%** |
+| contacts | 29 | **20** |
+| of those, walls | 3 | **0** |
+| nearest unit, mean | 136 m | **112 m** |
+| closest approach | 58 m | **31 m** |
+
+Honestly: no run of either arm hit a tree, so the specific crash in the report
+is not what these numbers show. What they show is nine fewer contacts and six
+points more pursuit, which is what you would expect from cars that have stopped
+steering into things — and the mechanism is real whether or not a rig has caught
+it in the act.
+
+### No air support for typed stars
+
+Typing `five` to set the wanted level grounds the helicopter for the rest of the
+run, and the toast says so: `NO AIR` next to `NO SCORE`. An air unit sees you
+continuously, so every car is handed your position whatever the roads are doing,
+and the ground routing never has to work. *"Then I actually test the routing
+systems properly."* Earning five stars the ordinary way still calls it up.
+
 ## The cars you can run in
 
 Picked on the menu, above the maps, and remembered between visits. Pressing
