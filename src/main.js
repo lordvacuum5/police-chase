@@ -501,67 +501,49 @@ class Game {
   }
 
   /**
-   * What the pilot can see, worked out every frame for the HUD.
+   * What the pilot can see, and telling everybody about it.
    *
-   * The role is "look out of the window and say what you see", and until now
-   * nothing on screen said whether looking out of the window had worked --
-   * you pressed the key and got NOTHING TO REPORT, with no way to tell
-   * whether you were too far, pointed wrong, behind a building, or whether
-   * there was simply nobody to find. "The spotting thing doesn't really
-   * work" is what that feels like from the cockpit.
+   * The whole role, and it is automatic now. A helicopter within 450 m of the
+   * car, pointed roughly at it and with the roof out of the way, simply has
+   * it -- and while it does, the force knows exactly where the car is. No key
+   * to press: "just have it that if I'm relatively close for a helicopter, it
+   * just sees them constantly."
+   *
+   * Which also fixes three things that looked like separate bugs. A police
+   * player's screen takes its pursuit status, its suspect marker and its
+   * minimap blip from whether the *force* can see the car -- and a pilot
+   * staring straight down at it did not count, because nothing the pilot saw
+   * was ever fed back in. So the stars never lit, the marker never appeared,
+   * and the map looked broken.
    */
-  _airSpotting() {
+  _airSpotting(dt) {
     const air = this.aircraft;
     if (!air) { this.spotting = null; return; }
     const target = this.netSuspect || this._soloQuarry();
     if (!target) { this.spotting = { state: 'none', text: 'NO TARGET' }; return; }
 
-    const dx = target.position.x - air.position.x;
-    const dz = target.position.z - air.position.z;
-    const range = Math.round(Math.hypot(dx, dz, air.position.y - target.position.y));
-    if (air.markCooldown > 0.05) {
-      this.spotting = { state: 'wait', text: `CALLED IN — ${air.markCooldown.toFixed(0)}s`, range };
+    const range = Math.round(air.position.distanceTo(target.position));
+    const seen = air.canSee(target);
+    this.airSees = seen;
+    if (!seen) {
+      this.spotting = {
+        state: 'no', range,
+        text: range > AIR_MARK_RANGE ? `TOO FAR — ${range} m` : `NO VISUAL — ${range} m`,
+      };
       return;
     }
-    if (air.canIdentify(target)) {
-      this.spotting = { state: 'ready', text: `EYES ON — ${range} m`, range };
-      return;
-    }
-    // Why not. The pilot can act on each of these and they are the three
-    // things the rule actually checks.
-    const tooFar = range > AIR_MARK_RANGE;
-    this.spotting = {
-      state: 'no',
-      range,
-      text: tooFar ? `TOO FAR — ${range} m` : `NO VISUAL — ${range} m`,
-    };
-  }
+    this.spotting = { state: 'ready', text: `EYES ON — ${range} m`, range };
 
-  /**
-   * The pilot calls the car in.
-   *
-   * This is the only way air support puts anything on anybody's map, and it
-   * is a single fix rather than a feed: the dispatcher's knowledge takes a
-   * position and a confidence that then decays on its own, which is the same
-   * machinery that already handles losing sight of a car on the ground. So a
-   * mark means "he was there, just now", and ages into a search area exactly
-   * as it should.
-   *
-   * On a police player's machine the chase belongs to the host, so the fix is
-   * sent rather than applied -- the answer comes back in the ordinary world
-   * update and everybody sees the same thing.
-   */
-  _callItIn() {
-    const air = this.aircraft;
-    if (!air) return;
-    const target = this.netSuspect || this._soloQuarry();
-    const how = air.mark(target);
-    if (how === 'wait') return;
-    if (how !== 'sent') {
-      this.hud.toast('NOTHING TO REPORT');
-      return;
-    }
-
+    // Tell whoever owns the chase, a few times a second. On the escapee's own
+    // machine that is here; a police player sends it and it comes back in the
+    // ordinary world update.
+    //
+    // Only for a real quarry: on `?air=1` the thing being pointed at is
+    // whichever patrol car happens to be nearest, and reporting that would
+    // start a chase against a police car and put its position on the map as
+    // the suspect.
+    if (!this.netSuspect) return;
+    if (!air.dueToReport(dt)) return;
     if (session.active && !session.isHost) {
       session.sendEvent('mark', {
         x: Math.round(target.position.x * 10) / 10,
@@ -572,12 +554,6 @@ class Game {
     } else {
       this.applyMark(target.position, target.linvel);
     }
-    this.hud.toast('CONTACT CALLED IN');
-    this.say('heli-mark', [
-      'India 99, I have eyes on, passing a position now.',
-      'India 99 has the vehicle, sending a fix.',
-      'From the air: target located, position passed.',
-    ], {}, true);
   }
 
   /**
@@ -1520,6 +1496,12 @@ class Game {
     let dt = (now - this.last) / 1000;
     this.last = now;
     if (dt > 0.25) dt = 0.25;      // after a tab switch, do not simulate the gap
+    // And never backwards. Frame timestamps are meant to be monotonic, so
+    // this should not happen -- but a negative dt does not just stall the
+    // game, it runs it in reverse: everything that counts down counts up
+    // instead, and the first sign of it is a fuel tank with eighteen billion
+    // seconds in it.
+    if (!(dt > 0)) dt = 0;
 
     this._trackPerformance(dt);
     this._handleKeys();
@@ -1625,8 +1607,6 @@ class Game {
     if (i.tapped('KeyP')) this.paused = !this.paused;
     if (i.tapped('KeyH')) this.hud.toggleHelp();
     if (i.tapped('KeyC')) this.camera3.cycle();
-    // The only thing a pilot can actually do. See _callItIn.
-    if (this.aircraft && (i.tapped('Space') || i.tapped('KeyF'))) this._callItIn();
     // N, not M: M is the menu, and was checked first, so muting could never happen.
     if ((i.tapped('KeyN') || i.tapped('Mute')) && this.audio) {
       // Said out loud on screen, not just written to the radio log -- the log
@@ -1866,9 +1846,24 @@ class Game {
         k.timeSinceSeen += dt;
         this.netLostFor = (this.netLostFor || 0) + dt;
       }
-      k.seen = session.seen;
-      k.confidence = session.seen ? 1 : clamp01(1 - (this.netLostFor || 0) / SEARCH_SECONDS);
-      this.dispatcher.inContact = session.seen;
+      // A pilot who can see the car counts as the force seeing it. Without
+      // this the aircraft was the only unit whose own eyes were worth
+      // nothing: the stars stayed dark, the suspect never appeared on the
+      // map and the status line said NO ACTIVE PURSUIT while the car filled
+      // the windscreen.
+      const mine = !!this.airSees;
+      const seen = session.seen || mine;
+      if (mine) {
+        k.position.copy(this.netSuspect.position);
+        k.velocity.copy(this.netSuspect.linvel);
+        k.timeSinceSeen = 0;
+        this.netLostFor = 0;
+        if (!this.netLastSeen) this.netLastSeen = new THREE.Vector3();
+        this.netLastSeen.copy(this.netSuspect.position);
+      }
+      k.seen = seen;
+      k.confidence = seen ? 1 : clamp01(1 - (this.netLostFor || 0) / SEARCH_SECONDS);
+      this.dispatcher.inContact = seen;
       // Only while there is a chase on. With nobody wanted, the pair of you
       // are two cars driving around a city and the force has no business
       // knowing where the other one is: the marker used to appear the moment
@@ -1876,9 +1871,9 @@ class Game {
       // nothing and was not being looked for.
       const chaseOn = this.heat.value > 0;
       this.hud.suspect = !chaseOn ? null
-        : (session.seen ? this.netSuspect.position
+        : (seen ? this.netSuspect.position
           : ((this.netLostFor || 0) < SEARCH_SECONDS ? this.netLastSeen : null));
-      this.hud.suspectStale = !session.seen;
+      this.hud.suspectStale = !seen;
     }
   }
 
@@ -2322,7 +2317,7 @@ class Game {
       }
     }
 
-    this._airSpotting();
+    this._airSpotting(dt);
     if (this.audio) this.audio.update(dt, player, this.dispatcher, this.heat);
     this.hud.update(dt, player, this.heat, this.dispatcher);
   }

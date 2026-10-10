@@ -160,7 +160,7 @@ window.__runFlyHeli = async function () {
 
     disposeAll();
 
-    // ---- the mark ----
+    // ---- what it can see ----
     // The rule the whole role balances on: close enough to tell what it is,
     // in front of you, and actually visible. Checked against a stand-in car
     // rather than the real thing, because what is being tested is the rule.
@@ -171,7 +171,7 @@ window.__runFlyHeli = async function () {
       const at = (x, y, z) => ({ position: new (window.__modules.THREE.Vector3)(x, y, z) });
       const tests = [
         ['150 m ahead and below', at(0, 2, 150)],
-        ['400 m ahead', at(0, 2, 400)],
+        ['600 m ahead', at(0, 2, 600)],
         ['150 m behind', at(0, 2, -150)],
         ['150 m off to one side', at(150, 2, 0)],
         ['directly below', at(0, 2, 0)],
@@ -180,12 +180,12 @@ window.__runFlyHeli = async function () {
       ];
       for (const [what, t] of tests) {
         const range = Math.round(h.position.distanceTo(t.position));
-        say(`  identify ${what} (${range} m): ${h.canIdentify(t) ? 'YES' : 'no'}`);
+        say(`  sees ${what} (${range} m): ${h.canSee(t) ? 'YES' : 'no'}`);
       }
-      // And the cooldown: one call, then nothing for a while.
-      const first = h.mark(at(0, 2, 150));
-      const second = h.mark(at(0, 2, 150));
-      say(`  mark, then mark again at once: ${first}, then ${second}`);
+      // And the report goes out four times a second, not every frame.
+      let sent = 0;
+      for (let i = 0; i < 60; i++) if (h.dueToReport(1 / 60)) sent++;
+      say(`  reports in one second: ${sent}`);
     }
 
     // ---- it has to answer everything the game asks of a player ----

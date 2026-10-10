@@ -112,8 +112,16 @@ const CEILING = 420;
  * Minutes in the air on a full tank, and how long refuelling takes once it is
  * on the ground at the garage.
  */
-export const ENDURANCE = 6 * 60;
-export const REFUEL_TIME = 12;
+/**
+ * Minutes in the air, and how long refuelling takes on the pad.
+ *
+ * Ninety seconds is short on purpose -- "have it that you refuel every minute
+ * and thirty seconds". It turns the pad from scenery into the thing the whole
+ * sortie is planned around: get up, find the car, hold it, and know when to
+ * leave. A six-minute tank meant the fuel gauge never once mattered.
+ */
+export const ENDURANCE = 90;
+export const REFUEL_TIME = 6;
 
 /**
  * How far the aircraft's origin sits above the ground when it is parked.
@@ -176,24 +184,27 @@ const CONTACT_GAP = 0.15;
 const AXES = ['x', 'y', 'z'];
 
 /**
- * The mark: how close the aircraft has to be to call a car in, how far off the
- * nose it may be, and how long before another one can be sent.
+ * How close the aircraft has to be to have the car, how far off the nose it
+ * may be, and how long a fix lasts after sight is lost.
  *
- * This is the whole role, and the range is the whole balance. There is no
- * detection of any kind -- seeing the car on your screen does nothing, and
- * there is no searchlight -- so the only way the ground units learn anything
- * is a pilot deciding they have identified the car and pressing the key.
+ * This started as a key you pressed to call the car in, on the theory that a
+ * pilot deciding they had identified it was more interesting than a radius.
+ * In the hand it was not: there was no way to tell whether a press would do
+ * anything, the thing it reported was gone a second later, and the whole role
+ * came down to guessing. "Might forget the spotting thing -- just have it
+ * that if I'm relatively close for a helicopter, it just sees them
+ * constantly."
  *
- * 300 m sounds generous and is not. From a thousand feet you can see half the
- * town and cannot tell one dark hatchback from another, so a mark means
- * descending to where the flying is hard and the rooftops are in the way, and
- * the pilot who sits high and safe is a pilot who reports nothing. That is the
- * trade the role is made of, and it falls out of the range rather than being
- * enforced anywhere.
+ * So it is a radius, and it is the aircraft's job to be inside it. Within
+ * 450 m, in front, and with the roof not in the way, the force knows exactly
+ * where the car is for as long as the pilot can hold it there -- which is
+ * what air support is actually for, and is still a thing you have to fly to
+ * earn.
  */
-export const MARK_RANGE = 300;
+export const MARK_RANGE = 450;
 const MARK_CONE = 0.95;          // radians off the nose, a generous windscreen
-const MARK_COOLDOWN = 7;
+/** How often the fix is sent to the machine that owns the chase. */
+const REPORT_EVERY = 0.25;
 
 const _v = new THREE.Vector3();
 const _up = new THREE.Vector3();
@@ -235,9 +246,8 @@ export class FlyingHelicopter {
     this.onGround = true;
 
     /** Seconds until another mark may be sent, and how the last one went. */
-    this.markCooldown = 0;
-    this.markFlash = 0;
-    this.markResult = '';
+    /** Counts down to the next position report -- see dueToReport. */
+    this._reportIn = 0;
 
     /** Shut down on the ground. W starts it -- see _touchDown and _startUp. */
     this.engineOff = true;
@@ -454,6 +464,9 @@ export class FlyingHelicopter {
     // Burn is mostly the collective: a hover is expensive, a descent is nearly
     // free. Which gives a pilot a reason to use height as a resource.
     if (flying && !this.onGround) {
+      // Burn is mostly the collective, so a descent is nearly free and a
+      // climb is dear -- which gives height a price and makes the gauge
+      // something a pilot flies against.
       this.fuel = Math.max(0, this.fuel - dt * (0.55 + this.collective * 0.9));
     }
     this._refuel(dt);
@@ -479,8 +492,6 @@ export class FlyingHelicopter {
     this.discRoll = damp(this.discRoll, (this._askRoll - this.roll) * DISC_LEAD, 6, dt);
     this.rotor += dt * 34 * this.spin;
 
-    this.markCooldown = Math.max(0, this.markCooldown - dt);
-    this.markFlash = Math.max(0, this.markFlash - dt);
   }
 
   /**
@@ -492,7 +503,7 @@ export class FlyingHelicopter {
    * is the pilot's problem, and getting it wrong is how a pilot wastes
    * everybody's time.
    */
-  canIdentify(target) {
+  canSee(target) {
     if (!target) return false;
     const dx = target.position.x - this.position.x;
     const dz = target.position.z - this.position.z;
@@ -527,16 +538,18 @@ export class FlyingHelicopter {
   }
 
   /**
-   * Call it in. Returns what happened, so the HUD can say so: a fix only
-   * leaves the aircraft when the pilot could actually see the car.
+   * Is it due to tell the chase where the car is?
+   *
+   * Sight is continuous, but saying so thirty times a second is thirty times
+   * the traffic for no more information, so the report goes out four times a
+   * second and the fix in between is the last one, ageing exactly as any
+   * last-known position does.
    */
-  mark(target) {
-    if (this.markCooldown > 0) return 'wait';
-    this.markCooldown = MARK_COOLDOWN;
-    this.markFlash = 1.4;
-    const ok = this.canIdentify(target);
-    this.markResult = ok ? 'sent' : 'nothing';
-    return this.markResult;
+  dueToReport(dt) {
+    this._reportIn = (this._reportIn || 0) - dt;
+    if (this._reportIn > 0) return false;
+    this._reportIn = REPORT_EVERY;
+    return true;
   }
 
   /**

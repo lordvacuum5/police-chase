@@ -34,6 +34,7 @@ export class Hud {
     this.statusEl = document.getElementById('status');
     this.gearEl = document.getElementById('gear');
     this.gearLabel = document.getElementById('gearlabel');
+    this.dmgLabel = document.getElementById('dmglabel');
     this.radioEl = document.getElementById('radiolog');
     this.overlay = document.getElementById('overlay');
     this.otitle = document.getElementById('otitle');
@@ -182,17 +183,36 @@ export class Hud {
       if (this.gearLabel && this.gearLabel.textContent !== 'HEIGHT') {
         this.gearLabel.textContent = 'HEIGHT';
       }
+      // Fuel on the damage bar, which is a bar and reads as one, rather than
+      // on four tyre lights that read as four of something. With a
+      // ninety-second tank this is the gauge the whole sortie is flown
+      // against, so it says the seconds as well.
       const left = clamp01(player.fuel / AIR_TANK);
+      const secs = Math.max(0, Math.round(player.fuel));
+      const low = left < 0.25;
+      this.dmgFill.style.width = (left * 100).toFixed(1) + '%';
+      this.dmgFill.style.background = low ? '#ff3b30' : left < 0.5 ? '#ffb020' : '#35d0a5';
+      const label = `${secs}s` + (player.refuelling > 0 ? '  ▲ FUELLING' : '');
+      if (this.dmgPct.textContent !== label) this.dmgPct.textContent = label;
+      this.dmgPct.className = low ? 'bad' : left < 0.5 ? 'warn' : '';
+      if (this.dmgLabel && this.dmgLabel.textContent !== 'FUEL') {
+        this.dmgLabel.textContent = 'FUEL';
+      }
+      // The four lights become the airframe's own condition instead.
+      const hurt = clamp01(player.damage);
       for (let i = 0; i < 4; i++) {
-        const lit = left > i / 4;
-        const low = left < 0.2;
-        const col = !lit ? '#3a4048'
-          : low && (performance.now() % 700) < 420 ? '#ff3b30'
-            : low ? '#ff8c2a' : '#35d0a5';
+        const gone = hurt > i / 4;
+        const col = gone ? '#ff3b30' : '#35d0a5';
         const el = this.tyreEls[i];
         if (el.style.background !== col) el.style.background = col;
       }
+      this._airHud = true;
     } else {
+      if (this._airHud) {
+        this._airHud = false;
+        this._lastDmg = -1;
+        if (this.dmgLabel) this.dmgLabel.textContent = 'DAMAGE';
+      }
       this._carGearAndTyres(player);
     }
 
@@ -200,7 +220,7 @@ export class Hud {
     // Worth showing plainly: past about 35% the engine starts losing power,
     // so a driver needs to know why the car has gone flat.
     const dmg = Math.round(player.damage * 100);
-    if (dmg !== this._lastDmg) {
+    if (!player.isAircraft && dmg !== this._lastDmg) {
       this._lastDmg = dmg;
       this.dmgFill.style.width = dmg + '%';
       this.dmgFill.style.background = dmg > 70 ? '#ff3b30' : dmg > 35 ? '#ffb020' : '#35d0a5';
@@ -806,6 +826,35 @@ export class Hud {
         ctx.moveTo(p.x, p.y);
         ctx.lineTo(p.x + tr * 16, p.y - tf * 16);
         ctx.stroke();
+      }
+    }
+
+    // ---- other players' helicopters ----
+    //
+    // A remote aircraft is not a car and not a dispatcher unit -- it has no
+    // collider and nothing to send anywhere -- so it fell through both of
+    // the loops above and appeared on nobody's map. Which is the worst thing
+    // for it to be missing from: a helicopter is the one unit you cannot see
+    // out of the window and most want to know about.
+    if (this.game.netAir) {
+      for (const a of this.game.netAir.values()) {
+        const q = toMap(a.pos.x, a.pos.z);
+        if (q.x < -20 || q.y < -20 || q.x > W + 20 || q.y > W + 20) continue;
+        ctx.save();
+        ctx.translate(q.x, q.y);
+        ctx.fillStyle = '#ffe9a3';
+        ctx.beginPath();
+        ctx.arc(0, 0, 5.5, 0, Math.PI * 2);
+        ctx.fill();
+        // A turning rotor, so it reads as the aircraft rather than a unit.
+        ctx.strokeStyle = '#ffe9a3';
+        ctx.lineWidth = 2;
+        const spin = performance.now() * 0.012;
+        ctx.beginPath();
+        ctx.moveTo(-Math.cos(spin) * 10, -Math.sin(spin) * 10);
+        ctx.lineTo(Math.cos(spin) * 10, Math.sin(spin) * 10);
+        ctx.stroke();
+        ctx.restore();
       }
     }
 
