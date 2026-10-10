@@ -175,7 +175,7 @@ const CRASH_SPEED = 14;
 /** How much of the stick's unmet demand the rotor disc leads the body by. */
 const DISC_LEAD = 0.55;
 
-const START_TIME = 2.6;
+const START_TIME = 1.8;
 /** Seconds on the ground before a wrecked aircraft is back on the pad. */
 const RECOVER_TIME = 10;
 
@@ -252,6 +252,7 @@ export class FlyingHelicopter {
     /** Shut down on the ground. W starts it -- see _touchDown and _startUp. */
     this.engineOff = true;
     this.starting = 0;
+    this.startFrac = 0;
     /** Where it came to rest, so a parked aircraft cannot creep. */
     this._restAt = null;
 
@@ -348,12 +349,17 @@ export class FlyingHelicopter {
     // The stick asks for a lean and the aircraft moves toward it; letting go
     // asks for level. Both go through the same rate limit, so the recovery is
     // as quick as the input and nothing snaps.
-    // A cold aircraft on the ground ignores the stick completely. Levelling
-    // it against the cyclic was not enough -- the two settle against each
-    // other at about fifteen degrees, so a parked helicopter sat there
-    // leaning whenever the mouse was held over, which is not what sitting on
-    // the ground looks like.
-    const cold = this.engineOff && this.onGround;
+    // On the ground is on the ground: the stick does nothing at all until the
+    // skids are off it.
+    //
+    // This was gated on the engine being off, which left the gap the player
+    // actually sat in -- start the rotor, and you could pitch and roll a
+    // helicopter that was still standing on its skids. Levelling against the
+    // cyclic was no good either; the two settle against each other at about
+    // fifteen degrees. Nothing but ignoring the stick looks like a parked
+    // aircraft, and there is nothing to steer on the ground anyway: W lifts
+    // it straight up and control arrives with the air under it.
+    const cold = this.onGround;
     const wantPitch = cold ? 0 : clamp(c.pitch || 0, -1, 1) * MAX_PITCH;
     const wantRoll = cold ? 0 : clamp(c.roll || 0, -1, 1) * MAX_ROLL;
     // Kept for the disc, which leads the airframe -- see discPitch below.
@@ -433,11 +439,9 @@ export class FlyingHelicopter {
         // take-off belongs -- but a cold aircraft that rocks when you push
         // the mouse does not look like it is sitting there, and that is the
         // whole of the complaint.
-        if (this.engineOff) {
-          this.pitch = damp(this.pitch, 0, 8, dt);
-          this.roll = damp(this.roll, 0, 8, dt);
-          this._applyAttitude();
-        }
+        this.pitch = damp(this.pitch, 0, 8, dt);
+        this.roll = damp(this.roll, 0, 8, dt);
+        this._applyAttitude();
       } else {
         this._restAt = null;
         this.linvel.x *= 0.82;
@@ -692,13 +696,22 @@ export class FlyingHelicopter {
    * take-off rather than a jump.
    */
   _startUp(dt, asked) {
-    if (!this.engineOff) return;
-    if (asked <= 0) { this.starting = 0; return; }
+    if (!this.engineOff) { this.startFrac = 1; return; }
+    if (asked <= 0) { this.starting = 0; this.startFrac = 0; return; }
     this.starting = (this.starting || 0) + dt;
+    this.startFrac = clamp01(this.starting / START_TIME);
     if (this.starting >= START_TIME) {
       this.engineOff = false;
       this.starting = 0;
+      this.startFrac = 1;
     }
+  }
+
+  /** What the HUD should be telling the pilot to do, if anything. */
+  get startPrompt() {
+    if (!this.engineOff) return null;
+    if (this.starting > 0) return `STARTING — ${Math.round(this.startFrac * 100)}%`;
+    return 'HOLD W TO START';
   }
 
   /**

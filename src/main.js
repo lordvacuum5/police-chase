@@ -519,6 +519,18 @@ class Game {
   _airSpotting(dt) {
     const air = this.aircraft;
     if (!air) { this.spotting = null; return; }
+
+    // Shut down, the only thing worth saying is how to start it. There was
+    // nothing on screen about this at all -- "how do I start the engines,
+    // it's not very clear" -- and a helicopter that ignores every control
+    // until a key is held for two seconds is indistinguishable from a broken
+    // one if nothing says so.
+    const prompt = air.startPrompt;
+    if (prompt) {
+      this.spotting = { state: air.starting > 0 ? 'wait' : 'none', text: prompt };
+      return;
+    }
+
     const target = this.netSuspect || this._soloQuarry();
     if (!target) { this.spotting = { state: 'none', text: 'NO TARGET' }; return; }
 
