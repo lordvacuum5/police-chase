@@ -64,6 +64,14 @@ const BUFFER = 36;
 export const SEND_HZ = 30;
 
 /**
+ * How often to say something even when nothing is happening, and how hard to
+ * try to get a dropped connection back. See _keepAlive and _dropped.
+ */
+const PING_MS = 12000;
+const RECONNECT_TRIES = 6;
+const RECONNECT_WAIT = 700;
+
+/**
  * Car kinds, as an index: a snapshot is a list of numbers, and the kind is the
  * only string in it. Append only -- the position in this list is on the wire.
  */
@@ -300,11 +308,97 @@ class Session {
     this.escapeeId = null;
     this.error = '';
     this.closed = false;
+    this.reconnecting = false;
+    this.tries = 0;
+    this._closing = false;
     this._events = [];
     this._sendAt = 0;
   }
 
   get isHost() { return this.role === 'escapee'; }
+
+  /**
+   * The join query. `rejoin` is a reconnect: same room, same id, and never
+   * `create`.
+   *
+   * Never create, even for the host. The server refuses to make a room that
+   * already exists, and a host whose socket blipped while anyone else was
+   * still in the game would be told "there is already a game called that" and
+   * dropped for good. Joining works for both roles: the escapee's slot is
+   * freed the moment their socket closes, so the first one back into it is
+   * made the escapee again, which is them.
+   */
+  _query(rejoin = false) {
+    const o = this._opts || {};
+    return new URLSearchParams({
+      v: String(PROTOCOL),
+      room: this.room,
+      id: this.id,
+      name: this.name,
+      create: !rejoin && o.create ? '1' : '0',
+      map: o.map || '',
+      night: o.wet && o.wet.night ? '1' : '0',
+      rain: o.wet && o.wet.rain ? '1' : '0',
+    }).toString();
+  }
+
+  /**
+   * Keep the socket warm.
+   *
+   * Everything this game sends rides on the animation frame, and a browser
+   * stops those for a tab nobody is looking at -- so a player who alt-tabs
+   * goes completely silent, and anything between here and the server that
+   * times out an idle connection takes it away. The game then ends, for
+   * somebody who only looked at their email: "lose connection quite a lot,
+   * and it just ends the game."
+   *
+   * An interval keeps running where a frame does not, so this is a frame that
+   * cannot be throttled.
+   */
+  _keepAlive() {
+    clearInterval(this._pingTimer);
+    this._pingTimer = setInterval(() => {
+      if (this.closed || !this.transport) return;
+      this.transport.send({ t: 'ping', from: this.id });
+    }, PING_MS);
+  }
+
+  /**
+   * The connection went away. Try to get it back rather than ending the game.
+   *
+   * A socket closing is not the same as a game ending, and treating the two
+   * as one meant any blip -- a phone changing network, a proxy tidying up an
+   * idle connection, a wifi hiccup -- was fatal and unrecoverable. Several
+   * goes with a widening gap between them, and only then is it over.
+   */
+  _dropped() {
+    if (this.closed || this._closing) return;
+    if (this.tries >= RECONNECT_TRIES) {
+      this.closed = true;
+      this.error = this.error || 'Connection lost.';
+      return;
+    }
+    this.tries = (this.tries || 0) + 1;
+    this.reconnecting = true;
+    setTimeout(() => this._reopen(), RECONNECT_WAIT * this.tries);
+  }
+
+  _reopen() {
+    if (this.closed || this._closing) return;
+    try {
+      const q = this._query(true);
+      this.transport = this.local ? openChannel(q) : openSocket(q);
+    } catch (e) {
+      this._dropped();
+      return;
+    }
+    this.transport.onMessage((msg) => this._receive(msg));
+    this.transport.onClose(() => this._dropped());
+    this.transport.onOpen(() => {
+      this.reconnecting = false;
+      this.tries = 0;
+    });
+  }
 
   /**
    * Create a game, or join one by name. Resolves once the server (or, on a
@@ -324,18 +418,14 @@ class Session {
     // night while the police had a bright dry afternoon -- and rain changes
     // grip, so they were not even driving on the same roads.
     const wet = conditions || { night: false, rain: false };
-    const query = new URLSearchParams({
-      v: String(PROTOCOL),
-      room,
-      id: this.id,
-      name: this.name,
-      create: create ? '1' : '0',
-      map: map || '',
-      night: wet.night ? '1' : '0',
-      rain: wet.rain ? '1' : '0',
-    }).toString();
+    // Kept, so a dropped connection can be rebuilt without asking the player
+    // to set the game up again. The id goes with it: coming back as a new
+    // player would leave the old one on everybody's roster as a ghost.
+    this._opts = { room, create, map, wet };
+    const query = this._query();
 
     this.transport = this.local ? openChannel(query) : openSocket(query);
+    this._keepAlive();
     if (create) {
       // The creator is the escapee, and on a BroadcastChannel it is also the
       // thing that answers joins, so it knows all of this without asking.
@@ -347,9 +437,7 @@ class Session {
     }
 
     this.transport.onMessage((msg) => this._receive(msg));
-    this.transport.onClose(() => {
-      if (!this.closed) { this.closed = true; this.error = this.error || 'Connection lost.'; }
-    });
+    this.transport.onClose(() => this._dropped());
 
     return new Promise((resolve, reject) => {
       const done = (err) => {
@@ -522,6 +610,9 @@ class Session {
   }
 
   close() {
+    // Deliberate, so the reconnect must not fight it.
+    this._closing = true;
+    clearInterval(this._pingTimer);
     this.closed = true;
     this.active = false;
     if (this.transport) {

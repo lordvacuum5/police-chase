@@ -1670,6 +1670,14 @@ class Game {
     this._netReportHit();
     this._netHandleEvents();
     if (session.dueToSend()) this._netSend();
+    // Say so while it is trying to get back, rather than freezing silently
+    // and then announcing the game is over.
+    if (session.reconnecting !== this._netWas) {
+      this._netWas = session.reconnecting;
+      if (session.reconnecting) this.hud.toast('CONNECTION LOST — RECONNECTING');
+      else if (this._netWas === false && this._netEverLost) this.hud.toast('RECONNECTED');
+      if (session.reconnecting) this._netEverLost = true;
+    }
     if (session.closed && !this.netOver) {
       this.netOver = true;
       this.hud.showOverlay('GAME OVER', session.error || 'The game ended.', { canRestart: false });

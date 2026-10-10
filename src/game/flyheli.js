@@ -338,8 +338,14 @@ export class FlyingHelicopter {
     // The stick asks for a lean and the aircraft moves toward it; letting go
     // asks for level. Both go through the same rate limit, so the recovery is
     // as quick as the input and nothing snaps.
-    const wantPitch = clamp(c.pitch || 0, -1, 1) * MAX_PITCH;
-    const wantRoll = clamp(c.roll || 0, -1, 1) * MAX_ROLL;
+    // A cold aircraft on the ground ignores the stick completely. Levelling
+    // it against the cyclic was not enough -- the two settle against each
+    // other at about fifteen degrees, so a parked helicopter sat there
+    // leaning whenever the mouse was held over, which is not what sitting on
+    // the ground looks like.
+    const cold = this.engineOff && this.onGround;
+    const wantPitch = cold ? 0 : clamp(c.pitch || 0, -1, 1) * MAX_PITCH;
+    const wantRoll = cold ? 0 : clamp(c.roll || 0, -1, 1) * MAX_ROLL;
     // Kept for the disc, which leads the airframe -- see discPitch below.
     this._askPitch = wantPitch;
     this._askRoll = wantRoll;
@@ -348,11 +354,11 @@ export class FlyingHelicopter {
     this.roll += clamp(wantRoll - this.roll, -rate, rate);
     // Self-centring on top, so a released stick comes back to level by itself
     // rather than holding the last lean.
-    if (!c.pitch) this.pitch = damp(this.pitch, 0, LEVEL, dt);
-    if (!c.roll) this.roll = damp(this.roll, 0, LEVEL, dt);
+    if (cold || !c.pitch) this.pitch = damp(this.pitch, 0, cold ? 8 : LEVEL, dt);
+    if (cold || !c.roll) this.roll = damp(this.roll, 0, cold ? 8 : LEVEL, dt);
 
     // ---- pedals ----
-    this.yawRate = damp(this.yawRate, clamp(c.yaw || 0, -1, 1) * YAW_RATE, YAW_EASE, dt);
+    this.yawRate = damp(this.yawRate, cold ? 0 : clamp(c.yaw || 0, -1, 1) * YAW_RATE, YAW_EASE, dt);
     // A swings the nose left. The model's nose is +Z and its left is +X, so
     // left is a rising yaw -- it was falling, and the pedals were handed.
     this.yaw += this.yawRate * dt;
@@ -410,6 +416,17 @@ export class FlyingHelicopter {
           this.position.z = this._restAt.z;
         } else {
           this._restAt = { x: this.position.x, z: this.position.z };
+        }
+        // Shut down, it is furniture: level on its skids and not going
+        // anywhere, whatever the stick is doing. The stick is still live on
+        // the ground with the rotor turning, which is where leaning into a
+        // take-off belongs -- but a cold aircraft that rocks when you push
+        // the mouse does not look like it is sitting there, and that is the
+        // whole of the complaint.
+        if (this.engineOff) {
+          this.pitch = damp(this.pitch, 0, 8, dt);
+          this.roll = damp(this.roll, 0, 8, dt);
+          this._applyAttitude();
         }
       } else {
         this._restAt = null;
