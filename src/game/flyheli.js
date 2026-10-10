@@ -139,6 +139,8 @@ export const SKID = 0.04;
  * which is the thing that was wrong, and it lets you fly down a street.
  */
 const HULL_R = 2.2;
+/** The rotor disc's radius -- what strikes things the hull fits past. */
+const ROTOR_R = 6.2;
 
 /**
  * What the aircraft sweeps against: buildings and props, and deliberately not
@@ -162,6 +164,9 @@ const AIR_SOLID = groups(0xFFFF, GROUP.BUILDING | GROUP.PROP);
  */
 const CRASH_SPEED = 14;
 /** Seconds of holding W before a shut-down rotor has lift in it. */
+/** How much of the stick's unmet demand the rotor disc leads the body by. */
+const DISC_LEAD = 0.55;
+
 const START_TIME = 2.6;
 /** Seconds on the ground before a wrecked aircraft is back on the pad. */
 const RECOVER_TIME = 10;
@@ -218,6 +223,11 @@ export class FlyingHelicopter {
     this.collective = HOVER;
     this.yawRate = 0;
     this.rotor = 0;
+    /** The disc's own tilt relative to the body, for the renderer. */
+    this.discPitch = 0;
+    this.discRoll = 0;
+    this._askPitch = 0;
+    this._askRoll = 0;
     this.spin = 1;               // rotors at speed, 0 when shut down
 
     this.fuel = ENDURANCE;
@@ -232,6 +242,8 @@ export class FlyingHelicopter {
     /** Shut down on the ground. W starts it -- see _touchDown and _startUp. */
     this.engineOff = true;
     this.starting = 0;
+    /** Where it came to rest, so a parked aircraft cannot creep. */
+    this._restAt = null;
 
     /**
      * Which way each axis is up against something, as a sign. See _moveAndHit:
@@ -328,6 +340,9 @@ export class FlyingHelicopter {
     // as quick as the input and nothing snaps.
     const wantPitch = clamp(c.pitch || 0, -1, 1) * MAX_PITCH;
     const wantRoll = clamp(c.roll || 0, -1, 1) * MAX_ROLL;
+    // Kept for the disc, which leads the airframe -- see discPitch below.
+    this._askPitch = wantPitch;
+    this._askRoll = wantRoll;
     const rate = CYCLIC_RATE * dt;
     this.pitch += clamp(wantPitch - this.pitch, -rate, rate);
     this.roll += clamp(wantRoll - this.roll, -rate, rate);
@@ -379,10 +394,25 @@ export class FlyingHelicopter {
       // across the forecourt like a hovercraft.
       const lifting = this.collective * THRUST * Math.cos(this.pitch) * Math.cos(this.roll);
       if (this.engineOff || lifting <= 1.0) {
-        this.linvel.x = 0;
-        this.linvel.z = 0;
-        this.linvel.y = Math.min(this.linvel.y, 0);
+        // Pinned, not merely slowed.
+        //
+        // Zeroing the velocity here was not enough, and the reason is the
+        // order: the move happens earlier in the frame, so the aircraft had
+        // already travelled one frame's worth of whatever the tilted rotor
+        // had pushed into it before anything stopped it. That is only a
+        // millimetre and a half a frame, which a rounded test reads as zero
+        // and a player watching for a minute reads as sliding across the
+        // forecourt in every direction. So the resting place is remembered
+        // and put back, which cannot drift by construction.
+        this.linvel.set(0, Math.min(this.linvel.y, 0), 0);
+        if (this._restAt) {
+          this.position.x = this._restAt.x;
+          this.position.z = this._restAt.z;
+        } else {
+          this._restAt = { x: this.position.x, z: this.position.z };
+        }
       } else {
+        this._restAt = null;
         this.linvel.x *= 0.82;
         this.linvel.z *= 0.82;
       }
@@ -395,6 +425,7 @@ export class FlyingHelicopter {
       this.onGround = true;
     } else {
       this.onGround = false;
+      this._restAt = null;
     }
     this._parkedCollider();
     if (this.position.y > CEILING) {
@@ -419,6 +450,16 @@ export class FlyingHelicopter {
     this.left.set(1, 0, 0).applyQuaternion(this.quaternion);
     this.forwardSpeed = this.linvel.dot(_fwd);
     this.angvel.set(0, this.yawRate, 0);
+    // What the renderer tilts the rotor disc by, in the body's own frame.
+    //
+    // On a real helicopter the cyclic tilts the *disc* and the fuselage
+    // follows it round; the body swinging as one rigid lump is the giveaway
+    // that it is a model aeroplane. This is the lead: the disc runs ahead of
+    // the airframe into the turn, and settles back level with it in the
+    // cruise. Cosmetic -- nothing flies on it -- but it is most of what makes
+    // the thing read as a helicopter.
+    this.discPitch = damp(this.discPitch, (this._askPitch - this.pitch) * DISC_LEAD, 6, dt);
+    this.discRoll = damp(this.discRoll, (this._askRoll - this.roll) * DISC_LEAD, 6, dt);
     this.rotor += dt * 34 * this.spin;
 
     this.markCooldown = Math.max(0, this.markCooldown - dt);
@@ -558,6 +599,44 @@ export class FlyingHelicopter {
       this._struck(Math.abs(this.linvel[axis]));
       this.linvel[axis] = 0;
     }
+
+    this._rotorStrike(dt);
+  }
+
+  /**
+   * The rotor hits things the fuselage fits past.
+   *
+   * The body is what stops the aircraft -- a 2.2 m hull, because colliding as
+   * the whole 6.2 m disc is unflyable in a city. But a disc that silently
+   * passes through a house wall or a tree canopy is the thing that reads as
+   * broken: "I cannot hit the rotor against houses and cannot hit the
+   * branches of the tree."
+   *
+   * So the disc is swept too, and it does not block -- it damages. Clip a
+   * branch and you lose a bit of rotor; put it into a wall at any speed and
+   * it is over, because that is what happens. It cannot wedge the aircraft,
+   * because it never stops it moving.
+   */
+  _rotorStrike(dt) {
+    const world = this.game.world;
+    if (!world || this.disabled || this.engineOff || this.spin < 0.5) return;
+    this._strikeIn = (this._strikeIn || 0) - dt;
+    if (this._strikeIn > 0) return;
+    this._strikeIn = 0.1;                  // ten times a second is plenty
+
+    // Straight out along the disc, in the aircraft's own frame, so a tilted
+    // rotor sweeps where a tilted rotor would be.
+    for (const side of [1, -1]) {
+      _v.set(side, 0, 0).applyQuaternion(this.quaternion);
+      const toi = sweepBox(world, this.position, _v, ROTOR_R, AIR_SOLID, this._parked, 0.35);
+      if (toi >= ROTOR_R) continue;
+      // How much disc is actually in it, and how fast the tip is going.
+      const bite = (ROTOR_R - toi) / ROTOR_R;
+      this.damage = clamp01(this.damage + bite * 0.55);
+      this.hitAt = performance.now();
+      if (this.damage >= 1 || bite > 0.25) this.wreck();
+      return;
+    }
   }
 
   /**
@@ -574,6 +653,7 @@ export class FlyingHelicopter {
     this.engineOff = true;
     this.collective = 0;
     this.linvel.set(0, 0, 0);
+    this._restAt = { x: this.position.x, z: this.position.z };
   }
 
   /**
@@ -726,8 +806,24 @@ export class FlyingHelicopter {
   /** Nothing to read: this aircraft is its own state, not a rigid body's. */
   _readState() {}
 
+  /**
+   * Done with: take its parked box out of the world.
+   *
+   * A landed aircraft owns a static collider, and an aircraft that is thrown
+   * away without saying so leaves it behind for ever. One of those sitting in
+   * a test's line of sight is enough to make an unrelated check fail, and in
+   * a long game a recovered wreck would leave one on the pad.
+   */
+  dispose() {
+    if (this._parked && this.game.world) {
+      this.game.world.removeRigidBody(this._parked);
+    }
+    this._parked = null;
+  }
+
   /** Put it somewhere, stopped and level. */
   teleport(at, heading = 0) {
+    this._restAt = null;
     if (this._parked && this.game.world) {
       this.game.world.removeRigidBody(this._parked);
       this._parked = null;

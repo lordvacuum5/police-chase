@@ -27,12 +27,25 @@ function fly(h, seconds, c = {}, dt = 1 / 60) {
 function make() {
   const h = new FlyingHelicopter(window.__game, {});
   h.teleport({ x: 0, y: 120, z: 0 }, 0);
+  made.push(h);
   running(h);
   return h;
 }
 
+/**
+ * Every aircraft a test makes, so their parked colliders can be taken out of
+ * the world again. One left standing at the origin blocks the line of sight
+ * in a later test and fails it for no reason anybody would guess.
+ */
+const made = [];
+function disposeAll() {
+  for (const h of made) h.dispose();
+  made.length = 0;
+}
+
 /** Rotor up to speed, as if W had been held on the pad. */
 function running(h) {
+  if (!made.includes(h)) made.push(h);
   h.engineOff = false;
   h.starting = 0;
   h.spin = 1;
@@ -144,6 +157,8 @@ window.__runFlyHeli = async function () {
       say(`idling 60 s: burnt ${burnt.toFixed(0)} s of ${ENDURANCE} `
         + `(${(ENDURANCE / 60).toFixed(0)} min tank, ${(ENDURANCE / burnt).toFixed(1)} min real)`);
     }
+
+    disposeAll();
 
     // ---- the mark ----
     // The rule the whole role balances on: close enough to tell what it is,
@@ -293,6 +308,56 @@ window.__runFlyHeli = async function () {
       }
     }
 
+    // ---- parked means parked ----
+    //
+    // Zeroing the velocity was not enough: the move happens earlier in the
+    // frame than the ground check, so the aircraft travelled one frame's
+    // worth of whatever the tilted rotor pushed into it before anything
+    // stopped it. A millimetre and a half a frame reads as zero to a rounded
+    // test and as sliding across the forecourt to somebody watching, which is
+    // why this measures to the millimetre over a long time.
+    {
+      const g = window.__game;
+      // Set down from a few centimetres, not dropped from sixty metres: a
+      // heavy arrival wrecks it, and a wreck recovers itself onto the pad,
+      // which looks exactly like drifting 800 m if you are not expecting it.
+      const h = new FlyingHelicopter(g, {});
+      made.push(h);
+      h.teleport({ x: 500, y: 0.4, z: 500 }, 0);
+      fly(h, 3, {});                            // settle, engine off
+      const at = { x: h.position.x, z: h.position.z };
+      fly(h, 30, { pitch: 1, roll: 1 });        // full stick, every direction
+      fly(h, 30, { pitch: -1, roll: -1, yaw: 1 });
+      const drift = Math.hypot(h.position.x - at.x, h.position.z - at.z);
+      say(`parked, full stick for a minute: moved ${drift.toFixed(3)} m   `
+        + `engine ${h.engineOff ? 'off' : 'ON -- should be off'}`);
+
+      // And it still leaves when asked.
+      fly(h, 8, { collective: 1 });
+      say(`  then W held: ${h.engineOff ? 'STILL SHUT DOWN' : 'started'}, `
+        + `${Math.round(h.radarAlt)} m up`);
+    }
+
+    // ---- the rotor hits what the hull fits past ----
+    {
+      const g = window.__game;
+      const { addStaticBox, GROUP } = await import('../src/physics/world.js');
+      const X = 900, Z = 900, Y = 60;
+      addStaticBox(g.world, X, Y, Z, 40, 40, 2, GROUP.BUILDING);
+      g.world.step();
+      const beside = (gap) => {
+        const h = running(new FlyingHelicopter(g, {}));
+        h.teleport({ x: X, y: Y, z: Z - 2 - gap }, Math.PI / 2);
+        fly(h, 4, { collective: 0.28 });
+        return h;
+      };
+      const close = beside(3), tip = beside(5.5), clear = beside(8);
+      say(`hovering beside a wall: 3 m ${close.disabled ? 'rotor gone' : 'UNHARMED'}   `
+        + `5.5 m ${tip.disabled ? 'rotor gone' : 'unharmed'}   `
+        + `8 m ${clear.disabled ? 'ROTOR GONE -- too wide' : 'clear'}`);
+    }
+
+    disposeAll();
     window.__res = rows.join(String.fromCharCode(10));
     window.__flyDone = true;
     return window.__res;

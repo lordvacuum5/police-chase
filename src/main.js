@@ -2459,7 +2459,17 @@ class Game {
       air.view.position.lerpVectors(air.prevPos, air.position, alpha);
       air.view.quaternion.copy(air.prevQuat).slerp(air.quaternion, alpha);
       const ud = air.view.userData;
-      if (ud.main) ud.main.rotation[ud.mainAxis || 'z'] = air.rotor;
+      if (ud.main) {
+        // Spin about the mast, and tilt the whole disc with the cyclic -- the
+        // disc leads the airframe into a turn on a real one, and a rotor
+        // bolted rigidly to the body is what makes a model look like a model.
+        ud.main.rotation.order = 'ZXY';
+        ud.main.rotation[ud.mainAxis || 'z'] = air.rotor;
+        if ((ud.mainAxis || 'z') === 'y') {
+          ud.main.rotation.x = air.discPitch;
+          ud.main.rotation.z = air.discRoll;
+        }
+      }
       if (ud.tail) ud.tail.rotation[ud.tailAxis || 'y'] = air.rotor * 1.7;
     }
 
