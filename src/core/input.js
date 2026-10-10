@@ -42,12 +42,13 @@ const KEYMAP = {
 /**
  * Mouse travel, in pixels, for full cyclic deflection.
  *
- * Most of a screen, not a flick of the wrist. At 260 the aircraft snapped to
- * full lean before the hand had finished moving and there was no middle of
- * the range to fly in; the whole point of a position stick is the room
- * between the stops.
+ * Several screens' worth, not a flick of the wrist. At 260 the aircraft
+ * snapped to full lean before the hand had finished moving; 900 was still
+ * twitchy enough to be unflyable. The whole point of a position stick is the
+ * room between the stops, and the lean now goes all the way to eighty
+ * degrees, so the travel has to cover that range at a pace a hand can aim.
  */
-const CYCLIC_PX = 900;
+const CYCLIC_PX = 2600;
 
 export class Input {
   constructor() {

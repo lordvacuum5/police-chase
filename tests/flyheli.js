@@ -19,9 +19,23 @@ function fly(h, seconds, c = {}, dt = 1 / 60) {
   return h;
 }
 
+/**
+ * One already in the air with the rotor turning. An aircraft now starts shut
+ * down on its skids and has to be started, which is right for a pilot and
+ * only noise for a test about how it flies.
+ */
 function make() {
   const h = new FlyingHelicopter(window.__game, {});
   h.teleport({ x: 0, y: 120, z: 0 }, 0);
+  running(h);
+  return h;
+}
+
+/** Rotor up to speed, as if W had been held on the pad. */
+function running(h) {
+  h.engineOff = false;
+  h.starting = 0;
+  h.spin = 1;
   return h;
 }
 
@@ -96,7 +110,7 @@ window.__runFlyHeli = async function () {
     {
       const got = [];
       for (const head of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
-        const h = new FlyingHelicopter(window.__game, {});
+        const h = running(new FlyingHelicopter(window.__game, {}));
         h.teleport({ x: 0, y: 120, z: 0 }, head);
         fly(h, 6, { pitch: 1 });
         got.push(h.speed);
@@ -108,14 +122,14 @@ window.__runFlyHeli = async function () {
 
     // ---- the ground is solid, and arriving at it matters ----
     {
-      const soft = new FlyingHelicopter(window.__game, {});
+      const soft = running(new FlyingHelicopter(window.__game, {}));
       soft.teleport({ x: 0, y: 12, z: 0 }, 0);
       // A hover needs about 0.22 on the lever; a shade under it walks down.
       fly(soft, 16, { collective: 0.16 });
       say(`set down gently: y ${soft.position.y.toFixed(2)}   on skids ${soft.onGround}   `
         + `damage ${soft.damage.toFixed(2)} ${soft.disabled ? '-- WRECKED, too harsh' : ''}`);
 
-      const hard = new FlyingHelicopter(window.__game, {});
+      const hard = running(new FlyingHelicopter(window.__game, {}));
       hard.teleport({ x: 0, y: 160, z: 0 }, 0);
       fly(hard, 16, { collective: -1 });           // dropped like a brick
       say(`  dropped from 160 m: y ${hard.position.y.toFixed(2)}   `
@@ -214,7 +228,7 @@ window.__runFlyHeli = async function () {
       // Eased up to rather than flown at, so this measures stopping and
       // getting away again. Arriving fast is a crash, and that is the test
       // below.
-      const h = new FlyingHelicopter(g, {});
+      const h = running(new FlyingHelicopter(g, {}));
       h.teleport({ x: X, y: Y, z: Z - 30 }, 0);
       // Enough collective to hold height while it eases forward: at idle it
       // sinks, and below the slab is not the same as through it.
@@ -249,14 +263,14 @@ window.__runFlyHeli = async function () {
       g.world.step();
 
       // Fast into it: wrecked.
-      const fast = new FlyingHelicopter(g, {});
+      const fast = running(new FlyingHelicopter(g, {}));
       fast.teleport({ x: X, y: Y, z: Z - 150 }, 0);
       fly(fast, 20, { collective: 0.55, pitch: 0.7 });
       say(`flown into a wall at speed: ${fast.disabled ? 'wrecked' : 'NOT WRECKED'}   `
         + `damage ${fast.damage.toFixed(2)}`);
 
       // Nudged into it: a scrape, still flying.
-      const slow = new FlyingHelicopter(g, {});
+      const slow = running(new FlyingHelicopter(g, {}));
       slow.teleport({ x: X, y: Y, z: Z - 12 }, 0);
       fly(slow, 6, { collective: 0.26, pitch: 0.04 });
       say(`  and nudged into one: ${slow.disabled ? 'WRECKED -- too harsh' : 'still flying'}   `
@@ -265,9 +279,14 @@ window.__runFlyHeli = async function () {
       // A wreck comes back, on the pad.
       const pad = g.garage && g.garage.helipad;
       if (pad) {
-        fast.position.set(pad.x, pad.y + 1.05, pad.z);
+        // Open ground, not the pad: the game's own aircraft is parked there
+        // and has a collider, so a second one dropped on top of it sits on
+        // the first one's roof and never reaches the ground at all. Which is
+        // correct, and not what this is asking about.
+        fast.teleport({ x: 600, y: 40, z: 600 }, 0);
+        fast.wreck();
         fast.linvel.set(0, 0, 0);
-        fly(fast, 14, {});
+        fly(fast, 22, {});   // the fall, then the ten seconds down
         const home = Math.hypot(fast.position.x - pad.x, fast.position.z - pad.z);
         say(`  a wreck left on the ground: ${fast.disabled ? 'STILL DOWN' : 'flying again'}   `
           + `${home < 2 ? 'on the pad' : `${Math.round(home)} m from the pad`}`);

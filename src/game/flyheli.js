@@ -24,7 +24,7 @@
 import * as THREE from 'three';
 import { clamp, clamp01, lerp, damp, angleDelta } from '../util/math.js';
 import {
-  hasLineOfSight, sweepBox, addStaticBox, GROUP, RAY_SOLID,
+  hasLineOfSight, sweepBox, addStaticBox, groups, GROUP,
 } from '../physics/world.js';
 
 /** Gravity, which the rotor has to beat to go up. */
@@ -123,7 +123,7 @@ export const REFUEL_TIME = 12;
  * ground without being told. Holding it a metre up meant it hovered over its
  * own pad looking like it had forgotten to land.
  */
-const SKID = 0.04;
+export const SKID = 0.04;
 
 /**
  * What the aircraft collides with buildings as.
@@ -139,11 +139,30 @@ const SKID = 0.04;
  * which is the thing that was wrong, and it lets you fly down a street.
  */
 const HULL_R = 2.2;
+
+/**
+ * What the aircraft sweeps against: buildings and props, and deliberately not
+ * the terrain.
+ *
+ * Props because "you can go through buildings and trees" -- RAY_SOLID is
+ * terrain and buildings, which is right for a car deciding what to brake for
+ * and wrong for an aircraft, since a tree is twenty metres of solid timber.
+ *
+ * Not the terrain, because the ground is already handled, properly, by the
+ * floor below -- and sweeping it as well broke landing entirely. The swept
+ * box is a metre tall, so it touches the ground half a metre before the
+ * aircraft's own origin gets there; the machine then hung 47 cm up, never
+ * satisfied the floor test, never counted as landed, and so never shut down,
+ * refuelled or recovered from a crash.
+ */
+const AIR_SOLID = groups(0xFFFF, GROUP.BUILDING | GROUP.PROP);
 /**
  * Into something this fast and the rotor is gone. 14 m/s is about 50 km/h --
  * survivable in a car, and not something a helicopter walks away from.
  */
 const CRASH_SPEED = 14;
+/** Seconds of holding W before a shut-down rotor has lift in it. */
+const START_TIME = 2.6;
 /** Seconds on the ground before a wrecked aircraft is back on the pad. */
 const RECOVER_TIME = 10;
 
@@ -209,6 +228,10 @@ export class FlyingHelicopter {
     this.markCooldown = 0;
     this.markFlash = 0;
     this.markResult = '';
+
+    /** Shut down on the ground. W starts it -- see _touchDown and _startUp. */
+    this.engineOff = true;
+    this.starting = 0;
 
     /**
      * Which way each axis is up against something, as a sign. See _moveAndHit:
@@ -281,7 +304,9 @@ export class FlyingHelicopter {
     this.prevPos.copy(this.position);
     this.prevQuat.copy(this.quaternion);
     const flying = this.fuel > 0 && !this.disabled;
-    this.spin = damp(this.spin, flying ? 1 : 0, 0.8, dt);
+    // The rotor follows the engine rather than the throttle: it winds down
+    // when the aircraft shuts down on the ground, and up again on a start.
+    this.spin = damp(this.spin, flying && !this.engineOff ? 1 : 0, 0.8, dt);
 
     // ---- collective ----
     // Centre is a hover, so hands off holds height. Without that the aircraft
@@ -292,8 +317,10 @@ export class FlyingHelicopter {
     // Clamping to idle instead meant S did nothing at all and the aircraft
     // could not be made to come down in a hurry.
     const ask = clamp(c.collective || 0, -1, 1);
+    this._startUp(dt, ask);
     const wantColl = ask >= 0 ? IDLE + ask * (1 - IDLE) : IDLE * (1 + ask);
-    this.collective = damp(this.collective, flying ? wantColl : 0, SPOOL, dt);
+    const live = flying && !this.engineOff;
+    this.collective = damp(this.collective, live ? wantColl : 0, SPOOL, dt);
 
     // ---- cyclic ----
     // The stick asks for a lean and the aircraft moves toward it; letting go
@@ -346,12 +373,12 @@ export class FlyingHelicopter {
       this._struck(-this.linvel.y);
       this.linvel.y = Math.max(0, this.linvel.y);
 
-      // Skids are not wheels. A helicopter sitting on the ground does not
-      // slide about when the pilot leans the stick -- it sits there until
-      // there is enough lift under it to leave, and then it flies. Leaning on
-      // the ground used to taxi it across the forecourt like a hovercraft.
+      // Skids are not wheels, and a shut-down helicopter is not going
+      // anywhere at all. It stays exactly where it is until the rotor is
+      // turning hard enough to pick it up; leaning the stick used to taxi it
+      // across the forecourt like a hovercraft.
       const lifting = this.collective * THRUST * Math.cos(this.pitch) * Math.cos(this.roll);
-      if (lifting <= 1.0) {
+      if (this.engineOff || lifting <= 1.0) {
         this.linvel.x = 0;
         this.linvel.z = 0;
         this.linvel.y = Math.min(this.linvel.y, 0);
@@ -359,11 +386,13 @@ export class FlyingHelicopter {
         this.linvel.x *= 0.82;
         this.linvel.z *= 0.82;
       }
+      // The stick still works on the ground -- "you should be able to roll
+      // and pitch when you're on the ground" -- so the attitude is left
+      // alone. It is the height that is held, not the angle: the body cannot
+      // go below the skids however far it is tipped, and the rotor is welcome
+      // to swing through the ground, which is what it would really do.
+      if (!this.onGround) this._touchDown();
       this.onGround = true;
-      // And it sits level on its skids, whatever the stick is doing.
-      this.pitch = damp(this.pitch, 0, 9, dt);
-      this.roll = damp(this.roll, 0, 9, dt);
-      this._applyAttitude();
     } else {
       this.onGround = false;
     }
@@ -505,7 +534,7 @@ export class FlyingHelicopter {
       // Excluding its own parked collider, or the box that lets cars hit a
       // landed helicopter would also stop that helicopter taking off.
       const toi = sweepBox(
-        world, this.position, _v, dist + CONTACT_GAP, RAY_SOLID, this._parked, HULL_R,
+        world, this.position, _v, dist + CONTACT_GAP, AIR_SOLID, this._parked, HULL_R,
       );
       // Room to move, keeping the gap. Swept a little further than the step
       // so that resting against something is seen as no room rather than as
@@ -528,6 +557,37 @@ export class FlyingHelicopter {
       this._blocked[axis] = sign;
       this._struck(Math.abs(this.linvel[axis]));
       this.linvel[axis] = 0;
+    }
+  }
+
+  /**
+   * Down. The rotor winds off, and that is the end of the sortie until the
+   * pilot starts it again.
+   *
+   * Landing used to be a soft thing that happened to you: the aircraft sank
+   * onto its skids and stayed live, so there was no moment of having arrived
+   * and no act of leaving. Shutting down on touchdown gives both -- "you
+   * almost hit the ground and then your rotors just turn off, and you press
+   * W to start them".
+   */
+  _touchDown() {
+    this.engineOff = true;
+    this.collective = 0;
+    this.linvel.set(0, 0, 0);
+  }
+
+  /**
+   * Spinning up. W starts it, and the rotor takes a few seconds to come up to
+   * speed before there is lift in it, which is what makes a take-off a
+   * take-off rather than a jump.
+   */
+  _startUp(dt, asked) {
+    if (!this.engineOff) return;
+    if (asked <= 0) { this.starting = 0; return; }
+    this.starting = (this.starting || 0) + dt;
+    if (this.starting >= START_TIME) {
+      this.engineOff = false;
+      this.starting = 0;
     }
   }
 

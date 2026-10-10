@@ -23,7 +23,9 @@ import { Heat } from './game/heat.js';
 import { RoadblockManager } from './game/roadblock.js';
 import { Helicopter, buildHelicopterMesh } from './game/helicopter.js';
 import { loadHelicopterModel, buildImportedHelicopter } from './game/helimodel.js';
-import { FlyingHelicopter, MARK_RANGE as AIR_MARK_RANGE } from './game/flyheli.js';
+import {
+  FlyingHelicopter, MARK_RANGE as AIR_MARK_RANGE, SKID as AIR_SKID,
+} from './game/flyheli.js';
 
 /**
  * `?air=1`: fly the helicopter on your own, with no chase and nobody to report
@@ -477,11 +479,11 @@ class Game {
     // start, on top of somebody.
     const pad = this.garage && this.garage.helipad;
     const at = pad
-      ? { x: pad.x, y: pad.y + 1.05, z: pad.z }
+      ? { x: pad.x, y: pad.y + AIR_SKID, z: pad.z }
       : {
         x: place.position.x,
         z: place.position.z,
-        y: (this.sim.heightAt ? this.sim.heightAt(place.position.x, place.position.z) || 0 : 0) + 1.05,
+        y: (this.sim.heightAt ? this.sim.heightAt(place.position.x, place.position.z) || 0 : 0) + AIR_SKID,
       };
     const heli = new FlyingHelicopter(this, { heading: place.heading });
     heli.teleport(at, place.heading);
@@ -640,7 +642,9 @@ class Game {
   _landOnPad() {
     const pad = this.garage && this.garage.helipad;
     if (!pad || !this.aircraft) return false;
-    this.aircraft.teleport({ x: pad.x, y: pad.y + 1.05, z: pad.z }, this.aircraft.yaw || 0);
+    // On the pad, not hovering a metre over it: the aircraft's origin is the
+    // bottom of its skids, so the pad's own height is where it belongs.
+    this.aircraft.teleport({ x: pad.x, y: pad.y + AIR_SKID, z: pad.z }, this.aircraft.yaw || 0);
     return true;
   }
 
