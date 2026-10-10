@@ -38,7 +38,7 @@ Other kinds can be added to `CAR_MODELS` in `src/game/carmodel.js`.
   texture atlas keyed to their own UVs, and an imported model has its own — so
   its markings have to be in its own texture.
 * **One material, one texture, 5–15k triangles**, ideally. At five stars there
-  can be eighteen police cars on screen at once, and they are all this model.
+  can be thirty police cars on screen at once, and they are all this model.
 
 The light bar can stay in the model as unlit plastic; the flashing lights are
 the game's own and are placed on top of it.

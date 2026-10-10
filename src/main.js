@@ -65,12 +65,17 @@ const MAX_SUBSTEPS = 5;
 /**
  * Every car in the world at once, the player included.
  *
- * The pursuit is allowed to grow to eighteen cars (Dispatcher.PACK_CAP) and is
+ * The pursuit is allowed to grow to thirty cars (Dispatcher.PACK_CAP) and is
  * trimmed from the back beyond that, so this has to cover those plus the
  * player plus whatever is standing on a roadblock at the time -- otherwise the
  * roadblock is the thing that cannot be built.
+ *
+ * Hence forty rather than thirty-four. The dispatcher's own ceiling is
+ * `vehicleLimit - 6`, so the pack can only reach thirty if this is at least
+ * 36; the rest is the four slots spawnPoliceNear holds back for a roadblock,
+ * and room for a couple of other players' cars in multiplayer.
  */
-const MAX_VEHICLES = 24;
+const MAX_VEHICLES = 40;
 
 /**
  * Following somebody else's car (see Game._netDriveRemote): how far out of
@@ -2577,12 +2582,23 @@ class Game {
           this._resize();
           this.radio('[graphics] reduced resolution to hold frame rate');
           this.fpsTimer = 0;
-        } else if (this.fps < 26 && this.quality === 0 && this.vehicleLimit > 14) {
+        } else if (this.fps < 26 && this.quality === 0 && this.vehicleLimit > 22) {
           // Last resort, and the only one that touches the game rather than
           // the picture: a smaller pursuit. Eighteen cars cost about twice the
-          // simulation time of nine, which a phone does not always have.
-          this.vehicleLimit = 14;
+          // simulation time of nine, which a phone does not always have, and
+          // the board now starts at forty.
+          //
+          // Two rungs, because of that. Forty straight down to fourteen is a
+          // chase visibly falling apart on a machine that only needed a bit of
+          // help; 22 is roughly where the board sat before the cap was raised,
+          // and a machine that cannot hold even that drops to fourteen on the
+          // next check.
+          this.vehicleLimit = 22;
           this.radio('[graphics] fewer units to hold frame rate');
+          this.fpsTimer = 0;
+        } else if (this.fps < 26 && this.quality === 0 && this.vehicleLimit > 14) {
+          this.vehicleLimit = 14;
+          this.radio('[graphics] fewer units again to hold frame rate');
           this.fpsTimer = 0;
         }
       }

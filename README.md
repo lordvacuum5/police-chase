@@ -3547,9 +3547,9 @@ the shared model of where you are is thrown out — so a patrol that drives past
 you a minute later has to notice you again from scratch, exactly as it would
 have before any of it started. Drive badly in front of one and it will.
 
-The roster comes back down with it. A five-star response is fifteen cars sent,
-holding around eighteen on the board once the chase has collected a few, and an
-ambient patrol is three, and nothing used to reduce that except the rule that
+The roster comes back down with it. A five-star response is twenty-seven cars
+sent, holding up to thirty on the board once the chase has collected a few, and
+an ambient patrol is three, and nothing used to reduce that except the rule that
 retires a unit 900 m away, so the town stayed full of police long after they
 had stopped looking for you. Surplus units are now retired furthest-first, and
 only once a car is far enough off or out of sight — the force thins out over
@@ -3558,8 +3558,8 @@ bites scales with the excess**: one spare car is a straggler and gets the
 patient treatment, five is a crowd, and the crowd goes quickly (160 m, or 70 m
 and out of sight, up to every half second).
 
-That matters because the board has a hard limit of eighteen vehicles, and a
-long chase fills it: every roadblock you beat releases its crews into the
+That matters because the board has a hard limit on vehicles, and a long chase
+fills it: every roadblock you beat releases its crews into the
 pursuit, and they are not counted when deciding whether to send more. Once the
 limit is reached, nothing else can be built — including the next roadblock,
 which gets called on the radio and then simply is not there: *"I couldn't see
@@ -3571,22 +3571,70 @@ the tier says to *send* left the chase looking thin — *"there's almost too few
 units now"* — because a chase legitimately collects cars: the crews off every
 roadblock you beat. So there are two ceilings. The tier budget governs how many
 are dispatched; the pack may then keep what it has collected on top of that,
-three cars' worth, up to a hard cap of **18**, and past that the car furthest
-away drops off. It still never vanishes in view. Measured over a 90-second
-five-star chase: **18.0 average, 18 peak**. Below five stars the ceiling comes
-down with the wanted level, so dropping from five to three thins the pursuit
-rather than keeping eighteen cars on a three-car call:
+three cars' worth, up to a hard cap of **30**, and past that the car furthest
+away drops off. It still never vanishes in view. Below five stars the ceiling
+comes down with the wanted level, so dropping from five to three thins the
+pursuit rather than keeping thirty cars on a three-car call:
 
-| wanted level | sent | ceiling on the board | measured, 60 s |
-|---|---|---|---|
-| 1 star | 2 | 5 | 2.0 |
-| 3 stars | 7 | 10 | 6.7 |
-| 5 stars | 15 | **18** | 12.7 rising to 18 |
+| wanted level | sent | ceiling on the board |
+|---|---|---|
+| 1 star | 2 | 5 |
+| 3 stars | 7 | 10 |
+| 4 stars | 14 | 17 |
+| 5 stars | 27 | **30** |
 
-Eighteen cars cost about twice the simulation of nine — 8.2 ms a frame against
-3.9, out of the 16.7 ms a 60 fps frame has — so there is one more step on the
-end of the graphics ladder: a machine still under 26 fps with shadows off and
-the resolution reduced cuts the car limit too, and says so on the radio.
+Reaching the ceiling takes a chase, and that is worth knowing before wondering
+why there are not thirty cars behind you yet. Measured on a looping five-star
+route at 90 km/h from an empty roster, against the same route with the old
+numbers:
+
+| cars on the board | 10 | 15 | 18 | 22 | 26 | 30 | settles at |
+|---|---|---|---|---|---|---|---|
+| old: 15 sent, cap 18 | 14 s | 23 s | 65 s | — | — | — | 18 |
+| now: 27 sent, cap 30 | 14 s | 18 s | 19 s | 31 s | 37 s | 68 s | 30, peak 34 |
+
+Both saturate in about the same minute, because what paces the climb is the
+dispatcher topping up one car every 1.6 s and the crews arriving in bursts off
+beaten roadblocks, not the ceiling. The old pack hit 18 and stopped dead there
+-- 18 peak, 18 held, never one more. The peak of 34 is roadblock crews, which
+are exempt from the pack ceiling while they are manning a block and get
+trimmed furthest-first once they join the pursuit.
+
+Straight-line tests are worth nothing here, for the record: a player held at
+full throttle with no steering either outruns the force into the 900 m retire
+rule or parks in a wall, and the same two configurations measured that way came
+back 6.3 and 6.4 cars -- identical, and nothing to do with either cap.
+
+**The cap was eighteen until it was asked to be thirty** — *"increase the cap
+limit of police officers ... at the moment it's 18, change it to like 30"* — and
+raising the cap was the smallest part of doing it. The ceiling is the *tier*
+budget plus three, so eighteen was really `15 + 3` and moving the cap alone
+changed nothing; tier five had to be allowed to send 27. The board's own
+`MAX_VEHICLES` was 24, which ran out at about twenty police and then refused to
+build roadblocks, so that went to 40 — the dispatcher's own ceiling is
+`vehicleLimit - 6`, which puts the floor for a thirty-car pack at 36, plus the
+four slots held back for a roadblock and room for other players' cars.
+
+The role budgets went up with it, and that mattered more than the pack size. A
+unit with no role falls back to RESPOND, which drives at the last known
+position; with 27 cars and the old five pursuers and six interceptors, sixteen
+of them would have been driving at the same point. Measured over the same eight
+routes in one session, 27 cars with the old role budgets against 27 with 8
+pursuers and 12 interceptors: the mean distance to the nearest unit went from
+135 m to **100 m**, the share of the run where the dispatcher knew where the car
+was from 81% to **100%**, someone in front of the car from 43% to 53% — and
+cars hitting scenery from nine knocks (seven walls, two trees) down to two. The
+old eighteen-car pack on those same routes sat at 131 m and 59% seen, so the
+whole change is worth about a third off the distance to the nearest police car.
+
+Thirty cars cost more simulation than eighteen, but not as much more as the
+numbers suggest — a 31-car board still rendered at the 60 fps vsync cap on this
+machine, and most of a frame is not vehicles. The graphics ladder still has the
+last step for machines where it does bite, and now in two rungs rather than
+one: a machine under 26 fps with shadows off and the resolution reduced cuts
+the limit to 22 — roughly where the board sat before any of this — and only if
+it is *still* under 26 does it go to 14. Forty straight down to fourteen was a
+chase visibly falling apart on a machine that needed a nudge.
 
 **A roster that never let go.** Underneath all of that was a one-line bug of my
 own making: `retire` destroyed the car but never removed the officer from the
@@ -4336,7 +4384,7 @@ The awkward one is livery (your SUV has its markings baked in already, which is
 exactly right). Marked cars are painted from a texture atlas keyed to
 UVs the geometry builder generates, and an imported model arrives with its own,
 so its markings have to be baked into its own texture. There is a per-car cost
-argument too: at five stars there may be eighteen police cars on screen and they
+argument too: at five stars there may be thirty police cars on screen and they
 are all this model, so one material and 5–15k triangles is the budget. See
 `resources/models/README.md`, and `tests/carmodel.js` for the fitting test.
 

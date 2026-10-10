@@ -49,9 +49,17 @@ const LOST_CONTACT_SECONDS = 5;
  * pursuit. Trimming those straight back down to the tier budget left the chase
  * looking thin -- "there's almost too few units now" -- so the pack is allowed
  * to build up to this, and only past it does the car furthest away drop off.
- * Eighteen is what the board used to hold, and it read well.
+ *
+ * Eighteen read well for a long time, and was the board's own hard limit back
+ * when that number was chosen. Thirty is what it holds now, asked for in those
+ * words -- "increase the cap limit of police officers ... at the moment it's
+ * 18, change it to like 30". Raising this alone would have changed nothing,
+ * twice over: the ceiling below is the *tier* budget plus three, so five stars
+ * also had to be allowed to send enough cars to reach it, and MAX_VEHICLES in
+ * main.js had to grow to hold them -- at 24 the board ran out at about twenty
+ * police and then refused to build roadblocks.
  */
-export const PACK_CAP = 18;
+export const PACK_CAP = 30;
 
 /** How many units of each role a given heat tier is allowed to run. */
 const TIER = [
@@ -60,8 +68,18 @@ const TIER = [
   { units: 2, pursue: 2, intercept: 0, pit: false, box: false },
   { units: 4, pursue: 2, intercept: 1, pit: false, box: false },
   { units: 7, pursue: 3, intercept: 3, pit: true,  box: false },
-  { units: 11, pursue: 4, intercept: 4, pit: true, box: true },
-  { units: 15, pursue: 5, intercept: 6, pit: true, box: true },
+  // The top two tiers grew with PACK_CAP: tier five sends 27 so that the
+  // ceiling below -- sent plus three for the crews off beaten roadblocks --
+  // lands on 30, and tier four sits between so five stars is still a step up
+  // rather than a cliff from eleven cars to thirty.
+  //
+  // The role budgets grew with them on purpose. A unit with no role falls back
+  // to RESPOND, which drives at the last known position; with 27 cars and the
+  // old 5 pursue / 6 intercept, sixteen of them would have been driving at the
+  // same point in a queue. Keeping roughly three quarters of the pack assigned
+  // -- as 11 of 15 did -- is what spreads them over the junctions instead.
+  { units: 14, pursue: 5, intercept: 5, pit: true, box: true },
+  { units: 27, pursue: 8, intercept: 12, pit: true, box: true },
 ];
 
 /**
@@ -427,7 +445,7 @@ export class Dispatcher {
     // going a while collects cars: every roadblock the player beats releases
     // its crews into the pursuit, and they are not counted when deciding
     // whether to spawn more. Left gentle, the board reached the game's hard
-    // limit of eighteen vehicles, and then nothing else could be built --
+    // limit on vehicles, and then nothing else could be built --
     // including the next roadblock, which simply did not appear: "I couldn't
     // see half the roadblocks because there were too many police cars."
     //
@@ -438,15 +456,15 @@ export class Dispatcher {
     // Two different ceilings. While a chase is on, the pack may keep whatever
     // it has collected up to PACK_CAP and only sheds cars past that. Once the
     // heat is off, the tier budget is the ceiling again and the force thins
-    // back to an ambient patrol -- otherwise eighteen cars would follow you
+    // back to an ambient patrol -- otherwise thirty cars would follow you
     // around the town for the rest of the session.
     // Never more than the board can hold, either: on a machine that has cut
     // the vehicle limit to hold its frame rate, the pack comes down with it.
     // Room for the cars the chase has collected on top of the ones it was
     // sent -- a beaten roadblock's crews, mostly -- but still tied to the
     // wanted level, so dropping from five stars to three thins the pursuit
-    // instead of keeping eighteen cars on a two-car call. Five stars reaches
-    // PACK_CAP; nothing below it does.
+    // instead of keeping thirty cars on a two-car call. Five stars reaches
+    // PACK_CAP; nothing below it does -- tier four's ceiling is 17.
     const room = Math.max(want, this.game.vehicleLimit - 6);
     const ceiling = this.tier > 0 ? Math.min(want + 3, PACK_CAP, room) : want;
     const over = live.length - ceiling;
