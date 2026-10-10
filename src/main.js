@@ -546,6 +546,15 @@ class Game {
    * machine and by a mark arriving over the wire.
    */
   applyMark(position, velocity) {
+    // A pilot who finds the car can start the chase as well as feed it.
+    //
+    // Without this the role could only ever contribute to a pursuit that was
+    // already running, and air support that spots a car nobody is chasing has
+    // nothing to say -- which is also why the pilot's own screen could sit on
+    // NO ACTIVE PURSUIT however many times they called it in. Only the
+    // escapee's machine ever gets here, so this is the one place that owns
+    // the heat; a guest's mark arrives as an event and is applied here.
+    if (this.heat.value <= 0) this.heat.bump(1, 'reported by air support');
     const k = this.dispatcher.knowledge;
     k.position.copy(position);
     if (velocity) k.velocity.copy(velocity);
@@ -1955,19 +1964,10 @@ class Game {
   _netPlaceNearSuspect() {
     const s = this.netSuspect;
     if (!s) return;
-    // Air support does not get put down on a side street. It arrives the way
-    // it does in single player -- up, and a little way off -- which is also
-    // the only sensible reading of "near" for something that does not use
-    // the roads.
-    if (this.player.isAircraft) {
-      const a = this.rng() * Math.PI * 2;
-      this.player.teleport({
-        x: s.position.x + Math.cos(a) * 260,
-        y: 150,
-        z: s.position.z + Math.sin(a) * 260,
-      }, Math.atan2(-Math.cos(a), -Math.sin(a)));
-      return;
-    }
+    // Air support starts on its pad, on the ground, and lifts off -- not
+    // dropped in at altitude a quarter of a mile from the chase. Starting a
+    // sortie is part of flying one, and the pad is where the fuel is.
+    if (this.player.isAircraft) { this._landOnPad(); return; }
     let best = null;
     for (let i = 0; i < 60; i++) {
       const node = this.graph.randomNode(this.rng, 'street');

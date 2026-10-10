@@ -44,8 +44,6 @@ const KEYMAP = {
  * a wrist and high enough that a touchpad is not hopeless.
  */
 const CYCLIC_PX = 260;
-/** How fast the cyclic returns to centre when the mouse stops moving. */
-const CYCLIC_RETURN = 1.9;
 
 export class Input {
   constructor() {
@@ -84,7 +82,11 @@ export class Input {
     this._onMove = (e) => {
       if (!this.pointerHeld) return;
       this.cyclicX = clamp(this.cyclicX + (e.movementX || 0) / CYCLIC_PX, -1, 1);
-      this.cyclicY = clamp(this.cyclicY + (e.movementY || 0) / CYCLIC_PX, -1, 1);
+      // Push the mouse away to put the nose down and go. movementY is
+      // positive when the mouse comes toward you, which is pulling back on
+      // the stick, so it is negated -- without that, pulling back flew you
+      // forwards and the whole thing felt inside out.
+      this.cyclicY = clamp(this.cyclicY - (e.movementY || 0) / CYCLIC_PX, -1, 1);
       this._movedAt = performance.now();
     };
     this._onLockChange = () => {
@@ -215,20 +217,19 @@ export class Input {
    * arrow keys do the cyclic too, for a touchpad or for anyone who does not
    * want the pointer captured.
    *
-   * The mouse cyclic self-centres when the mouse stops moving. A real cyclic
-   * is a stick that stays where it is put and a mouse is not, so holding a
-   * lean would mean holding the mouse still at an offset the pilot cannot see;
-   * centring it means a lean is something you keep asking for, which is both
-   * flyable and roughly what flying one is actually like.
+   * The mouse is a *position*, not a nudge: move it twice as far and the
+   * aircraft leans twice as much, and it stays there until it is moved back.
+   * That is how the Battlefield games do it and it is what makes the thing
+   * flyable -- a lean held is speed gained and height lost, so forward flight
+   * is a thing the pilot keeps trimming rather than a key they hold down.
+   *
+   * It self-centred at first, which sounds helpful and is not: it meant the
+   * amount of lean depended on how fast the mouse was moved rather than how
+   * far, so there was no way to ask for a particular attitude and hold it.
    */
   sampleAir(dt) {
     const keyPitch = (this.down('noseDown') ? 1 : 0) + (this.down('noseUp') ? -1 : 0);
     const keyRoll = (this.down('bankRight') ? 1 : 0) + (this.down('bankLeft') ? -1 : 0);
-
-    if (this.pointerHeld && performance.now() - (this._movedAt || 0) > 40) {
-      this.cyclicX = moveTowards(this.cyclicX, 0, CYCLIC_RETURN * dt);
-      this.cyclicY = moveTowards(this.cyclicY, 0, CYCLIC_RETURN * dt);
-    }
 
     const out = {
       collective: (this.down('climb') ? 1 : 0) + (this.down('sink') ? -1 : 0),

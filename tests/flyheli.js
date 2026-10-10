@@ -106,13 +106,19 @@ window.__runFlyHeli = async function () {
         + `spread ${((hi - lo) * 100 / hi).toFixed(1)}%`);
     }
 
-    // ---- the ground is solid ----
+    // ---- the ground is solid, and arriving at it matters ----
     {
-      const h = new FlyingHelicopter(window.__game, {});
-      h.teleport({ x: 0, y: 40, z: 0 }, 0);
-      fly(h, 14, { collective: -1 });
-      say(`dropped onto the ground: y ${h.position.y.toFixed(2)}   `
-        + `on skids ${h.onGround}   damage ${h.damage.toFixed(2)}`);
+      const soft = new FlyingHelicopter(window.__game, {});
+      soft.teleport({ x: 0, y: 12, z: 0 }, 0);
+      fly(soft, 12, { collective: -0.12 });        // a gentle descent
+      say(`set down gently: y ${soft.position.y.toFixed(2)}   on skids ${soft.onGround}   `
+        + `damage ${soft.damage.toFixed(2)} ${soft.disabled ? '-- WRECKED, too harsh' : ''}`);
+
+      const hard = new FlyingHelicopter(window.__game, {});
+      hard.teleport({ x: 0, y: 160, z: 0 }, 0);
+      fly(hard, 16, { collective: -1 });           // dropped like a brick
+      say(`  dropped from 160 m: y ${hard.position.y.toFixed(2)}   `
+        + `damage ${hard.damage.toFixed(2)}   ${hard.disabled ? 'wrecked' : 'WALKED AWAY -- too soft'}`);
     }
 
     // ---- fuel ----
@@ -204,9 +210,12 @@ window.__runFlyHeli = async function () {
       addStaticBox(g.world, X, Y, Z, 40, 40, 2, GROUP.BUILDING);
       g.world.step();                            // or the query pipeline cannot see it
 
+      // Eased up to rather than flown at, so this measures stopping and
+      // getting away again. Arriving fast is a crash, and that is the test
+      // below.
       const h = new FlyingHelicopter(g, {});
-      h.teleport({ x: X, y: Y, z: Z - 110 }, 0);
-      fly(h, 16, { collective: 0.42, pitch: 1 });
+      h.teleport({ x: X, y: Y, z: Z - 30 }, 0);
+      fly(h, 20, { collective: 0.0, pitch: 0.08 });
       const gap = Z - 2 - h.position.z;          // to the near face
       const through = h.position.z > Z;
 
@@ -217,10 +226,49 @@ window.__runFlyHeli = async function () {
       fly(h, 7, { collective: 0.4, pitch: -1 });
       const away = atWall.z - h.position.z;
 
-      say(`a wall 110 m ahead: ${through ? 'FLEW THROUGH IT' : `stopped ${gap.toFixed(1)} m short`}`
+      say(`eased up to a wall: ${through ? 'WENT THROUGH IT' : `stopped ${gap.toFixed(1)} m short`}`
         + `   damage ${h.damage.toFixed(2)}`);
       say(`  and off it again: climbed ${Math.round(climbed)} m, backed off ${Math.round(away)} m `
         + `(${climbed > 8 || away > 8 ? 'got away' : 'TRAPPED'})`);
+    }
+
+    // ---- crashing into it, rather than parking against it ----
+    //
+    // "Hitting buildings isn't very realistic -- you can just hit one." You
+    // could: a wall took the speed away and that was the whole event. Now a
+    // rotor into a building at speed ends the sortie, and the aircraft comes
+    // back on the pad a few seconds later rather than being gone for good.
+    {
+      const g = window.__game;
+      const { addStaticBox, GROUP } = await import('../src/physics/world.js');
+      const X = -760, Z = -760, Y = 60;
+      addStaticBox(g.world, X, Y, Z, 40, 40, 2, GROUP.BUILDING);
+      g.world.step();
+
+      // Fast into it: wrecked.
+      const fast = new FlyingHelicopter(g, {});
+      fast.teleport({ x: X, y: Y, z: Z - 150 }, 0);
+      fly(fast, 20, { collective: 0.42, pitch: 1 });
+      say(`flown into a wall at speed: ${fast.disabled ? 'wrecked' : 'NOT WRECKED'}   `
+        + `damage ${fast.damage.toFixed(2)}`);
+
+      // Nudged into it: a scrape, still flying.
+      const slow = new FlyingHelicopter(g, {});
+      slow.teleport({ x: X, y: Y, z: Z - 12 }, 0);
+      fly(slow, 6, { collective: 0.0, pitch: 0.06 });
+      say(`  and nudged into one: ${slow.disabled ? 'WRECKED -- too harsh' : 'still flying'}   `
+        + `damage ${slow.damage.toFixed(2)}`);
+
+      // A wreck comes back, on the pad.
+      const pad = g.garage && g.garage.helipad;
+      if (pad) {
+        fast.position.set(pad.x, pad.y + 1.05, pad.z);
+        fast.linvel.set(0, 0, 0);
+        fly(fast, 14, {});
+        const home = Math.hypot(fast.position.x - pad.x, fast.position.z - pad.z);
+        say(`  a wreck left on the ground: ${fast.disabled ? 'STILL DOWN' : 'flying again'}   `
+          + `${home < 2 ? 'on the pad' : `${Math.round(home)} m from the pad`}`);
+      }
     }
 
     window.__res = rows.join(String.fromCharCode(10));

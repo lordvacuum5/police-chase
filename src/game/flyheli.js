@@ -105,6 +105,14 @@ const SKID = 1.05;
  * which is the thing that was wrong, and it lets you fly down a street.
  */
 const HULL_R = 2.2;
+/**
+ * Into something this fast and the rotor is gone. 14 m/s is about 50 km/h --
+ * survivable in a car, and not something a helicopter walks away from.
+ */
+const CRASH_SPEED = 14;
+/** Seconds on the ground before a wrecked aircraft is back on the pad. */
+const RECOVER_TIME = 10;
+
 /** How far short of a surface to stop, so the next sweep is not already touching. */
 const CONTACT_GAP = 0.15;
 const AXES = ['x', 'y', 'z'];
@@ -263,7 +271,9 @@ export class FlyingHelicopter {
 
     // ---- pedals ----
     this.yawRate = damp(this.yawRate, clamp(c.yaw || 0, -1, 1) * YAW_RATE, YAW_EASE, dt);
-    this.yaw -= this.yawRate * dt;
+    // A swings the nose left. The model's nose is +Z and its left is +X, so
+    // left is a rising yaw -- it was falling, and the pedals were handed.
+    this.yaw += this.yawRate * dt;
 
     this._applyAttitude();
 
@@ -296,8 +306,7 @@ export class FlyingHelicopter {
       // Arriving hard is a heavy landing. The aircraft is not destructible --
       // being wrecked in the air is not a fun thing to happen to somebody --
       // but it bounces and it is noted.
-      const hit = -this.linvel.y;
-      if (hit > 6) this.damage = clamp01(this.damage + (hit - 6) / 40);
+      this._struck(-this.linvel.y);
       this.linvel.y = Math.max(0, this.linvel.y);
       this.linvel.x *= 0.82;
       this.linvel.z *= 0.82;
@@ -321,6 +330,7 @@ export class FlyingHelicopter {
       this.fuel = Math.max(0, this.fuel - dt * (0.55 + this.collective * 0.9));
     }
     this._refuel(dt);
+    this._recover(dt);
 
     // ---- published state ----
     this.speed = this.linvel.length();
@@ -329,7 +339,7 @@ export class FlyingHelicopter {
     this.up.copy(_up);
     this.left.set(1, 0, 0).applyQuaternion(this.quaternion);
     this.forwardSpeed = this.linvel.dot(_fwd);
-    this.angvel.set(0, -this.yawRate, 0);
+    this.angvel.set(0, this.yawRate, 0);
     this.rotor += dt * 34 * this.spin;
 
     this.markCooldown = Math.max(0, this.markCooldown - dt);
@@ -462,13 +472,61 @@ export class FlyingHelicopter {
 
       this.position[axis] += sign * room;
       this._blocked[axis] = sign;
-      const into = Math.abs(this.linvel[axis]);
-      if (into > 8) {
-        this.damage = clamp01(this.damage + (into - 8) / 90);
-        this.hitAt = performance.now();
-      }
+      this._struck(Math.abs(this.linvel[axis]));
       this.linvel[axis] = 0;
     }
+  }
+
+  /**
+   * Hitting something, and what it costs.
+   *
+   * Brushing a wall at walking pace is a scrape and nothing more. Flying into
+   * one is not: a helicopter that puts its rotor into a building stops being
+   * an aircraft, and "you just hit a building and nothing happens" was fair.
+   * Past CRASH_SPEED the rotor is gone -- no thrust, no control, and the
+   * ground arrives on its own.
+   *
+   * Which is survivable in the sense that matters: the pilot is out of the
+   * chase, not out of the game. It picks itself up on the pad.
+   */
+  _struck(into) {
+    if (into < 5) return;
+    this.hitAt = performance.now();
+    this.damage = clamp01(this.damage + (into - 5) / 55);
+    if (into >= CRASH_SPEED || this.damage >= 1) this.wreck();
+  }
+
+  /**
+   * Rotor off, controls dead, and down. Everything else keeps working -- the
+   * aircraft still falls, still collides, still hits the ground -- because a
+   * wreck that freezes in mid-air is worse than no wreck at all.
+   */
+  wreck() {
+    if (this.disabled) return;
+    this.disabled = true;
+    this.damage = 1;
+    this.wreckedAt = performance.now();
+    // A dead rotor still turns, slowing, on the way down.
+    this.spin = Math.max(this.spin, 0.9);
+    if (this.game.hud) this.game.hud.toast('AIRCRAFT DOWN');
+  }
+
+  /**
+   * Back on the pad, flyable again, after a wait. Being wrecked should cost
+   * the sortie and not the evening.
+   */
+  _recover(dt) {
+    if (!this.disabled) return;
+    if (!this.onGround) return;
+    this.downFor = (this.downFor || 0) + dt;
+    if (this.downFor < RECOVER_TIME) return;
+    this.downFor = 0;
+    this.disabled = false;
+    this.damage = 0;
+    this.linvel.set(0, 0, 0);
+    const pad = this.game.garage && this.game.garage.helipad;
+    if (pad) this.teleport({ x: pad.x, y: pad.y + SKID, z: pad.z }, this.yaw);
+    if (this.game.hud) this.game.hud.toast('AIR SUPPORT BACK UP');
   }
 
   /**
