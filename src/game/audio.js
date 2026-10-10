@@ -269,6 +269,26 @@ const PITCH_EXP = 0.62;
 const LOOP_FROM = 2.0, LOOP_TO = 15.0, LOOP_FADE = 0.2;
 
 /**
+ * The rotor, for a player flying the helicopter.
+ *
+ * A recording, for the same reason the engine is: the beat of a rotor is a
+ * blade slapping the air a few times a second over a turbine whine, and
+ * oscillators make a convincing drone but never that. Public domain, from
+ * Wikimedia Commons, and 11.75 s in is the flattest two seconds in it --
+ * measured rather than guessed, by walking the whole file looking for the
+ * window whose level varies least.
+ *
+ * `ROTOR_AT` is the rotor fraction the recording represents: it was taken of
+ * a helicopter in the cruise, so it is the sound at full song, and anything
+ * below that is pitched and quietened down from it.
+ */
+const ROTOR_SAMPLE = 'resources/sounds/commons-helicopter-over-a-lake.ogg';
+const ROTOR_FROM = 11.75, ROTOR_TO = 13.75, ROTOR_FADE = 0.18;
+const ROTOR_AT = 1.0;
+/** How far the rotor note is allowed to be pitched by the rotor's own speed. */
+const ROTOR_PITCH = 0.55;
+
+/**
  * Fold a region of a recording into a seamless mono loop by crossfading the
  * material just past the loop end back over its beginning. Looping a raw
  * region clicks at the seam every pass, which at idle is several times a second.
@@ -599,6 +619,69 @@ export class GameAudio {
 
     this.ready = true;
     this._loadEngineSample();
+    this._loadRotorSample();
+  }
+
+  /**
+   * The rotor loop, on its own gain so it can be faded in only for a player
+   * who is actually flying. Fire-and-forget like the engine: a missing file
+   * leaves a silent aircraft rather than a broken game.
+   */
+  async _loadRotorSample() {
+    const ctx = this.ctx;
+    try {
+      this.rotorGain = ctx.createGain();
+      this.rotorGain.gain.value = 0;
+      this.rotorGain.connect(this.master || ctx.destination);
+
+      const res = await fetch(ROTOR_SAMPLE);
+      if (!res.ok) throw new Error('http ' + res.status);
+      const raw = await ctx.decodeAudioData(await res.arrayBuffer());
+      const loop = makeSeamlessLoop(ctx, raw, ROTOR_FROM, ROTOR_TO, ROTOR_FADE);
+      if (!loop) throw new Error('loop region too short');
+
+      const src = ctx.createBufferSource();
+      src.buffer = loop;
+      src.loop = true;
+      src.connect(this.rotorGain);
+      src.start();
+      this.rotorSource = src;
+      this.rotorReady = true;
+    } catch (e) {
+      this.rotorReady = false;
+    }
+  }
+
+  /**
+   * An aircraft makes a rotor noise, not an engine one.
+   *
+   * The whole car note is silenced for it -- a helicopter with a V8 idling
+   * inside it is worse than silence -- and the recording is pitched and
+   * swelled by how hard the rotor is actually turning, so a start winds up
+   * and a shutdown winds down.
+   */
+  _updateRotor(player, dt) {
+    if (!this.rotorGain) return false;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    if (!player.isAircraft) {
+      this.rotorGain.gain.setTargetAtTime(0, t, 0.2);
+      return false;
+    }
+    const spin = clamp01(player.spin === undefined ? 1 : player.spin);
+    if (this.rotorSource) {
+      const rate = 1 + (spin - ROTOR_AT) * ROTOR_PITCH;
+      this.rotorSource.playbackRate.setTargetAtTime(clamp(rate, 0.35, 1.3), t, 0.12);
+    }
+    // Louder under power and when close to the ground, where the beat comes
+    // back off the rooftops.
+    const work = 0.55 + 0.45 * clamp01(player.collective === undefined ? 1 : player.collective);
+    this.rotorGain.gain.setTargetAtTime(spin * spin * work * 1.8, t, 0.12);
+
+    // And nothing from the car note.
+    this.sampleGain.gain.setTargetAtTime(0, t, 0.15);
+    this.synthGain.gain.setTargetAtTime(0, t, 0.15);
+    return true;
   }
 
   /**
@@ -1275,6 +1358,12 @@ export class GameAudio {
     this._pumpRadio();
     if (this.rainLevel > 0 && !this.rainGain) this._startRain();
     this._pumpNetNoise(dt);
+
+    // ---- rotor, for anyone flying ----------------------------------------
+    // Everything below this is a car: an engine note, a gearbox, tyre scrub
+    // and wind over a windscreen. None of it belongs to a helicopter, and the
+    // radio above it is already done, so an aircraft stops here.
+    if (this._updateRotor(player, dt)) return;
 
     // ---- engine ----------------------------------------------------------
     const rpm = player.rpm;

@@ -283,12 +283,44 @@ export class FlyingHelicopter {
     // thing it is looking at does not fall over. Nothing uses it to decide
     // anything -- the aircraft has no collider and is not in `vehicles` --
     // but plenty of code reads spec.dims without asking what it is holding.
-    this.spec = { dims: { l: 12.4, w: 2.5, h: 3.5 }, mass: 2800, dragArea: 2.0 };
+    this.spec = {
+      dims: { l: 12.4, w: 2.5, h: 3.5 },
+      mass: 2800,
+      dragArea: 2.0,
+      // The sound comes out of the car engine note, which needs a redline and
+      // a firing order to work from. A four-bladed rotor at 400 rpm beats at
+      // about 27 Hz, which is the thump you hear a helicopter by -- so the
+      // same code that makes a V8 makes a rotor if it is handed rotor
+      // numbers. Without these it did not make a quiet aircraft, it threw
+      // every frame: "when I first load in, it says this error."
+      engine: { redline: 460, order: 4 },
+    };
+    /** What the audio and anything else expecting a driven car reads. */
+    this.controls = { throttle: 0, brake: 0, steer: 0, handbrake: 0, clutchKick: false };
+    this.grounded = true;
+    this.maxSlip = 0;
+    this.shiftTimer = 0;
+    // The rest of what the game reads off whatever it is holding as "the
+    // player". Checked against the real list rather than guessed at: a
+    // missing one of these is not a quiet degradation, it is an exception
+    // inside the frame loop, every frame.
+    this.gear = 1;
+    this.damageScale = 1;
+    this.flippedFor = 0;
+    this.lampPhase = 0;
+    this.lastImpact = 0;
+    this.lastImpactAt = 0;
 
     this._applyAttitude();
   }
 
   get kmh() { return this.speed * 3.6; }
+  /**
+   * Rotor speed, in the units an engine note wants. It idles rather than
+   * stopping dead so a shut-down aircraft winds down instead of cutting out,
+   * and it is what the thump is pitched from.
+   */
+  get rpm() { return 90 + this.spin * 330; }
   /**
    * The dial's inner ring, which on a car is the rev counter. A rotor turns
    * at one speed whatever else is happening, so what is worth showing there
@@ -495,6 +527,9 @@ export class FlyingHelicopter {
     this.discPitch = damp(this.discPitch, (this._askPitch - this.pitch) * DISC_LEAD, 6, dt);
     this.discRoll = damp(this.discRoll, (this._askRoll - this.roll) * DISC_LEAD, 6, dt);
     this.rotor += dt * 34 * this.spin;
+    // Published for the audio, which reads a car's controls and wheels.
+    this.controls.throttle = this.collective;
+    this.grounded = this.onGround;
 
   }
 
@@ -762,6 +797,9 @@ export class FlyingHelicopter {
   _struck(into) {
     if (into < 5) return;
     this.hitAt = performance.now();
+    // The camera shake and the impact sound read these, the same as a car's.
+    this.lastImpact = into;
+    this.lastImpactAt = performance.now();
     this.damage = clamp01(this.damage + (into - 5) / 55);
     if (into >= CRASH_SPEED || this.damage >= 1) this.wreck();
   }

@@ -4404,8 +4404,29 @@ roadblocks from three; the van is one car in seven at five stars, never two.
 
 ## Sound
 
-Everything is synthesised with WebAudio except the engine, which is a recorded
-loop with a synthesised layer underneath it.
+Everything is synthesised with WebAudio except two things, which are recorded
+loops: the engine, with a synthesised layer underneath it, and the helicopter
+rotor.
+
+### The rotor
+
+A helicopter is the one thing oscillators could not fake. The drone is easy
+and the *beat* is not — a blade slapping the air a few times a second over a
+turbine whine — and without it the aircraft sounded like a fridge.
+
+`resources/sounds/commons-helicopter-over-a-lake.ogg` is 28 s of a helicopter
+passing overhead, **public domain**, from Wikimedia Commons. The loop point
+was measured rather than chosen: walking the whole file in quarter-second
+windows looking for the two seconds whose level varies least puts it at
+11.75 s, and the seam there closes to within 0.008 of full scale, so it does
+not click. Two other candidates were downloaded and one was dropped for being
+too distant to use — a peak level a third of this one's, which is a recording
+of a quiet afternoon with a helicopter somewhere in it.
+
+Pitch and volume follow the rotor rather than the throttle, so a start winds
+up and a shutdown winds down, and the whole car note — engine, gearbox, tyres,
+wind — is silenced for a player who is flying. A helicopter with a V8 idling
+inside it is worse than silence.
 
 ### The engine
 
