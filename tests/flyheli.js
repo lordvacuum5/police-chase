@@ -170,9 +170,9 @@ window.__runFlyHeli = async function () {
       h.yaw = 0; h.pitch = 0; h.roll = 0; h._applyAttitude();
       const at = (x, y, z) => ({ position: new (window.__modules.THREE.Vector3)(x, y, z) });
       const tests = [
-        ['150 m ahead and below', at(0, 2, 150)],
-        ['600 m ahead', at(0, 2, 600)],
-        ['150 m behind', at(0, 2, -150)],
+        ['100 m ahead and below', at(0, 40, 100)],
+        ['250 m ahead', at(0, 40, 250)],
+        ['100 m behind', at(0, 40, -100)],
         ['150 m off to one side', at(150, 2, 0)],
         ['directly below', at(0, 2, 0)],
         ['60 m below, 40 m to the side', at(40, 60, 0)],

@@ -115,13 +115,13 @@ const CEILING = 420;
 /**
  * Minutes in the air, and how long refuelling takes on the pad.
  *
- * Ninety seconds is short on purpose -- "have it that you refuel every minute
- * and thirty seconds". It turns the pad from scenery into the thing the whole
- * sortie is planned around: get up, find the car, hold it, and know when to
- * leave. A six-minute tank meant the fuel gauge never once mattered.
+ * Four and a half minutes. Ninety seconds was tried first and was simply not
+ * long enough to fly anywhere and do anything -- the pad has to be the thing
+ * the sortie is planned around, not the thing it consists of. A six-minute
+ * tank was the other way: the gauge never once mattered.
  */
-export const ENDURANCE = 90;
-export const REFUEL_TIME = 6;
+export const ENDURANCE = 270;
+export const REFUEL_TIME = 10;
 
 /**
  * How far the aircraft's origin sits above the ground when it is parked.
@@ -196,12 +196,16 @@ const AXES = ['x', 'y', 'z'];
  * constantly."
  *
  * So it is a radius, and it is the aircraft's job to be inside it. Within
- * 450 m, in front, and with the roof not in the way, the force knows exactly
- * where the car is for as long as the pilot can hold it there -- which is
- * what air support is actually for, and is still a thing you have to fly to
- * earn.
+ * 180 m, in front, and with the roof not in the way, the force knows exactly
+ * where the car is for as long as the pilot can hold it there.
+ *
+ * 180 and not 450: at 450 the aircraft could sit a quarter of a mile off and
+ * still have the car, which is not spotting, it is surveillance -- "the
+ * helicopter was able to spot the escapee from a long way away". At 180 the
+ * pilot has to be more or less over the chase and stay there, which is both
+ * the job and the thing that makes it possible to shake one off.
  */
-export const MARK_RANGE = 450;
+export const MARK_RANGE = 180;
 const MARK_CONE = 0.95;          // radians off the nose, a generous windscreen
 /** How often the fix is sent to the machine that owns the chase. */
 const REPORT_EVERY = 0.25;
@@ -218,6 +222,13 @@ export class FlyingHelicopter {
     this.isPolice = true;
     this.isAircraft = true;
     this.specKey = 'helicopter';
+    /**
+     * What the radio calls it. Air support is India 99 everywhere in British
+     * policing and already is in this game's own chatter, and the commentary
+     * reads a callsign off whichever unit witnessed something -- so without
+     * one, a chase the aircraft started would be announced by "undefined".
+     */
+    this.callsign = 'India 99';
 
     this.position = new THREE.Vector3(0, 60, 0);
     this.linvel = new THREE.Vector3();

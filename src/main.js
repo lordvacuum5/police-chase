@@ -573,15 +573,17 @@ class Game {
    * machine and by a mark arriving over the wire.
    */
   applyMark(position, velocity) {
-    // A pilot who finds the car can start the chase as well as feed it.
+    // Seeing somebody is not a reason to chase them.
     //
-    // Without this the role could only ever contribute to a pursuit that was
-    // already running, and air support that spots a car nobody is chasing has
-    // nothing to say -- which is also why the pilot's own screen could sit on
-    // NO ACTIVE PURSUIT however many times they called it in. Only the
-    // escapee's machine ever gets here, so this is the one place that owns
-    // the heat; a guest's mark arrives as an event and is applied here.
-    if (this.heat.value <= 0) this.heat.bump(1, 'reported by air support');
+    // This used to start a pursuit outright if none was running, which made
+    // air support the one unit in the game that could put a car on the wanted
+    // list for driving along a road lawfully: "the trigger of initial pursuit
+    // with the helicopter doesn't require the escapee to have broken any
+    // laws." Everything else in here needs an offence *and* a witness --
+    // speeding down an empty lane is free -- and the aircraft is now held to
+    // the same rule. It is a witness like any other (see _checkRedLight), so
+    // it can start a chase over something that actually happened, and it
+    // feeds a chase that is already running. It cannot open one by looking.
     const k = this.dispatcher.knowledge;
     k.position.copy(position);
     if (velocity) k.velocity.copy(velocity);
@@ -2373,6 +2375,11 @@ class Game {
       if (!hasLineOfSight(this.world, _v, _v2, 1.5)) continue;
       witness = u; best = d;
     }
+    // A helicopter overhead is a witness too, and the best-placed one there
+    // is -- it is the only unit that can watch a junction without sitting at
+    // it. This is how air support is allowed to start a chase: by seeing
+    // something happen, the same as everybody else.
+    if (!witness && this.airSees) witness = this.aircraft;
 
     if (this.heat.value <= 0) {
       if (!witness) return;
