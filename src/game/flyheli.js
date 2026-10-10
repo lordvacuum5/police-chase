@@ -849,6 +849,8 @@ export class FlyingHelicopter {
   wreck() {
     if (this.disabled) return;
     this.disabled = true;
+    this.wreckFor = 0;
+    this.downFor = 0;
     this.damage = 1;
     this.wreckedAt = performance.now();
     // A dead rotor still turns, slowing, on the way down.
@@ -862,12 +864,32 @@ export class FlyingHelicopter {
    */
   _recover(dt) {
     if (!this.disabled) return;
-    if (!this.onGround) return;
-    this.downFor = (this.downFor || 0) + dt;
-    if (this.downFor < RECOVER_TIME) return;
+    this.wreckFor = (this.wreckFor || 0) + dt;
+
+    // Come to rest, rather than specifically be on the ground.
+    //
+    // This waited on `onGround`, which is only true over the terrain or the
+    // pad -- so a wreck that came down on a rooftop was held up by the hull
+    // collision instead, never satisfied it, and sat there for the rest of
+    // the game. Which is exactly the shape of "sometimes it doesn't respawn":
+    // it depended on what you crashed into and where the pieces landed.
+    const settled = this.onGround || this.speed < 1.5;
+    if (settled) this.downFor = (this.downFor || 0) + dt;
+    else this.downFor = 0;
+
+    // And a backstop, because "settled" is still a judgement about the world
+    // and this must not be able to hang. Wrecked for long enough is enough.
+    if (this.downFor < RECOVER_TIME && this.wreckFor < RECOVER_TIME * 3) return;
+
     this.downFor = 0;
+    this.wreckFor = 0;
     this.disabled = false;
     this.damage = 0;
+    // A full tank: it is a fresh aircraft off the pad, not the one that was
+    // just written off.
+    this.fuel = ENDURANCE;
+    this.engineOff = true;
+    this.starting = 0;
     this.linvel.set(0, 0, 0);
     const pad = this.game.garage && this.game.garage.helipad;
     if (pad) this.teleport({ x: pad.x, y: pad.y + SKID, z: pad.z }, this.yaw);

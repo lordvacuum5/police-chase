@@ -367,6 +367,36 @@ window.__runFlyHeli = async function () {
         + `8 m ${clear.disabled ? 'ROTOR GONE -- too wide' : 'clear'}`);
     }
 
+    // ---- a wreck comes back from wherever it ended up ----
+    //
+    // Recovery waited on `onGround`, which is only true over the terrain or
+    // the pad -- so a wreck that came down on a rooftop was held up by the
+    // hull collision instead, never satisfied it, and sat there for the rest
+    // of the game. That is the shape of "sometimes it doesn't respawn": it
+    // depended on what you hit and where the pieces landed.
+    {
+      const g = window.__game;
+      const { addStaticBox, GROUP } = await import('../src/physics/world.js');
+      const X = -800, Z = -800, TOP = 70;
+      addStaticBox(g.world, X, TOP - 20, Z, 30, 20, 30, GROUP.BUILDING);
+      g.world.step();
+      const pad = g.garage && g.garage.helipad;
+
+      const h = running(new FlyingHelicopter(g, {}));
+      h.teleport({ x: X, y: TOP + 12, z: Z }, 0);
+      h.fuel = 20;
+      h.wreck();
+      fly(h, 8, {});
+      const onRoof = { y: h.position.y, onGround: h.onGround, down: h.disabled };
+      fly(h, 20, {});
+      const home = pad ? Math.hypot(h.position.x - pad.x, h.position.z - pad.z) : 999;
+      say(`wrecked onto a roof: came to rest at ${onRoof.y.toFixed(0)} m `
+        + `with onGround ${onRoof.onGround}`);
+      say(`  and then: ${h.disabled ? 'STILL DOWN' : 'back up'}   `
+        + `${home < 2 ? 'on the pad' : `${Math.round(home)} m from the pad`}   `
+        + `fuel ${Math.round(h.fuel)} of ${ENDURANCE}`);
+    }
+
     disposeAll();
     window.__res = rows.join(String.fromCharCode(10));
     window.__flyDone = true;
