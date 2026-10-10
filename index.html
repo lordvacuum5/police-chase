@@ -59,6 +59,11 @@
   #status.searching { color: var(--warn); }
   #status.clear { color: var(--cool); }
 
+  /* Air support's version of the road plate: whether the car is in sight.
+     Green is "press it", amber is "just did". */
+  #roadsign.spot-on { color: #35d0a5; border-color: rgba(53,208,165,0.55); }
+  #roadsign.spot-wait { color: #ffb020; border-color: rgba(255,176,32,0.45); }
+
   /* ---- minimap, top right ---- */
   /* Tap it and it doubles; tap anywhere else and it goes back. Scaled rather
      than resized: the canvas is 380 backing pixels square, so the big one is

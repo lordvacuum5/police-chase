@@ -35,16 +35,16 @@ window.__runFlyHeli = async function () {
     const rows = [];
     const say = (s) => rows.push(s);
 
-    // ---- hands off, it holds height ----
-    // The collective centres on a hover, so a pilot who lets go to look at
-    // something does not quietly descend into a roof.
+    // ---- hands off, it comes down ----
+    // The collective idles below a hover, so letting go is a descent rather
+    // than a free hover -- but a flyable one, not a plummet.
     {
       const h = make();
       const y0 = h.position.y;
       fly(h, 10);
-      say(`hands off 10 s: height ${(h.position.y - y0 >= 0 ? '+' : '')}`
-        + `${(h.position.y - y0).toFixed(2)} m   drift `
-        + `${Math.hypot(h.position.x, h.position.z).toFixed(2)} m`);
+      const rate = (y0 - h.position.y) / 10;
+      say(`hands off 10 s: sank ${(y0 - h.position.y).toFixed(1)} m `
+        + `(${rate.toFixed(1)} m/s)   drift ${Math.hypot(h.position.x, h.position.z).toFixed(2)} m`);
     }
 
     // ---- climb and descend ----
@@ -110,7 +110,8 @@ window.__runFlyHeli = async function () {
     {
       const soft = new FlyingHelicopter(window.__game, {});
       soft.teleport({ x: 0, y: 12, z: 0 }, 0);
-      fly(soft, 12, { collective: -0.12 });        // a gentle descent
+      // A hover needs about 0.22 on the lever; a shade under it walks down.
+      fly(soft, 16, { collective: 0.16 });
       say(`set down gently: y ${soft.position.y.toFixed(2)}   on skids ${soft.onGround}   `
         + `damage ${soft.damage.toFixed(2)} ${soft.disabled ? '-- WRECKED, too harsh' : ''}`);
 
@@ -126,7 +127,7 @@ window.__runFlyHeli = async function () {
       const h = make();
       fly(h, 60);
       const burnt = ENDURANCE - h.fuel;
-      say(`hover 60 s: burnt ${burnt.toFixed(0)} s of ${ENDURANCE} `
+      say(`idling 60 s: burnt ${burnt.toFixed(0)} s of ${ENDURANCE} `
         + `(${(ENDURANCE / 60).toFixed(0)} min tank, ${(ENDURANCE / burnt).toFixed(1)} min real)`);
     }
 
@@ -215,7 +216,9 @@ window.__runFlyHeli = async function () {
       // below.
       const h = new FlyingHelicopter(g, {});
       h.teleport({ x: X, y: Y, z: Z - 30 }, 0);
-      fly(h, 20, { collective: 0.0, pitch: 0.08 });
+      // Enough collective to hold height while it eases forward: at idle it
+      // sinks, and below the slab is not the same as through it.
+      fly(h, 24, { collective: 0.26, pitch: 0.06 });
       const gap = Z - 2 - h.position.z;          // to the near face
       const through = h.position.z > Z;
 
@@ -248,14 +251,14 @@ window.__runFlyHeli = async function () {
       // Fast into it: wrecked.
       const fast = new FlyingHelicopter(g, {});
       fast.teleport({ x: X, y: Y, z: Z - 150 }, 0);
-      fly(fast, 20, { collective: 0.42, pitch: 1 });
+      fly(fast, 20, { collective: 0.55, pitch: 0.7 });
       say(`flown into a wall at speed: ${fast.disabled ? 'wrecked' : 'NOT WRECKED'}   `
         + `damage ${fast.damage.toFixed(2)}`);
 
       // Nudged into it: a scrape, still flying.
       const slow = new FlyingHelicopter(g, {});
       slow.teleport({ x: X, y: Y, z: Z - 12 }, 0);
-      fly(slow, 6, { collective: 0.0, pitch: 0.06 });
+      fly(slow, 6, { collective: 0.26, pitch: 0.04 });
       say(`  and nudged into one: ${slow.disabled ? 'WRECKED -- too harsh' : 'still flying'}   `
         + `damage ${slow.damage.toFixed(2)}`);
 

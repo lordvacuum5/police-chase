@@ -23,7 +23,7 @@ import { Heat } from './game/heat.js';
 import { RoadblockManager } from './game/roadblock.js';
 import { Helicopter, buildHelicopterMesh } from './game/helicopter.js';
 import { loadHelicopterModel, buildImportedHelicopter } from './game/helimodel.js';
-import { FlyingHelicopter } from './game/flyheli.js';
+import { FlyingHelicopter, MARK_RANGE as AIR_MARK_RANGE } from './game/flyheli.js';
 
 /**
  * `?air=1`: fly the helicopter on your own, with no chase and nobody to report
@@ -496,6 +496,43 @@ class Game {
       heli.view = buildImportedHelicopter(m) || buildHelicopterMesh();
       this.scene.add(heli.view);
     });
+  }
+
+  /**
+   * What the pilot can see, worked out every frame for the HUD.
+   *
+   * The role is "look out of the window and say what you see", and until now
+   * nothing on screen said whether looking out of the window had worked --
+   * you pressed the key and got NOTHING TO REPORT, with no way to tell
+   * whether you were too far, pointed wrong, behind a building, or whether
+   * there was simply nobody to find. "The spotting thing doesn't really
+   * work" is what that feels like from the cockpit.
+   */
+  _airSpotting() {
+    const air = this.aircraft;
+    if (!air) { this.spotting = null; return; }
+    const target = this.netSuspect || this._soloQuarry();
+    if (!target) { this.spotting = { state: 'none', text: 'NO TARGET' }; return; }
+
+    const dx = target.position.x - air.position.x;
+    const dz = target.position.z - air.position.z;
+    const range = Math.round(Math.hypot(dx, dz, air.position.y - target.position.y));
+    if (air.markCooldown > 0.05) {
+      this.spotting = { state: 'wait', text: `CALLED IN — ${air.markCooldown.toFixed(0)}s`, range };
+      return;
+    }
+    if (air.canIdentify(target)) {
+      this.spotting = { state: 'ready', text: `EYES ON — ${range} m`, range };
+      return;
+    }
+    // Why not. The pilot can act on each of these and they are the three
+    // things the rule actually checks.
+    const tooFar = range > AIR_MARK_RANGE;
+    this.spotting = {
+      state: 'no',
+      range,
+      text: tooFar ? `TOO FAR — ${range} m` : `NO VISUAL — ${range} m`,
+    };
   }
 
   /**
@@ -2273,6 +2310,7 @@ class Game {
       }
     }
 
+    this._airSpotting();
     if (this.audio) this.audio.update(dt, player, this.dispatcher, this.heat);
     this.hud.update(dt, player, this.heat, this.dispatcher);
   }

@@ -40,10 +40,14 @@ const KEYMAP = {
 };
 
 /**
- * Mouse travel, in pixels, for full cyclic deflection. Low enough to fly with
- * a wrist and high enough that a touchpad is not hopeless.
+ * Mouse travel, in pixels, for full cyclic deflection.
+ *
+ * Most of a screen, not a flick of the wrist. At 260 the aircraft snapped to
+ * full lean before the hand had finished moving and there was no middle of
+ * the range to fly in; the whole point of a position stick is the room
+ * between the stops.
  */
-const CYCLIC_PX = 260;
+const CYCLIC_PX = 900;
 
 export class Input {
   constructor() {

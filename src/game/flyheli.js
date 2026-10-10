@@ -23,7 +23,9 @@
 
 import * as THREE from 'three';
 import { clamp, clamp01, lerp, damp, angleDelta } from '../util/math.js';
-import { hasLineOfSight, sweepBox, RAY_SOLID } from '../physics/world.js';
+import {
+  hasLineOfSight, sweepBox, addStaticBox, GROUP, RAY_SOLID,
+} from '../physics/world.js';
 
 /** Gravity, which the rotor has to beat to go up. */
 const G = 9.81;
@@ -40,24 +42,49 @@ const G = 9.81;
  * collective is a 10 m/s climb and a cut one is a 15 m/s descent, both roughly
  * what the real machine does.
  */
-const THRUST = 1.55;
-/** Collective at rest -- a hover, so letting go of everything holds height. */
+const THRUST = 1.75;
+/**
+ * What the collective settles to with nothing held.
+ *
+ * Below a hover, which needs 0.57 of it, so a hand off the throttle is a
+ * descent. It used to centre exactly on a hover, which meant an aircraft
+ * nobody was flying held its height for ever -- push the nose over and cross
+ * the whole town without touching the throttle. "Without pressing W it should
+ * just start losing power and go into the ground."
+ *
+ * Not zero, though. At zero there is no thrust at all, and since thrust is
+ * the only thing that pushes a helicopter anywhere, releasing the throttle
+ * turned it into a brick -- it fell eighty-seven metres and travelled nine.
+ * Idling under a hover gives a sink the pilot can still fly, which is what
+ * losing power should feel like. A hover is now something held rather than
+ * something given, which is the only reason the throttle is interesting.
+ */
+const IDLE = 0.45;
+/** What it takes to hold height, for reference: thrust exactly cancels g. */
 const HOVER = 1 / THRUST;
 
 /** How fast the collective follows the keys. Rotors have inertia. */
 const SPOOL = 2.4;
 
 /** Cyclic: how far it will lean, and how fast it gets there. */
-const MAX_PITCH = 0.50;          // radians, ~29 degrees nose down
-const MAX_ROLL = 0.80;           // radians, ~46 degrees of bank
-const CYCLIC_RATE = 2.6;         // radians a second toward the demanded lean
+/**
+ * How far it will lean. Generous on purpose -- "I should be able to tilt the
+ * helicopter almost 360 degrees" -- so the roll goes past vertical and the
+ * pitch to eighty degrees. Thrust is along the aircraft's own up, so an
+ * aircraft on its side makes no lift and one on its back makes it downwards,
+ * and both of those are the pilot's problem rather than something the flight
+ * model forbids.
+ */
+const MAX_PITCH = 1.40;          // radians, ~80 degrees
+const MAX_ROLL = 3.00;           // radians, ~172 degrees -- past inverted
+const CYCLIC_RATE = 2.2;         // radians a second toward the demanded lean
 
 /**
  * How hard it returns to level with no input. This is the training-wheels
  * number: at 0 it is a free aircraft that will happily sit inverted, and the
  * pilot is flying all four axes constantly. High and it flies itself.
  */
-const LEVEL = 1.8;
+const LEVEL = 1.1;
 
 /** Pedals: yaw rate at full deflection, and how fast it builds. */
 const YAW_RATE = 0.85;
@@ -88,8 +115,15 @@ const CEILING = 420;
 export const ENDURANCE = 6 * 60;
 export const REFUEL_TIME = 12;
 
-/** Ground clearance of the skids, so it lands on them rather than in them. */
-const SKID = 1.05;
+/**
+ * How far the aircraft's origin sits above the ground when it is parked.
+ *
+ * Nearly nothing, because the model's origin *is* the bottom of its skids --
+ * that is what the brief asked for, so that the game could stand it on the
+ * ground without being told. Holding it a metre up meant it hovered over its
+ * own pad looking like it had forgotten to land.
+ */
+const SKID = 0.04;
 
 /**
  * What the aircraft collides with buildings as.
@@ -133,7 +167,7 @@ const AXES = ['x', 'y', 'z'];
  * trade the role is made of, and it falls out of the range rather than being
  * enforced anywhere.
  */
-const MARK_RANGE = 300;
+export const MARK_RANGE = 300;
 const MARK_CONE = 0.95;          // radians off the nose, a generous windscreen
 const MARK_COOLDOWN = 7;
 
@@ -182,6 +216,8 @@ export class FlyingHelicopter {
      * "cannot move along this axis at all".
      */
     this._blocked = { x: 0, y: 0, z: 0 };
+    /** The static box that exists only while it is on the ground. */
+    this._parked = null;
 
     /** Set while the aircraft has touched something hard. */
     this.damage = 0;
@@ -251,9 +287,13 @@ export class FlyingHelicopter {
     // Centre is a hover, so hands off holds height. Without that the aircraft
     // sinks whenever the pilot is busy looking at something, which is most of
     // the time in this job.
-    const wantColl = clamp(HOVER + (c.collective || 0) * (c.collective > 0 ? 1 - HOVER : HOVER),
-      0, 1) * (flying ? 1 : 0);
-    this.collective = damp(this.collective, wantColl, SPOOL, dt);
+    // The lever runs from nothing to everything with idle in the middle: W
+    // takes it up from idle to full, S takes it down from idle to nothing.
+    // Clamping to idle instead meant S did nothing at all and the aircraft
+    // could not be made to come down in a hurry.
+    const ask = clamp(c.collective || 0, -1, 1);
+    const wantColl = ask >= 0 ? IDLE + ask * (1 - IDLE) : IDLE * (1 + ask);
+    this.collective = damp(this.collective, flying ? wantColl : 0, SPOOL, dt);
 
     // ---- cyclic ----
     // The stick asks for a lean and the aircraft moves toward it; letting go
@@ -303,21 +343,31 @@ export class FlyingHelicopter {
     const floor = this.groundY + SKID;
     if (this.position.y <= floor) {
       this.position.y = floor;
-      // Arriving hard is a heavy landing. The aircraft is not destructible --
-      // being wrecked in the air is not a fun thing to happen to somebody --
-      // but it bounces and it is noted.
       this._struck(-this.linvel.y);
       this.linvel.y = Math.max(0, this.linvel.y);
-      this.linvel.x *= 0.82;
-      this.linvel.z *= 0.82;
+
+      // Skids are not wheels. A helicopter sitting on the ground does not
+      // slide about when the pilot leans the stick -- it sits there until
+      // there is enough lift under it to leave, and then it flies. Leaning on
+      // the ground used to taxi it across the forecourt like a hovercraft.
+      const lifting = this.collective * THRUST * Math.cos(this.pitch) * Math.cos(this.roll);
+      if (lifting <= 1.0) {
+        this.linvel.x = 0;
+        this.linvel.z = 0;
+        this.linvel.y = Math.min(this.linvel.y, 0);
+      } else {
+        this.linvel.x *= 0.82;
+        this.linvel.z *= 0.82;
+      }
       this.onGround = true;
-      // On the ground it sits level, whatever the stick is doing.
-      this.pitch = damp(this.pitch, 0, 6, dt);
-      this.roll = damp(this.roll, 0, 6, dt);
+      // And it sits level on its skids, whatever the stick is doing.
+      this.pitch = damp(this.pitch, 0, 9, dt);
+      this.roll = damp(this.roll, 0, 9, dt);
       this._applyAttitude();
     } else {
       this.onGround = false;
     }
+    this._parkedCollider();
     if (this.position.y > CEILING) {
       this.position.y = CEILING;
       this.linvel.y = Math.min(0, this.linvel.y);
@@ -452,7 +502,11 @@ export class FlyingHelicopter {
 
       _v.set(0, 0, 0);
       _v[axis] = sign;
-      const toi = sweepBox(world, this.position, _v, dist + CONTACT_GAP, RAY_SOLID, null, HULL_R);
+      // Excluding its own parked collider, or the box that lets cars hit a
+      // landed helicopter would also stop that helicopter taking off.
+      const toi = sweepBox(
+        world, this.position, _v, dist + CONTACT_GAP, RAY_SOLID, this._parked, HULL_R,
+      );
       // Room to move, keeping the gap. Swept a little further than the step
       // so that resting against something is seen as no room rather than as
       // a clear step: at a hundredth of a metre a frame, every step fits
@@ -475,6 +529,39 @@ export class FlyingHelicopter {
       this._struck(Math.abs(this.linvel[axis]));
       this.linvel[axis] = 0;
     }
+  }
+
+  /**
+   * A parked helicopter is something you can run into.
+   *
+   * In the air it has no collider at all -- it is not a rigid body, and cars
+   * are not going to meet it up there. On the ground it is a large object
+   * sitting in the world, and driving through it was wrong: "police cars
+   * can't hit it when it's on the ground". So while it is down, and only
+   * while it is down, there is a static box where it is.
+   *
+   * Static rather than dynamic on purpose. A two-tonne airframe on its skids
+   * does not get shunted across the forecourt by a patrol car, and a dynamic
+   * body would also need the aircraft to be driven by the solver rather than
+   * by its own flight model.
+   */
+  _parkedCollider() {
+    const world = this.game.world;
+    if (!world) return;
+    const want = this.onGround;
+    if (want === !!this._parked) {
+      // Still down in the same place: nothing to do. It cannot taxi.
+      return;
+    }
+    if (!want) {
+      if (this._parked) { world.removeRigidBody(this._parked); this._parked = null; }
+      return;
+    }
+    const d = this.spec.dims;
+    this._parked = addStaticBox(
+      world, this.position.x, this.position.y + d.h * 0.45, this.position.z,
+      d.w * 0.5, d.h * 0.45, d.l * 0.5, GROUP.BUILDING, this.yaw,
+    );
   }
 
   /**
@@ -581,6 +668,10 @@ export class FlyingHelicopter {
 
   /** Put it somewhere, stopped and level. */
   teleport(at, heading = 0) {
+    if (this._parked && this.game.world) {
+      this.game.world.removeRigidBody(this._parked);
+      this._parked = null;
+    }
     this.position.set(at.x, at.y, at.z);
     this.prevPos.copy(this.position);
     this.linvel.set(0, 0, 0);

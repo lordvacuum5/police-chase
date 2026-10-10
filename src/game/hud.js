@@ -284,7 +284,10 @@ export class Hud {
     }
 
     this._drawSpeedo(dt, player);
-    this._drawRoadSign(player);
+    // A pilot has no use for the name of the road below, and every use for
+    // whether the car is in sight. Same plate, different job.
+    if (player.isAircraft) this._drawSpotting();
+    else this._drawRoadSign(player);
     this._drawMinimap(player, dispatcher, heat);
   }
 
@@ -480,6 +483,25 @@ export class Hud {
    * every time two wheels touch grass is worse than one that is a moment out
    * of date.
    */
+  /**
+   * Whether the pilot can call it in, and if not, why not.
+   *
+   * The whole role is one key, and nothing on screen used to say whether
+   * pressing it would do anything -- so a pilot who was slightly too far, or
+   * pointed the wrong way, or behind a roof, got the same silence as one with
+   * nobody to find. Green means press it.
+   */
+  _drawSpotting() {
+    if (!this.roadEl) return;
+    const sp = this.game.spotting;
+    const text = sp ? sp.text : 'NO TARGET';
+    if (this.roadEl.textContent !== text) this.roadEl.textContent = text;
+    this.roadEl.hidden = false;
+    const cls = sp && sp.state === 'ready' ? 'spot-on'
+      : sp && sp.state === 'wait' ? 'spot-wait' : 'off';
+    if (this.roadEl.className !== cls) this.roadEl.className = cls;
+  }
+
   _drawRoadSign(v) {
     if (!this.roadEl) return;
     const now = performance.now();
