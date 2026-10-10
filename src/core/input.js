@@ -48,7 +48,7 @@ const KEYMAP = {
  * room between the stops, and the lean now goes all the way to eighty
  * degrees, so the travel has to cover that range at a pace a hand can aim.
  */
-const CYCLIC_PX = 2600;
+const CYCLIC_PX = 3400;
 
 export class Input {
   constructor() {

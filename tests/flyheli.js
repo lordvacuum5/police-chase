@@ -236,8 +236,16 @@ window.__runFlyHeli = async function () {
     {
       const g = window.__game;
       const { addStaticBox, GROUP } = await import('../src/physics/world.js');
+      // A low wall, not a tower. The rotor sits three and a half metres above
+      // the hull, so easing the nose up to a forty-metre slab puts the disc
+      // inside it and the aircraft correctly loses its rotor -- which is the
+      // test below, not this one. Two metres of wall stops the hull and
+      // passes under the disc, which is what is being asked about here.
       const X = 760, Z = 760, Y = 60;            // out in the empty corner
-      addStaticBox(g.world, X, Y, Z, 40, 40, 2, GROUP.BUILDING);
+      // Twelve metres of wall, with its top two metres above the hull's
+      // height: tall enough to catch the hull however the altitude drifts
+      // over a long approach, and low enough that the disc passes over it.
+      addStaticBox(g.world, X, Y - 4, Z, 40, 6, 2, GROUP.BUILDING);
       g.world.step();                            // or the query pipeline cannot see it
 
       // Eased up to rather than flown at, so this measures stopping and
@@ -245,9 +253,11 @@ window.__runFlyHeli = async function () {
       // below.
       const h = running(new FlyingHelicopter(g, {}));
       h.teleport({ x: X, y: Y, z: Z - 30 }, 0);
-      // Enough collective to hold height while it eases forward: at idle it
-      // sinks, and below the slab is not the same as through it.
-      fly(h, 24, { collective: 0.26, pitch: 0.06 });
+      // 0.21 on the lever is the hover, measured: 0.20 sinks four metres over
+      // this run and 0.22 climbs four. At 0.26 it climbed clean over the wall
+      // and the test called that "went through it", which was the test being
+      // wrong rather than the game.
+      fly(h, 14, { collective: 0.21, pitch: 0.06 });
       const gap = Z - 2 - h.position.z;          // to the near face
       const through = h.position.z > Z;
 

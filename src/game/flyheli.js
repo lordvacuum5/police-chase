@@ -68,16 +68,27 @@ const SPOOL = 2.4;
 
 /** Cyclic: how far it will lean, and how fast it gets there. */
 /**
- * How far it will lean. Generous on purpose -- "I should be able to tilt the
- * helicopter almost 360 degrees" -- so the roll goes past vertical and the
- * pitch to eighty degrees. Thrust is along the aircraft's own up, so an
- * aircraft on its side makes no lift and one on its back makes it downwards,
- * and both of those are the pilot's problem rather than something the flight
- * model forbids.
+ * How far it will lean. Still generous -- the roll goes past vertical, so an
+ * aircraft on its back is possible and makes its lift downwards, which is the
+ * pilot's problem rather than something the model forbids.
+ *
+ * It was 172 degrees of roll reached at 2.2 rad/s, which meant a flick of the
+ * wrist put the thing inverted before anyone could react: "it shouldn't be
+ * that easy to quickly swipe the mouse and instantly go upside down." The
+ * limits are a little tighter now and, more to the point, the rate below is
+ * less than half what it was. Going past vertical is a thing you can still
+ * do; it now takes about two and a half seconds of holding it there, which is
+ * a decision rather than a twitch.
  */
-const MAX_PITCH = 1.40;          // radians, ~80 degrees
-const MAX_ROLL = 3.00;           // radians, ~172 degrees -- past inverted
-const CYCLIC_RATE = 2.2;         // radians a second toward the demanded lean
+const MAX_PITCH = 1.05;          // radians, ~60 degrees
+const MAX_ROLL = 2.30;           // radians, ~132 degrees -- past vertical
+/**
+ * How fast the aircraft moves toward the attitude being asked for. This is
+ * the number that decides whether it feels like a helicopter or a mouse
+ * pointer: a real one has several tonnes of rotational inertia and does not
+ * change attitude in a tenth of a second however hard the stick is moved.
+ */
+const CYCLIC_RATE = 0.95;        // radians a second toward the demanded lean
 
 /**
  * How hard it returns to level with no input. This is the training-wheels
@@ -149,6 +160,8 @@ export const SKID = 0.04;
 const HULL_R = 2.2;
 /** The rotor disc's radius -- what strikes things the hull fits past. */
 const ROTOR_R = 6.2;
+/** How far the disc sits above the aircraft's origin, from the model. */
+const MAST_H = 3.5;
 
 /**
  * What the aircraft sweeps against: buildings and props, and deliberately not
@@ -211,6 +224,7 @@ const MARK_CONE = 0.95;          // radians off the nose, a generous windscreen
 const REPORT_EVERY = 0.25;
 
 const _v = new THREE.Vector3();
+const _hub = new THREE.Vector3();
 const _up = new THREE.Vector3();
 const _fwd = new THREE.Vector3();
 const _q = new THREE.Quaternion();
@@ -706,9 +720,21 @@ export class FlyingHelicopter {
 
     // Straight out along the disc, in the aircraft's own frame, so a tilted
     // rotor sweeps where a tilted rotor would be.
+    // From the rotor, not from the skids.
+    //
+    // The disc is three and a half metres above the aircraft's origin and
+    // sweeping from the origin put it at knee height, where it hit things the
+    // real rotor passes safely over. On the helipad that is fatal and
+    // repeating: the workshop walls either side of the pad stand to 5.74 m
+    // and the pad is at 6.14, so a disc swept from the skids clipped a wall
+    // top 5.35 m out, wrecked the aircraft the instant the rotor came up to
+    // speed, recovered it onto the same pad and did it again. "Whenever I
+    // turn on motors it almost tilts into the ground on the roof, instantly
+    // respawns, and then it does it again."
+    _hub.copy(this.position).addScaledVector(this.up, MAST_H);
     for (const side of [1, -1]) {
       _v.set(side, 0, 0).applyQuaternion(this.quaternion);
-      const toi = sweepBox(world, this.position, _v, ROTOR_R, AIR_SOLID, this._parked, 0.35);
+      const toi = sweepBox(world, _hub, _v, ROTOR_R, AIR_SOLID, this._parked, 0.35);
       if (toi >= ROTOR_R) continue;
       // How much disc is actually in it, and how fast the tip is going.
       const bite = (ROTOR_R - toi) / ROTOR_R;
