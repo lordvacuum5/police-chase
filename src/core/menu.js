@@ -3,6 +3,8 @@
 // Three ways in, and the menu shows only what each one has to answer:
 //
 //   SINGLE PLAYER   car, weather, ground
+//   BE THE POLICE    police car, weather, ground -- you chase a getaway car
+//                   driven by the computer. See ai/runner.js
 //   HOST A GAME     a name for the game, then the same three -- you are the
 //                   escapee, and what you pick is what everyone plays
 //   JOIN A GAME     the name of the game, and which police car you turn up in.
@@ -239,6 +241,9 @@ const POLICE_KEY = 'pc.policecar';
 // Not 'pc.map': that name is taken, in sessionStorage, by the map a refresh
 // drops you back into.
 const MAP_KEY = 'pc.ground';
+// sessionStorage, like the map a refresh restores, and for the same reason:
+// which side you are playing belongs to this sitting rather than for ever.
+const ROLE_KEY = 'pc.side';
 
 /** The car picked on the menu, remembered between visits. */
 export function chosenCar() {
@@ -256,6 +261,28 @@ export function chosenPoliceCar() {
   let id = null;
   try { id = localStorage.getItem(POLICE_KEY); } catch (e) { /* storage blocked */ }
   return POLICE_CARS.some((c) => c.id === id) ? id : POLICE_CARS[0].id;
+}
+
+/**
+ * Which side of an offline game you are on: 'runner' to be chased, 'police' to
+ * do the chasing with the computer in the getaway car.
+ *
+ * Remembered the same way the car and the map are, so a refresh drops you back
+ * into the mode you were actually playing rather than always into the escapee's
+ * seat -- `launch` restores a session from sessionStorage without going near
+ * the menu, and it would otherwise restore the wrong game.
+ */
+export function soloRole() {
+  try {
+    return sessionStorage.getItem(ROLE_KEY) === 'police' ? 'police' : 'runner';
+  } catch (e) {
+    return 'runner';
+  }
+}
+
+export function setSoloRole(role) {
+  try { sessionStorage.setItem(ROLE_KEY, role === 'police' ? 'police' : 'runner'); }
+  catch (e) { /* storage blocked */ }
 }
 
 /** The map picked on the menu. Only the escapee's side of it ever asks. */
@@ -472,12 +499,18 @@ function netStatus(text, kind) {
   el.className = kind || '';
 }
 
-const START_LABEL = { single: 'START CHASE', create: 'CREATE & START', join: 'JOIN GAME' };
+const START_LABEL = {
+  single: 'START CHASE', chase: 'START PURSUIT', create: 'CREATE & START', join: 'JOIN GAME',
+};
 const MODE_HINT = {
   single: '',
+  chase: 'You are the police. The getaway car drives itself.',
   create: 'You are the escapee. Others join by typing this name.',
   join: 'You are a police unit in this game.',
 };
+
+/** Which modes put you in a police car rather than the getaway car. */
+const POLICE_SIDE = { join: true, chase: true };
 
 function buildModes(onPick) {
   const holder = document.getElementById('mode');
@@ -491,6 +524,7 @@ function buildModes(onPick) {
 
   const modes = [
     ['SINGLE PLAYER', 'single'],
+    ['BE THE POLICE', 'chase'],
     ['HOST A GAME', 'create'],
     ['JOIN A GAME', 'join'],
   ];
@@ -510,13 +544,19 @@ function buildModes(onPick) {
     netMode = mode;
     starting = false;
     startBtn.disabled = false;
+    // Recorded here rather than on START, so a refresh restores the side even
+    // though `launch` never asks the menu anything.
+    setSoloRole(mode === 'chase' ? 'police' : 'runner');
     buttons.forEach((b, i) => b.classList.toggle('on', modes[i][1] === mode));
 
-    // Joining picks a police car; the other two pick the escapee's.
+    // Two of the four put you in a police car; the others pick the escapee's.
+    const police = !!POLICE_SIDE[mode];
+    // Only joining borrows somebody else's map and weather. Chasing the
+    // computer is still a game of your own, so it keeps all of its choices.
     const joining = mode === 'join';
-    buildCarCards(joining ? POLICE_CARS : CARS,
-      joining ? POLICE_KEY : CAR_KEY,
-      joining ? chosenPoliceCar : chosenCar);
+    buildCarCards(police ? POLICE_CARS : CARS,
+      police ? POLICE_KEY : CAR_KEY,
+      police ? chosenPoliceCar : chosenCar);
 
     const show = (id, on, text) => {
       const el = document.getElementById(id);
@@ -524,17 +564,21 @@ function buildModes(onPick) {
       el.hidden = !on;
       if (text !== undefined) el.textContent = text;
     };
-    show('netpanel', mode !== 'single');
+    show('netpanel', mode !== 'single' && mode !== 'chase');
     show('netlabel', true, mode === 'create' ? 'NAME YOUR GAME' : 'GAME TO JOIN');
-    show('carsub', true, joining ? 'CHOOSE YOUR POLICE CAR' : 'CHOOSE YOUR CAR');
+    show('carsub', true, police ? 'CHOOSE YOUR POLICE CAR' : 'CHOOSE YOUR CAR');
     show('conditions', !joining);
     show('menusub', !joining);
     show('maps', !joining);
     const note = document.getElementById('joinnote');
     if (note) {
-      note.hidden = !joining;
-      note.innerHTML = 'The host is the escapee, and picks the ground and the weather. '
-        + 'You are <b>a police unit in their game</b> &mdash; all you choose is the car you turn up in.';
+      note.hidden = !joining && mode !== 'chase';
+      note.innerHTML = joining
+        ? 'The host is the escapee, and picks the ground and the weather. '
+          + 'You are <b>a police unit in their game</b> &mdash; all you choose is the car you turn up in.'
+        : 'You are <b>the police</b>, and the getaway car drives itself. It runs for the '
+          + 'quietest road it can reach and the rest of the force comes out with you &mdash; '
+          + 'stop it, or lose it.';
     }
     if (nameBox) nameBox.placeholder = mode === 'create' ? 'NEW GAME NAME' : 'GAME NAME';
     startBtn.textContent = START_LABEL[mode];
@@ -544,7 +588,9 @@ function buildModes(onPick) {
 
   const start = async () => {
     if (starting) return;
-    if (netMode === 'single') {
+    // Both of the offline modes start the same way; which side you are on is
+    // read back off `soloRole()` once the game is building itself.
+    if (netMode === 'single' || netMode === 'chase') {
       hideMenu();
       onPick(mapById(chosenMap()) || MAPS[0]);
       return;

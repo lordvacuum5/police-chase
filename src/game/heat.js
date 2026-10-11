@@ -68,7 +68,10 @@ export class Heat {
       // Whoever called it in knows where you were when they did (see
       // Dispatcher.beginChase). Otherwise the chase inherits the last thing
       // the force knew, which may be nothing for several minutes.
-      if (this.game.dispatcher) this.game.dispatcher.beginChase(this.game.player && this.game.player.position);
+      // The car being chased, which is not always the player's: see
+      // Game.quarry.
+      const hunted = this.game.quarry || this.game.player;
+      if (this.game.dispatcher) this.game.dispatcher.beginChase(hunted && hunted.position);
       this.game.say('chase-start', [
         (v) => `Control, all units, vehicle ${v.reason}. Respond.`,
         (v) => `Control, any units, a vehicle ${v.reason}.`,

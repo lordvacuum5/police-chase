@@ -11,7 +11,7 @@ import { WORLD_HALF } from './world/common.js';
 import { appleMode, realApple, setAppleMode } from './core/platform.js';
 import { MAPS, mapById } from './world/maps.js';
 import { buildCutGraph, CUTS_ON } from './world/cutgraph.js';
-import { showMenu, hideMenu, chosenCar, chosenPoliceCar } from './core/menu.js';
+import { showMenu, hideMenu, chosenCar, chosenPoliceCar, soloRole } from './core/menu.js';
 import { takeCarCards } from './game/cards.js';
 import { DRIVE_SIDE } from './world/roadgraph.js';
 import { Dispatcher, SEARCH_SECONDS } from './ai/dispatcher.js';
@@ -19,6 +19,7 @@ import {
   Officer, ROLE, releaseCallsign, reserveCallsigns, HUMAN_CALLSIGNS,
 } from './ai/officer.js';
 import { Driver, SKILL } from './ai/driver.js';
+import { Runner, pickRunnerCar } from './ai/runner.js';
 import { Heat } from './game/heat.js';
 import { RoadblockManager } from './game/roadblock.js';
 import { Helicopter, buildHelicopterMesh } from './game/helicopter.js';
@@ -234,11 +235,23 @@ class Game {
     this.vehicleLimit = MAX_VEHICLES;
     this.clock = 0;            // game seconds, for anything timed on the radio
     this.phrases = new Phrasebook();
+    /**
+     * Playing the police against a getaway car the computer drives, on your
+     * own. Set in init() rather than here: the Game is constructed when the
+     * module loads, which is before the menu has been looked at, so asking
+     * this early always answered with whatever the last sitting left behind.
+     */
+    this.soloPolice = false;
+    /** The getaway driver, when there is one. See ai/runner.js. */
+    this.runner = null;
   }
 
   // =================================================================== setup
 
   async init() {
+    // Which side of the game this is. Read here because init() runs on START,
+    // by which point the menu has recorded the choice -- see menu.soloRole.
+    this.soloPolice = !session.active && !SOLO_AIR && soloRole() === 'police';
     boot.set(0.05, 'starting physics…');
     await initPhysics();
 
@@ -301,6 +314,9 @@ class Game {
     this.helicopter = new Helicopter(this);
     /** Set while the wanted level was typed in rather than earned. */
     this.heliGrounded = false;
+    // The car being chased, when it is not the player. After the dispatcher,
+    // because the runner asks it who is after him on its very first tick.
+    if (this.soloPolice) this._initRunner();
     // The garage before the props, so nothing is stood across its entrance.
     this.garage = new Garage(this);
     // The pad only exists once the garage does, and the player is built
@@ -442,7 +458,10 @@ class Game {
     // player -- in an ordinary game you are the one being chased.
     if (SOLO_AIR) { this._spawnAircraft(place); return; }
 
-    if (session.active && session.role === 'police') {
+    // Being the police on your own takes the same seat as being the police in
+    // somebody else's game -- the difference is only who is in the car being
+    // chased, and that is settled in _initRunner.
+    if (this.soloPolice || (session.active && session.role === 'police')) {
       // Driveable by a person rather than by the speed planner, and heavy
       // enough to shove with: see drivablePoliceSpec. Only this car, and only
       // on this machine.
@@ -729,6 +748,120 @@ class Game {
    * verifies the result is on a road surface and clear of other cars. Returns
    * null if no edge at this node works, so the caller can try elsewhere.
    */
+  /**
+   * Put a getaway car on the road and set the computer driving it.
+   *
+   * Far enough away that finding it is part of the job and close enough that
+   * the job starts now: a chase you have to drive two minutes to reach is a
+   * commute. 160 to 420 m is about ten to thirty seconds at pursuit speed.
+   *
+   * It turns up already wanted, at two stars. A getaway car that has to be
+   * provoked into being chased makes no sense on this side of the game --
+   * there is nobody to commit the offence, and the alternative is waiting for
+   * an AI car to run a red light in front of you. Two stars rather than one so
+   * the force comes out properly alongside you rather than leaving you to it.
+   */
+  _initRunner() {
+    let place = null;
+    for (let i = 0; i < 80 && !place; i++) {
+      const node = this.graph.randomNode(this.rng, 'street');
+      if (!node) continue;
+      const p = this._placeOnRoad(node);
+      if (!p) continue;
+      const d = dist2(p.position.x, p.position.z, this.player.position.x, this.player.position.z);
+      if (d < 160 || d > 420) continue;
+      place = p;
+    }
+    // Anywhere at all rather than no chase: a map whose random nodes all came
+    // back too close or too far is still a map worth playing on.
+    for (let i = 0; i < 40 && !place; i++) {
+      place = this._placeOnRoad(this.graph.randomNode(this.rng, 'street'));
+    }
+    if (!place) return;
+
+    const kind = pickRunnerCar(this.rng);
+    const v = this.createVehicle(kind, kind, place.position, place.heading, {});
+    if (!v) return;
+    this.runner = new Runner(this, v);
+    this.heat.bump(1, 'a getaway car');
+    this.heat.value = Math.max(this.heat.value, 2);
+    this.heat.peak = Math.max(this.heat.peak, this.heat.value);
+    this.radio('Control, all units, vehicle failing to stop. Pursuit authorised.', true);
+  }
+
+  /**
+   * The car the force is chasing.
+   *
+   * Everything downstream of this -- the dispatcher, the roadblocks, the
+   * helicopter, the heat -- used to be handed `this.player` directly, because
+   * for the whole life of the game the player *was* the quarry. One getter is
+   * the whole of what it took to let that stop being true.
+   */
+  get quarry() {
+    return this.runner && !this.runner.vehicle.removed ? this.runner.vehicle : this.player;
+  }
+
+  /**
+   * The player's own eyes, added to the force's.
+   *
+   * Nearly all of this is already done: pass the getaway car to
+   * Dispatcher.update as the target and its own perception pass runs on it --
+   * range by wanted level, line of sight through buildings, the helicopter
+   * looking down. That is the real model and it should be the one in use, not
+   * a second one written beside it.
+   *
+   * What it cannot do is see out of the player's windscreen, because a police
+   * player is not in `dispatcher.units` -- it is the one car in the chase the
+   * roster does not know about. On the multiplayer side of this the escapee's
+   * machine answers that over the wire (`session.seen`); here it is a range
+   * and a raycast, the same two tests the dispatcher applies to everyone else.
+   * Without it you could sit behind the car with it filling the windscreen and
+   * the force would call it lost.
+   */
+  _runnerSight(dt) {
+    const r = this.runner;
+    if (!r) return;
+    const car = r.vehicle;
+    const k = this.dispatcher.knowledge;
+    const me = this.player;
+
+    if (!k.seen && me && !me.isAircraft && !me.disabled) {
+      const range = this.dispatcher.sightRange || 150;
+      if (dist2(me.position.x, me.position.z, car.position.x, car.position.z) <= range) {
+        _eyeV.set(me.position.x, me.position.y + 1.1, me.position.z);
+        _atV.set(car.position.x, car.position.y + 0.8, car.position.z);
+        if (hasLineOfSight(this.world, _eyeV, _atV, 1.5)) {
+          k.seen = true;
+          k.spotter = k.spotter || null;
+          k.position.copy(car.position);
+          k.velocity.copy(car.linvel);
+          k.timeSinceSeen = 0;
+          k.confidence = 1;
+          this.dispatcher.inContact = true;
+        }
+      }
+    }
+
+    r.hunted = k.seen;
+
+    // The marker, on the same terms the police side of a multiplayer game
+    // gets it: where they are while anyone can see them, where they were last
+    // seen while the search window runs, and nothing at all once it expires
+    // or once there is no chase on.
+    if (k.seen) {
+      if (!this.netLastSeen) this.netLastSeen = new THREE.Vector3();
+      this.netLastSeen.copy(car.position);
+      this.netLostFor = 0;
+    } else {
+      this.netLostFor = (this.netLostFor || 0) + dt;
+    }
+    const chaseOn = this.heat.value > 0;
+    this.hud.suspect = !chaseOn ? null
+      : (k.seen ? car.position
+        : ((this.netLostFor || 0) < SEARCH_SECONDS ? this.netLastSeen : null));
+    this.hud.suspectStale = !k.seen;
+  }
+
   _placeOnRoad(node) {
     const g = this.graph;
     for (const eid of node.edges) {
@@ -1309,6 +1442,21 @@ class Game {
   onBusted() {
     if (this.outcome) return;
     this.outcome = 'busted';
+    // The same event read from the other side of the windscreen. Chasing the
+    // computer, an arrest is the thing you were trying to make happen, and
+    // calling it BUSTED over a score for how long you survived would be
+    // telling the winner they lost.
+    if (this.runner) {
+      const held = (performance.now() - this.heat.chaseStarted) / 1000;
+      this.hud.showOverlay('SUSPECT DETAINED', [
+        `Pursuit lasted <b>${held.toFixed(1)}s</b>`,
+        `Peak heat <b>${this.heat.peak.toFixed(1)}</b>`,
+        `Their damage <b>${(this.runner.vehicle.damage * 100).toFixed(0)}%</b>`,
+        `Yours <b>${(this.player.damage * 100).toFixed(0)}%</b>`,
+      ].join(' &nbsp;·&nbsp; '));
+      this.radio('Control, one detained. All units, stand down.', true, { final: true });
+      return;
+    }
     const run = this.score.finish();
     this.hud.showOverlay('BUSTED', [
       `Score <b>${run.score.toLocaleString()}</b>${run.newBest ? ' &nbsp;<b class="best">NEW BEST</b>' : ` &nbsp;(best ${run.best.toLocaleString()})`}`,
@@ -1337,10 +1485,10 @@ class Game {
     // heat.elapsed reads zero the moment the value hits zero, which is exactly
     // when this is called, so take the time from the start of the chase.
     const held = (performance.now() - this.heat.chaseStarted) / 1000;
-    this.hud.flash('ESCAPED', [
-      `Evaded for <b>${held.toFixed(1)}s</b>`,
+    this.hud.flash(this.runner ? 'SUSPECT LOST' : 'ESCAPED', [
+      this.runner ? `Pursued for <b>${held.toFixed(1)}s</b>` : `Evaded for <b>${held.toFixed(1)}s</b>`,
       `Peak heat <b>${this.heat.peak.toFixed(1)}</b>`,
-      'They have lost you',
+      this.runner ? 'They got away' : 'They have lost you',
     ].join(' &nbsp;·&nbsp; '));
     this.say('escaped', [
       'Control, no further contact. Resume patrol.',
@@ -2250,14 +2398,26 @@ class Game {
     // are told what it decided (see net/session.js).
     const guest = session.active && !session.isHost;
     if (!guest) {
-      this.dispatcher.update(dt, player);
-      this.roadblocks.update(dt, player);
-      this.helicopter.update(dt, player);
+      // Whoever is being chased, which is the player in every mode but one.
+      // See Game.quarry and ai/runner.js.
+      const hunted = this.quarry;
+      // The getaway driver before the force, so the force is reacting to
+      // where the car went this frame rather than to where it was last one.
+      if (this.runner) this.runner.update(dt);
+      this.dispatcher.update(dt, hunted);
+      if (this.runner) this._runnerSight(dt);
+      this.roadblocks.update(dt, hunted);
+      this.helicopter.update(dt, hunted);
       this.props.update(dt);
       this.garage.update(dt);
-      this.score.update(dt);
+      // The score is points for staying wanted, which is nothing a police
+      // officer earns. Chasing the computer it used to tick up all through
+      // the pursuit and read as if you were being credited for the suspect's
+      // work -- so on that side of the game it does not run, and the HUD
+      // leaves the line out entirely.
+      if (!this.runner) this.score.update(dt);
       this.signals.update(dt);
-      this.heat.update(dt, player, this.dispatcher);
+      this.heat.update(dt, hunted, this.dispatcher);
       this.commentary.update(dt);
       this._checkProvocation(dt);
       this._checkRedLight();

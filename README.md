@@ -33,11 +33,81 @@ Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 ```
 
+## Being the police on your own
+
+**BE THE POLICE** on the menu puts you in a patrol car and gives the getaway
+car to the computer. It was asked for as a way to try the police side without
+arranging a multiplayer game: *"where you can be the police, but not chasing [a
+person], but chasing a computer that's driving a getaway vehicle... so I can
+easily test out and, you know, it's just a cool feature without having to play
+in multiplayer."*
+
+You pick your police car, your ground and your weather as usual. The suspect
+turns up in one of the three runner cars, 160 to 420 m away, already wanted at
+two stars -- there is nobody on that side to commit an offence, and waiting for
+an AI car to run a red light in front of you is not a game. The rest of the
+force comes out with you, the radio works, roadblocks go in, and the helicopter
+flies. Stop them and the screen says **SUSPECT DETAINED**; lose them and it
+says **SUSPECT LOST** and the run carries on.
+
+**The getaway driver is in `src/ai/runner.js`**, and it is deliberately the
+mirror of the intercept solver rather than anything new. `RoadGraph.predict`
+already expands the road network forward from a car -- every junction it could
+reach inside a horizon, when it would arrive, and how likely that way is for a
+driver who mostly goes straight on. The dispatcher uses that to work out where
+to cut you off. Run the same expansion from the runner and score each junction
+by how far it is from the nearest police car instead, and *where do I go*
+answers itself. It re-asks about once a second.
+
+| | |
+|---|---|
+| Horizon | 22 s of road. At 40 s everything scores the same and it picks a corner of the map and drives at it through whatever is in between; at 8 s it cannot see past the nearest pursuer and dithers at junctions |
+| Time cost | 6 m/s — a second of driving is worth about six metres of daylight, so it takes the longer road only when that road genuinely ends up further away |
+| Threat radius | 60 m. Inside that a junction is scored as if the police car were sitting on it, which is what stops it driving into a roadblock it can see |
+
+The reused primitive is most of why the file is small, and it means the
+getaway car plans with exactly the same model of the road the force uses
+against it, which is the right kind of fair.
+
+**Two things it does not do itself.** Getting unwedged is the Driver's own job
+and it already does it -- `planSpeed` notices a car that is asking to move and
+not moving, reverses out, and raises `needsRepath`. A second recovery written
+on top fought the first and left the car rocking against the wall it hit.
+
+And a pinned car gives up. Measured on a chase that would not end: the suspect
+was PITed onto a pavement, a unit stopped a few metres off it, and then nothing
+happened for the rest of the run -- the Driver kept reversing, which moved the
+car a few centimetres, which reset the arrest clock in `heat.js`, which wants
+the suspect under 3 km/h. The police side has had exactly this guard for the
+same reason since boxes were added (`Officer._holdingArrest`). With it, the
+arrest completes.
+
+**Measured**, with the player's own car parked on the handbrake so the figures
+are the AI force against the AI runner and nothing else: a 46-second pursuit
+ending in an arrest, the suspect averaging 49 km/h and peaking at 115, on the
+carriageway 72% of the time, and 8 seconds pinned before the arrest completed.
+A human chasing as well shortens that, which is the point.
+
+**One getter did most of the plumbing.** The dispatcher, the roadblocks, the
+helicopter and the heat were all handed `this.player` directly, because for the
+whole life of the game the player *was* the quarry; they now take
+`Game.quarry`, which is the runner's car when there is one. The dispatcher's
+own perception then does the real work -- range by wanted level, line of sight
+through buildings, the helicopter looking down -- so none of that had to be
+rewritten. The single thing it cannot do is see out of the player's windscreen,
+because a police player is not in `dispatcher.units`; that is a range check and
+a raycast in `Game._runnerSight`, and without it you could sit behind the car
+with it filling the screen and the force would call it lost.
+
+The score does not run on this side. It is points for staying wanted, so it was
+crediting the officer for the suspect's work; the line is hidden instead.
+
 ## Multiplayer
 
 One player runs; everyone else is a police car, alongside the AI.
 
-The menu offers three ways in: **SINGLE PLAYER**, **HOST A GAME** and **JOIN A
+The menu offers four ways in: **SINGLE PLAYER**, **BE THE POLICE** (above),
+**HOST A GAME** and **JOIN A
 GAME**. Hosting asks for a name for the game and then the same three questions
 single player asks — car, weather, ground — because the host is the escapee and
 what they pick is what everybody plays. Joining asks for that name and one
@@ -5207,6 +5277,7 @@ src/
     dispatcher.js      perception, role assignment, intercept solver
     officer.js         per-unit state machine
     driver.js          pure-pursuit steering, counter-steer, speed planner
+    runner.js          the getaway driver, for playing the police on your own
     tactics.js         PIT and rolling box
   net/
     session.js         multiplayer: rooms, roles, car packets, interpolation
