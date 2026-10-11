@@ -38,11 +38,15 @@ const G = 9.81;
  *
  * It started at 1.9 and that was an aircraft with 22 m/s of climb in it, about
  four times the real thing and completely twitchy to fly. The climb is now
- * capped by vertical drag instead, which is the right place for it: full
- * collective is a 10 m/s climb and a cut one is a 15 m/s descent, both roughly
- * what the real machine does.
+ * capped by vertical drag instead, which is the right place for it: see
+ * DRAG_UP, which is where the vertical envelope is actually set and where the
+ * measurements for both directions are written down.
+ *
+ * Nudged from 1.75 to 1.80 along with that, so the climb keeps up with the
+ * descent rather than being left behind by it. Small on purpose: this is also
+ * what holds a banked turn up, so it is not a free number to raise.
  */
-const THRUST = 1.75;
+const THRUST = 1.80;
 /**
  * What the collective settles to with nothing held.
  *
@@ -63,8 +67,15 @@ const IDLE = 0.45;
 /** What it takes to hold height, for reference: thrust exactly cancels g. */
 const HOVER = 1 / THRUST;
 
-/** How fast the collective follows the keys. Rotors have inertia. */
-const SPOOL = 2.4;
+/**
+ * How fast the collective follows the keys. Rotors have inertia.
+ *
+ * 2.4 was most of why coming down felt like nothing was happening: the lever
+ * took well over a second to travel, so the first second of asking to descend
+ * was spent waiting for the rotor rather than falling. 3.2 still winds rather
+ * than snaps, and the dead moment is gone.
+ */
+const SPOOL = 3.2;
 
 /** Cyclic: how far it will lean, and how fast it gets there. */
 /**
@@ -106,11 +117,23 @@ const YAW_EASE = 3.2;
  * Horizontal drag caps the cruise at about 250 km/h -- faster than the fastest
  * car, which it has to be, and not so much faster that the chase stops being
  * one; vertical drag caps the
- * climb at around 10 m/s, which is a far better way to limit it than giving
+ * climb, which is a far better way to limit it than giving
  * the rotor less thrust, because thrust is also what holds a banked turn up.
+ *
+ * DRAG_UP is the whole vertical envelope, and it was set too high: "you don't
+ * seem to be able to go down very fast ... make it faster to drop in height
+ * and go up, but not really really fast, just a bit faster."
+ *
+ * Descent is the half that had no other lever. At full down the collective is
+ * closed and there is no thrust at all, so nothing governs the fall but this
+ * -- raising THRUST would not have touched it. Measured at 0.55, holding full
+ * input from a hover for eight seconds: 13.1 m/s of climb and 17.4 m/s of
+ * descent. At 0.43 with the thrust nudged to 1.80 it is 18.4 and 22.4, which
+ * is a third to a half quicker each way and still a helicopter rather than a
+ * lift.
  */
 const DRAG = 0.13;
-const DRAG_UP = 0.55;
+const DRAG_UP = 0.43;
 
 /** Translational lift: a helicopter is more efficient with airspeed. */
 const LIFT_SPEED = 26;
