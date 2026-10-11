@@ -267,16 +267,36 @@ export class Input {
       // Pad left is negative and should yaw left, which is positive here.
       if (lx) out.yaw = -lx;
       if (rx) out.roll = rx;
-      if (ry) out.pitch = ry;
+      // Stick forward is negative, and forward is the nose going down and the
+      // aircraft going somewhere -- a positive pitch. Taken straight, the pad
+      // flew backwards when the stick went forwards, which is the inversion
+      // the mouse had and had fixed: "pulling back on the mouse should make it
+      // go backwards and pushing forwards" the other way. One convention, and
+      // this is now the only place the sign is written down twice.
+      if (ry) out.pitch = -ry;
     }
 
-    // Touch: the throttle and brake pedals are the collective, and the
-    // steering stick is the cyclic. Nothing new to learn and nothing new to
-    // draw -- the controls that are already on screen mean the nearest thing.
+    // ---- touch ----
+    //
+    // Two thumbsticks, laid out and signed in core/touch.js: left is the
+    // collective and the pedals, right is the cyclic. Read straight through,
+    // because they are already in this function's convention.
+    //
+    // What was here before reused the driving controls -- pedals for the
+    // collective, the steering stick for roll -- on the grounds that it meant
+    // nothing new to draw. It did not work, and could not have: there was no
+    // pitch axis anywhere on the screen, so the one thing a helicopter has to
+    // do was unreachable ("you can't go forwards at the moment"), and the
+    // steering stick is negated for the car's frame, so the half that did
+    // work went the wrong way ("the tilting's the wrong way around").
     const t = this.touch;
-    if (t && t.enabled) {
+    if (t && t.enabled && t.air) {
+      // The collective latches, so it is read whether a thumb is down or not.
+      out.collective = t.collective;
+      if (t.leftOn) out.yaw = t.yaw;
+      if (t.cyclicOn) { out.pitch = t.pitch; out.roll = t.roll; }
+    } else if (t && t.enabled) {
       if (t.throttle || t.brake) out.collective = t.throttle - t.brake;
-      if (t.steering) out.roll = t.steer;
     }
     return out;
   }

@@ -779,10 +779,18 @@ export class FlyingHelicopter {
     }
   }
 
-  /** What the HUD should be telling the pilot to do, if anything. */
+  /**
+   * What the HUD should be telling the pilot to do, if anything.
+   *
+   * There is no W on a phone, and telling somebody to hold one is worse than
+   * saying nothing: the control they want is right there under their left
+   * thumb. See core/touch.js for the layout this names.
+   */
   get startPrompt() {
     if (!this.engineOff) return null;
     if (this.starting > 0) return `STARTING — ${Math.round(this.startFrac * 100)}%`;
+    const touch = this.game.input && this.game.input.touch;
+    if (touch && touch.enabled) return 'SLIDE LEFT STICK UP TO START';
     return 'HOLD W TO START';
   }
 

@@ -589,6 +589,48 @@ still road either side of the car, and a note suggesting you turn the phone.
 The HUD shrinks to fit round the thumbs, and after being busted a `RUN AGAIN`
 button stands in for `R`.
 
+**Flying it on a phone** is a different layout, because the driving one has
+nothing to fly with: a car needs one axis and three pedals, a helicopter needs
+four axes. Take the aircraft and both halves of the screen become a round
+thumbstick -- the same split as the Xbox pad, which is the split every game
+with a helicopter in it uses.
+
+| Touch | Action |
+|---|---|
+| Left stick, up and down | The collective. Up is more power; it is what starts the engine from cold |
+| Left stick, across | The pedals, swinging the nose left and right |
+| Right stick | The cyclic. Forward tilts forward and goes, back comes back, right banks right |
+
+The pedals are hidden while it is up, `GAS` and `BRAKE` and `HANDBRAKE` being
+three words for things a helicopter does not have: *"it shouldn't say break and
+stuff."* The prompt on a cold aircraft stops saying `HOLD W TO START` too,
+there being no W on a phone.
+
+The two sticks behave differently when a thumb lifts off, and the difference is
+the point. The cyclic springs back to centre, so letting go levels the aircraft
+-- the flight model already self-centres toward level, and that is the recovery
+a phone pilot needs when it all goes wrong. The collective latches where it was
+left, like the lever it is named after: a stick that sprang back to no power
+would drop you out of the sky every time you adjusted your grip. It is a
+relative lever as well, sliding up from wherever it already is, so the point
+the thumb lands does not mean a particular power setting.
+
+What was there before reused the driving controls -- pedals for the collective,
+the steering stick for roll -- on the grounds that it meant nothing new to
+learn and nothing new to draw. It could not work, and it was reported as not
+working twice in one breath. There was no pitch axis anywhere on the screen, so
+the one thing a helicopter has to do was unreachable: *"you can't go forwards at
+the moment."* And the steering stick publishes a value negated for the car's
+frame, so the half that did respond went the wrong way: *"the tilting's the
+wrong way around."* Both are measured now -- thumb forward gives 34 m/s along
+the nose and nothing sideways, thumb right gives 34 m/s to the right.
+
+Chasing those signs turned up a third one with nothing to do with phones: the
+pad's pitch was inverted against the mouse and the arrow keys, so pushing the
+right stick forward flew the aircraft backwards -- the same inversion the mouse
+had and had fixed. All four inputs now agree, and the sign is written down in
+one place.
+
 **Full screen on an iPhone** is not something the page is allowed to ask for:
 Safari has never given the Fullscreen API to anything but video, so
 `document.fullscreenEnabled` is false on every iPhone. The button used to hide

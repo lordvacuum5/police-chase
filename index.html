@@ -256,7 +256,7 @@
      over most of the screen: they have to let go of the pointer or they catch
      presses meant for the panel. The buttons along the top stay live, so the
      pause button can close what it opened. */
-  #touch.held #t-steer, #touch.held #t-pedals { pointer-events: none; opacity: .35; }
+  #touch.held #t-steer, #touch.held #t-pedals, #touch.held #t-cyc { pointer-events: none; opacity: .35; }
 
   /* ---- what Control is saying about your phone ----
      The joke is deaf otherwise: with the sound off the radio says all this to
@@ -577,11 +577,42 @@
     border-radius: 50%; background: rgba(232, 238, 245, .22); border: 1px solid rgba(232, 238, 245, .55);
   }
   #t-stick.on i { background: rgba(78, 163, 255, .45); border-color: var(--blue); }
-  #t-stick span {
+  #t-stick span, #t-stick b, #t-cstick b {
     position: absolute; left: 0; right: 0; top: -20px; text-align: center;
-    font-size: 9px; letter-spacing: 2px; color: var(--dim);
+    font-size: 9px; letter-spacing: 2px; color: var(--dim); font-weight: 600;
+    line-height: 1.5;
   }
-  #t-stick.on span { visibility: hidden; }
+  #t-stick.on span, #t-stick.on b, #t-cstick.on b { visibility: hidden; }
+
+  /* ---- flying ----------------------------------------------------------
+     Four axes under two thumbs, so both halves of the screen become a round
+     stick and the pedals go away -- a helicopter has no gas, brake or
+     handbrake, and said so on screen until now. See core/touch.js. */
+  #t-stick b, #t-cyc { display: none; }
+  #touch.air #t-stick span, #touch.air #t-pedals { display: none; }
+  #touch.air #t-stick b { display: block; top: -32px; }
+  #touch.air #t-cyc { display: block; }
+  #touch.air #t-stick {
+    width: 128px; height: 128px; margin: -64px 0 0 -64px; border-radius: 50%;
+    left: calc(96px + var(--safe-l)); top: calc(100% - 104px);
+  }
+  #t-cyc {
+    position: absolute; right: 0; bottom: 0; width: 50%;
+    top: calc(64px + var(--safe-t)); pointer-events: auto; touch-action: none;
+  }
+  #t-cstick {
+    position: absolute; right: calc(96px + var(--safe-r)); top: calc(100% - 104px);
+    width: 128px; height: 128px; margin: -64px -64px 0 0; border-radius: 50%;
+    border: 1px solid rgba(160, 190, 220, .28); background: rgba(10, 14, 20, .32);
+    pointer-events: none; opacity: .75;
+  }
+  /* Positioned from the left once a thumb is down, like the other one. */
+  #t-cstick.on { opacity: 1; background: rgba(10, 14, 20, .45); right: auto; margin-left: -64px; }
+  #t-cstick i {
+    position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px;
+    border-radius: 50%; background: rgba(232, 238, 245, .22); border: 1px solid rgba(232, 238, 245, .55);
+  }
+  #t-cstick.on i { background: rgba(78, 163, 255, .45); border-color: var(--blue); }
 
   #t-pedals {
     position: absolute; right: calc(12px + var(--safe-r)); bottom: calc(12px + var(--safe-b));
@@ -606,7 +637,7 @@
   }
   #touch #t-again { display: none; }
   #touch.ended #t-again { display: flex; }
-  #touch.ended #t-pedals, #touch.ended #t-steer { visibility: hidden; }
+  #touch.ended #t-pedals, #touch.ended #t-steer, #touch.ended #t-cyc { visibility: hidden; }
 
   #t-rotate {
     display: none; position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%);
@@ -667,6 +698,9 @@
     #t-buttons { top: calc(150px + var(--safe-t)); flex-wrap: wrap; justify-content: center; width: 92vw; }
     #t-steer { top: 200px; }
     #t-stick { top: calc(100% - 250px); left: 50%; }
+    #t-cyc { top: 200px; }
+    #touch.air #t-stick { top: calc(100% - 150px); left: calc(84px + var(--safe-l)); }
+    #t-cstick { top: calc(100% - 150px); right: calc(84px + var(--safe-r)); }
     body.touch #dash { left: auto; right: calc(8px + env(safe-area-inset-right, 0px)); transform: none; bottom: 196px; }
     /* Upright, the space beside the dash is where the steering thumb lives, so
        the plate goes back on top of it -- there is nothing above it here. */
