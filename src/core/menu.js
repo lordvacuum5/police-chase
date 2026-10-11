@@ -2,15 +2,29 @@
 //
 // Three ways in, and the menu shows only what each one has to answer:
 //
-//   SINGLE PLAYER   car, weather, ground
-//   BE THE POLICE    police car, weather, ground -- you chase a getaway car
-//                   driven by the computer. See ai/runner.js
-//   HOST A GAME     a name for the game, then the same three -- you are the
-//                   escapee, and what you pick is what everyone plays
-//   JOIN A GAME     the name of the game, and which police car you turn up in.
-//                   The ground and the weather are the host's; there is no
-//                   point showing them here, and showing them greyed out only
-//                   made it look broken.
+// Four ways in, in two groups, because they answer two questions rather than
+// one: how many of you there are, and which side you are on.
+//
+//   ON YOUR OWN    RUN FROM THE POLICE   car, weather, ground
+//                  BE THE POLICE         police car, weather, ground -- the
+//                                        getaway car drives itself, see
+//                                        ai/runner.js
+//   WITH FRIENDS   HOST A GAME           a name for the game, then the same
+//                                        three; you run and what you pick is
+//                                        what everyone plays
+//                  JOIN A GAME           the name of the game, and which
+//                                        police car you turn up in. The ground
+//                                        and the weather are the host's, so
+//                                        there is no point showing them here;
+//                                        greyed out only made it look broken.
+//
+// It used to be a flat row of four, and the row did not survive meeting a
+// player: "the menu's really kind of messy -- it's single player, then it says
+// be the police, then create a game, then join game, and obviously if you join
+// a game you're the police. So it makes no sense." Which was fair. Two of the
+// four put you in a police car and nothing said so, and SINGLE PLAYER was the
+// only one not named after what you actually do in it. Every button now says
+// which side it puts you on, and the grouping says who else is in the game.
 //
 // Nothing starts until START is pressed. Picking a map used to start the game
 // on the spot, which meant you could not look at the second map without
@@ -500,13 +514,14 @@ function netStatus(text, kind) {
 }
 
 const START_LABEL = {
-  single: 'START CHASE', chase: 'START PURSUIT', create: 'CREATE & START', join: 'JOIN GAME',
+  single: 'START THE RUN', chase: 'START THE PURSUIT',
+  create: 'CREATE & START', join: 'JOIN GAME',
 };
 const MODE_HINT = {
-  single: '',
+  single: 'You are the getaway driver, on your own against the whole force.',
   chase: 'You are the police. The getaway car drives itself.',
-  create: 'You are the escapee. Others join by typing this name.',
-  join: 'You are a police unit in this game.',
+  create: 'You run. Everyone who joins is a police unit chasing you.',
+  join: 'You are a police unit in a game somebody else is hosting.',
 };
 
 /** Which modes put you in a police car rather than the getaway car. */
@@ -522,23 +537,41 @@ function buildModes(onPick) {
   netMode = 'single';
   starting = false;
 
-  const modes = [
-    ['SINGLE PLAYER', 'single'],
-    ['BE THE POLICE', 'chase'],
-    ['HOST A GAME', 'create'],
-    ['JOIN A GAME', 'join'],
+  const groups = [
+    ['ON YOUR OWN', [
+      ['RUN FROM THE POLICE', 'single', 'you are the getaway driver'],
+      ['BE THE POLICE', 'chase', 'the getaway car drives itself'],
+    ]],
+    ['WITH FRIENDS', [
+      ['HOST A GAME', 'create', 'you run, they chase'],
+      ['JOIN A GAME', 'join', 'you are one of the police'],
+    ]],
   ];
-  const seg = document.createElement('div');
-  seg.className = 'seg';
-  const buttons = modes.map(([label, value]) => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = label;
-    b.addEventListener('click', () => setMode(value));
-    seg.appendChild(b);
-    return b;
-  });
-  holder.appendChild(seg);
+  const modes = [];
+  const buttons = [];
+  for (const [caption, entries] of groups) {
+    const wrap = document.createElement('div');
+    wrap.className = 'modegroup';
+    const cap = document.createElement('div');
+    cap.className = 'modecap';
+    cap.textContent = caption;
+    wrap.appendChild(cap);
+    const seg = document.createElement('div');
+    seg.className = 'seg';
+    for (const [label, value, sub] of entries) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      // The small line is the whole point of the regrouping: which side this
+      // button puts you on, said on the button rather than discovered later.
+      b.innerHTML = `${label}<small>${sub}</small>`;
+      b.addEventListener('click', () => setMode(value));
+      seg.appendChild(b);
+      modes.push([label, value]);
+      buttons.push(b);
+    }
+    wrap.appendChild(seg);
+    holder.appendChild(wrap);
+  }
 
   function setMode(mode) {
     netMode = mode;

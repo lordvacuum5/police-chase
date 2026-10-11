@@ -5,7 +5,7 @@ import { initPhysics, createWorld, hasLineOfSight } from './physics/world.js';
 import { Vehicle } from './physics/vehicle.js';
 import {
   SPECS, LIVERIES, buildCarGeometry, buildWheelGeometry, LAMP_OFFSETS,
-  carMaterials, drivablePoliceSpec,
+  carMaterials, drivablePoliceSpec, getawaySpec,
 } from './game/vehicles.js';
 import { WORLD_HALF } from './world/common.js';
 import { appleMode, realApple, setAppleMode } from './core/platform.js';
@@ -42,6 +42,15 @@ const _qN = new THREE.Quaternion();
 
 const SOLO_AIR = typeof location !== 'undefined'
   && new URLSearchParams(location.search).get('air') === '1';
+
+/**
+ * Where the getaway car starts, relative to the player: a distance band and
+ * how far round from straight ahead it may be (the cosine, so 0.55 is about
+ * 57 degrees either side). Close enough to see, far enough to be a chase.
+ */
+const RUNNER_AHEAD_MIN = 70;
+const RUNNER_AHEAD_MAX = 190;
+const RUNNER_CONE = 0.55;
 import { TrafficLights, SIGNAL } from './game/trafficlights.js';
 import { StreetProps } from './game/streetprops.js';
 import { Garage } from './game/garage.js';
@@ -749,44 +758,67 @@ class Game {
    * null if no edge at this node works, so the caller can try elsewhere.
    */
   /**
-   * Put a getaway car on the road and set the computer driving it.
+   * Put a getaway car on the road ahead of the player and set the computer
+   * driving it.
    *
-   * Far enough away that finding it is part of the job and close enough that
-   * the job starts now: a chase you have to drive two minutes to reach is a
-   * commute. 160 to 420 m is about ten to thirty seconds at pursuit speed.
+   * Ahead, and that is the whole of the requirement: "the criminal car should
+   * start in front of me... it spawns in a bad place." It used to take any
+   * road node in a distance band, which on a city map is as likely to be
+   * behind you, round a corner, or across a dual carriageway as in front --
+   * so the pursuit began with half a minute of driving about looking for it.
    *
-   * It turns up already wanted, at two stars. A getaway car that has to be
-   * provoked into being chased makes no sense on this side of the game --
-   * there is nobody to commit the offence, and the alternative is waiting for
-   * an AI car to run a red light in front of you. Two stars rather than one so
-   * the force comes out properly alongside you rather than leaving you to it.
+   * Three tests, all of them cheap: within a sensible distance, inside a cone
+   * off the nose, and pointing away rather than at you. The last one matters
+   * as much as the first: a car facing you has to turn round before it can
+   * run, which looks like a bug and hands you the first ten seconds.
    */
   _initRunner() {
-    let place = null;
-    for (let i = 0; i < 80 && !place; i++) {
-      const node = this.graph.randomNode(this.rng, 'street');
-      if (!node) continue;
+    const me = this.player;
+    const fx = me.forward.x, fz = me.forward.z;
+    let place = null, bestAhead = -Infinity;
+    for (const node of this.graph.nodes) {
+      const dx = node.x - me.position.x, dz = node.z - me.position.z;
+      const d = Math.hypot(dx, dz);
+      if (d < RUNNER_AHEAD_MIN || d > RUNNER_AHEAD_MAX) continue;
+      // Inside the cone: how far round from straight ahead the node is.
+      const along = (dx * fx + dz * fz) / (d || 1);
+      if (along < RUNNER_CONE) continue;
       const p = this._placeOnRoad(node);
       if (!p) continue;
-      const d = dist2(p.position.x, p.position.z, this.player.position.x, this.player.position.z);
-      if (d < 160 || d > 420) continue;
-      place = p;
+      // Facing away from the player, so its first move is to drive off.
+      const hx = Math.sin(p.heading), hz = Math.cos(p.heading);
+      if (hx * fx + hz * fz < 0.1) continue;
+      // Of the ones that qualify, the one most directly up the road.
+      if (along > bestAhead) { bestAhead = along; place = p; }
     }
-    // Anywhere at all rather than no chase: a map whose random nodes all came
-    // back too close or too far is still a map worth playing on.
+    // Nothing ahead that works -- a dead end, or facing the edge of the map.
+    // Anywhere at all beats no chase, so the cone comes off and then the
+    // distance band does.
+    for (let i = 0; i < 60 && !place; i++) {
+      const node = this.graph.randomNode(this.rng, 'street');
+      if (!node) continue;
+      const d = dist2(node.x, node.z, me.position.x, me.position.z);
+      if (d < RUNNER_AHEAD_MIN || d > RUNNER_AHEAD_MAX) continue;
+      place = this._placeOnRoad(node);
+    }
     for (let i = 0; i < 40 && !place; i++) {
       place = this._placeOnRoad(this.graph.randomNode(this.rng, 'street'));
     }
     if (!place) return;
 
     const kind = pickRunnerCar(this.rng);
-    const v = this.createVehicle(kind, kind, place.position, place.heading, {});
+    // Quicker and grippier than anything the force has, and only this car:
+    // see getawaySpec.
+    const v = this.createVehicle(kind, kind, place.position, place.heading,
+      { spec: getawaySpec(kind) });
     if (!v) return;
     this.runner = new Runner(this, v);
-    this.heat.bump(1, 'a getaway car');
-    this.heat.value = Math.max(this.heat.value, 2);
-    this.heat.peak = Math.max(this.heat.peak, this.heat.value);
-    this.radio('Control, all units, vehicle failing to stop. Pursuit authorised.', true);
+    // One star, which is what `bump` starts a chase at. It used to be forced
+    // to two so the force would turn out in numbers, and that was the wrong
+    // call twice over -- it read as a bug ("it started at wanted level two
+    // for some reason") and it skipped the part of a pursuit where it is
+    // still just you and them. It climbs from here the way it always does.
+    this.heat.bump(1, 'failing to stop');
   }
 
   /**

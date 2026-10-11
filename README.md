@@ -43,12 +43,25 @@ easily test out and, you know, it's just a cool feature without having to play
 in multiplayer."*
 
 You pick your police car, your ground and your weather as usual. The suspect
-turns up in one of the three runner cars, 160 to 420 m away, already wanted at
-two stars -- there is nobody on that side to commit an offence, and waiting for
-an AI car to run a red light in front of you is not a game. The rest of the
-force comes out with you, the radio works, roadblocks go in, and the helicopter
-flies. Stop them and the screen says **SUSPECT DETAINED**; lose them and it
-says **SUSPECT LOST** and the run carries on.
+turns up in one of the three runner cars, **on the road ahead of you and
+pointing away**, 70 to 190 m off and within about 57 degrees of straight ahead.
+It starts at one star -- `bump` is called and nothing forces it higher, so the
+pursuit climbs the way any other does. The rest of the force comes out with
+you, the radio works, roadblocks go in, and the helicopter flies. Stop them and
+the screen says **SUSPECT DETAINED**; lose them and it says **SUSPECT LOST**
+and the run carries on.
+
+Both of those were wrong first time round and reported: *"the criminal car
+should start in front of me... it spawns in a bad place"*, and *"it started at
+wanted level two for some reason"*. The spawn took any road node in a distance
+band, which on a city map is as likely to be behind you or across a dual
+carriageway as in front, so the pursuit opened with half a minute of looking
+for it; and two stars was forced so the force would turn out in numbers, which
+skipped the part of a chase where it is still only you and them.
+
+Facing away matters as much as being ahead. A car pointing at you has to turn
+round before it can run, which looks like a bug and hands you the first ten
+seconds.
 
 **The getaway driver is in `src/ai/runner.js`**, and it is deliberately the
 mirror of the intercept solver rather than anything new. `RoadGraph.predict`
@@ -69,6 +82,22 @@ The reused primitive is most of why the file is small, and it means the
 getaway car plans with exactly the same model of the road the force uses
 against it, which is the right kind of fair.
 
+**It keeps the road it is on.** The first version re-chose its junction from
+scratch every plan, and the two best options are usually within a few points of
+each other -- so it swapped between them, turning into a junction, changing its
+mind halfway, and scrubbing across the road to pick up the other line. Reported
+as *"they turn sort of weird"*. A new junction now has to beat the current one
+by a fifth before it is taken, which is the same guard `Officer._goTo` has
+carried on the police side for the same reason.
+
+The other half of that was a mismatch nobody would see by reading either side
+alone: routes are built with the 16 m cut-corner fillet a car in a hurry gets,
+but the Driver's default `arcFloor` is 6 m, the lane-discipline figure. The
+speed planner was braking for a corner far tighter than the one actually
+coming and then arriving with the wrong line for the one that was. The police
+use 13 on exactly these routes; so does this now. Between the two fixes the
+time it spends on the carriageway went from **72% to 93%**.
+
 **Two things it does not do itself.** Getting unwedged is the Driver's own job
 and it already does it -- `planSpeed` notices a car that is asking to move and
 not moving, reverses out, and raises `needsRepath`. A second recovery written
@@ -82,11 +111,28 @@ the suspect under 3 km/h. The police side has had exactly this guard for the
 same reason since boxes were added (`Officer._holdingArrest`). With it, the
 arrest completes.
 
-**Measured**, with the player's own car parked on the handbrake so the figures
-are the AI force against the AI runner and nothing else: a 46-second pursuit
-ending in an arrest, the suspect averaging 49 km/h and peaking at 115, on the
-carriageway 72% of the time, and 8 seconds pinned before the arrest completed.
-A human chasing as well shortens that, which is the point.
+**The car is quicker than anything the force has**, and only that car:
+`getawaySpec` in `game/vehicles.js` gives it 1.34/1.36 of grip against the
+police player's 1.24/1.25 and a fifth more torque. Asked for in those terms --
+*"they need to be faster... better grip than the normal actual car has,
+because they need to be better than the police cars. Don't downgrade the police
+cars, obviously -- only upgrade the other car"* -- so nothing the force drives
+is touched, including the half-tonne of extra mass `drivablePoliceSpec` gives
+your own car. The getaway car stays light: being easy to shove is the price of
+being quick, and it is the way back into a chase you are losing.
+
+**Measured**, in three runs on the same map:
+
+| | mean | top | on carriageway | outcome |
+|---|---|---|---|---|
+| before, force alone | 49 km/h | 115 km/h | 72% | arrested at 46 s |
+| after, force alone | 67 km/h | 123 km/h | 93% | still running at 150 s, heat decayed to nothing |
+| after, with a pursuing driver in the player's car | — | 182 km/h | — | closed to **3 m**, 52% damage inflicted, broke away by 150 s |
+
+The middle row is the force on its own with the player parked on the
+handbrake, and it losing that one is the right answer: the player is supposed
+to be what decides it. The third is the same chase with the player's car driven
+the way a pursuing unit drives -- a real contest, winnable from either side.
 
 **One getter did most of the plumbing.** The dispatcher, the roadblocks, the
 helicopter and the heat were all handed `this.player` directly, because for the
@@ -106,10 +152,21 @@ crediting the officer for the suspect's work; the line is hidden instead.
 
 One player runs; everyone else is a police car, alongside the AI.
 
-The menu offers four ways in: **SINGLE PLAYER**, **BE THE POLICE** (above),
-**HOST A GAME** and **JOIN A
-GAME**. Hosting asks for a name for the game and then the same three questions
-single player asks — car, weather, ground — because the host is the escapee and
+The menu offers four ways in, in two groups, because they answer two questions
+rather than one -- how many of you there are, and which side you are on:
+**ON YOUR OWN** (`RUN FROM THE POLICE`, `BE THE POLICE`) and **WITH FRIENDS**
+(`HOST A GAME`, `JOIN A GAME`). Each button says underneath which side it puts
+you on.
+
+It was a flat row of four and did not survive meeting a player: *"the menu's
+really kind of messy -- it's single player, then it says be the police, then
+create a game, then join game, and obviously if you join a game you're the
+police. So it makes no sense."* Two of the four put you in a police car and
+nothing said so, and SINGLE PLAYER was the only one not named after what you
+actually do in it.
+
+Hosting asks for a name for the game and then the same three questions
+running on your own asks — car, weather, ground — because the host is the escapee and
 what they pick is what everybody plays. Joining asks for that name and one
 thing more: which police car you turn up in. It does not show a map, because
 the map is not yours to choose; it used to show one greyed out, which looked

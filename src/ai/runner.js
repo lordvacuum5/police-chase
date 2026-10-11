@@ -58,6 +58,32 @@ const REPATH = 1.2;
 const TIME_COST = 6;
 
 /**
+ * How much better a new junction has to score before the car abandons the one
+ * it is already driving to, as a fraction.
+ *
+ * Without this it re-chose from scratch every REPATH and the two best options
+ * are usually within a few points of each other, so it swapped between them
+ * -- turning into a junction, changing its mind halfway, and scrubbing across
+ * the road to pick up the other line. Reported as "they turn sort of weird",
+ * and it is the same failure Officer._goTo documents on the police side:
+ * "a unit that re-plans on every one of those changes is a unit that keeps
+ * changing its mind". A fifth better, or it keeps the road it is on.
+ */
+const SWITCH_MARGIN = 0.2;
+
+/**
+ * The tightest corner it plans for, in metres of radius.
+ *
+ * Has to match the route it is actually given. The path is built with the
+ * 16 m cut-corner fillet a car in a hurry gets, but the Driver's default floor
+ * is 6 -- the lane-discipline figure -- so the speed planner was braking for a
+ * turn far tighter than the one coming, then arriving with the wrong line and
+ * the wrong speed for the one that was. The police use 13 for exactly the same
+ * routes (Officer.CUT_ARC); so does this.
+ */
+const CUT_ARC = 13;
+
+/**
  * Distance at which a police car ahead stops being a reason to turn, in
  * metres. Inside this a candidate junction is scored as if the pursuer were
  * sitting on it, which is what makes the car refuse to drive into a roadblock
@@ -159,20 +185,37 @@ export class Runner {
       Math.max(v.speed, 10), 0.6, HORIZON);
     if (!reach.size) return false;
 
-    let best = null, bestScore = -Infinity;
-    for (const [id, rec] of reach) {
+    const score = (id, rec) => {
       const n = g.nodes[id];
-      if (!n) continue;
+      if (!n) return null;
       let clearance = this._clearanceAt(n.x, n.z, threats);
       // A junction with a police car sitting near it is not an escape, however
       // far away it looks on the clock. Collapsing everything inside THREAT_NEAR
       // to the same bad score means the planner treats "they are there" as a
       // wall rather than as a gradient it can shave.
       if (clearance < THREAT_NEAR) clearance = clearance * 0.25;
-      const score = clearance - rec.eta * TIME_COST + rec.prob * 25;
-      if (score > bestScore) { bestScore = score; best = { id, node: n }; }
+      return clearance - rec.eta * TIME_COST + rec.prob * 25;
+    };
+
+    let best = null, bestScore = -Infinity;
+    for (const [id, rec] of reach) {
+      const v2 = score(id, rec);
+      if (v2 === null) continue;
+      if (v2 > bestScore) { bestScore = v2; best = { id, node: g.nodes[id] }; }
     }
     if (!best) return false;
+
+    // Stay on the road already chosen unless the alternative is clearly
+    // better. See SWITCH_MARGIN.
+    if (this.goalNode !== null && this.goalNode !== best.id && this.driver.hasPath) {
+      const hold = reach.get(this.goalNode);
+      if (hold) {
+        const holdScore = score(this.goalNode, hold);
+        if (holdScore !== null && bestScore < holdScore + Math.abs(holdScore) * SWITCH_MARGIN) {
+          return true;             // keep the current path, and the current line
+        }
+      }
+    }
 
     // Centreline, not a lane: this car is not obeying anything. Same corner
     // cutting a pursuing unit gets, for the same reason -- it is in a hurry.
@@ -254,6 +297,8 @@ export class Runner {
     // the verge, and the gaps between buildings. It is the one car with a
     // reason to use them.
     this.driver.allowOffRoad = true;
+    // Plan for the corner it is actually being given. See CUT_ARC.
+    this.driver.arcFloor = CUT_ARC;
     this.driver.limitScale = this.clearFor > CALM_AFTER ? 1.2 : 3.0;
 
     if (this.driver.needsRepath) {

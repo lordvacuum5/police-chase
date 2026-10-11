@@ -462,7 +462,15 @@
   .seg button:focus-visible { outline: 1px solid var(--blue); outline-offset: -2px; }
 
   /* ---- multiplayer ---- */
-  #mode { display: flex; justify-content: center; margin-bottom: 16px; }
+  /* Two groups, because the four ways in are two questions and not one list:
+     how many of you there are, and which side you are on. See core/menu.js. */
+  #mode { display: flex; justify-content: center; gap: 22px; margin-bottom: 16px; flex-wrap: wrap; }
+  .modegroup { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .modecap { font-size: 9px; letter-spacing: 3px; color: var(--dim); }
+  .seg button small {
+    display: block; font-size: 9px; letter-spacing: 1px; opacity: .72; margin-top: 2px;
+    text-transform: none;
+  }
   #netpanel { margin: -4px 0 18px; }
   .netrow { display: flex; flex-direction: column; gap: 7px; align-items: center; }
   #netlabel { font-size: 10px; letter-spacing: 3px; color: var(--dim); }

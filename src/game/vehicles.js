@@ -662,6 +662,46 @@ export function drivablePoliceSpec(key = 'interceptor') {
   return spec;
 }
 
+/**
+ * The getaway car, when the computer is driving it and you are the police.
+ *
+ * Asked for directly: "they need to be faster. You can give them like better
+ * grip than the normal actual car has... because they need to be better than
+ * the police cars. Don't downgrade the police cars, obviously -- only upgrade
+ * the other car."
+ *
+ * So this goes one way only. Nothing the force drives is touched, including
+ * the player's own car, which keeps every advantage drivablePoliceSpec gives
+ * it -- the half-tonne of extra mass most of all, so a shove is still a shove
+ * and ramming still works. What the getaway car gets is the two things that
+ * decide whether it can stay ahead:
+ *
+ *   grip    1.34 / 1.36 against the police player's 1.24 / 1.25, so it holds
+ *           a corner the car behind cannot. This is the one that matters: the
+ *           chase is decided in corners, not on straights, and the measured
+ *           complaint was that it was being caught rather than outrun.
+ *   torque  a fifth more, which is what gets it back up to speed out of the
+ *           corner it just took better.
+ *
+ * It stays light. Being easy to shove is the price of being quick, it is the
+ * player's way back into a chase they are losing, and making it heavy as well
+ * as fast would leave the police side with nothing.
+ */
+export function getawaySpec(key = 'runner') {
+  const base = SPECS[key] || SPECS.runner;
+  return Object.assign({}, base, {
+    highSpeedTyre: {
+      from: 8, to: 30,
+      stiffness: { front: 2.3, rear: 2.9 },
+      grip: { front: 1.34, rear: 1.36 },
+    },
+    gripBias: { front: base.gripBias.front + 0.06, rear: base.gripBias.rear + 0.06 },
+    engine: Object.assign({}, base.engine, {
+      torqueCurve: base.engine.torqueCurve.map(([rpm, nm]) => [rpm, Math.round(nm * 1.2)]),
+    }),
+  });
+}
+
 // ---------------------------------------------------------------- liveries
 
 export const LIVERIES = {
