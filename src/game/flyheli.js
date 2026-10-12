@@ -208,8 +208,25 @@ const AIR_SOLID = groups(0xFFFF, GROUP.BUILDING | GROUP.PROP);
  */
 const CRASH_SPEED = 14;
 /** Seconds of holding W before a shut-down rotor has lift in it. */
-/** How much of the stick's unmet demand the rotor disc leads the body by. */
-const DISC_LEAD = 0.55;
+/**
+ * How much of the stick's unmet demand the rotor disc leads the body by, and
+ * the most it may ever lead by in radians.
+ *
+ * The cap is the important half and it was missing. The lead is taken off the
+ * gap between what the stick is asking for and what the airframe has got
+ * round to, and roll is allowed 2.3 radians of demand -- so a hard input
+ * opened a gap most of that wide and 0.55 of it tilted the disc seventy
+ * degrees off the mast. On screen the rotor looked detached: "when I said to
+ * turn the rotor blades, it shouldn't look that obviously visible... it looks
+ * really weird."
+ *
+ * Seven degrees is about what a real disc does relative to its mast, and it
+ * still reads -- the point of the lead is that the disc goes into the turn
+ * before the fuselage does, not that it goes far. Cosmetic either way:
+ * nothing flies on these two numbers, and the controls are untouched.
+ */
+const DISC_LEAD = 0.18;
+const DISC_MAX = 0.12;
 
 const START_TIME = 1.8;
 /** Seconds on the ground before a wrecked aircraft is back on the pad. */
@@ -572,8 +589,10 @@ export class FlyingHelicopter {
     // the airframe into the turn, and settles back level with it in the
     // cruise. Cosmetic -- nothing flies on it -- but it is most of what makes
     // the thing read as a helicopter.
-    this.discPitch = damp(this.discPitch, (this._askPitch - this.pitch) * DISC_LEAD, 6, dt);
-    this.discRoll = damp(this.discRoll, (this._askRoll - this.roll) * DISC_LEAD, 6, dt);
+    this.discPitch = damp(this.discPitch,
+      clamp((this._askPitch - this.pitch) * DISC_LEAD, -DISC_MAX, DISC_MAX), 6, dt);
+    this.discRoll = damp(this.discRoll,
+      clamp((this._askRoll - this.roll) * DISC_LEAD, -DISC_MAX, DISC_MAX), 6, dt);
     this.rotor += dt * 34 * this.spin;
     // Published for the audio, which reads a car's controls and wheels.
     this.controls.throttle = this.collective;

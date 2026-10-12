@@ -813,12 +813,13 @@ class Game {
       { spec: getawaySpec(kind) });
     if (!v) return;
     this.runner = new Runner(this, v);
-    // One star, which is what `bump` starts a chase at. It used to be forced
-    // to two so the force would turn out in numbers, and that was the wrong
-    // call twice over -- it read as a bug ("it started at wanted level two
-    // for some reason") and it skipped the part of a pursuit where it is
-    // still just you and them. It climbs from here the way it always does.
-    this.heat.bump(1, 'failing to stop');
+    // No heat at all, and nothing told about it. The car pulls away like
+    // anything else on the road and drives normally for somewhere between ten
+    // seconds and a minute (Runner.BREAK_MIN); when it goes, a unit that can
+    // see it doing ninety calls it in through _checkProvocation, exactly as
+    // it would for a player. Forcing a wanted level here was starting the
+    // chase before anybody had done anything, and it read as a bug: "it
+    // started at wanted level two for some reason."
   }
 
   /**
@@ -2547,7 +2548,7 @@ class Game {
    * still doing more than 30 km/h, with its own approach showing red.
    */
   _checkRedLight() {
-    const p = this.player;
+    const p = this.quarry;
     if (!this.signals || !this.commentary || this.outcome) return;
     if (Math.abs(p.forwardSpeed) < 8.3) return;
     const ahead = this.commentary.junctionAhead(p);
@@ -2589,12 +2590,30 @@ class Game {
 
   _checkProvocation(dt) {
     const k = this.dispatcher.knowledge;
-    const p = this.player;
+    // Whoever the force is watching, which on the police side of a solo
+    // pursuit is the getaway car and not your own patrol car. This is what
+    // actually starts that chase: the car drives like anything else for its
+    // first half-minute, then floors it, and a unit close enough to see it
+    // do so calls it in -- "if a police car sees them like normal, then it
+    // will start pursuit". Nothing special was needed for that; the rule has
+    // always been here, it was just only ever asked about the player.
+    const p = this.quarry;
 
-    if (this.heat.value <= 0 && k.seen && k.spotter) {
+    if (this.heat.value <= 0 && k.seen) {
       // Being seen is already gated on range and line of sight; all that is
       // left is whether you were doing anything worth stopping you for.
-      const d = k.spotter.distanceTo(p.position);
+      //
+      // Whoever is doing the seeing, which is not always a unit on the
+      // roster. `k.spotter` is set by the dispatcher's own perception pass
+      // and a police player is not in `dispatcher.units`, so with the force
+      // out of range the car could break cover and tear past your windscreen
+      // at ninety and nothing happened -- the one witness who counted was
+      // the one the rule could not ask. See _runnerSight.
+      let d = k.spotter ? k.spotter.distanceTo(p.position) : Infinity;
+      const me = this.player;
+      if (this.runner && me && me.isPolice && !me.isAircraft) {
+        d = Math.min(d, dist2(me.position.x, me.position.z, p.position.x, p.position.z));
+      }
       if (d < 120 && (Math.abs(p.forwardSpeed) > 25 || p.isDrifting)) {
         this.heat.bump(1, 'driving dangerously');
       }

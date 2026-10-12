@@ -692,13 +692,32 @@ export function getawaySpec(key = 'runner') {
   return Object.assign({}, base, {
     highSpeedTyre: {
       from: 8, to: 30,
-      stiffness: { front: 2.3, rear: 2.9 },
-      grip: { front: 1.34, rear: 1.36 },
+      stiffness: { front: 2.35, rear: 2.95 },
+      grip: { front: 1.40, rear: 1.42 },
     },
-    gripBias: { front: base.gripBias.front + 0.06, rear: base.gripBias.rear + 0.06 },
+    gripBias: { front: base.gripBias.front + 0.08, rear: base.gripBias.rear + 0.08 },
     engine: Object.assign({}, base.engine, {
-      torqueCurve: base.engine.torqueCurve.map(([rpm, nm]) => [rpm, Math.round(nm * 1.2)]),
+      torqueCurve: base.engine.torqueCurve.map(([rpm, nm]) => [rpm, Math.round(nm * 1.28)]),
     }),
+
+    // The one that actually decided the chases, and not the one I reached for
+    // first. "The police seem pretty able to get them, it's pretty easy."
+    //
+    // Traced: the car was not being outdriven, it was being broken. Three
+    // cars can turn up as the getaway car and their durability runs from 1.40
+    // (the Stiletto) to 3.2 (the Runner), so which one the session picked
+    // changed the difficulty more than any of the handling above -- and the
+    // fragile one collected 75% damage from PITs and shunts and was stopped
+    // on the road at 103 s with the engine barely turning.
+    //
+    // A flat 4.0 for whichever car it is. Durability only divides incoming
+    // collision damage, so this costs the player nothing they were promised:
+    // the mass is untouched, so a shove is still exactly as effective as it
+    // was, and the half-tonne advantage drivablePoliceSpec gives your own car
+    // still tells. You can still push them into a wall. It just takes more
+    // than a couple of taps to end it, which is what makes the pursuit last
+    // long enough to be one.
+    durability: 4.0,
   });
 }
 

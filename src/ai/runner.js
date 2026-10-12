@@ -119,6 +119,55 @@ const PIN_GAP = 7;
 const PIN_SPEED = 2.5;
 const PIN_SECONDS = 1.2;
 
+/**
+ * How long it drives like anybody else before it makes a break for it.
+ *
+ * It used to start running the instant the game did, which meant the pursuit
+ * existed before the player had done anything: "it shouldn't instantly start
+ * running. They should drive normally for a bit and then within a random time
+ * between ten seconds and one minute they should suddenly start speeding off."
+ *
+ * So there are two drivers in this file now. Before the break it is an
+ * ordinary car -- lane discipline, the posted limit, no corner cutting, no
+ * alleys, and a route picked for somewhere to be rather than away from
+ * anybody. It is not wanted and the force has no reason to look at it. After
+ * the break it is the getaway driver, and everything below about clearance
+ * and horizons applies.
+ *
+ * Nothing announces the break. The heat system notices a car doing eighty
+ * past a patrol exactly as it notices the player doing it, which is the
+ * answer to "if a police car sees them like normal, then it will start
+ * pursuit" -- that path already existed and this just stops short-circuiting
+ * it.
+ */
+const BREAK_MIN = 10;
+const BREAK_MAX = 60;
+
+/**
+ * Route geometry, which is not the same job before and after the break.
+ *
+ * The fillet is how far back a turn starts and the lane offset is how far
+ * from the centreline it drives -- the same two numbers Officer._routeTo
+ * passes, and for the same reasons. Cruising it keeps a lane and takes
+ * junctions properly; running it uses the width of the road.
+ *
+ * `cuts` is the one that was doing visible damage. It was on always and with
+ * only 0.6 m of clearance, so the getaway car spent the chase threading gaps
+ * between buildings barely wider than itself -- which is most of what "they
+ * turn quite weird" was. The police only cut when they are a long way off the
+ * target (Officer.CUT_FROM) and allow 1.2 m; this now does both, and never
+ * cuts while it is being driven normally.
+ */
+const LANE_CORNER = 9;
+const CUT_CORNER = 16;
+const CRUISE_LANE = 3.0;
+const RUN_LANE = 2.4;
+const CUT_CLEARANCE = 1.2;
+const CUT_FROM = 140;
+
+/** The posted limit is what an ordinary car does, in m/s. */
+const CRUISE_CAP = 22;
+
 const _dir = { x: 0, z: 0 };
 
 export class Runner {
@@ -133,6 +182,14 @@ export class Runner {
     this.clearFor = 0;
     this.recoverTimer = 0;
     this.pinnedFor = 0;
+    /**
+     * Seconds until it stops behaving. Counted down in update; once it hits
+     * zero `running` is true for the rest of the session -- a car that has
+     * shown its hand does not get to be innocent again.
+     */
+    const rng = game.rng || Math.random;
+    this.breakIn = BREAK_MIN + rng() * (BREAK_MAX - BREAK_MIN);
+    this.running = false;
     /** Set from outside: how hard it is being looked for. See Game._runnerSight. */
     this.hunted = true;
   }
@@ -176,11 +233,16 @@ export class Runner {
    * on. The probability term is not about realism here -- it is what stops the
    * planner picking a junction that is only reachable by a sequence of four
    * hard turns it will make a mess of.
+   *
+   * Before the break none of that applies: it is not running from anybody, so
+   * it just wants somewhere to be. It takes the furthest thing it can reach
+   * that it is most likely to drive to anyway, which comes out as "carry on
+   * down this road and turn when the road turns".
    */
   _plan() {
     const g = this.game.graph;
     const v = this.vehicle;
-    const threats = this._threats();
+    const threats = this.running ? this._threats() : null;
     const reach = g.predict(v.position.x, v.position.z, v.forward.x, v.forward.z,
       Math.max(v.speed, 10), 0.6, HORIZON);
     if (!reach.size) return false;
@@ -188,6 +250,7 @@ export class Runner {
     const score = (id, rec) => {
       const n = g.nodes[id];
       if (!n) return null;
+      if (!this.running) return rec.eta + rec.prob * 12;
       let clearance = this._clearanceAt(n.x, n.z, threats);
       // A junction with a police car sitting near it is not an escape, however
       // far away it looks on the clock. Collapsing everything inside THREAT_NEAR
@@ -217,12 +280,21 @@ export class Runner {
       }
     }
 
-    // Centreline, not a lane: this car is not obeying anything. Same corner
-    // cutting a pursuing unit gets, for the same reason -- it is in a hurry.
+    // Geometry to match what it is doing: lane discipline and proper junctions
+    // while it is behaving, the width of the road once it is not. Alleys only
+    // when it is running AND well clear of everybody, which is the rule the
+    // police use on the same road network. See the route constants above.
+    const far = !threats || !threats.length
+      || this._clearanceAt(v.position.x, v.position.z, threats) > CUT_FROM;
     const pts = g.pathFromPosition(
-      v.position.x, v.position.z, v.forward.x, v.forward.z, best.id, 0,
-      Infinity, v.speed, 16,
-      { cuts: true, minWidth: v.spec.dims.w + 0.6 },
+      v.position.x, v.position.z, v.forward.x, v.forward.z, best.id,
+      this.running ? RUN_LANE : CRUISE_LANE,
+      Infinity, v.speed, this.running ? CUT_CORNER : LANE_CORNER,
+      {
+        cuts: this.running && far,
+        minWidth: v.spec.dims.w
+          + (g.cutRoom === undefined ? CUT_CLEARANCE : g.cutRoom),
+      },
     );
     if (pts.length < 2) return false;
     this.driver.setPath(pts);
@@ -271,6 +343,21 @@ export class Runner {
     }
     this.recoverTimer = 0;
 
+    // The break. Counted while it is still behaving; once it goes it stays
+    // gone. See BREAK_MIN.
+    if (!this.running) {
+      this.breakIn -= dt;
+      if (this.breakIn <= 0) {
+        this.running = true;
+        // A new line as well as a new attitude: the route it was cruising was
+        // chosen to be somewhere to go, and it is now the wrong shape -- the
+        // wrong lane, and junctions taken as a law-abiding car takes them.
+        this.driver.setPath([]);
+        this.repathTimer = 0;
+        this.goalNode = null;
+      }
+    }
+
     // Caught. Everything stops, including this.
     if (this.game.outcome) {
       v.setControls({ throttle: 0, brake: 1, steer: 0, handbrake: 1 });
@@ -293,13 +380,16 @@ export class Runner {
     // has to do is honour that flag, below -- a second recovery on top fought
     // the first one and left the car rocking against the wall it hit.
     this.driver.avoid(this.game.vehicles, dt, null);
-    // Allowed everything a pursuing unit is allowed: the width of the road,
-    // the verge, and the gaps between buildings. It is the one car with a
-    // reason to use them.
-    this.driver.allowOffRoad = true;
-    // Plan for the corner it is actually being given. See CUT_ARC.
-    this.driver.arcFloor = CUT_ARC;
-    this.driver.limitScale = this.clearFor > CALM_AFTER ? 1.2 : 3.0;
+    // Running, it is allowed everything a pursuing unit is allowed -- the
+    // width of the road, the verge, the gaps between buildings. Cruising, it
+    // keeps to the carriageway like anything else on it, which is most of
+    // what makes the two read as different cars from a distance.
+    this.driver.allowOffRoad = this.running;
+    // Plan for the corner it is actually being given, which is not the same
+    // corner in the two modes. See CUT_ARC.
+    this.driver.arcFloor = this.running ? CUT_ARC : 6;
+    this.driver.limitScale = !this.running ? 1.0
+      : (this.clearFor > CALM_AFTER ? 1.2 : 3.0);
 
     if (this.driver.needsRepath) {
       this.driver.needsRepath = false;
@@ -329,11 +419,14 @@ export class Runner {
       return;
     }
 
-    // Flat out while it is being chased, briskly once it is not. `speedCap` is
-    // the driver's own planner from there -- corners, grip and the road still
-    // apply, so "flat out" means as fast as the car can actually go, not a
-    // number that drives it into a wall.
-    v.setControls(this.driver.followPath(dt, this.clearFor > CALM_AFTER ? 26 : Infinity));
+    // The posted limit before the break; flat out while it is being chased;
+    // brisk once it has been clear a while. `speedCap` is the driver's own
+    // planner from there -- corners, grip and the road still apply, so "flat
+    // out" means as fast as the car can actually go, not a number that drives
+    // it into a wall.
+    const cap = !this.running ? CRUISE_CAP
+      : (this.clearFor > CALM_AFTER ? 26 : Infinity);
+    v.setControls(this.driver.followPath(dt, cap));
   }
 
   /** Scrub the roster entry, so nothing holds a reference to a dead car. */

@@ -45,8 +45,25 @@ in multiplayer."*
 You pick your police car, your ground and your weather as usual. The suspect
 turns up in one of the three runner cars, **on the road ahead of you and
 pointing away**, 70 to 190 m off and within about 57 degrees of straight ahead.
-It starts at one star -- `bump` is called and nothing forces it higher, so the
-pursuit climbs the way any other does. The rest of the force comes out with
+It is **not wanted at all** when it turns up, and it drives like anything else
+on the road for the first ten to sixty seconds -- lane discipline, the posted
+limit, junctions taken properly. Then it goes. Nothing announces it: a unit
+that can see it doing ninety calls it in through the same `_checkProvocation`
+that has always watched the player, and the pursuit starts from one star and
+climbs. You can sit behind it the whole time it is behaving and nothing will
+happen, which is the point: *"they should drive normally for a bit and then
+within a random time between ten seconds and one minute they should suddenly
+start speeding off... and if a police car sees them like normal, then it will
+start pursuit."*
+
+There are really two drivers in `runner.js`, and which one is at the wheel
+changes the route geometry as well as the speed -- the cruising one keeps a
+lane and uses 9 m junction fillets, the running one uses the width of the road
+and 16 m. One of them was most of a bug: corner-cutting through the gaps
+between buildings used to be on from the first frame and with 0.6 m of
+clearance, so the getaway car spent the chase threading alleys barely wider
+than itself. Cuts are now only taken while running *and* more than 140 m clear
+of everybody, with the 1.2 m the police use on the same network. The rest of the force comes out with
 you, the radio works, roadblocks go in, and the helicopter flies. Stop them and
 the screen says **SUSPECT DETAINED**; lose them and it says **SUSPECT LOST**
 and the run carries on.
@@ -111,9 +128,20 @@ the suspect under 3 km/h. The police side has had exactly this guard for the
 same reason since boxes were added (`Officer._holdingArrest`). With it, the
 arrest completes.
 
-**The car is quicker than anything the force has**, and only that car:
-`getawaySpec` in `game/vehicles.js` gives it 1.34/1.36 of grip against the
-police player's 1.24/1.25 and a fifth more torque. Asked for in those terms --
+**The car is quicker and tougher than anything the force has**, and only that
+car: `getawaySpec` in `game/vehicles.js` gives it 1.40/1.42 of grip against the
+police player's 1.24/1.25, a quarter more torque, and a flat durability of 4.0.
+
+Durability was the one that decided the chases, and not the one reached for
+first. *"The police seem pretty able to get them, it's pretty easy."* Traced,
+the car was not being outdriven -- it was being broken. The three cars that can
+turn up run from 1.40 (the Stiletto) to 3.2 (the Runner), so which one the
+session happened to pick changed the difficulty more than any handling figure,
+and the fragile one collected 75% damage from PITs and was stopped dead on the
+road. Durability only divides incoming collision damage, so a flat 4.0 costs
+the player nothing they were promised: mass is untouched, a shove is exactly as
+effective as it was, and you can still push them into a wall. It just takes
+more than a couple of taps. Asked for in those terms --
 *"they need to be faster... better grip than the normal actual car has,
 because they need to be better than the police cars. Don't downgrade the police
 cars, obviously -- only upgrade the other car"* -- so nothing the force drives
@@ -123,16 +151,23 @@ being quick, and it is the way back into a chase you are losing.
 
 **Measured**, in three runs on the same map:
 
-| | mean | top | on carriageway | outcome |
-|---|---|---|---|---|
-| before, force alone | 49 km/h | 115 km/h | 72% | arrested at 46 s |
-| after, force alone | 67 km/h | 123 km/h | 93% | still running at 150 s, heat decayed to nothing |
-| after, with a pursuing driver in the player's car | — | 182 km/h | — | closed to **3 m**, 52% damage inflicted, broke away by 150 s |
+All with the player's car driven the way a pursuing unit drives, which is a
+harder opponent than a person:
 
-The middle row is the force on its own with the player parked on the
-handbrake, and it losing that one is the right answer: the player is supposed
-to be what decides it. The third is the same chase with the player's car driven
-the way a pursuing unit drives -- a real contest, winnable from either side.
+| | mean while running | top | damage taken | outcome |
+|---|---|---|---|---|
+| first cut | 49 km/h | 115 km/h | — | arrested at 46 s |
+| grip and torque up | 67 km/h | 182 km/h | 52% | arrested at 103 s |
+| durability 4.0 as well | 88 km/h | 178 km/h | 44% | **survived the full 180 s** |
+
+The last one is the shape wanted: the gap closed to 2 m repeatedly and the
+wanted level reached 2.7 with seven units out, so it is constantly nearly
+caught -- it just cannot be ended with two taps any more. Time on the
+carriageway went 72% to 93% over the same period, from the cornering fixes
+above.
+
+With nobody chasing at all, the AI force on its own no longer catches it, and
+that is the right answer: the player is supposed to be what decides it.
 
 **One getter did most of the plumbing.** The dispatcher, the roadblocks, the
 helicopter and the heat were all handed `this.player` directly, because for the
