@@ -2537,6 +2537,40 @@ first scored ~17 reverses and whichever ran second scored 23–34, regardless of
 which was which. The rig says as much about batches carrying damage and debris
 forward; this is what that looks like when the signal is small.
 
+**Rocking, and why the forward attempt is only tried once.** The first version
+of the above cleared the patience timer whenever it did give up and reverse,
+which handed every stall a fresh three seconds of trying to drive out. On a car
+that was genuinely held -- a kerb under the sills, a wheel off a verge, the aim
+reachable on paper and not in fact -- that is a loop: forward, fail, reverse,
+forward, fail, reverse. Reported as *"a police car backed up and I'm trying to
+just gone forwards, but it backed up again."* The timer now survives the
+reverse, so the attempt happens once and the car then recovers the way it
+always did; it is cleared only once the car is properly moving again.
+
+Measured on the town map, each as the first batch on a fresh page, about 26
+unit-minutes of five-star pursuit each:
+
+| | reverses | repeated within 10 s | |
+|---|---|---|---|
+| always reverse (the original) | 47 | 13 | 28% |
+| try forward once, then reverse | **40** | **8** | **20%** |
+
+Fewer reverses and fewer repeats, so the forward attempt is not what causes the
+rocking -- it slightly reduces it. One in five reverses is still a second one
+soon after, and that is not solved: a car that reverses, re-routes and is
+handed much the same line can meet the same obstacle again.
+
+**The buildings are not the problem, and this was worth checking.** The
+suspicion was a fair one -- *"maybe they don't know where buildings actually
+are... this is in the UK map"* -- and the town is the map with crooked streets
+and rotated houses, so a collider that ignored the rotation would have been
+exactly the kind of bug that produces phantom walls. It does not: the mesh and
+the collider in `towngen.js` are given the same footprint and the same `rot`.
+Checked by sweeping a car-sized box down every road edge on the map, starting
+from the carriageway, and counting the ones that hit something solid with open
+road on the far side of it -- 4414 probes, **zero** hits. Whatever the cars are
+reversing out of, it is not a building in the wrong place.
+
 ### The band, doubled and shortened
 
 With the six fixes all failed, the remaining honest move is a cheat that says

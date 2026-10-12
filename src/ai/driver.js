@@ -1804,10 +1804,21 @@ export class Driver {
         this.reverseTimer = 2.6;
         this.reverseFrom = v.position.clone();
         this.stuckTimer = 0;
-        this.shoveTimer = 0;
+        // `shoveTimer` is deliberately NOT cleared here, and that is the whole
+        // difference between a recovery and a car rocking against a wall.
+        //
+        // Clearing it gave every stall a fresh three seconds of trying to
+        // drive out, so a car that was genuinely held -- a kerb under the
+        // sills, a wheel off a verge, the aim reachable on paper and not in
+        // fact -- went forward, failed, reversed, and then got another full
+        // three seconds to fail again: "a police car backed up and tried to
+        // just go forwards, but it backed up again." Leaving it set means the
+        // forward attempt is tried once, and after that the car reverses the
+        // way it always did until it is actually moving again.
       }
     } else if (v.speed > 3) {
-      // Moving again: forget that it ever had to be talked into it.
+      // Moving again, so whatever it was is behind it: the next stall is a new
+      // problem and gets its own attempt at driving out.
       this.shoveTimer = 0;
     }
     if (this.reverseTimer > 0) {
