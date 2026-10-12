@@ -717,7 +717,15 @@ export function getawaySpec(key = 'runner') {
     // still tells. You can still push them into a wall. It just takes more
     // than a couple of taps to end it, which is what makes the pursuit last
     // long enough to be one.
-    durability: 4.0,
+    //
+    // 4.0 was not enough either -- "the criminal car needs more health" after
+    // a session of it. 7.0 is over twice the toughest car in the game as it
+    // ships (the Runner's 3.2) and a little under the armoured van's 9. It is
+    // the right dial to be turning: mass is still untouched, so shoving and
+    // PITting work exactly as they did and the player's half-tonne advantage
+    // is intact. What changes is that a pursuit ends because the force got in
+    // front of them, not because four taps wrote the car off.
+    durability: 7.0,
   });
 }
 

@@ -46,7 +46,7 @@ const G = 9.81;
  * descent rather than being left behind by it. Small on purpose: this is also
  * what holds a banked turn up, so it is not a free number to raise.
  */
-const THRUST = 1.80;
+const THRUST = 1.90;
 /**
  * What the collective settles to with nothing held.
  *
@@ -79,20 +79,38 @@ const SPOOL = 3.2;
 
 /** Cyclic: how far it will lean, and how fast it gets there. */
 /**
- * How far it will lean. Still generous -- the roll goes past vertical, so an
- * aircraft on its back is possible and makes its lift downwards, which is the
- * pilot's problem rather than something the model forbids.
+ * How far it will lean. No limit worth the name -- an aircraft on its back
+ * makes its lift downwards, which is the pilot's problem rather than something
+ * the model forbids.
  *
- * It was 172 degrees of roll reached at 2.2 rad/s, which meant a flick of the
- * wrist put the thing inverted before anyone could react: "it shouldn't be
- * that easy to quickly swipe the mouse and instantly go upside down." The
- * limits are a little tighter now and, more to the point, the rate below is
- * less than half what it was. Going past vertical is a thing you can still
- * do; it now takes about two and a half seconds of holding it there, which is
- * a decision rather than a twitch.
+ * It was once 172 degrees of roll reached at 2.2 rad/s, which meant a flick of
+ * the wrist put the thing inverted before anyone could react: "it shouldn't be
+ * that easy to quickly swipe the mouse and instantly go upside down." What
+ * fixed that was the rate, not the limit, and the rate is still less than half
+ * what it was -- so the stops can go all the way over without the twitch
+ * coming back.
  */
-const MAX_PITCH = 1.05;          // radians, ~60 degrees
-const MAX_ROLL = 2.30;           // radians, ~132 degrees -- past vertical
+/**
+ * Both now go all the way over: "if you tilt really far forwards, there should
+ * be no limit how far you can tilt forwards... you should be able to go down
+ * pretty fast, like in real life", and the same for rolling it right round.
+ *
+ * Pi is nose vertically down and then past it, and fully inverted in roll.
+ * Tilting that far is still a decision rather than a twitch, because
+ * CYCLIC_RATE below is what governs how long it takes to get there -- about
+ * three and a half seconds of holding the stick at the stop, which is the
+ * number that stopped a flick of the wrist putting it on its back.
+ *
+ * Going past 90 degrees of pitch couples yaw and roll, because the attitude
+ * is Euler YXZ and that is what Euler angles do at the pole. The quaternion
+ * itself stays well defined and the aircraft flies through it; what you get is
+ * the heading and the roll meaning the same thing for a moment at the top. A
+ * genuine continuous loop -- round and round rather than over and back --
+ * wants the attitude integrated as a quaternion from rates instead of
+ * commanded as angles, which is a different flight model and not this one.
+ */
+const MAX_PITCH = Math.PI;
+const MAX_ROLL = Math.PI;
 /**
  * How fast the aircraft moves toward the attitude being asked for. This is
  * the number that decides whether it feels like a helicopter or a mouse
@@ -133,7 +151,7 @@ const YAW_EASE = 3.2;
  * lift.
  */
 const DRAG = 0.13;
-const DRAG_UP = 0.43;
+const DRAG_UP = 0.36;
 
 /** Translational lift: a helicopter is more efficient with airspeed. */
 const LIFT_SPEED = 26;

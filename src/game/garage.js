@@ -17,6 +17,7 @@ import { MeshBuilder, vertexColorMaterial } from '../util/meshbuild.js';
 import { GROUP, addStaticBox } from '../physics/world.js';
 import { WORLD_HALF, CELL, GRID_N, KERB_H, SURF_PAVED } from '../world/common.js';
 import { clamp01 } from '../util/math.js';
+import { ENDURANCE as AIR_TANK } from './flyheli.js';
 
 /** The lot, in metres: along the road, and back from it. */
 const LOT_L = 34;
@@ -408,10 +409,35 @@ export class Garage {
     }
   }
 
-  /** What the HUD should say, or null. */
+  /**
+   * What the HUD should say, or null.
+   *
+   * An aircraft gets a different panel, because the one below is about
+   * bodywork and an aircraft has none worth talking about: "when you go to
+   * refuel it shouldn't say repairing -- the helicopter doesn't really have
+   * health, you either get hit and it goes down or it doesn't. It should just
+   * say refuelling and show a bar refuelling." The pad is on the workshop
+   * roof, so without this the panel reported the state of a car that was not
+   * there -- REPAIRING, or NO DAMAGE, over a helicopter filling its tanks.
+   */
   get readout() {
     if (!this.site) return null;
     const p = this.game.player;
+    if (p && p.isAircraft) {
+      if (!p.onPad || !p.onPad()) return null;
+      const frac = clamp01(p.fuel / AIR_TANK);
+      const pct = `${Math.round(frac * 100)}%`;
+      // Full first: the refuel clock keeps running once the tank is brimmed,
+      // so asking about it first left the panel saying REFUELLING for as long
+      // as the aircraft sat there.
+      if (frac > 0.995) return { label: 'TANKS FULL', value: '100%', fill: 1, cls: 'work' };
+      if (p.refuelling > 0) {
+        return { label: 'REFUELLING', value: pct, fill: frac, cls: 'work' };
+      }
+      // On the pad but still moving: the refuel wants it settled, the same way
+      // the bay wants a car stopped.
+      return { label: 'SETTLE TO REFUEL', value: pct, fill: frac, cls: 'wait' };
+    }
     switch (this.state) {
       case 'damaged-wait':
         return p.speed < STILL

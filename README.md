@@ -2560,6 +2560,26 @@ rocking -- it slightly reduces it. One in five reverses is still a second one
 soon after, and that is not solved: a car that reverses, re-routes and is
 handed much the same line can meet the same obstacle again.
 
+**Trees: the lone one is solved, the one in a pack is not.** *"A police car
+literally driving off road, cutting across the grass, and then it literally
+just rammed head on into a tree."* Measured rather than guessed at.
+`tests/lonetree.js` drives a unit straight at an isolated trunk on open ground,
+which is the case its own header says used to be fatal -- a tree dead ahead
+sits inside all three avoidance sweeps, so both flanks report the same
+distance, the difference is zero and the steering bias is zero. It now misses
+**0 hits out of 5 at 80, 110, 140 and 170 km/h**, so a car on its own driving
+at a tree is no longer the bug.
+
+What is left is the case the code comments already name: a unit being pushed
+sideways by `avoidBias` while dodging another car is not going where it is
+pointing, and a trunk square off the wing is outside every forward cone until
+it has already turned into it. That needs the pack, and it is rare enough that
+a full eight-run five-star chase on the town map came back with **trees 0,
+walls 0** -- so there is nothing here to iterate against yet. Left alone
+deliberately: the avoidance is heavily tuned, several past attempts at the
+wider off-road problem measured worse, and a change aimed at something that
+cannot be reproduced is a change that cannot be checked.
+
 **The buildings are not the problem, and this was worth checking.** The
 suspicion was a fair one -- *"maybe they don't know where buildings actually
 are... this is in the UK map"* -- and the town is the map with crooked streets
