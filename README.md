@@ -2,6 +2,11 @@
 
 A 3D police pursuit game. You are the escapee; the police coordinate to stop you.
 
+> **New to this project?** Read [HANDOVER.md](HANDOVER.md) for the state of play
+> and [CLAUDE.md](CLAUDE.md) for how work is done here. This README is the
+> design document and is long on purpose: it is where the measurements live,
+> including the ones that failed.
+
 Runs in the browser on **three.js** (rendering) and **Rapier** (rigid-body physics),
 both vendored locally in `vendor/` so the game works offline. No build step, no
 Node, no bundler — the browser loads the ES modules directly. All sound is
