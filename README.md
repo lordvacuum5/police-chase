@@ -768,6 +768,17 @@ three words for things a helicopter does not have: *"it shouldn't say break and
 stuff."* The prompt on a cold aircraft stops saying `HOLD W TO START` too,
 there being no W on a phone.
 
+**The stick re-centres on a landing, a crash or a reset.** The mouse cyclic is
+a position stick -- it holds where it was put, which is the whole reason it is
+flyable -- and that meant it remembered a deflection across events it knew
+nothing about. On the ground the cyclic is ignored and the body damps to level,
+so a parked helicopter always *looked* right; the demand was still there, and
+the instant the skids left the pad it was honoured. "The second I leave the
+ground it remembers the last tilt position, so it instantly just crashes."
+`FlyingHelicopter._levelOff` now zeroes the airframe *and* calls
+`Input.centreCyclic`, from touchdown and from every teleport -- zeroing the body
+alone does nothing while something is still asking for the lean.
+
 The two sticks behave differently when a thumb lifts off, and the difference is
 the point. The cyclic springs back to centre, so letting go levels the aircraft
 -- the flight model already self-centres toward level, and that is the recovery
@@ -2480,6 +2491,51 @@ So the chain is: cutting across country causes the crashes, the crashes cause
 the off-road crawl, and the crawl is a quarter of the chase. Keeping them on
 the roads fixes the crashes and loses more than it gains (the committed line,
 below). That is the knot, and seven attempts have not untied it.
+
+**Reversing when it did not need to.** A separate bite out of the same crawl,
+and reported by eye rather than found in the numbers: *"they'll overshoot their
+turn-ins... so they stop, and they try to go backwards, even though they could
+just keep on at that current trajectory. They could just make the turn."*
+
+Exactly right, and the stall test is why. A car that overshoots its turn-in
+stops because the corner it is now pointing at is tighter than the one it
+planned for, so the speed planner asks for a crawl — and a crawl under
+1.2 m/s with a plan above 3 is precisely what the unstick looks for. It
+reversed with somewhere to go the whole time.
+
+The first attempt at this swept the car's cross-section straight down its nose
+and asked whether that was clear. It measured as doing nothing — 31 reverses
+against 29 over twenty minutes of unit time — for a reason that is obvious
+afterwards: a car that has overshot has overshot *into* something, so of course
+the probe down its nose is blocked. The question was never "is the road ahead
+clear", it is **"is the way I would go if I turned clear"**, and that direction
+is the aim point. The aim has to be ahead as well, because past about 75° off
+the nose no amount of lock reaches it going forwards, and that case really does
+want reverse.
+
+Counting the decision rather than the outcome is what settled it, because the
+event is too rare for an A/B to see — 18 of them in 34 unit-minutes, which is
+far smaller than the drift between one rig batch and the next. `Driver.shoveStats`
+tallies every stall as blocked or could-have-driven:
+
+| five-star pursuit, 34.5 unit-minutes | |
+|---|---|
+| stalls long enough to count as stuck | 45 |
+| genuinely blocked — reversing is right | 27 |
+| **clear and reachable — reversing was wrong** | **18 (40%)** |
+
+Two in five. The forward attempt is bounded at 3 s (`SHOVE_PATIENCE`) because a
+car can also be held by something the probe cannot see — a kerb under the
+sills, a wheel off a verge — and a recovery that never gives up is a unit lost
+for the rest of the chase. Overall pursuit quality is unchanged, measured
+first-batch against first-batch on a fresh page: near 51%, closest 9 m, seen
+100% either way.
+
+A note for whoever measures this next: **comparing two settings back-to-back in
+one page session cannot see an effect this size.** Whichever configuration ran
+first scored ~17 reverses and whichever ran second scored 23–34, regardless of
+which was which. The rig says as much about batches carrying damage and debris
+forward; this is what that looks like when the signal is small.
 
 ### The band, doubled and shortened
 

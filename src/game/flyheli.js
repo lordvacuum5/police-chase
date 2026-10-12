@@ -802,6 +802,36 @@ export class FlyingHelicopter {
     this.collective = 0;
     this.linvel.set(0, 0, 0);
     this._restAt = { x: this.position.x, z: this.position.z };
+    this._levelOff();
+  }
+
+  /**
+   * Put the aircraft and the stick back to level.
+   *
+   * On the ground the cyclic is ignored and the body damps to level, so a
+   * parked helicopter always *looked* right -- but the stick itself was never
+   * touched, and the mouse one holds its position by design (see
+   * Input.centreCyclic). So the demand survived the crash: the aircraft came
+   * back on the pad sitting level, and the instant the skids left the ground
+   * the ignore stopped applying, the full lean that caused the crash was still
+   * being asked for, and it rolled straight back into the roof.
+   *
+   * Reported exactly that way -- "the second I leave the ground it remembers
+   * the last tilt position, so it instantly just crashes" -- and it needed
+   * fixing in both places, because zeroing the body alone does nothing while
+   * something is still asking for the lean.
+   */
+  _levelOff() {
+    this.pitch = 0;
+    this.roll = 0;
+    this._askPitch = 0;
+    this._askRoll = 0;
+    this.discPitch = 0;
+    this.discRoll = 0;
+    this.yawRate = 0;
+    this._applyAttitude();
+    const input = this.game && this.game.input;
+    if (input && input.centreCyclic) input.centreCyclic();
   }
 
   /**
@@ -941,6 +971,10 @@ export class FlyingHelicopter {
     this.engineOff = true;
     this.starting = 0;
     this.linvel.set(0, 0, 0);
+    // Levelling is teleport's job now, and a wreck always goes to the pad --
+    // but not every map has one, so do it here too rather than leaving the
+    // one case that skips the teleport flying a stick that is still over.
+    this._levelOff();
     const pad = this.game.garage && this.game.garage.helipad;
     if (pad) this.teleport({ x: pad.x, y: pad.y + SKID, z: pad.z }, this.yaw);
     if (this.game.hud) this.game.hud.toast('AIR SUPPORT BACK UP');
@@ -1022,9 +1056,10 @@ export class FlyingHelicopter {
     this.prevPos.copy(this.position);
     this.linvel.set(0, 0, 0);
     this.yaw = heading;
-    this.pitch = 0;
-    this.roll = 0;
     this.collective = HOVER;
-    this._applyAttitude();
+    // Levels the stick as well as the airframe. Zeroing pitch and roll here
+    // was never enough on its own -- something was still asking for the lean,
+    // and it got it back the moment the skids left the ground. See _levelOff.
+    this._levelOff();
   }
 }

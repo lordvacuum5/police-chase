@@ -302,6 +302,20 @@ export class Input {
   }
 
   /**
+   * Put the cyclic back in the middle.
+   *
+   * The mouse cyclic is a position stick -- it holds where it was put and does
+   * not spring back, which is the whole reason it is flyable. The cost is that
+   * it remembers a deflection across events the stick has no idea about: land,
+   * crash, respawn on the pad, and the stick is still asking for whatever was
+   * being asked for at the moment it all went wrong. See FlyingHelicopter.
+   */
+  centreCyclic() {
+    this.cyclicX = 0;
+    this.cyclicY = 0;
+  }
+
+  /**
    * Ask for the pointer, so the mouse can fly rather than wander off the page.
    *
    * Nothing used to ask, which made the mouse cyclic dead code and left the

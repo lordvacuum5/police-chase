@@ -262,6 +262,15 @@ export const SKILL = {
   pursuit:  { grip: 1.08, counter: 1.05, react: 0.07, aggression: 1.15, throttleControl: 0.97, look: 1.15 },
 };
 
+/**
+ * How long a car will try to drive forward out of a stall before giving up and
+ * reversing anyway. See the unstick in planSpeed.
+ */
+const SHOVE_PATIENCE = 3.0;
+
+/** Scratch: the vector from the car to the point it is steering at. */
+const _toAim = new THREE.Vector3();
+
 export class Driver {
   constructor(vehicle, skill = SKILL.regular) {
     this.v = vehicle;
@@ -271,6 +280,11 @@ export class Driver {
     this.out = { throttle: 0, brake: 0, steer: 0, handbrake: 0, clutchKick: false };
 
     this.stuckTimer = 0;
+    /**
+     * How long has been spent driving at a clear road rather than reversing
+     * out of a blocked one. See the unstick in planSpeed.
+     */
+    this.shoveTimer = 0;
     this.reverseTimer = 0;
     this.reactTimer = 0;
     this._clear = 70;
@@ -1728,9 +1742,73 @@ export class Driver {
     else this.stuckTimer = Math.max(0, this.stuckTimer - dt * 2);
 
     if (this.stuckTimer > 1.2) {
-      this.reverseTimer = 2.6;
-      this.reverseFrom = v.position.clone();
-      this.stuckTimer = 0;
+      // Reverse out of something, or drive out of nothing?
+      //
+      // A unit that overshoots its turn-in and stops is not necessarily
+      // wedged. It stopped because the corner it is now pointing at is far
+      // tighter than the one it planned for, so the speed planner asked for a
+      // crawl -- and a crawl under 1.2 m/s with a plan above 3 is exactly what
+      // this test is looking for. It then reversed, having had somewhere to go
+      // the whole time: "they stop, and they try to go backwards, even though
+      // they could just keep on at that current trajectory... they could just
+      // make the turn."
+      //
+      // So ask. `clearAhead` is the car's own cross-section swept down the
+      // road in front of it; if a couple of car lengths of that is empty then
+      // nothing is in the way and the answer is throttle and lock, not
+      // reverse. The steering is already pointed at the path by the time this
+      // runs, so skipping the block below is the whole of "keep turning".
+      //
+      // Bounded, because a car can also be held by something this probe
+      // cannot see -- a kerb under the sills, a wheel dropped off a verge --
+      // and a forward attempt that never gives up is a unit stuck for the
+      // rest of the chase. SHOVE_PATIENCE of trying, then reverse regardless,
+      // which is what used to happen immediately.
+      // Toward the aim point, not straight ahead.
+      //
+      // Straight ahead was the first thing tried and it measured as doing
+      // nothing at all -- 31 reverses against 29 over twenty minutes of unit
+      // time -- for a reason that is obvious in hindsight: a car that has
+      // overshot its turn-in has overshot *into* something, so of course the
+      // probe down its nose comes back blocked. The question is never "is the
+      // road ahead clear", it is "is the way I would go if I turned clear",
+      // and the direction of that is the aim point this frame.
+      //
+      // The aim also has to actually be ahead. Overshoot far enough and the
+      // corner is behind the rear axle, and no amount of lock reaches it
+      // going forwards -- that one really does want reverse, which is what
+      // the angle gate is. 1.3 rad is about 75 degrees off the nose.
+      _toAim.set(aim.x - v.position.x, 0, aim.z - v.position.z);
+      const reach = _toAim.length();
+      const room = reach > 1
+        ? this.clearAhead(_toAim.normalize(), 16)
+        : 0;
+      const needed = v.spec.dims.l * 1.6;
+      this.shoveTimer += this.stuckTimer;
+      // From a global so a rig can put the old behaviour back and measure
+      // against it, as with `__arcLead` and `__noCourseClamp`. 0 is exactly
+      // the old code: never try forward, always reverse.
+      const patience = typeof window !== 'undefined' && window.__shovePatience !== undefined
+        ? window.__shovePatience : SHOVE_PATIENCE;
+      const reachable = Math.abs(s.alpha) < 1.3;
+      // Tallied because the question "how often was reversing the wrong
+      // answer" cannot be asked from outside this block -- the aim point and
+      // the probe only exist here. Read by the rigs; decides nothing.
+      const couldDrive = room > needed && reachable;
+      const st = Driver.shoveStats;
+      st.stalls++;
+      if (couldDrive) st.couldDrive++; else st.blocked++;
+      if (couldDrive && this.shoveTimer < patience) {
+        this.stuckTimer = 0;
+      } else {
+        this.reverseTimer = 2.6;
+        this.reverseFrom = v.position.clone();
+        this.stuckTimer = 0;
+        this.shoveTimer = 0;
+      }
+    } else if (v.speed > 3) {
+      // Moving again: forget that it ever had to be talked into it.
+      this.shoveTimer = 0;
     }
     if (this.reverseTimer > 0) {
       this.reverseTimer -= dt;
@@ -2238,3 +2316,13 @@ export class Driver {
     return this.avoidBias;
   }
 }
+
+/**
+ * How the stall decision went, across every car, since it was last reset.
+ *
+ * `stalls` is every time a car sat still long enough to be called stuck while
+ * asking to move; `couldDrive` is how many of those had a clear, reachable way
+ * to the point it was steering at -- which is to say, how often reversing out
+ * was the wrong answer. Read and zeroed by the rigs.
+ */
+Driver.shoveStats = { stalls: 0, couldDrive: 0, blocked: 0 };
