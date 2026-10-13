@@ -147,6 +147,12 @@ behaviour back without editing code: `__shovePatience`, `__arcLead`,
   controls. Multiplayer-aware.
 * **The police pack cap raised 18 → 30**, which needed the tier budget and
   `MAX_VEHICLES` raising with it.
+* **Losing contact is two phases, not one.** Past `LOST_CONTACT_SECONDS` a unit
+  more than `SEARCH_FROM` (90 m) from the last known position gets ROLE.RESPOND
+  and drives there at pursuit pace; inside that it gets ROLE.SEARCH, which runs
+  at a 1.5x limiter rather than 3.0x. It used to flip everything to SEARCH at
+  once, so a car 400 m out crawled to the scene. `window.__searchFrom` puts the
+  old behaviour back (Infinity) for measurement.
 * **`Driver._mu` reads `gripScale`, not `highSpeedTyre`.** Worth knowing before
   tuning any car: raising the tyre grip alone gives a car more grip and tells
   its driver nothing, so it corners at the old speed with the rest in hand. The

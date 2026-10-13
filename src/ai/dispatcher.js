@@ -41,6 +41,16 @@ export const TRACK_SECONDS = 3;
 const LOST_CONTACT_SECONDS = 5;
 
 /**
+ * How close a unit has to be to the last known position before it stops
+ * driving to it and starts searching around it, in metres.
+ *
+ * Far enough out that the drive in is done at pursuit pace, close enough that
+ * "searching" means searching the area the car was lost in rather than the
+ * road three streets away. See the lost-contact branch in _assignRoles.
+ */
+const SEARCH_FROM = 90;
+
+/**
  * How many cars the pursuit may have on the board at once, however they got
  * there.
  *
@@ -548,8 +558,48 @@ export class Dispatcher {
     if (this.tier === 0 || k.timeSinceSeen > LOST_CONTACT_SECONDS) {
       for (const u of this.units) {
         if (u.role === ROLE.HOLD) continue;
-        if (u.role !== ROLE.PATROL && this.tier === 0) u.setRole(ROLE.PATROL);
-        else if (this.tier > 0 && u.role !== ROLE.SEARCH) u.setRole(ROLE.SEARCH, { point: k.position.clone() });
+        if (this.tier === 0) {
+          if (u.role !== ROLE.PATROL) u.setRole(ROLE.PATROL);
+          continue;
+        }
+        // Get there first, then look.
+        //
+        // Every unit used to flip straight to SEARCH the moment contact was
+        // five seconds old, wherever it happened to be -- and SEARCH drops the
+        // speed limiter from 3.0 to 1.5, so a car four hundred metres away
+        // began pottering toward search spots instead of driving to the scene.
+        // "When the police cars lose you, I want them to use their pursuit
+        // routing system to get to my last known position as fast as possible,
+        // and then slow down and start searching."
+        //
+        // So distance decides which it is. Far off it is RESPOND, which is
+        // _goTo at pursuit pace down the road network; inside SEARCH_FROM it
+        // is a search, which is the slower, deliberate thing it should be.
+        // Units arrive quickly and spread out once they are there, rather than
+        // crawling the whole way in.
+        //
+        // The old comment on LOST_CONTACT_SECONDS warns that this is how you
+        // get "every unit converging on a spot you left half a minute ago and
+        // milling about there". That worry is about where they end up, and it
+        // is handled where it should be: _search spreads arrived units out by
+        // scoring a spot down 80 if another searcher is within 70 m of it.
+        // Nothing is gained by making them slow to walking pace to get there.
+        // From a global so a rig can measure against the old behaviour, as
+        // with __shovePatience and __arcLead. Infinity is exactly what this
+        // did before -- nobody is ever "far", so everybody searches from
+        // wherever they happen to be standing.
+        const from = typeof window !== 'undefined' && window.__searchFrom !== undefined
+          ? window.__searchFrom : SEARCH_FROM;
+        const far = u.distanceTo(k.position) > from;
+        if (far) {
+          if (u.role !== ROLE.RESPOND) u.setRole(ROLE.RESPOND, { point: k.position.clone() });
+          // Keep the point fresh while the fix is still being updated. _goTo
+          // already re-routes only when the goal has genuinely moved, so this
+          // costs nothing and stops a unit driving at a stale spot.
+          else if (u.orders && u.orders.point) u.orders.point.copy(k.position);
+        } else if (u.role !== ROLE.SEARCH) {
+          u.setRole(ROLE.SEARCH, { point: k.position.clone() });
+        }
       }
       this.activePit = null;
       this.boxAssignment = null;
