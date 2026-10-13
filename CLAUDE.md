@@ -65,3 +65,10 @@ Keep it.
   this repo has a lot of it. Do not quietly drop a failed attempt.
 * **Quote the player.** The README and the comments quote what they actually
   said about a bug. It is how the intent survives, and it dates well.
+* **Keep `HANDOVER.md` current.** It is written for a Claude who arrives with no
+  conversation history, and it goes stale the moment it stops matching the
+  code. Update it as part of finishing a piece of work -- not every commit, but
+  whenever something in it stops being true: a mode added, an open problem
+  solved or found, a trap discovered, a decision the user made that should not
+  be undone later. The user asked for this explicitly, to keep it useful for
+  whoever picks the project up next.
