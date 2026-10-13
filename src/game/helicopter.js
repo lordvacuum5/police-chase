@@ -28,6 +28,12 @@ const ALTITUDE = 62;
  * radius, and it means a crew that has lost you sweeps for you.
  */
 const BEAM_RADIUS = 26;          // radius of the pool on the ground
+/**
+ * How far from directly below the aircraft the crew will notice a car without
+ * the light being on it. See canSee. Shorter than ALTITUDE on purpose: this is
+ * "underneath us", not "in view".
+ */
+const CREW_EYES = 55;
 const BEAM_TRACK = 2.6;          // how fast the light follows a target it holds
 const BEAM_SWEEP = 1.1;          // how fast it hunts when it has lost you
 const BEAM_MAX_OFFSET = 210;     // how far from the aircraft the light reaches
@@ -287,8 +293,23 @@ export class Helicopter {
       const cx = k && k.position ? k.position.x : target.position.x;
       const cz = k && k.position ? k.position.z : target.position.z;
       this.sweepPhase += dt * 0.9;
-      const widen = k ? Math.min(140, Math.max(0, k.timeSinceSeen - 3) * 4) : 0;
-      const r = 34 + widen + Math.sin(this.sweepPhase * 0.7) * 22;
+      // A spiral that starts again, not a ring that expands away.
+      //
+      // This used to be `34 + widen` for the radius, with `widen` growing
+      // monotonically with the time since anybody saw the car. That traces a
+      // ring whose radius marches outward and never comes back -- so a car
+      // sitting near the place it was lost gets swept once in the first few
+      // seconds and is then never lit again, however long the aircraft stays
+      // up. Reported as exactly that: during a search "the helicopter can't
+      // see the subject and start pursuing again".
+      //
+      // The radius now runs from the middle out to however far the search has
+      // grown and then resets, so the light covers the disc instead of a line
+      // on the edge of it. The angular sweep is unchanged, so the two together
+      // are a spiral of about four turns per pass.
+      const reach = k ? Math.min(150, 40 + Math.max(0, k.timeSinceSeen - 3) * 4) : 40;
+      const pass = ((this.sweepPhase * 0.042) % 1 + 1) % 1;
+      const r = 12 + (reach - 12) * pass;
       aimX = cx + Math.cos(this.sweepPhase) * r;
       aimZ = cz + Math.sin(this.sweepPhase) * r;
       rate = BEAM_SWEEP;
@@ -328,8 +349,26 @@ export class Helicopter {
    * Getting out from under the beam does, and since the light lags the car, a
    * hard change of direction can genuinely shake it.
    */
+  /**
+   * Can the crew see the car?
+   *
+   * The beam is the main answer and the visible one -- if you are standing in
+   * the pool of light, you have been seen. But it was the *only* answer, which
+   * made the crew a searchlight on a stick: the car could pass directly under
+   * the aircraft during a search and go unnoticed because the light happened
+   * to be pointing forty metres off.
+   *
+   * So being more or less underneath it counts too. CREW_EYES is deliberately
+   * short -- less than the altitude the thing flies at -- so this is "right
+   * below us" and not "anywhere we can see", which would turn air support into
+   * a map reveal. While it is tracking a car the beam is already on it and
+   * this changes nothing; it only matters during a search, which is where it
+   * was missing.
+   */
   canSee(target) {
-    return this.active && this.spotlight > 0.4 && this._lit(target);
+    if (!this.active) return false;
+    if (this.spotlight > 0.4 && this._lit(target)) return true;
+    return this.distanceTo(target.position) < CREW_EYES;
   }
 
   _syncMesh() {

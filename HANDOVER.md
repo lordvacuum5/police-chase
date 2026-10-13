@@ -147,6 +147,13 @@ behaviour back without editing code: `__shovePatience`, `__arcLead`,
   controls. Multiplayer-aware.
 * **The police pack cap raised 18 → 30**, which needed the tier budget and
   `MAX_VEHICLES` raising with it.
+* **Air support has two sensors.** `Helicopter.canSee` is the beam pool
+  (`_lit`, 26 m on the ground) OR being within `CREW_EYES` (55 m) of the
+  aircraft. The second was added because the beam alone made the crew a
+  searchlight on a stick: during a search the car could pass directly under the
+  aircraft unnoticed. The search pattern is also a resetting spiral rather than
+  an expanding ring -- the ring marched outward and never revisited the middle,
+  so a car near where it was lost was swept once and then never again.
 * **Losing contact is two phases, not one.** Past `LOST_CONTACT_SECONDS` a unit
   more than `SEARCH_FROM` (90 m) from the last known position gets ROLE.RESPOND
   and drives there at pursuit pace; inside that it gets ROLE.SEARCH, which runs
