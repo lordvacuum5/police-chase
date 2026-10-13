@@ -270,6 +270,8 @@ const SHOVE_PATIENCE = 3.0;
 
 /** Scratch: the vector from the car to the point it is steering at. */
 const _toAim = new THREE.Vector3();
+/** Scratch: that vector swung off to either side, looking for a way through. */
+const _fan = new THREE.Vector3();
 
 export class Driver {
   constructor(vehicle, skill = SKILL.regular) {
@@ -1780,10 +1782,34 @@ export class Driver {
       // the angle gate is. 1.3 rad is about 75 degrees off the nose.
       _toAim.set(aim.x - v.position.x, 0, aim.z - v.position.z);
       const reach = _toAim.length();
-      const room = reach > 1
-        ? this.clearAhead(_toAim.normalize(), 16)
-        : 0;
       const needed = v.spec.dims.l * 1.6;
+      let room = 0;
+      if (reach > 1) {
+        _toAim.normalize();
+        room = this.clearAhead(_toAim, 16);
+        // A trunk on the line is not a reason to reverse.
+        //
+        // The straight line to the aim is the question a tow rope would ask,
+        // not the question a driver asks: a driver goes forward and steers
+        // round it. Off the road among scattered trees the direct line is
+        // blocked most of the time, so this reversed out of places it could
+        // have driven out of -- "instead of just going forwards and round a
+        // few trees, they seem to go backwards more for some reason."
+        //
+        // So if the line is blocked, fan out and ask whether there is ANY
+        // forward way with room in it. The scenery avoidance already steers
+        // round what it finds; all this has to decide is whether going
+        // forwards is worth attempting at all. Widest first, so `room` ends up
+        // holding the best of them rather than the last.
+        if (room <= needed) {
+          for (const ang of [-0.44, 0.44, -0.85, 0.85]) {
+            const ca = Math.cos(ang), sa = Math.sin(ang);
+            _fan.set(_toAim.x * ca - _toAim.z * sa, 0, _toAim.x * sa + _toAim.z * ca);
+            room = Math.max(room, this.clearAhead(_fan, 16));
+            if (room > needed) break;
+          }
+        }
+      }
       this.shoveTimer += this.stuckTimer;
       // From a global so a rig can put the old behaviour back and measure
       // against it, as with `__arcLead` and `__noCourseClamp`. 0 is exactly

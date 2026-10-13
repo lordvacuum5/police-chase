@@ -696,6 +696,25 @@ export function getawaySpec(key = 'runner') {
       grip: { front: 1.40, rear: 1.42 },
     },
     gripBias: { front: base.gripBias.front + 0.08, rear: base.gripBias.rear + 0.08 },
+
+    // The grip the DRIVER is allowed to know about, which is a different
+    // number from the grip the tyres have and was the whole reason this car
+    // still cornered like a stock one.
+    //
+    // Driver._mu -- the speed planner -- reads `gripScale`. It does not read
+    // `highSpeedTyre`. So raising the tyre grip above gave the car more grip
+    // and told nobody: it took every corner at exactly the speed it used to
+    // and simply had more in hand, which is the mistake _mu's own comment
+    // warns about in as many words. Measured, the cornering clamp was the
+    // binding limit on 95% of the frames it was running, so this was most of
+    // "it slows down way too much".
+    //
+    // 1.15x of whatever the car started with. The police interceptor's
+    // effective figure is 0.946, so the three getaway cars land at 1.06, 1.10
+    // and 1.29 -- clear of the force, which is the point, and raised in step
+    // with the rubber rather than ahead of it, so the driver believes exactly
+    // what the car can actually do.
+    gripScale: (base.gripScale || 1) * 1.15,
     engine: Object.assign({}, base.engine, {
       torqueCurve: base.engine.torqueCurve.map(([rpm, nm]) => [rpm, Math.round(nm * 1.28)]),
     }),
