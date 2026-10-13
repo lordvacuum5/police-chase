@@ -147,6 +147,12 @@ behaviour back without editing code: `__shovePatience`, `__arcLead`,
   controls. Multiplayer-aware.
 * **The police pack cap raised 18 → 30**, which needed the tier budget and
   `MAX_VEHICLES` raising with it.
+* **`Driver._mu` reads `gripScale`, not `highSpeedTyre`.** Worth knowing before
+  tuning any car: raising the tyre grip alone gives a car more grip and tells
+  its driver nothing, so it corners at the old speed with the rest in hand. The
+  getaway car had exactly that bug — the cornering clamp was the binding limit
+  on 95% of its running frames — and raising `gripScale` in step with the
+  rubber took its mean speed in a chase from 88 to 122 km/h.
 
 ### Known open problems
 
@@ -159,7 +165,14 @@ behaviour back without editing code: `__shovePatience`, `__arcLead`,
    avoidance is heavily tuned and past attempts measured worse.
 2. **One reverse in five is followed by another within ten seconds.** A car
    reverses, re-routes, is handed much the same line, and meets the same thing.
-   That is a routing problem rather than a recovery one, and it is untouched.
+   That is a routing problem rather than a recovery one, and it is untouched. The
+   stall probe now fans out to ±25 and ±49 degrees when the direct line to the
+   aim is blocked, so a car goes forward and steers round a trunk instead of
+   reversing. Measured on the town map that improved the chase (near 39% to
+   49%, seen 91% to 100%, closest 26 m to 19 m) but put light contacts up
+   (walls 0 to 9, hard 0 to 16, with `wrecked 0` and `worst 0.00` either way,
+   so scrapes rather than crashes). If that scraping becomes visible in play,
+   narrowing the fan to the ±25 pair alone is the first thing to try.
 3. **The off-road crawl.** The README section "why are they so slow" documents
    seven attempts that did not untie it: cutting across country causes crashes,
    the crashes cause an off-road crawl, and the crawl is a quarter of the chase.
