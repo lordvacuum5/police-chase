@@ -5403,8 +5403,19 @@ does it; the answer comes back the ordinary way, so everybody sees the same
 stars. It freezes the score the same as doing it yourself, because it is the
 same free stars.
 
-**Type FIVE** to jump straight to five stars, and with the debug telemetry up
-(F3) the number keys set any level. Using either stops the run scoring, for
+**Type FIVE** to jump straight to five stars, and **FIVE then H** for the same
+thing with air support left in play. Typed stars normally ground the helicopter
+for the rest of the run, because the shortcut exists to test the chase and the
+chase being tested is usually the one on the roads -- the H is for when the
+aircraft is the thing you want to look at.
+
+That H is a second keystroke within a second and a half rather than part of the
+word, and it has to be: `Input.typed` clears the letter buffer when it matches,
+so the E that completes `five` wipes the very letters `fiveh` would need. The H
+never does both jobs -- armed it calls in the helicopter, unarmed it is the
+controls card as usual.
+
+With the debug telemetry up (F3) the number keys set any level. Using either stops the run scoring, for
 the rest of the run: five stars is worth about sixty points a second, and a
 typed word at the top of the table would make the rest of it meaningless. What
 was earned before it stands, and the score readout says OFF so a number that

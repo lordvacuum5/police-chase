@@ -40,6 +40,13 @@ const _markAt = new THREE.Vector3();
 const _markVel = new THREE.Vector3();
 const _qN = new THREE.Quaternion();
 
+/**
+ * How long after typing `five` an H still means "and bring the helicopter",
+ * in milliseconds. Long enough to be a deliberate second keystroke, short
+ * enough that an H a few seconds later is the controls card again.
+ */
+const FIVE_H_WINDOW = 1500;
+
 const SOLO_AIR = typeof location !== 'undefined'
   && new URLSearchParams(location.search).get('air') === '1';
 
@@ -1606,7 +1613,14 @@ class Game {
    */
   _wantedShortcut(i) {
     let want = null;
-    if (i.typed('five')) want = 5;
+    if (i.typed('five')) {
+      want = 5;
+      // Arm the H that brings air support with it -- see _handleKeys. This
+      // cannot be done as typed('fiveh'), which is where I started: typed()
+      // clears the letter buffer when it matches, so the E that completes
+      // `five` wipes the very letters `fiveh` would need.
+      this._fiveAt = performance.now();
+    }
     if (this.debug) {
       for (let n = 0; n <= 5; n++) if (i.tapped(`Digit${n}`)) want = n;
     }
@@ -1616,19 +1630,27 @@ class Game {
     // setting it here would last until the next packet. Send it instead and
     // let the machine that owns the chase do it -- the answer comes back the
     // ordinary way, in the world update, and everybody sees the same stars.
+    this._askWanted(want, false);
+  }
+
+  /**
+   * Put a wanted level where it has been asked for, from whichever machine
+   * asked. Shared by the typed shortcut and by the H that follows it.
+   */
+  _askWanted(want, air) {
     if (session.active && !session.isHost) {
-      session.sendEvent('heat', { want });
+      session.sendEvent('heat', { want, air });
       this.hud.toast(want > 0 ? `REQUESTED: ${'★'.repeat(want)}` : 'REQUESTED: CLEAR');
       return;
     }
-    this._setWanted(want);
+    this._setWanted(want, air);
   }
 
   /**
    * Put the wanted level where it has been asked for, and stop the run
    * scoring. Shared by the shortcut and by a police player's request.
    */
-  _setWanted(want) {
+  _setWanted(want, air = false) {
     want = clamp(want, 0, 5);
     // Setting your own wanted level is worth about sixty points a second at
     // five stars, so the run stops scoring the moment it is used -- including
@@ -1637,8 +1659,12 @@ class Game {
     if (this.score) this.score.freeze();
     // Asked-for stars ground the helicopter for the rest of the run -- see
     // Helicopter.wanted. The shortcut exists to test the chase, and the chase
-    // being tested is the one on the roads.
-    this.heliGrounded = want > 0;
+    // being tested is usually the one on the roads.
+    //
+    // Unless air support is what you are trying to test, which is what the H
+    // is for: typing `fiveh` asks for the same five stars with the aircraft
+    // left in play.
+    this.heliGrounded = want > 0 && !air;
 
     if (want <= 0) {
       this.heat.reset();
@@ -1805,7 +1831,23 @@ class Game {
       return;
     }
     if (i.tapped('KeyP')) this.paused = !this.paused;
-    if (i.tapped('KeyH')) this.hud.toggleHelp();
+    // H is the controls card, unless it is the H on the end of `five`.
+    //
+    // "If I type in five and then H on the end, it spawns the one to level
+    // five with the helicopter." So the H has two jobs, and which one it does
+    // depends on whether `five` was typed in the last second and a half. It
+    // never does both: asking for air support should not also throw the
+    // controls card up over the game.
+    if (i.tapped('KeyH')) {
+      const armed = this._fiveAt && performance.now() - this._fiveAt < FIVE_H_WINDOW;
+      this._fiveAt = 0;
+      if (armed) {
+        this._askWanted(5, true);
+        this.hud.toast('WANTED: ★★★★★ · AIR SUPPORT · NO SCORE');
+      } else {
+        this.hud.toggleHelp();
+      }
+    }
     if (i.tapped('KeyC')) this.camera3.cycle();
     // N, not M: M is the menu, and was checked first, so muting could never happen.
     if ((i.tapped('KeyN') || i.tapped('Mute')) && this.audio) {
@@ -2332,7 +2374,7 @@ class Game {
       // guest typing FIVE cannot just set it locally; the next packet would
       // overrule them a twentieth of a second later. They ask, and the machine
       // that owns the number does it.
-      if (msg.e === 'heat' && session.isHost) { this._setWanted(msg.want | 0); continue; }
+      if (msg.e === 'heat' && session.isHost) { this._setWanted(msg.want | 0, !!msg.air); continue; }
       // Air support calling a car in. Only the escapee's machine runs the
       // chase, so a pilot's fix is applied here and reaches everybody else
       // the ordinary way, in the world update.
