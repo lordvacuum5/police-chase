@@ -4,6 +4,10 @@ Written for whoever picks this up next — most likely another Claude, on anothe
 account, with none of the conversation that built it. Read `CLAUDE.md` first;
 it carries the user's standing rules. This file is the state of play.
 
+This is the whole inheritance: the conversation that built the project ended
+when its account did, and nothing of it survives anywhere else. The repo is the
+only record, and it was written on that assumption.
+
 Everything that matters is already in the repo. The **commit messages are the
 project's real history** — they carry the reasoning, the measurements and the
 rejected attempts, and they are worth `git log`-ing before changing anything in
@@ -129,7 +133,13 @@ hid a real improvement completely.
 
 Some knobs are exposed on `window` for exactly this, so a rig can put the old
 behaviour back without editing code: `__shovePatience`, `__arcLead`,
-`__noCourseClamp`. Follow that pattern when you add a tunable.
+`__noCourseClamp`, `__searchFrom`. Follow that pattern when you add a tunable.
+
+**Testing by hand**, which is how most bugs actually arrive: **type FIVE** in
+the game for an instant five-star chase, or **FIVE then H** for the same with
+air support left in play (typed stars ground the helicopter otherwise). F3 puts
+the debug telemetry up, and with it the number keys set any wanted level. All
+of those stop the run scoring, deliberately.
 
 ---
 
@@ -205,6 +215,18 @@ car on purpose so shoving works; the getaway car is tougher and grippier than
 anything the force has but **not** heavier, for the same reason; the mouse
 cyclic is a position stick that does not self-centre; the police may cut corners
 and use the width of the road, and a patrol car on its beat may not.
+
+The getaway car's current figures, all in `getawaySpec` and all asked for after
+playing it: durability **7.0** (over twice the toughest car as it ships -- it
+was being broken rather than outdriven), tyre grip **1.40/1.42** against the
+police player's 1.24/1.25, `gripScale` **1.15x** its base so the driver commits
+to that grip, and torque **1.28x**. Mass untouched. If it ever needs toning
+down, durability is the dial that changes how chases end and `gripScale` is the
+one that changes how fast it goes.
+
+The flyable helicopter tilts to a full **180 degrees** in pitch and roll, which
+was asked for twice; the thing that stops it being twitchy is `CYCLIC_RATE`,
+not the limits, so do not reach for the limits if it ever feels nervous.
 
 ---
 
