@@ -15,7 +15,7 @@
 import * as THREE from 'three';
 import { clamp, clamp01, lerp, sign, angleDelta, curveRadius, dist2, smoothstep } from '../util/math.js';
 import { cornerSpeedLimit, TYRE_GRASS } from '../physics/tyre.js';
-import { raycast, sweepBox, RAY_GROUNDS, RAY_SOLID } from '../physics/world.js';
+import { raycast, sweepBox, groups, GROUP, RAY_GROUNDS, RAY_SOLID } from '../physics/world.js';
 
 const _p = new THREE.Vector3();
 const _origin = new THREE.Vector3();
@@ -224,6 +224,16 @@ const WALL_GRIP = 0.75;
 const WALL_TURN = 0;
 
 /**
+ * Off the road, a trunk anywhere in a strip TREE_STRIP wider than the car either
+ * side of its line of travel is one it must be able to stop for. See the tree
+ * sweep in _avoidScenery and the tree clamp in drive().
+ */
+const TREE_STRIP = 3;
+const TREE_LOOK = 70;
+const TREE_KEEP = 4;
+const PROPS_ONLY = groups(0xFFFF, GROUP.PROP);
+
+/**
  * The trajectory planner: how often it re-plans, how many steps it drives each
  * candidate for, and the fan of steering fractions it tries. Eleven candidates
  * at six steps is 66 sweeps per plan, four times a second per unit.
@@ -343,6 +353,8 @@ export class Driver {
     // is along the line of travel.
     this.wallBias = 0;
     this.wallNear = 999;
+    // A trunk on the turn the car is in, off the road -- see _avoidScenery.
+    this.treeNear = Infinity;
     // Speed ceiling while making way for a unit running a manoeuvre. Infinity
     // when nobody needs to come past.
     this.wayCap = Infinity;
@@ -1724,6 +1736,17 @@ export class Driver {
       speed = Math.min(speed, caps.wall);
     }
 
+    // The same stop, for a trunk in the strip ahead off the road -- see the tree
+    // sweep at the end of _avoidScenery. Folded into caps.wall so the rigs'
+    // tallies still add up.
+    if (this.treeNear < TREE_LOOK) {
+      const mu = this._mu();
+      const usable = Math.max(0, this.treeNear - TREE_KEEP);
+      const cap = Math.sqrt(2 * mu * 9.81 * this.wallGrip * usable);
+      caps.wall = Math.min(caps.wall, cap);
+      speed = Math.min(speed, cap);
+    }
+
     // Making way for a unit running a manoeuvre -- see avoid(). Moving over is
     // half of it; the other half is not staying in front of them at the same
     // speed all the way to the junction.
@@ -2258,6 +2281,37 @@ export class Driver {
     const trees = this.wallSeesTrees || !this._onCarriageway();
     this.wallNear = sweepBox(v.world, _origin, _probe, reach,
       trees ? RAY_GROUNDS : RAY_SOLID, v.body, hw);
+
+    // A trunk on the line the car is turning onto, off the road.
+    //
+    // "Police cars occasionally hit a tree in a chase." Every tree contact a
+    // whole-force chase through the trees produced (tests/force.js, kind
+    // 'trees', with __treeLog) had the dodge bias at zero -- it was not the
+    // pack shoving cars sideways, which is what this was long blamed on. The
+    // car was off-road at 110-160 km/h, turning after a weaving target, with
+    // the straight-ahead sweep reading clear to 60 m; a fifth of a second
+    // later the trunk was 5-25 m off the nose, because the car had turned onto
+    // it. Too fast to stop and too close to steer round.
+    //
+    // Looking along the turn the car is in was tried first and did not help:
+    // the nose is swinging both ways several times a second chasing a weaving
+    // car, and the trunk it hits is wherever the nose happens to be when it
+    // comes into range. So it is a strip, not a line -- a box TREE_STRIP wider
+    // than the car each side, swept down the line of travel -- and drive()
+    // holds the speed to what can stop short of any trunk in it. Props only,
+    // and only off the carriageway: a tree beside a road is not a reason to
+    // brake (see the note above), and the strip off-road must not pick up the
+    // buildings either side of a gap, which have their own clamps.
+    this.treeNear = Infinity;
+    if (trees && !this.wallSeesTrees && !window.__noTreeStrip) {
+      this.treeNear = sweepBox(v.world, _origin, _probe, TREE_LOOK, PROPS_ONLY,
+        v.body, hw + TREE_STRIP);
+      // Zero is a trunk the strip starts already touching, which is one beside
+      // the car rather than in front of it -- and stopping for that would park
+      // every unit that brushes past a tree. Anything truly ahead and that close
+      // is the narrow sweep's, which reads wallNear.
+      if (this.treeNear < 0.05) this.treeNear = Infinity;
+    }
     return this.wallBias;
   }
 

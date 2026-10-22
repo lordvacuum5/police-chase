@@ -32,17 +32,52 @@ const BLAME_DIRS = [
   { x: 0.7, y: 0, z: -0.7 }, { x: -0.7, y: 0, z: -0.7 },
 ];
 
-/** Tree, wall or neither, at the moment of a knock. */
+/** Tree, wall or neither, at the moment of a knock. Returns the way to the tree. */
 function blame(v, what) {
   const o = { x: v.position.x, y: v.position.y + 0.5, z: v.position.z };
-  let tree = 99, wall = 99;
+  let tree = 99, wall = 99, treeDir = null;
   for (const d of BLAME_DIRS) {
-    tree = Math.min(tree, sweepBox(v.world, o, d, 4, PROPS_ONLY, v.body, 0.3));
+    const t = sweepBox(v.world, o, d, 4, PROPS_ONLY, v.body, 0.3);
+    if (t < tree) { tree = t; treeDir = d; }
     wall = Math.min(wall, sweepBox(v.world, o, d, 4, RAY_WALL, v.body, 0.3));
   }
-  if (tree < 4 && tree <= wall) what.tree++;
-  else if (wall < 4) what.building++;
+  if (tree < 4 && tree <= wall) { what.tree++; return treeDir; }
+  if (wall < 4) what.building++;
   else what.other++;
+  return null;
+}
+
+/**
+ * What a unit was doing, sampled every few frames, so a tree contact can be
+ * read back as the second that led up to it rather than the moment of it.
+ * window.__treeLog collects one entry per tree contact.
+ */
+function snap(u, t) {
+  const v = u.vehicle, d = u.driver;
+  const sp = Math.hypot(v.linvel.x, v.linvel.z);
+  // Slip: how far the way the car is going is from the way it is pointing.
+  const slip = sp > 1
+    ? Math.atan2(v.linvel.x * v.forward.z - v.linvel.z * v.forward.x,
+      v.linvel.x * v.forward.x + v.linvel.z * v.forward.z) : 0;
+  return {
+    t: +t.toFixed(2),
+    kph: Math.round(sp * 3.6),
+    slip: +(slip * 57.3).toFixed(0),
+    avoid: +(d.avoidBias || 0).toFixed(2),
+    wall: +(d.wallBias || 0).toFixed(2),
+    roomL: +(d.roomLeft ?? -1).toFixed(1),
+    roomR: +(d.roomRight ?? -1).toFixed(1),
+    near: +(d.wallNear ?? -1).toFixed(1),
+    road: d._onCarriageway ? d._onCarriageway() : null,
+    steer: v.controls ? +(v.controls.steer || 0).toFixed(2) : null,
+    rev: d.reverseTimer > 0,
+    tree: d.treeNear === Infinity ? null : +(d.treeNear ?? -1).toFixed(1),
+    yaw: +(v.yawRate || 0).toFixed(2),
+    cap: d.caps ? Object.fromEntries(Object.entries(d.caps)
+      .filter(([, x]) => x !== Infinity).map(([k, x]) => [k, Math.round(x * 3.6)])) : null,
+    path: !!(d.hasPath && d._laneKeep),
+    role: ROLE_NAMES[u.role] || String(u.role),
+  };
 }
 
 window.__runForce = async function (seconds = 30, kph = 110, runs = 4, label = '', tweak = null, pinSight = false, kind = 'weave') {
@@ -162,6 +197,84 @@ function cutPath(which) {
   return best;
 }
 
+/**
+ * A weaving path among the trees, which neither of the other two goes near.
+ *
+ * The weave runs between buildings and the cuts are off, so a whole-force run
+ * on either came back "trees 0" -- not because the pack misses trees but
+ * because it was never shown any. "It had outrun basically all of them and
+ * somehow it crashed into a tree" happened with the pack on the player's
+ * tail off the road, so that is what this sets up: the same greedy weave as
+ * weave.js, but steering round trunks as well as walls and scored on how much
+ * of it runs within ten metres of one.
+ */
+function treePath(which) {
+  const g = window.__game;
+  if (!window.__treePaths) window.__treePaths = {};
+  if (window.__treePaths[which]) return window.__treePaths[which];
+  if (!window.__treeSpots) {
+    const trees = [], walls = [];
+    g.world.forEachCollider((c) => {
+      const h = c.halfExtents ? c.halfExtents() : null;
+      if (!h) return;
+      const t = c.translation();
+      if (Math.abs(h.x - 0.65) < 0.01 && Math.abs(h.y - 2.6) < 0.01) trees.push({ x: t.x, z: t.z });
+      else if (h.y > 3 && h.x > 3 && h.z > 3) walls.push({ x: t.x, z: t.z, r: Math.max(h.x, h.z) });
+    });
+    window.__treeSpots = { trees, walls };
+  }
+  const { trees, walls } = window.__treeSpots;
+  if (!trees.length) return null;
+
+  let seed = 551033 + which * 3371;
+  const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+  const clear = (x, z) => {
+    for (const t of trees) if ((t.x - x) ** 2 + (t.z - z) ** 2 < 3.2 * 3.2) return false;
+    for (const b of walls) if ((b.x - x) ** 2 + (b.z - z) ** 2 < (b.r + 4) ** 2) return false;
+    return true;
+  };
+  const amongTrees = (x, z) => {
+    for (const t of trees) if ((t.x - x) ** 2 + (t.z - z) ** 2 < 100) return true;
+    return false;
+  };
+
+  let best = null;
+  for (let attempt = 0; attempt < 300; attempt++) {
+    const s = trees[Math.floor(rnd() * trees.length)];
+    let bearing = rnd() * Math.PI * 2;
+    let x = s.x + Math.sin(bearing) * 6, z = s.z + Math.cos(bearing) * 6;
+    if (!clear(x, z)) continue;
+    const pts = [{ x, z }];
+    let near = 0;
+    for (let i = 0; i < 90; i++) {
+      let took = null;
+      for (const off of [0, 0.22, -0.22, 0.45, -0.45, 0.7, -0.7, 1.0, -1.0]) {
+        const h = bearing + off;
+        const nx = x + Math.sin(h) * 8, nz = z + Math.cos(h) * 8;
+        if (!clear(nx, nz) || !clear((x + nx) / 2, (z + nz) / 2)) continue;
+        let doubled = false;
+        for (let j = 0; j < pts.length - 8; j++) {
+          if (Math.hypot(pts[j].x - nx, pts[j].z - nz) < 20) { doubled = true; break; }
+        }
+        if (doubled) continue;
+        took = { h, nx, nz };
+        break;
+      }
+      if (!took) break;
+      if (amongTrees(took.nx, took.nz)) near++;
+      x = took.nx; z = took.nz;
+      // Drift the bearing a little, so a long run does not leave the trees in
+      // a straight line and spend the rest of itself in a field.
+      bearing = took.h + (rnd() - 0.5) * 0.3;
+      pts.push({ x, z });
+    }
+    if (pts.length < 40) continue;
+    if (!best || near > best.near) best = { pts, near };
+  }
+  window.__treePaths[which] = best;
+  return best;
+}
+
 const ROLE_NAMES = {};
 
 function run(which, seconds, kph, tweak, pinSight, kind) {
@@ -169,7 +282,8 @@ function run(which, seconds, kph, tweak, pinSight, kind) {
   const { ROLE } = window.__modules;
   for (const k of Object.keys(ROLE)) ROLE_NAMES[ROLE[k]] = k;
 
-  const W = kind === 'cuts' ? cutPath(which) : weavePath(which);
+  const W = kind === 'cuts' ? cutPath(which)
+    : kind === 'trees' ? treePath(which) : weavePath(which);
   if (!W || W.pts.length < 8) return null;
   const pts = W.pts;
 
@@ -303,6 +417,7 @@ function run(which, seconds, kph, tweak, pinSight, kind) {
   let hits = 0, hard = 0, wrecked = 0, worst = 0;
   const what = { tree: 0, building: 0, other: 0 };
   const lastHit = new Map();
+  const hist = new Map();
   const dead = new Set();
   // Whether the junctions the solver sends units to are places the car actually
   // goes. Everything in the intercept solver is downstream of RoadGraph.predict,
@@ -369,7 +484,24 @@ function run(which, seconds, kph, tweak, pinSight, kind) {
         // different failure from clipping another unit, and the whole-force
         // number hides it: look round the car with a props-only mask and a
         // buildings-only one and see which is closer.
-        blame(vv, what);
+        const td = blame(vv, what);
+        if (td) {
+          // Bearing of the trunk off the nose, degrees, + is to the left.
+          const bearing = Math.atan2(
+            td.x * vv.forward.z - td.z * vv.forward.x,
+            td.x * vv.forward.x + td.z * vv.forward.z) * -57.3;
+          (window.__treeLog = window.__treeLog || []).push({
+            run: which, at: +(i / 60).toFixed(1), impact: +vv.lastImpact.toFixed(1),
+            bearing: Math.round(bearing), now: snap(u, i / 60),
+            before: (hist.get(u) || []).slice(),
+          });
+        }
+      }
+      if (i % 10 === 0) {
+        const hh = hist.get(u) || [];
+        hh.push(snap(u, i / 60));
+        if (hh.length > 8) hh.shift();
+        hist.set(u, hh);
       }
       if (vv.damage > worst) worst = vv.damage;
       if (vv.damage >= 0.99 && !dead.has(u)) { dead.add(u); wrecked++; }

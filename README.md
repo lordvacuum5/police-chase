@@ -4405,6 +4405,64 @@ points more pursuit, which is what you would expect from cars that have stopped
 steering into things — and the mechanism is real whether or not a rig has caught
 it in the act.
 
+### It was never the dodge: a strip to stop in, off the road
+
+*"Their distribution system is very good, but it's still not perfect"* — the
+police were still going into trees.
+
+The section above guessed at the cause without ever catching it, because no rig
+put the pack among trees: the weave runs between buildings and the cut routes
+are switched off, so `tests/force.js` always said "trees 0". It now has a third
+route, `kind = 'trees'`, the same greedy weave steered round trunks and scored on
+how much of it runs within ten metres of one. It also writes `window.__treeLog`:
+for every tree contact, the second before it in samples of speed, slip, steer,
+`avoidBias`, `wallBias`, the abeam room, the speed caps and whether there was
+road underneath.
+
+The log was unambiguous. In every contact `avoidBias` was **zero**. The car was
+off the road at 110–170 km/h, chasing a weaving target with the nose swinging
+both ways several times a second, and the straight-ahead sweep read clear to 60 m
+until — a fifth of a second later — a trunk was 15–25 m in front of it. It braked
+at once and as hard as the car can, 120 down to 85, and arrived anyway. Not too
+slow to react: too fast to be there at all.
+
+Looking along the turn the car was in (heading plus yaw rate × 0.6 s) was tried
+first, and did not help — 15 tree contacts in 12 chases — because the nose is
+not turning one way, it is sawing, and the trunk it meets is wherever the nose is
+when it comes into range.
+
+So it is a strip, not a line. Off the carriageway only, a box `TREE_STRIP` (3 m)
+wider than the car each side is swept 70 m down the line of travel against props
+alone, and the car is held to what can stop short of any trunk in it, on the same
+pessimistic terms as the wall clamp. Props only, so the buildings either side of a
+gap do not slow anyone; off the road only, because a tree beside a street is not
+a reason to brake (see *A tree is not a wall*). A trunk the strip starts already
+touching is beside the car, not ahead of it, and is ignored.
+
+Each arm from a fresh page, Wexbury, whole force, 30 s at 110 km/h:
+
+| through the trees, 12 chases | strip off | strip on |
+|---|---|---|
+| tree contacts | 18 | **4** |
+| contacts, all | 130 | **100** |
+| hard contacts | 16 | **8** |
+| nearest unit, mean | 179 m | 178 m |
+| time with a unit in touch | 29% | 23% |
+
+| between the buildings, 8 chases | before | strip on |
+|---|---|---|
+| time with a unit in touch | 37% | **49%** |
+| closest approach | 39 m | **19 m** |
+| contacts | 76 | **25** |
+| hard contacts | **10** | 16 |
+| trees | 0 | 0 |
+
+The pack keeps the same distance through the trees and loses a little time right
+on the car, which is what slowing for trunks costs. In town the strip should do
+almost nothing, and the gain there is mostly run-to-run variance — the hard
+contacts going up is the same noise, not a regression anyone has a mechanism for.
+`window.__noTreeStrip = true` puts the old behaviour back for measuring.
+
 ### No air support for typed stars
 
 Typing `five` to set the wanted level grounds the helicopter for the rest of the

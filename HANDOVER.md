@@ -117,6 +117,7 @@ The ones you will want most:
 | rig | what it answers |
 |---|---|
 | `force.js` | `__runForce` — the whole force against a weaving player. The main one. Reports how close they stay, what they hit, role time, intercept quality. |
+| `force.js` with kind `'trees'` | the same, weaving through trees; fills `window.__treeLog` with the second before each tree contact |
 | `weave.js` | the weaving path other rigs drive the player along |
 | `lonetree.js` | `__runLoneTree`, `__runCrossCountry` — driving at an isolated tree |
 | `woods.js`, `trees.js` | the same through a copse |
@@ -179,13 +180,13 @@ of those stop the run scoring, deliberately.
 
 ### Known open problems
 
-1. **Police cars occasionally hit a tree in a chase.** The lone-tree case is
-   fixed (0 hits of 5 at 80/110/140/170 km/h). What remains needs the pack: a
-   car shoved sideways by `avoidBias` while dodging another car is not going
-   where it is pointing, and a trunk off the wing is outside every forward cone.
-   Rare enough that an 8-run five-star chase came back with zero tree contacts,
-   so there is nothing to iterate against. **Do not guess at this** — the
-   avoidance is heavily tuned and past attempts measured worse.
+1. **Police cars occasionally hit a tree in a chase -- much reduced, not gone.**
+   The old belief (shoved sideways by `avoidBias`) was wrong: `__runForce(...,
+   'trees')` with `window.__treeLog` caught 18 contacts in 12 chases and every
+   one had `avoidBias` at zero. They were off-road at 110-170 km/h with a trunk
+   appearing 15-25 m ahead. Fixed with the off-road tree strip in `driver.js`
+   (`TREE_STRIP`, `treeNear`): 18 -> 4. The remaining four are worth reading
+   from `__treeLog` before changing anything; `__noTreeStrip` turns it off.
 2. **One reverse in five is followed by another within ten seconds.** A car
    reverses, re-routes, is handed much the same line, and meets the same thing.
    That is a routing problem rather than a recovery one, and it is untouched. The
@@ -204,9 +205,9 @@ of those stop the run scoring, deliberately.
    as Euler YXZ angles, so past 90° of pitch yaw and roll briefly couple. Going
    over and back works; round and round needs the attitude integrated from rates
    as a quaternion. The user has been told this and may ask for it.
-5. **Multiplayer with the helicopter has never actually been play-tested** by
-   either of us in a real pursuit — the user kept hitting bugs before getting
-   that far. It is believed to work.
+5. **Multiplayer with the helicopter has now been played** (22 Oct 2026). The
+   user's verdict: *"It's very good. Well, I said very good. It's okay."* No
+   specific complaints yet -- worth asking what would make it better.
 
 ### Things the user has asked for and had
 
