@@ -1122,6 +1122,8 @@ export class Officer {
     if (this.role === ROLE.HOLD) return null;
     if (!sim || !sim.surfaceAt || sim.surfaceAt(v.position.x, v.position.z) !== 0) {
       this.offRoadFor = 0;
+      this._bogged = false;
+      this._bogFrom = null;
       return null;
     }
 
@@ -1139,7 +1141,36 @@ export class Officer {
       const hunting = this.role === ROLE.SEARCH
         && ((this._searchSpot && this._searchSpot.direct) || this._wentIn);
       if (hunting && (v.speed > 1.5 || this.offRoadFor < 4)) return null;
-      if (!hunting && (v.speed > 7 || this.offRoadFor < 1.5)) return null;
+      // Bogged means not getting anywhere, not merely going slowly.
+      //
+      // This was "under 25 km/h after a second and a half off the tarmac",
+      // and `offRoadFor` is the time off the tarmac, not the time slow -- so any
+      // unit that had been on the grass for a moment and then eased off to
+      // thread something was taken over on the spot. It dropped whatever it was
+      // doing and drove straight at the nearest bit of road, which in an estate
+      // is through a tree or the corner of a house: traced on tests/estate.js,
+      // a unit slowing for a gap 28 m wide was hijacked at 3.7 s, aimed at a
+      // trunk, stopped against it, reversed and was hijacked again. "It seemed
+      // to just keep on choosing different routes, and it seemed to choose the
+      // worst routes possible."
+      //
+      // So it has to have actually stuck: under four metres moved in three
+      // seconds, and not in the middle of backing out of something, which is
+      // the driver's own recovery and already working.
+      if (!hunting) {
+        if (v.speed > 7) { this._bogged = false; this._bogFrom = null; return null; }
+        if (!this._bogged && !window.__eagerRegain) {
+          const now = this.offRoadFor;
+          if (!this._bogFrom) this._bogFrom = { x: v.position.x, z: v.position.z, at: now };
+          if (now - this._bogFrom.at >= 3) {
+            const moved = dist2(v.position.x, v.position.z, this._bogFrom.x, this._bogFrom.z);
+            this._bogged = moved < 4 && !(this.driver.reverseTimer > 0);
+            this._bogFrom = { x: v.position.x, z: v.position.z, at: now };
+          }
+          if (!this._bogged) return null;
+        }
+        if (window.__eagerRegain && this.offRoadFor < 1.5) return null;
+      }
     } else if (this.offRoadFor < 0.35) {
       // A wheel clipping a verge is not worth abandoning a patrol for.
       return null;
@@ -1154,6 +1185,10 @@ export class Officer {
     // straight line to the nearest road from there runs through a house.
     // It finds its way out the way it would find its way in, and slowly.
     if (this.role === ROLE.SEARCH) return this._driveDirect(dt, snap, SEARCH_OFF_ROAD * 0.7);
+    // And a unit that really has bogged down among the houses gets the same
+    // treatment, for the same reason: the straight line below goes through
+    // whatever it is stuck against.
+    if (this.driver.allowOffRoad && !window.__eagerRegain) return this._driveDirect(dt, snap, 9);
 
     const dir = g.edgeDirection(snap.edge, snap.along, { x: 0, z: 1 });
     if (dir.x * v.forward.x + dir.z * v.forward.z < 0) { dir.x = -dir.x; dir.z = -dir.z; }
@@ -1234,6 +1269,22 @@ export class Officer {
     const reach = clamp(16 + v.speed * 1.9, 20, 75);
     const aim = d.pickGap(goal.x, goal.z, reach);
     _aim.set(aim.x, 0, aim.z);
+    // Slow, with something close in front: drive the turn rather than point at
+    // the gap.
+    //
+    // pickGap sweeps straight lines from the nose and is right about where the
+    // gap is, but a car does not go along a straight line at twenty-four
+    // degrees from a standstill -- it turns onto it, and the thing in front is
+    // in the turn. Aimed at a point thirty-odd metres down the gap, pure pursuit
+    // asked for twelve degrees of steering with a trunk two metres off the
+    // bumper, rolled into it, and reversed: traced on tests/estate.js, which is
+    // the shape of "it could have just turned the wheels and gone forwards". The
+    // trajectory planner runs the actual arcs the car can drive (real lock, real
+    // wheelbase) and picks one that clears, so up close its aim is used instead.
+    if (v.speed < 6 && d.wallNear < 10 && !this.noPlanner && !window.__noCloseArc) {
+      const plan = d.planTrajectory(aim.x, aim.z, dt);
+      if (plan && plan.clear > 3) _aim.set(plan.x, 0, plan.z);
+    }
     d.setPath([]);
     // `gap` says the aim point is the gap search's, so safeSpeed may use the swept
     // measurement that came with it rather than probing the same line again worse.

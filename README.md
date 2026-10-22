@@ -4507,6 +4507,64 @@ almost nothing, and the gain there is mostly run-to-run variance — the hard
 contacts going up is the same noise, not a regression anyone has a mechanism for.
 `window.__noTreeStrip = true` puts the old behaviour back for measuring.
 
+### Stuck among the houses: hijacked by the way back to the road
+
+*"There was obvious routes out, but it seemed to just keep on choosing different
+routes, and it seemed to choose the worst routes possible. It could literally
+have just turned around ... or it could have just turned the wheels and gone
+forwards, and then just manoeuvred itself out of, like, kind of housing
+complex."* And, earlier the same day, the same thing between two trees.
+
+The tree strip above was the first suspect and is not it: `tests/betweentrees.js`
+parks a unit between two trunks with the target in six directions, and it got out
+27 times in 36 with the strip and 28 without. `tests/estate.js` does the same in
+the gaps behind houses (sites off the weave paths, target 80 m away in five
+directions) and traced the cars that did not get out. Three things, stacked:
+
+* **`_regainRoad` took them over.** For a unit allowed off the road it was meant
+  as a rescue for one that had bogged down, and the test was "under 25 km/h, off
+  the tarmac for 1.5 s" — where the 1.5 s is time off the tarmac, not time slow.
+  So any unit that slowed to thread a gap was hijacked on the spot, dropped the
+  chase and drove straight at the nearest road, which in an estate is through a
+  tree or the corner of a house. It stopped against that, reversed, and was
+  hijacked again — a different direction every time, which is exactly what was
+  described. Now it has to have actually stuck — under 4 m moved in 3 s, and not
+  in the middle of backing out — and the rescue steers with `_driveDirect`, which
+  looks for a way, instead of a straight line.
+* **Every speed clamp went to zero up close.** They keep 6–7 m in hand to stop
+  short of what is ahead, so with a trunk five metres off the nose all of them
+  return exactly 0 km/h, and a car that is not rolling cannot steer away either.
+  The unstick logic saw room and said "drive out", to a car its own planner had
+  just told to stand still. Now a car may **creep** at up to 9 km/h while there is
+  1.5 m of clear road down the line it is travelling (`CREEP_SPEED`,
+  `CREEP_KEEP`) — enough to turn on full lock, too slow to hurt anything.
+* **The gap was right and the turn onto it was not.** `pickGap` sweeps straight
+  lines from the nose; aimed 36 m down a gap at 24°, pure pursuit asked for 12° of
+  steering with a trunk 2 m off the bumper. When slow with something within 10 m,
+  `_driveDirect` now takes its aim from `planTrajectory`, which drives the arcs
+  the car can actually make.
+
+Fresh page each, Wexbury, 40 cases of 20 s:
+
+| estate | before | after |
+|---|---|---|
+| got out | 33 | 32 |
+| reverses | 25 | **10** |
+| contacts | 17 | **12** |
+
+The traced case — target straight ahead, gap open — went from stuck 47 m short
+after a reverse to reaching it with none. Five of the forty cases are one site
+where the unit spawns already touching something and cannot move in either arm, so
+the real denominator is 35. What is left is mostly a target behind the car in a
+yard too tight to turn in: that wants a proper three-point turn, which nothing
+here does yet, and in one of those the old code got out by reversing three times
+where the new one wanders and does not.
+
+The whole-force town chase did not get worse: in touch 40% (the two previous
+fresh-page batches of the identical town setup read 37% and 49%, which is the noise),
+closest 30 m, contacts 37, hard 9 — the fewest hard knocks of the three.
+`window.__eagerRegain`, `__noCreep` and `__noCloseArc` put each piece back.
+
 ### No air support for typed stars
 
 Typing `five` to set the wanted level grounds the helicopter for the rest of the

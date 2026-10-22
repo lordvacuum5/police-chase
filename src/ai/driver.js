@@ -229,6 +229,14 @@ const WALL_TURN = 0;
  * sweep in _avoidScenery and the tree clamp in drive().
  */
 const TREE_STRIP = 3;
+
+/**
+ * The speed a stopped car may still roll at to turn away from something close,
+ * and how much clear road it needs down its line of travel to do it. See the
+ * creep at the end of the speed clamps in drive().
+ */
+const CREEP_SPEED = 2.5;          // m/s, 9 km/h
+const CREEP_KEEP = 1.5;
 const TREE_LOOK = 70;
 const TREE_KEEP = 4;
 const PROPS_ONLY = groups(0xFFFF, GROUP.PROP);
@@ -1757,6 +1765,33 @@ export class Driver {
 
     caps.slide = this.slideLift();
     speed = Math.min(speed, caps.slide);
+
+    // Creep. Every clamp above keeps a margin in hand to stop short of what is
+    // ahead -- seven metres in safeSpeed, six in the wall clamp -- which is right
+    // at speed and absolute nonsense at a standstill: with a trunk or a wall
+    // corner five metres off the nose they all work out to exactly zero, and a
+    // car that is not rolling cannot steer away from it either. So it sat on
+    // full lock with no throttle, the unstick logic saw room and said "drive
+    // out" -- to a car whose own planner had just told it 0 km/h -- and then it
+    // reversed, came back, and did it again.
+    //
+    // "It could have just turned the wheels and gone forwards, and then just
+    // manoeuvred itself out." So while there is CREEP_KEEP of clear road down
+    // the line it is actually travelling, it may roll at a walking pace, which
+    // is all a turn on full lock needs and too slow to hurt anything it
+    // touches. Traced on tests/estate.js: a unit in a gap with the target
+    // straight ahead stopped 4.8 m from a trunk, gap open 28 m at 24 degrees,
+    // and sat for four seconds before reversing.
+    caps.creep = Infinity;
+    if (speed < CREEP_SPEED && requested > 3 && !opts.holdStill
+      && !window.__noCreep) {
+      const room = Math.min(this.wallNear, this._clearTravel === undefined ? Infinity : this._clearTravel);
+      const creep = CREEP_SPEED * clamp01((room - CREEP_KEEP) / 3);
+      if (creep > speed) {
+        caps.creep = creep;
+        speed = creep;
+      }
+    }
     caps.out = speed;
     this.speedTarget = speed;
 

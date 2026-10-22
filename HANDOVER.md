@@ -187,7 +187,15 @@ of those stop the run scoring, deliberately.
    appearing 15-25 m ahead. Fixed with the off-road tree strip in `driver.js`
    (`TREE_STRIP`, `treeNear`): 18 -> 4. The remaining four are worth reading
    from `__treeLog` before changing anything; `__noTreeStrip` turns it off.
-2. **One reverse in five is followed by another within ten seconds.** A car
+2. **Cars stuck among houses and trees -- much improved, one case left.** The
+   big cause was `_regainRoad` hijacking any slow off-road unit (fixed, see
+   README "Stuck among the houses"), plus speed clamps going to zero up close
+   (now a creep) and the gap aim ignoring the turn (now `planTrajectory` when
+   slow and close). `tests/estate.js` and `tests/betweentrees.js` measure it.
+   **Still missing: a three-point turn** for a target behind the car in a tight
+   yard. Site 7 in `estate.js` spawns the car touching something; ignore it.
+   The older note on this follows.
+   **One reverse in five is followed by another within ten seconds.** A car
    reverses, re-routes, is handed much the same line, and meets the same thing.
    That is a routing problem rather than a recovery one, and it is untouched. The
    stall probe now fans out to ±25 and ±49 degrees when the direct line to the
