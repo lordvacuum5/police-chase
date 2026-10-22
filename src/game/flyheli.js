@@ -120,15 +120,48 @@ const MAX_ROLL = Math.PI;
 const CYCLIC_RATE = 0.95;        // radians a second toward the demanded lean
 
 /**
+ * Rotational inertia: how quickly that rate itself can build and die away.
+ *
+ * "It's almost too easy to move around ... it should be heavier." The rate
+ * limit above was the whole of the attitude model, and a rate limit has no
+ * mass in it: the airframe went from still to 0.95 rad/s the frame the stick
+ * moved and stopped dead the frame it arrived. That is the mouse-pointer feel
+ * the limit was meant to remove, just slower. Now the stick asks for a rate in
+ * proportion to how far off the lean is (CYCLIC_GAIN, capped at CYCLIC_RATE)
+ * and the airframe is only allowed to change its rate by CYCLIC_ACCEL a
+ * second, so a lean winds in, and a release winds back out, with something
+ * heavy behind it. Letting go returns at LEVEL_RATE times the lean rate, so
+ * that putting it down is still quicker than picking it up.
+ */
+//
+// Measured stepping the stick, to 90% of the lean asked for:
+//
+//   lean    massless (before)   this
+//   10 deg      0.2 s          0.85 s
+//   30 deg      0.5 s          1.0 s
+//   90 deg      1.6 s          1.75 s
+//
+// with no overshoot at any of them. The small corrections are where it changed
+// most, and they are what a pilot is doing most of the time. 1.5 and 1.8 were
+// tried first and took 1.5 s to 30 degrees, which is a barge.
+const CYCLIC_ACCEL = 2.2;        // radians a second, per second
+const CYCLIC_GAIN = 3;           // rate asked for per radian still to go
+const LEVEL_RATE = 1.3;
+
+/**
  * How hard it returns to level with no input. This is the training-wheels
  * number: at 0 it is a free aircraft that will happily sit inverted, and the
  * pilot is flying all four axes constantly. High and it flies itself.
  */
 const LEVEL = 1.1;
 
-/** Pedals: yaw rate at full deflection, and how fast it builds. */
+/**
+ * Pedals: yaw rate at full deflection, and how fast it builds. The ease was 3.2,
+ * 0.75 s to 90% of full rate and as quick to stop; 2.0 makes that about 1.15 s,
+ * with the cyclic inertia above, for the same "it should be heavier".
+ */
 const YAW_RATE = 0.85;
-const YAW_EASE = 3.2;
+const YAW_EASE = 2.0;
 
 /**
  * Air resistance, and the thing that actually sets the performance envelope.
@@ -152,6 +185,23 @@ const YAW_EASE = 3.2;
  */
 const DRAG = 0.13;
 const DRAG_UP = 0.36;
+
+/**
+ * Horizontal drag that grows with the square of the speed, as air does.
+ *
+ * The flat 0.13 above did not cap anything: drag in proportion to speed has
+ * a terminal velocity of thrust over drag, and the thrust kept going up. With
+ * the nose sixty-three degrees down and the lever on the stop it held its
+ * height at 505 km/h -- twice the 250 the note above promises, and twice the
+ * fastest car. Which is a lot of why "it's almost too easy to move around".
+ *
+ * So the linear part is cut to DRAG_LIN, which leaves it carrying a little more
+ * of its speed when the stick comes back (heavier, not floatier, at chase
+ * speeds), and DRAG_Q does the capping: at the steepest lean that still holds
+ * height on full collective, about 61 degrees, the two balance at 250 km/h.
+ */
+const DRAG_LIN = 0.06;
+const DRAG_Q = 0.00281;
 
 /** Translational lift: a helicopter is more efficient with airspeed. */
 const LIFT_SPEED = 26;
@@ -313,6 +363,9 @@ export class FlyingHelicopter {
     this.yaw = opts.heading || 0;
     this.pitch = 0;
     this.roll = 0;
+    /** How fast pitch and roll are changing -- the airframe's momentum. */
+    this.pitchRate = 0;
+    this.rollRate = 0;
 
     this.collective = HOVER;
     this.yawRate = 0;
@@ -480,16 +533,37 @@ export class FlyingHelicopter {
     // Kept for the disc, which leads the airframe -- see discPitch below.
     this._askPitch = wantPitch;
     this._askRoll = wantRoll;
-    const rate = CYCLIC_RATE * dt;
-    this.pitch += clamp(wantPitch - this.pitch, -rate, rate);
-    this.roll += clamp(wantRoll - this.roll, -rate, rate);
-    // Self-centring on top, so a released stick comes back to level by itself
-    // rather than holding the last lean.
-    if (cold || !c.pitch) this.pitch = damp(this.pitch, 0, cold ? 8 : LEVEL, dt);
-    if (cold || !c.roll) this.roll = damp(this.roll, 0, cold ? 8 : LEVEL, dt);
+    if (window.__heliLight) {
+      // The old, massless attitude, kept so a rig can put it back.
+      const rate = CYCLIC_RATE * dt;
+      this.pitch += clamp(wantPitch - this.pitch, -rate, rate);
+      this.roll += clamp(wantRoll - this.roll, -rate, rate);
+      if (cold || !c.pitch) this.pitch = damp(this.pitch, 0, cold ? 8 : LEVEL, dt);
+      if (cold || !c.roll) this.roll = damp(this.roll, 0, cold ? 8 : LEVEL, dt);
+      this.pitchRate = 0;
+      this.rollRate = 0;
+    } else if (cold) {
+      this.pitchRate = 0;
+      this.rollRate = 0;
+      this.pitch = damp(this.pitch, 0, 8, dt);
+      this.roll = damp(this.roll, 0, 8, dt);
+    } else {
+      // With weight -- see CYCLIC_ACCEL. A released stick asks for level, a
+      // little quicker than it asked for the lean.
+      const step = CYCLIC_ACCEL * dt;
+      const pCap = c.pitch ? CYCLIC_RATE : CYCLIC_RATE * LEVEL_RATE;
+      const rCap = c.roll ? CYCLIC_RATE : CYCLIC_RATE * LEVEL_RATE;
+      const pRate = clamp((wantPitch - this.pitch) * CYCLIC_GAIN, -pCap, pCap);
+      const rRate = clamp((wantRoll - this.roll) * CYCLIC_GAIN, -rCap, rCap);
+      this.pitchRate = (this.pitchRate || 0) + clamp(pRate - (this.pitchRate || 0), -step, step);
+      this.rollRate = (this.rollRate || 0) + clamp(rRate - (this.rollRate || 0), -step, step);
+      this.pitch += this.pitchRate * dt;
+      this.roll += this.rollRate * dt;
+    }
 
     // ---- pedals ----
-    this.yawRate = damp(this.yawRate, cold ? 0 : clamp(c.yaw || 0, -1, 1) * YAW_RATE, YAW_EASE, dt);
+    this.yawRate = damp(this.yawRate, cold ? 0 : clamp(c.yaw || 0, -1, 1) * YAW_RATE,
+      window.__heliLight ? 3.2 : YAW_EASE, dt);
     // A swings the nose left. The model's nose is +Z and its left is +X, so
     // left is a rising yaw -- it was falling, and the pedals were handed.
     this.yaw += this.yawRate * dt;
@@ -512,8 +586,10 @@ export class FlyingHelicopter {
 
     // Drag, lighter on the vertical so a deliberate descent still feels like
     // falling rather than sinking through treacle.
-    this.linvel.x *= 1 - DRAG * dt;
-    this.linvel.z *= 1 - DRAG * dt;
+    const hDrag = window.__heliLight ? DRAG
+      : DRAG_LIN + DRAG_Q * Math.hypot(this.linvel.x, this.linvel.z);
+    this.linvel.x *= 1 - hDrag * dt;
+    this.linvel.z *= 1 - hDrag * dt;
     this.linvel.y *= 1 - DRAG_UP * dt;
 
     this._moveAndHit(dt);
@@ -847,6 +923,10 @@ export class FlyingHelicopter {
     this.discPitch = 0;
     this.discRoll = 0;
     this.yawRate = 0;
+    // And the attitude's own momentum, or a respawned aircraft carries on
+    // rolling the way the wreck was going.
+    this.pitchRate = 0;
+    this.rollRate = 0;
     this._applyAttitude();
     const input = this.game && this.game.input;
     if (input && input.centreCyclic) input.centreCyclic();

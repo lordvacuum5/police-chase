@@ -834,6 +834,50 @@ inside a tap, so the first tap speaks a silent empty line to unlock the radio.
 `serve.ps1` only listens on `localhost`. It is plain static files with relative
 paths, so GitHub Pages serves it as it is.
 
+### Flying it with some weight
+
+*"It's almost too easy to move around, you know, like it should be heavier."*
+Two things in `src/game/flyheli.js` were making it light, and one of them was a
+plain bug.
+
+**It had no rotational inertia.** The attitude was a rate limit and nothing
+else: the airframe went from still to 0.95 rad/s the frame the stick moved, and
+stopped dead the frame it arrived. That is slower than a mouse pointer, but it is
+still a mouse pointer. Now the stick asks for a rate in proportion to how far the
+lean has still to go, and the airframe may only change that rate by
+`CYCLIC_ACCEL` a second — so a lean winds in and a release winds back out, with
+something heavy behind it. Stepping the stick, to 90% of the lean asked for:
+
+| lean | before | now |
+|---|---|---|
+| 10° | 0.2 s | 0.85 s |
+| 30° | 0.5 s | 1.0 s |
+| 90° | 1.6 s | 1.75 s |
+
+No overshoot at any of them. The small corrections changed most, and they are
+most of what a pilot does. The pedals build and die away more slowly too, 0.75 s
+to 90% of the yaw rate before and about 1.15 s now. `1.5`/`1.8` were tried first
+and took 1.5 s to reach 30°, which was a barge.
+
+**It could do 500 km/h.** Horizontal drag was a flat fraction of the speed, and
+drag in proportion to speed has a terminal velocity of thrust over drag — so as
+the thrust was raised over several fixes, the top speed quietly went with it. With
+the nose 61° down and the lever on the stop it held its height at **505 km/h**,
+twice the 250 the code said it was capped at and twice the fastest car. Drag now
+has a part that grows with the square of the speed, which is what air does: the
+same lean tops out at **251 km/h**, while pulling away from a hover is as quick as
+it was (0–100 km/h in 2.5 s against 2.4) and it carries a touch more speed when
+the stick comes back.
+
+The menu card was wrong as well — it said 137 mph, 10 m/s of climb and six
+minutes in the air — and now says what `tests/flyheli.js` measures: 156 mph,
+13 m/s, 4.5 minutes. That rig had gone stale in the same way: its stick values
+dated from before the idle and the thrust moved, so "ease up to a wall" was
+arriving at 54 km/h and "set down gently" was hovering. It passes properly again.
+
+`window.__heliLight = true` puts the old attitude, pedals and drag back for
+comparison.
+
 ---
 
 ## How the driving model works

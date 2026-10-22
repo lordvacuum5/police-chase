@@ -13,6 +13,14 @@ import { FlyingHelicopter, ENDURANCE } from '../src/game/flyheli.js';
 
 const STICK = { collective: 0, pitch: 0, roll: 0, yaw: 0 };
 
+/**
+ * The collective that holds height, measured: 0.14 climbs 0.2 m in ten seconds
+ * and 0.13 sinks 1.7. The tests below were written when it was about 0.21 and
+ * then the idle and the thrust moved under them, which quietly turned "ease up
+ * to a wall" into "climb over a wall" and "set down gently" into a hover.
+ */
+const HOVER_ASK = 0.14;
+
 function fly(h, seconds, c = {}, dt = 1 / 60) {
   const stick = Object.assign({}, STICK, c);
   for (let i = 0; i < Math.round(seconds / dt); i++) h.update(dt, stick);
@@ -90,11 +98,24 @@ window.__runFlyHeli = async function () {
     // ---- lean to go ----
     // Thrust is along the aircraft's own up, so the only way forward is to
     // put the nose down. If this does not accelerate, nothing else works.
+    // Thirty degrees, not full stick: full stick is now 180 degrees, which is
+    // past vertical and not "nose down" in any sense that goes anywhere.
     {
       const h = make();
-      fly(h, 8, { pitch: 1 });
-      say(`nose down 8 s: ${h.speed.toFixed(1)} m/s (${Math.round(h.kmh)} kph)   `
+      fly(h, 8, { pitch: 1 / 6, collective: HOVER_ASK });
+      say(`nose down 30 deg 8 s: ${h.speed.toFixed(1)} m/s (${Math.round(h.kmh)} kph)   `
         + `forward ${h.position.z.toFixed(0)} m   sank ${(120 - h.position.y).toFixed(0)} m`);
+    }
+
+    // ---- top speed ----
+    // Sixty-one degrees and the lever on the stop is about the steepest lean
+    // that holds height. With drag only in proportion to speed this held 505
+    // km/h, twice what it was meant to; the menu card's figure comes from here.
+    {
+      const h = make();
+      fly(h, 60, { pitch: 61 / 180, collective: 1 });
+      say(`top speed, 61 deg on full collective: ${Math.round(Math.hypot(h.linvel.x, h.linvel.z) * 3.6)} kph`
+        + `   height ${h.position.y >= 120 ? '+' : ''}${(h.position.y - 120).toFixed(0)} m`);
     }
 
     // ---- and it comes back to level ----
@@ -102,7 +123,9 @@ window.__runFlyHeli = async function () {
       const h = make();
       fly(h, 4, { pitch: 1, roll: 1 });
       const leaned = { p: h.pitch, r: h.roll };
-      fly(h, 3);
+      // Four seconds from fully inverted: with the airframe's momentum it winds
+      // back at up to 1.24 rad/s rather than snapping, so three was not quite it.
+      fly(h, 4);
       say(`stick released: pitch ${leaned.p.toFixed(2)} -> ${h.pitch.toFixed(3)}   `
         + `roll ${leaned.r.toFixed(2)} -> ${h.roll.toFixed(3)}`);
     }
@@ -137,8 +160,8 @@ window.__runFlyHeli = async function () {
     {
       const soft = running(new FlyingHelicopter(window.__game, {}));
       soft.teleport({ x: 0, y: 12, z: 0 }, 0);
-      // A hover needs about 0.22 on the lever; a shade under it walks down.
-      fly(soft, 16, { collective: 0.16 });
+      // A shade under the hover walks down.
+      fly(soft, 24, { collective: 0.10 });
       say(`set down gently: y ${soft.position.y.toFixed(2)}   on skids ${soft.onGround}   `
         + `damage ${soft.damage.toFixed(2)} ${soft.disabled ? '-- WRECKED, too harsh' : ''}`);
 
@@ -257,16 +280,23 @@ window.__runFlyHeli = async function () {
       // this run and 0.22 climbs four. At 0.26 it climbed clean over the wall
       // and the test called that "went through it", which was the test being
       // wrong rather than the game.
-      fly(h, 14, { collective: 0.21, pitch: 0.06 });
+      // 0.02 of the stick is about four degrees and arrives at 4 m/s. 0.06 was
+      // eleven degrees, which over thirty metres is a 15 m/s arrival -- past
+      // CRASH_SPEED, so "eased up to" was really "flown into".
+      fly(h, 14, { collective: HOVER_ASK, pitch: 0.02 });
       const gap = Z - 2 - h.position.z;          // to the near face
       const through = h.position.z > Z;
 
-      // And then off it: climb, and back away.
+      // And then off it: back away, and climb. In that order now -- climbing
+      // straight up a wall 0.4 m off it puts the rotor over the top edge with
+      // the nose still tipped toward it, and the rotor strike (which is newer
+      // than this test) correctly takes it.
       const atWall = { y: h.position.y, z: h.position.z };
-      fly(h, 7, { collective: 1 });
-      const climbed = h.position.y - atWall.y;
-      fly(h, 7, { collective: 0.4, pitch: -1 });
+      fly(h, 5, { collective: HOVER_ASK, pitch: -1 / 12 });
       const away = atWall.z - h.position.z;
+      const before = h.position.y;
+      fly(h, 7, { collective: 1 });
+      const climbed = h.position.y - before;
 
       say(`eased up to a wall: ${through ? 'WENT THROUGH IT' : `stopped ${gap.toFixed(1)} m short`}`
         + `   damage ${h.damage.toFixed(2)}`);
@@ -290,15 +320,20 @@ window.__runFlyHeli = async function () {
       // Fast into it: wrecked.
       const fast = running(new FlyingHelicopter(g, {}));
       fast.teleport({ x: X, y: Y, z: Z - 150 }, 0);
-      fly(fast, 20, { collective: 0.55, pitch: 0.7 });
+      // Forty-five degrees and enough collective to hold height in it.
+      fly(fast, 20, { collective: 0.6, pitch: 0.25 });
       say(`flown into a wall at speed: ${fast.disabled ? 'wrecked' : 'NOT WRECKED'}   `
         + `damage ${fast.damage.toFixed(2)}`);
 
-      // Nudged into it: a scrape, still flying.
+      // Nudged into it. This used to expect a scrape and nothing more, and it
+      // was written before the rotor could hit things: the hull stops 2.2 m
+      // from the face and the disc reaches 6.2, so easing up to a forty-metre
+      // wall puts the blades in it, which ends the sortie on purpose -- see
+      // _rotorStrike, and the 3 m case in "hovering beside a wall" below.
       const slow = running(new FlyingHelicopter(g, {}));
       slow.teleport({ x: X, y: Y, z: Z - 12 }, 0);
-      fly(slow, 6, { collective: 0.26, pitch: 0.04 });
-      say(`  and nudged into one: ${slow.disabled ? 'WRECKED -- too harsh' : 'still flying'}   `
+      fly(slow, 6, { collective: HOVER_ASK, pitch: 0.04 });
+      say(`  and nudged into one: ${slow.disabled ? 'rotor into the wall, wrecked' : 'STILL FLYING with its blades in a wall'}   `
         + `damage ${slow.damage.toFixed(2)}`);
 
       // A wreck comes back, on the pad.
@@ -358,7 +393,7 @@ window.__runFlyHeli = async function () {
       const beside = (gap) => {
         const h = running(new FlyingHelicopter(g, {}));
         h.teleport({ x: X, y: Y, z: Z - 2 - gap }, Math.PI / 2);
-        fly(h, 4, { collective: 0.28 });
+        fly(h, 4, { collective: HOVER_ASK });
         return h;
       };
       const close = beside(3), tip = beside(5.5), clear = beside(8);

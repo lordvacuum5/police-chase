@@ -155,9 +155,11 @@ export const POLICE_CARS = [
     roof: '#e8c33a',
     shape: 'heli',
     stats: [
-      ['Top speed', 137, 'mph'],
-      ['Climb', 10, 'm/s'],
-      ['Endurance', 6, 'min'],
+      // Measured with tests/flyheli.js: 251 km/h at the steepest lean that holds
+      // height, 13.4 m/s on full collective, and 4.5 minutes of hovering.
+      ['Top speed', 156, 'mph'],
+      ['Climb', 13, 'm/s'],
+      ['Endurance', 4.5, 'min'],
       ['Arrests', 0, ''],
     ],
   },

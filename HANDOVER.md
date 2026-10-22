@@ -206,8 +206,14 @@ of those stop the run scoring, deliberately.
    over and back works; round and round needs the attitude integrated from rates
    as a quaternion. The user has been told this and may ask for it.
 5. **Multiplayer with the helicopter has now been played** (22 Oct 2026). The
-   user's verdict: *"It's very good. Well, I said very good. It's okay."* No
-   specific complaints yet -- worth asking what would make it better.
+   user's verdict: *"It's okay"*, it felt *"too easy to move around ... it
+   should be heavier"*, and *"so many bugs"* -- none named. Addressed: rotational
+   inertia on the cyclic and slower pedals, and the top speed, which had crept to
+   505 km/h, capped at 251 with square-law drag (README, "Flying it with some
+   weight"). **The bugs are still unnamed** -- ask for specific ones. A
+   two-tab `?net=local` session cannot really be flown from Claude's browser
+   pane while it is hidden (it runs at about one frame a second), so this needs
+   the user's own reports.
 
 ### Things the user has asked for and had
 
@@ -226,8 +232,9 @@ down, durability is the dial that changes how chases end and `gripScale` is the
 one that changes how fast it goes.
 
 The flyable helicopter tilts to a full **180 degrees** in pitch and roll, which
-was asked for twice; the thing that stops it being twitchy is `CYCLIC_RATE`,
-not the limits, so do not reach for the limits if it ever feels nervous.
+was asked for twice; the things that stop it being twitchy are `CYCLIC_RATE`
+and, since it was asked to feel heavier, `CYCLIC_ACCEL`/`CYCLIC_GAIN` -- not the
+limits, so do not reach for the limits if it ever feels nervous.
 
 ---
 
