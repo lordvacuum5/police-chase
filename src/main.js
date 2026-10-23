@@ -1383,13 +1383,19 @@ class Game {
       }
       return { pos, heading: Math.atan2(q.tx, q.tz) };
     };
+    // Out of view or not at all. There was a fallback here to the furthest
+    // point when the whole stretch was in view, on the theory that a car 220 m
+    // up a straight reads as traffic. It does not: "they seem to spawn right in
+    // front of me, like, I can see them." With nothing hidden, return null and
+    // spawnPoliceAhead tries its own siting, which has never accepted a spot in
+    // view; failing that the dispatcher tries again after its cooldown.
+    // Nearer than BLOCK_MIN is skipped too at speed: four seconds of closing,
+    // the same rule spawnPoliceAhead uses.
+    const near = Math.max(BLOCK_MIN, target.speed * 4);
     for (const q of samples) {
+      if (dist2(q.x, q.z, target.position.x, target.position.z) < near) continue;
       const u = usable(q);
       if (u && !this.inView(u.pos)) return u;
-    }
-    for (let i = samples.length - 1; i >= 0; i--) {
-      const u = usable(samples[i]);
-      if (u) return u;
     }
     return null;
   }
@@ -1440,6 +1446,8 @@ class Game {
       const s = slots[i];
       const pos = { x: snap.x + tz * s * W, y: 0.95, z: snap.z - tx * s * W };
       if (this.sim.surfaceAt(pos.x, pos.z) !== 1) continue;
+      // Never appearing in front of anyone, the same as the leader.
+      if (this.inView(pos) || this.nearHuman(pos)) continue;
       let occupied = false;
       for (const v of this.vehicles) {
         if (v !== lv && dist2(v.position.x, v.position.z, pos.x, pos.z) < 4.5) { occupied = true; break; }

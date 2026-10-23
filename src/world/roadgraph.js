@@ -977,9 +977,10 @@ export class RoadGraph {
     // it at a crawl. Starting LEAD_BACK metres back along its own road keeps the
     // corner the same shape however late the route is drawn; the driver picks
     // the route up from wherever the car is (Driver._trackPath).
-    // Goes with the driver's route clause, so it is off unless
-    // `window.__routeArc = true` too: on its own it measured no better.
-    const back = typeof window !== 'undefined' && window.__routeArc === true ? LEAD_BACK : 0;
+    // Goes with the driver's route clause, and `window.__routeArc = false`
+    // turns both off.
+    const back = OLD_CORNERS() || (typeof window !== 'undefined' && window.__routeArc === false)
+      ? 0 : LEAD_BACK;
     const startAlong = forward ? Math.max(0, snap.along - back) : Math.min(e.length, snap.along + back);
     const span = Math.abs(endAlong - startAlong);
     const steps = Math.max(1, Math.ceil(span / 8));

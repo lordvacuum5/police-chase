@@ -4339,6 +4339,17 @@ created: before, 7 of 20 were created in plain view; after, 0 of 16. Rolling
 blocks still get placed — a failed attempt now looks again after 3 s rather
 than waiting out the 14 s cooldown, since the next corner usually hides one.
 
+Then the road-following siting for rolling blocks (`Game._siteUpRoad`) brought
+it back. When every point up the road was in view — a long straight — it used
+the furthest one anyway, 110–220 m ahead, on the theory that a car that far up
+the road reads as traffic. It did not: *"they seem to spawn right in front of
+me, like, I can see them."* Now it returns nothing and `spawnPoliceAhead` falls
+back to its own siting, which has never accepted a spot in view; the near limit
+is also four seconds of the target's speed, as there. The cars added abreast of
+a block (`spawnBlockMates`) are checked too. 150 random Wexbury road positions at
+126 km/h, camera behind the car: a block placed in 117, 0 of them and 0 of their
+183 mates in view.
+
 ### Guessing where you are going
 
 *"Make the interceptors better at predicting where I am going to go."* The
@@ -4562,10 +4573,49 @@ In full chases (`tests/keepup.js`, as above, fresh page each) it is not:
 Run to run the spread is as wide as the differences — the lead-in alone moved
 "lost it" from 4 to 8 with nothing else changed — but the route arc wrote off a
 car at 150 km/h in both of its runs and nothing else did, and it was no closer
-at the end. By the player's own condition it stays off. Both parts are behind
-`window.__routeArc = true` for rigs. The junction is not where the chases are
-lost: a unit that makes the corner 10 km/h quicker is still 180 m behind at 150,
-and the next thing to look at is what wrote those two cars off.
+at the end. By the player's own condition it stayed off.
+
+**What wrote them off was the rig.** `tests/keepup.js` now keeps three seconds
+of each unit's history and logs it at every hard hit (`window.__kuLog`). The
+write-off at 150: the unit at 130 km/h with the ghost 166 m away and closing at
+over 70 m/s — the ghost's random route had looped round a block and come back
+at it head-on. Hit at 35 km/h after braking, damage 0.44 → 0.92; eight seconds
+later, stopped, it was hit again from behind by the ghost at 150 and written
+off. The ghost is carried along its route by teleport at a fixed speed, so
+nothing stops it. The rig now counts ghost contact apart (`ghost hits`,
+`wrecked (by the ghost)`). Re-run, fresh page each:
+
+| | 90 km/h: route arc off | on | on + spin guard | 150 km/h: off | on | on + spin guard |
+|---|---|---|---|---|---|---|
+| mean speed | 53 | 61 | **65** | **65** | 58 | 64 |
+| behind at the end | 99 m | 95 m | **76 m** | **145 m** | 220 m | 148 m |
+| contacts (hard) | 25 (2) | 21 (0) | 21 (1) | 17 (2) | 24 (2) | 21 (1) |
+| of which the ghost | 10 | 7 | 4 | 7 | 9 | 7 |
+| lost it | 3 | 5 | **2** | **1** | 4 | 3 |
+| written off (by the ghost) | 0 | 0 | 0 | 0 | 1 (1) | 0 |
+| worst damage | 0.85 | **0.26** | 0.29 | 0.56 | 1.00 | **0.44** |
+
+The route arc causes no crashes of its own, so by the player's condition it is
+on (`window.__routeArc = false` for the old corners). With the spin guard below
+it is the best chase this rig has measured at 90 and level at 150.
+
+### Never spins
+
+*"I thought they have 100% grip, and, like, unlimited speed. So how can they,
+like, lose control?"* They do not: they are the same physics cars you drive, and
+too fast into a corner they let go like yours. Then: *"Just make sure they never
+spin out. You just like to break the laws of physics to make sure they never
+spin out. It's fine. As long as it looks realistic to the player."*
+
+So they cheat. `Vehicle._guardSpin`, police only (`assist.noSpin`, set by
+`Officer._updateAssist`): past 0.3 rad (17°) of slip the direction of travel is
+swung back toward the nose at the same speed, and the yaw rate is held to what
+the tyres could turn the car at, with half again for room. Not in the air, not
+upside down, and not for 0.8 s after a knock — a car shunted sideways that
+carries on pointing the way it was going looks like a cheat, and PIT and
+ramming are the player's to win. The "lost it" left in the table is that:
+spins after contact. Junction speed on turnin.js is unchanged (39 km/h,
+4.54 s, no contact). `window.__noSpin = 0` turns it off.
 
 ### Straight into a building, together
 

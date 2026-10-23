@@ -198,9 +198,18 @@ scoring, deliberately.
   spins and hard hits (README) -- turned down, at the user's own condition
   ("turn it on if it doesn't cause crashes"). The earlier-braking wider line
   was then built (route-radius arc limit + lead-in from 25 m back): 29 -> 40
-  km/h through junctions on turnin.js, but it wrote off a car at 150 km/h in
-  both keepup.js runs, so it is OFF too, behind `window.__routeArc = true`.
-  keepup.js is noisy (same settings: "lost it" 4 vs 8) -- run it twice.
+  km/h through junctions on turnin.js. It is ON (`window.__routeArc = false`
+  turns it off). Its keepup.js "write-offs" were the rig's ghost ramming the
+  unit head-on -- the ghost is teleported and unstoppable; keepup now reports
+  ghost hits apart. keepup.js is noisy (same settings: "lost it" 4 vs 8).
+* **Police never spin** (user's call: "break the laws of physics ... as long
+  as it looks realistic"). `Vehicle._guardSpin`, slip held to 0.3 rad, yaw
+  rate capped, off for 0.8 s after a knock. Do not remove it for realism.
+* **Rolling blocks never spawn in view** -- `_siteUpRoad` used to fall back
+  to the furthest point even when it was visible; it now returns null.
+* **Rig trap: the map.** A fresh page opens on the menu, and START picks
+  Ashfield City, not Wexbury. Set `sessionStorage.setItem('pc.map','wexbury')`
+  and reload; it drops straight into Wexbury. Check `__game.mapDef.id`.
 * **Rolling block siting** now walks the target's own road (`_siteUpRoad`) and
   lines only break up when the target is at the line and off its road.
 

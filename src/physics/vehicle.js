@@ -38,6 +38,12 @@ const ROTATE_FORCE = 7;
 const DRIFT_FROM = 12;
 const DRIFT_FORCE = 9;
 
+/**
+ * The spin guard: below this speed a car is parking, not spinning. See
+ * Vehicle._guardSpin.
+ */
+const GUARD_FROM = 5;
+
 const ASSIST_GRIP_FRONT = 0.65;
 const ASSIST_GRIP_REAR = 1.35;
 
@@ -157,7 +163,11 @@ export class Vehicle {
     //             should cost it time, not put it out of the chase entirely
     this.assist = {
       boost: 1, grip: 1, stability: 0, steer: 1, rotate: 0, drift: 0, shielded: false,
+      // The most a car may be sideways, in radians; 0 is no guard. See
+      // _guardSpin.
+      noSpin: 0,
     };
+    this._knocked = 0;
 
     // ---- condition ----
     this.damage = 0;          // 0 pristine .. 1 wrecked
@@ -338,6 +348,7 @@ export class Vehicle {
   /** Called once per physics substep, before world.step(). */
   prepare(dt) {
     this._readState();
+    if (this.assist.noSpin > 0) this._guardSpin(dt);
     this._updateSteering(dt);
 
     const driveTorque = this._updateDrivetrain(dt);
@@ -349,6 +360,62 @@ export class Vehicle {
     this._antiRollPass();
     this._tyrePass(dt, driveTorque);
     this._aeroPass();
+  }
+
+  /**
+   * A cheat, on purpose: the car may not spin.
+   *
+   * "Just make sure they never spin out. You just like to break the laws of
+   * physics to make sure they never spin out. It's fine. As long as it looks
+   * realistic to the player." Every force-based assist above leans on the car
+   * and can be out-leant; this does not ask. Past `assist.noSpin` radians of
+   * slip the direction of travel is swung round toward the nose, speed kept,
+   * so the car can be a little sideways -- which is what a hard corner looks
+   * like -- and never more. And the yaw rate is held to what the tyres could
+   * actually be turning the car at, with some room, so the nose cannot whip
+   * round on its own with the travel following it, which is a spin by another
+   * route.
+   *
+   * On the ground only: a car in the air or upside down is past saving and
+   * pretending otherwise would look wrong.
+   */
+  _guardSpin(dt) {
+    // Not straight after a knock. A car shunted sideways that shrugs it off and
+    // carries on pointing the way it was going reads as a cheat in a way that
+    // a car that does not spin on its own does not -- and PIT and ramming are
+    // the player's to win.
+    if (this._knocked > 0) { this._knocked -= dt; return; }
+    if (this.grounded < 3 || this.up.y < 0.7 || this.speed < GUARD_FROM) return;
+    const lim = this.assist.noSpin;
+    const slip = this.slipAngleBody;
+    let changed = false;
+    const lv = this.body.linvel();
+    let vx = lv.x, vz = lv.z;
+    if (Math.abs(slip) > lim && this.forwardSpeed > 0) {
+      // Rebuild the horizontal velocity from the nose and its left, at the
+      // reduced slip and the same speed.
+      const excess = Math.abs(slip) - lim;
+      const to = slip - sign(slip) * Math.min(excess, 4 * dt + excess * 0.5);
+      const hs = Math.hypot(vx, vz);
+      let fx = this.forward.x, fz = this.forward.z;
+      const fl = Math.hypot(fx, fz) || 1; fx /= fl; fz /= fl;
+      let lx = this.left.x, lz = this.left.z;
+      const ll = Math.hypot(lx, lz) || 1; lx /= ll; lz /= ll;
+      const nx = hs * (Math.cos(to) * fx + Math.sin(to) * lx);
+      const nz = hs * (Math.cos(to) * fz + Math.sin(to) * lz);
+      vx = nx; vz = nz;
+      changed = true;
+    }
+    if (changed) this.body.setLinvel({ x: vx, y: lv.y, z: vz }, true);
+    // The yaw rate the tyres could hold at this speed, with half again for a
+    // car being thrown at a corner, and a floor for slow turns.
+    const maxYaw = Math.max(1.2, (1.5 * 1.1 * 9.81) / Math.max(1, this.speed));
+    const av = this.body.angvel();
+    if (Math.abs(av.y) > maxYaw) {
+      this.body.setAngvel({ x: av.x, y: sign(av.y) * maxYaw, z: av.z }, true);
+      changed = true;
+    }
+    if (changed) this._readState();
   }
 
   /** Called once per physics substep, after world.step(). */
@@ -418,6 +485,7 @@ export class Vehicle {
     }
     this.lastImpact = dv;
     this.lastImpactAt = performance.now();
+    if (dv > 4) this._knocked = 0.8;
   }
 
   postStep(dt) {

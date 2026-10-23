@@ -1207,11 +1207,13 @@ export class Driver {
       // Measured from where the racing line wants it, which is up to three
       // metres off the route on purpose.
       //
-      // OFF unless `window.__routeArc = true`. It worked on the corners --
-      // tests/turnin.js, slowest point 29 -> 39 km/h, exit 4.99 -> 4.6 s, no
-      // contact -- and wrecked a unit at 150 km/h in both full-chase runs of
-      // tests/keepup.js, against none without it. See the README.
-      if (onPath && this.hasPath && window.__routeArc === true
+      // On; `window.__routeArc = false` turns it off. tests/turnin.js: slowest
+      // point 29 -> 39 km/h, exit 4.99 -> 4.6 s, no contact. It was first kept
+      // off for a write-off at 150 km/h in two keepup.js runs -- both of which
+      // turned out to be the rig's ghost driving head-on into the unit, which
+      // nothing can stop. With the spin guard it is the best chase measured.
+      // See the README.
+      if (onPath && this.hasPath && window.__routeArc !== false
         && Math.abs((this.crossTrack || 0) - (this.lineOffset || 0)) < ROUTE_ARC_ON) {
         const pr = this._pathRadiusHere();
         if (pr > radius) radius = Math.min(pr, ROUTE_ARC_MAX);

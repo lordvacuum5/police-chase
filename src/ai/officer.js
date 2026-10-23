@@ -154,6 +154,13 @@ const BAND_GRIP = 0.35;
  * its grip in the middle of a corner.
  */
 const BAND_FADE = 38;
+
+/**
+ * How sideways a police car is ever allowed to get, radians -- about 17
+ * degrees, a hard corner, not a slide. See Vehicle._guardSpin.
+ * `window.__noSpin = 0` turns the guard off for rigs.
+ */
+const NO_SPIN = 0.3;
 const BAND_STABILITY = 0.6;
 const BAND_EASE = 1.5;
 
@@ -2293,6 +2300,8 @@ export class Officer {
    */
   _updateAssist(target, dt = 1 / 60) {
     const a = this.vehicle.assist;
+    // Never spins, chasing or not, near or far. See Vehicle._guardSpin.
+    a.noSpin = window.__noSpin === undefined ? NO_SPIN : window.__noSpin;
     const chasing = target && this.game.heat.tier > 0 && this.role !== ROLE.PATROL;
     if (!chasing) {
       a.boost = 1; a.grip = 1; a.stability = 0; a.steer = 1; a.rotate = 0;

@@ -62,7 +62,7 @@ window.__keepUpSweep = async function (tweak, speeds = [90, 120, 150], seconds =
       // repeating it tells you nothing, and the differences being looked for
       // here are smaller than the difference between two bits of town.
       let mean = 0, within = 0, behind = 0, hits = 0, worst = 0, sliding = 0, spins = 0;
-      let hard = 0, wrecked = 0;
+      let hard = 0, wrecked = 0, wreckedGhost = 0, ghostHits = 0;
       const what = { tree: 0, building: 0, other: 0 };
       const bind = {};
       let lat = 0, wide = 0, drifting = 0, off = 0, offBad = 0, skips = 0;
@@ -70,6 +70,7 @@ window.__keepUpSweep = async function (tweak, speeds = [90, 120, 150], seconds =
         const r = chase(kph, seconds, tweak, i);
         mean += r.mean; within += r.within; behind += r.behind; hits += r.hits;
         sliding += r.sliding; spins += r.spins; hard += r.hard; wrecked += r.wrecked;
+        wreckedGhost += r.wreckedGhost; ghostHits += r.ghostHits;
         for (const k of Object.keys(what)) what[k] += r.what[k];
         for (const k of Object.keys(r.bind)) bind[k] = (bind[k] || 0) + r.bind[k];
         lat += r.lat; wide += r.wide; drifting += r.drifting;
@@ -82,7 +83,7 @@ window.__keepUpSweep = async function (tweak, speeds = [90, 120, 150], seconds =
         + `with it ${String(Math.round((within / routes) * 100)).padStart(3)}%   `
         + `behind ${String(Math.round(behind / routes)).padStart(4)} m   `
         + `hits ${String(hits).padStart(3)}   hard ${String(hard).padStart(2)}   `
-        + `wrecked ${wrecked}   trees ${String(what.tree).padStart(2)}   `
+        + `wrecked ${wrecked} (by the ghost ${wreckedGhost})   ghost hits ${ghostHits}   trees ${String(what.tree).padStart(2)}   `
         + `walls ${String(what.building).padStart(2)}   worst damage ${worst.toFixed(2)}   `
         + `sliding ${String(Math.round((sliding / routes) * 100)).padStart(3)}%   `
         + `lost it ${spins}x`);
@@ -221,8 +222,9 @@ function chase(kph, seconds, tweak, which) {
   // A scrape and a crash are not the same event and "hits" counts both. What a
   // player calls crashing is a car hitting something hard enough to stop it, or
   // being wrecked outright, so those are counted apart.
-  let hard = 0, wrecked = 0;
+  let hard = 0, wrecked = 0, wreckedGhost = 0, ghostHits = 0;
   const dead = new Set();
+  const lastHard = new Map();
   // Which limit is in force, and how much of the tyre is actually being used.
   // "I don't know why they don't go faster through the turns. Do they have like
   // 100% grip?" They have about 94% of it close up and more than 100% at range, so
@@ -262,10 +264,16 @@ function chase(kph, seconds, tweak, which) {
       tree = Math.min(tree, sweepBox(v.world, o, d, 4, PROPS_ONLY, v.body, 0.3));
       wall = Math.min(wall, sweepBox(v.world, o, d, 4, RAY_WALL, v.body, 0.3));
     }
-    if (tree < 4 && tree <= wall) what.tree++;
-    else if (wall < 4) what.building++;
-    else what.other++;
+    if (tree < 4 && tree <= wall) { what.tree++; return 'tree'; }
+    if (wall < 4) { what.building++; return 'building'; }
+    what.other++;
+    return 'other';
   };
+  // What each unit was doing in the three seconds before a hard hit, for
+  // "what wrote those police cars off at 150 km/h?" -- the counts above say
+  // that it happened, not why. Every hard hit lands in window.__kuLog.
+  const hist = new Map(units.map((o) => [o, []]));
+  if (!window.__kuLog) window.__kuLog = [];
   for (let i = 0; i < seconds * 60; i++) {
     const a = leg === 0 ? pts[0] : pts[leg - 1];
     const b = pts[leg];
@@ -332,8 +340,10 @@ function chase(kph, seconds, tweak, which) {
       near = Math.min(near, o.distanceTo(p.position));
       const v = o.vehicle;
       const c = o.driver.caps;
+      let who = '-';
       if (c) {
-        let who = 'asked', low = c.asked;
+        let low = c.asked;
+        who = 'asked';
         for (const key of ['safe', 'wall', 'way', 'slide']) {
           if (c[key] < low - 0.01) { low = c[key]; who = key; }
         }
@@ -346,6 +356,15 @@ function chase(kph, seconds, tweak, which) {
         }
         bind[who] = (bind[who] || 0) + 1;
       }
+      const h = hist.get(o);
+      h.push({
+        t: +(i / 60).toFixed(2), x: +v.position.x.toFixed(1), z: +v.position.z.toFixed(1),
+        kph: Math.round(v.speed * 3.6), slip: +v.slipAngleBody.toFixed(2),
+        cap: c ? who : '-', aim: +(o.driver.aimError || 0).toFixed(2),
+        role: o.role, path: o.driver.hasPath ? 1 : 0, local: o._local ? 1 : 0,
+        dmg: +v.damage.toFixed(2), target: Math.round(o.distanceTo(p.position)),
+      });
+      if (h.length > 180) h.shift();
       // Lateral acceleration as a share of what the tyres can give, while the car
       // is actually turning. One is the limit; well under one and the corner is
       // being taken slowly for some reason other than grip.
@@ -372,10 +391,28 @@ function chase(kph, seconds, tweak, which) {
       if (v.lastImpactAt && v.lastImpactAt !== lastAt.get(o) && v.lastImpact > 4) {
         lastAt.set(o, v.lastImpactAt);
         hits++;
-        if (v.lastImpact > HARD) hard++;
-        blame(v);
+        // The ghost first: it is driven along its route at a fixed speed by
+        // teleport, so nothing stops it, and where its route loops round a
+        // block it meets a unit head-on at 150 km/h and then drives into it
+        // again from behind. Both 150 km/h write-offs looked into were that.
+        // A real car in that crash stops too, and it is not the unit's
+        // driving, so it is counted apart.
+        const into = o.distanceTo(p.position) < 7 ? 'ghost' : blame(v);
+        if (into === 'ghost') ghostHits++;
+        lastHard.set(o, into);
+        if (v.lastImpact > HARD) {
+          hard++;
+          window.__kuLog.push({
+            kph, route: which, unit: units.indexOf(o), t: +(i / 60).toFixed(2),
+            impact: +v.lastImpact.toFixed(1), into, dmg: +v.damage.toFixed(2),
+            before: hist.get(o).filter((_, j, a) => (a.length - 1 - j) % 15 === 0),
+          });
+        }
       }
-      if (v.damage >= 0.99 && !dead.has(o)) { dead.add(o); wrecked++; }
+      if (v.damage >= 0.99 && !dead.has(o)) {
+        dead.add(o); wrecked++;
+        if (lastHard.get(o) === 'ghost') wreckedGhost++;
+      }
     }
     if (near < 60) within++;
   }
@@ -394,6 +431,8 @@ function chase(kph, seconds, tweak, which) {
   return {
     hard,
     wrecked,
+    wreckedGhost,
+    ghostHits,
     what,
     bind,
     lat: latN ? latSum / latN : 0,
