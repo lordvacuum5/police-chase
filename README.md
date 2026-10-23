@@ -4704,6 +4704,34 @@ two-modes-disagreeing shape as before, now between plans; the next thing to look
 at. Worst frame while planning is 29–45 ms, which is a visible hitch and worth
 spreading over frames.
 
+#### Planning without the judder
+
+A plan is about 24 ms of work (median; 31 at the 95th percentile), and it all
+used to land on the frame a unit asked — a visible hitch whenever the pack went
+into an estate. Now a unit *asks* (`requestPlan`) and the game spends 4 ms of
+each frame working down a queue (`pumpPlanner`, called from `Game._update`), one
+plan at a time because the grids are shared. The plan is a generator that pauses
+between stages and inside the long ones — the clearance transform, the road
+seeding, the flood, the gap filling and the search — and a new plan is not
+started with under 3 ms of the frame left, because its first piece cannot be
+split. A unit asks for its next plan while still driving the current one, so
+there is no gap between them; while waiting for its first it is on the older
+reflexes for a few frames.
+
+Timed in the planner itself (the browser pane was hidden for all of this, which
+throws single frames about, so these are distributions rather than worst cases),
+24 plans across eight estate sites, six at a time:
+
+| planning cost in a frame | whole plan in one frame | queue |
+|---|---|---|
+| median | 22.5 ms | **4.6 ms** |
+| 95th percentile | 39.0 ms | **7–12 ms** |
+
+Driving is unchanged within the estate rig's run-to-run spread: got out 33 of
+40 either way (the five wedged site-7 starts among the failures). Splitting the
+search across frames also let its budget go from 5 ms to 12 ms in all.
+`window.__syncPlan = true` puts the one-frame planner back for comparison.
+
 ### Air support you are flying, seen as seen
 
 *"When I'm the helicopter, on my friend's screen ... it keeps on saying

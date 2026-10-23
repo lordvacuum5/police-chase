@@ -11,7 +11,7 @@ import { pitUpdate, relativeTo, boxAim, boxSpeed } from './tactics.js';
 import { hasLineOfSight, sweepBox, raycast, groups, GROUP, RAY_SOLID, RAY_WALL } from '../physics/world.js';
 import { WORLD_HALF } from '../world/common.js';
 import { clamp, clamp01, lerp, dist2, sign, damp } from '../util/math.js';
-import { planLocal } from './localplan.js';
+import { requestPlan, planLocal } from './localplan.js';
 
 /**
  * How far back a turn starts, in metres: the tangent length of the fillet the
@@ -1361,10 +1361,34 @@ export class Officer {
     const d = this.driver;
     let lp = this._lp;
     this._lpCool = (this._lpCool || 0) - dt;
-    if (lp && v.speed > 14) { this._lp = null; return null; }
+    if (v.speed > 14) {
+      this._lp = null;
+      if (this._lpTicket) { this._lpTicket.cancelled = true; this._lpTicket = null; }
+      return null;
+    }
     const close = v.speed < 3 || d.wallNear < 14 || (d.gapClear !== undefined && d.gapClear < 12);
-    if (!lp && (v.speed > 9 || !close)) return null;
+    if (!lp && !this._lpTicket && (v.speed > 9 || !close)) return null;
 
+    // A plan asked for in an earlier frame has come back. Plans are made over a
+    // few frames now -- see the queue in ai/localplan.js -- so this is where a
+    // new one is picked up, not where it is made.
+    const t = this._lpTicket;
+    if (t && t.done) {
+      this._lpTicket = null;
+      const res = t.result;
+      if (!res) {
+        if (!lp) this._lpCool = 1.0;
+      } else if (dist2(point.x, point.z, res.goalX, res.goalZ) <= 10) {
+        res.age = 0;
+        lp = this._lp = res;
+        Officer.localStats.plans++;
+        if (res.pts.some((p) => p.dir < 0)) Officer.localStats.withReverse++;
+        if (res.toRoad) Officer.localStats.toRoad++;
+      }
+      // Otherwise the target moved while it was being made: ask again below.
+    }
+
+    let wantNew = !lp;
     if (lp) {
       lp.age += dt;
       const moved = dist2(point.x, point.z, lp.goalX, lp.goalZ) > 10;
@@ -1376,26 +1400,32 @@ export class Officer {
       // half of the other, over and over.
       const nearlyUsed = lp.pts.length - i < LP_TAIL;
       const tooOld = lp.age > LP_REPLAN && nearlyUsed && !reversing;
-      if (lp.done || lp.lost || lp.blocked || moved || tooOld || lp.age > LP_MAXAGE) {
+      if (lp.done || lp.lost || lp.blocked || moved || lp.age > LP_MAXAGE) {
         lp = this._lp = null;
+        wantNew = true;
+      } else if (tooOld) {
+        // Ask for the next one while still driving this one, so there is no
+        // gap between them for the older reflexes to fill.
+        wantNew = true;
       }
     }
-    if (!lp) {
-      if (this._lpCool > 0) return null;
-      // One plan a frame across the whole force: a plan is ten to twenty
-      // milliseconds, and three units deciding to plan in the same frame was a
-      // stutter. Whoever is second waits a frame, on the older reflexes.
-      const g = this.game;
-      if (g._lpAt === g.clock) return null;
-      g._lpAt = g.clock;
-      lp = planLocal(this.game, v, point, { cuts: d.allowOffRoad });
-      if (!lp) { this._lpCool = 1.0; return null; }
-      lp.age = 0;
-      this._lp = lp;
-      Officer.localStats.plans++;
-      if (lp.pts.some((p) => p.dir < 0)) Officer.localStats.withReverse++;
-      if (lp.toRoad) Officer.localStats.toRoad++;
+    if (wantNew && !this._lpTicket && this._lpCool <= 0) {
+      if (window.__syncPlan) {
+        // The old way, for measuring against: the whole plan in this frame,
+        // one unit a frame. It is picked up next frame like any other.
+        const g = this.game;
+        if (g._lpAt !== g.clock) {
+          g._lpAt = g.clock;
+          this._lpTicket = {
+            done: true, result: planLocal(g, v, point, { cuts: d.allowOffRoad, budgetMs: 5 }),
+          };
+        }
+      } else {
+        this._lpTicket = requestPlan(this.game, v, point, { cuts: d.allowOffRoad });
+      }
     }
+    // Waiting for the first plan: a frame or three on the older reflexes.
+    if (!lp) return null;
     this._mode = 'local';
     const c = d.followLocal(lp, speed, dt);
     if (c) return c;

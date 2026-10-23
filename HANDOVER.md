@@ -201,11 +201,12 @@ of those stop the run scoring, deliberately.
    suspect the hand-over between the planner and those older modes first --
    every loop found so far was two modes disagreeing. `__noLocalPlan` turns it
    off. Site 7 in `estate.js` spawns the car touching something; ignore it. Run
-   `estate.js` at 35 s per case, not 20. Plans cost 9-22 ms typically but peak
-   at 30-45 ms, a visible hitch: **spreading a plan over two or three frames is
-   the next performance job.** Open: estate site 0 at -135 and site 1 at 135
-   loop between two exits (README "Starting tight"). `tests/pinned.js` covers
-   a car starting close to a wall.
+   `estate.js` at 35 s per case, not 20. Plans are queued and made 4 ms a frame
+   (`requestPlan`/`pumpPlanner`, README "Planning without the judder"); the
+   planner's timings are wall-clock budgets, so the estate rig is no longer
+   exactly repeatable -- compare several runs, not one. Open: a couple of estate
+   sites loop between two exits. `tests/pinned.js` covers a car starting close
+   to a wall.
    The older note on this follows.
    **One reverse in five is followed by another within ten seconds.** A car
    reverses, re-routes, is handed much the same line, and meets the same thing.
@@ -271,6 +272,16 @@ backwards and forwards exactly as described. Treat the report as real and the
 explanation as a hypothesis to test.
 
 They do not read long replies. See `CLAUDE.md`.
+
+**Wanted, in their words, for later** (23 Oct 2026): a countryside map --
+"hills ... that you can kind of go fast and jump over", "a few farm buildings,
+maybe, that you can go through", "maybe some woods" -- and traffic, about which
+they are wary: "the police routing system ... would just kind of freak out and
+start just hitting". They asked to talk about the countryside later. Also on
+their list: cleverer police teamwork and rolling roadblocks (several cars
+abreast across the road, slowing together -- a one-car rolling block already
+exists, README "The rolling block"). Game-mode ideas they liked: heist,
+survival, checkpoints, hide and seek, team cops and robbers.
 
 When they report anything about routing, getting stuck or the police driving,
 they mean **Wexbury, the town map**, unless they say otherwise ("I'm basically

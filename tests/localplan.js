@@ -45,10 +45,15 @@ function trace(w, off, secs, every) {
     p.teleport(p.position, 0);
     p.setVelocity({ x: 0, y: 0, z: 0 });
     p._readState();
+    // The officer's update and the game step together: planning happens in the
+    // step now (Game._update pumps the planner queue), so timing the update
+    // alone would miss it.
     const t0 = performance.now();
     try { o.update(1 / 60, p); } catch (e) { if (!err) err = e.message + ' ' + (e.stack || '').slice(0, 300); }
-    worst = Math.max(worst, performance.now() - t0);
     g.stepHeadless(1 / 60);
+    const took = performance.now() - t0;
+    worst = Math.max(worst, took);
+    if (window.__frames) window.__frames.push(took);
     const dd = Math.hypot(car.position.x - tx, car.position.z - tz);
     best = Math.min(best, dd);
     if (at30 === null && dd < 30) at30 = f / 60;
@@ -81,11 +86,26 @@ window.__runLocalTrace = async function (cases, secs = 35, every = 0) {
   for (let i = 0; i < 200 && !(window.__game && window.__game.player); i++) {
     await new Promise((r) => setTimeout(r, 100));
   }
+  const dbg = (await import('../src/ai/localplan.js'))._debug;
+  dbg.pumpMax = 0; dbg.pumpTotal = 0; dbg.pumpFrames = 0; dbg.pumpOver8 = 0; dbg.pumpOver16 = 0;
+  for (const k of Object.keys(dbg.stageMax)) delete dbg.stageMax[k];
+  window.__frames = [];
   const rows = [];
   for (const [w, off] of cases) {
     rows.push(trace(w, off, secs, every));
     await new Promise((r) => setTimeout(r, 0));
   }
+  rows.push(`planner queue: worst frame ${dbg.pumpMax.toFixed(1)} ms, `
+    + `${dbg.pumpFrames} frames planned, ${(dbg.pumpTotal / Math.max(1, dbg.pumpFrames)).toFixed(1)} ms each on average, `
+    + `over 8 ms ${dbg.pumpOver8}, over 16 ms ${dbg.pumpOver16}  | longest single stage: `
+    + Object.entries(dbg.stageMax).map(([k, x]) => `${k} ${x.toFixed(1)}`).join(', '));
+  // Whole frames: the officer's update plus the game step, every frame of every
+  // case, so the planner's share can be told apart from everything else's.
+  const f = window.__frames.slice().sort((a, b) => a - b);
+  const pct = (q) => f[Math.min(f.length - 1, Math.floor(q * f.length))] || 0;
+  rows.push(`whole frames: median ${pct(0.5).toFixed(1)} ms, 99th ${pct(0.99).toFixed(1)}, `
+    + `over 16 ms ${f.filter((x) => x > 16).length} of ${f.length}, worst ${(f[f.length - 1] || 0).toFixed(0)}`
+    + `${window.__noLocalPlan ? '  (planner OFF)' : ''}`);
   window.__res = rows.join('\n');
   window.__lpDone = true;
   return window.__res;

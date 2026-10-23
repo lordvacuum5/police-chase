@@ -61,7 +61,13 @@ const SWITCH_COST = 1.2;         // seconds, per change of direction
 const STEER_COST = 0.03;         // seconds per unit of lock held, keeps lines smooth
 const MAX_EXPAND = 6000;
 /** Milliseconds the search may take before it settles for what it has. */
-const SEARCH_MS = 5;
+/**
+ * Milliseconds of search a plan may use in all, across however many frames
+ * it is spread over -- see the queue below, which gives the planner PUMP_MS of
+ * each frame.
+ */
+const SEARCH_MS = 12;
+const PUMP_MS = 4;
 /** Metres of a plan over which it may be as tight as where the car starts. */
 const ESCAPE = 4;
 /** Good enough: this much nearer the best way out, in seconds. */
@@ -79,6 +85,7 @@ const FN = Math.round((HALF * 2) / FC);
 const _occ = new Uint8Array(N * N);
 const _clr = new Float32Array(N * N);
 const _cost = new Float32Array(FN * FN);
+const _costN = new Float32Array(FN * FN);
 const _room = new Float32Array(FN * FN);
 const _road = new Uint8Array(FN * FN);
 const _done = new Uint8Array(FN * FN);
@@ -185,11 +192,17 @@ function rasterise(index, ox, oz) {
   }
 }
 
-/** Room round each cell, metres, by a two-pass chamfer distance transform. */
-function clearance() {
+/**
+ * Room round each cell, metres, by a two-pass chamfer distance transform.
+ * Pauses between quarters of each pass: whole, it was the stage most often
+ * found at the end of a frame that ran long.
+ */
+function* clearance(over) {
   const D1 = CELL, D2 = CELL * Math.SQRT2;
   for (let k = 0; k < N * N; k++) _clr[k] = _occ[k] ? 0 : INF;
+  const quarter = N >> 2;
   for (let i = 0; i < N; i++) {
+    if (i % quarter === 0 && i && over()) yield;
     for (let j = 0; j < N; j++) {
       const k = i * N + j;
       let d = _clr[k];
@@ -203,7 +216,9 @@ function clearance() {
       _clr[k] = d;
     }
   }
+  if (over()) yield;
   for (let i = N - 1; i >= 0; i--) {
+    if (i % quarter === 0 && over()) yield;
     for (let j = N - 1; j >= 0; j--) {
       const k = i * N + j;
       let d = _clr[k];
@@ -256,8 +271,12 @@ function roadTimes(graph, tx, tz, cuts) {
   return t;
 }
 
-/** Binary heap of cell indices keyed on _cost, for the flood. */
-function floodCost(hw) {
+/**
+ * Binary heap of cell indices keyed on _cost, for the flood. Pauses whenever
+ * `over()` says the frame's share is spent: at 5-7 ms it was one of the two
+ * stages too long to sit whole inside a frame's budget.
+ */
+function* floodCost(hw, over) {
   let n = 0;
   const push = (k) => {
     _heap[n] = k;
@@ -288,7 +307,9 @@ function floodCost(hw) {
   for (let k = 0; k < FN * FN; k++) if (_cost[k] < INF) push(k);
   const free = hw + 0.15;
   const D1 = FC / OFF_SPEED, D2 = (FC * Math.SQRT2) / OFF_SPEED;
+  let pops = 0;
   while (n > 0) {
+    if ((++pops & 511) === 0 && over()) yield;
     const k = pop();
     if (_done[k]) continue;
     _done[k] = 1;
@@ -316,15 +337,67 @@ function floodCost(hw) {
 }
 
 /**
+ * The field with its gaps filled: a cell the flood did not reach gets the best
+ * of the cells within three of it, plus the drive from there.
+ */
+function* nearCost(over) {
+  const R = 3;
+  const quarter = (FN * FN) >> 2;
+  for (let k = 0; k < FN * FN; k++) {
+    if (k % quarter === 0 && k && over()) yield;
+    if (_cost[k] < INF) { _costN[k] = _cost[k]; continue; }
+    const i = (k / FN) | 0, j = k - i * FN;
+    let best = INF;
+    for (let di = -R; di <= R; di++) {
+      const ii = i + di;
+      if (ii < 0 || ii >= FN) continue;
+      for (let dj = -R; dj <= R; dj++) {
+        const jj = j + dj;
+        if (jj < 0 || jj >= FN) continue;
+        const c = _cost[ii * FN + jj];
+        if (c < INF) {
+          const v = c + (Math.hypot(di, dj) * FC) / OFF_SPEED;
+          if (v < best) best = v;
+        }
+      }
+    }
+    _costN[k] = best;
+  }
+}
+
+/**
  * Plan for `vehicle` toward `goal`. Returns null if there is nothing it can
  * usefully do from here, else
  *   { pts: [{x, z, dir}], toRoad, reached, made: performance time }
  * where `dir` is +1 forward and -1 reverse.
  */
 export function planLocal(game, vehicle, goal, opts = {}) {
+  // Run to the end in one go: for the rigs and the warm-up. Anything in the
+  // middle of being planned over frames is started again, because this
+  // overwrites the grids it was halfway through.
+  if (_jobs.length && _jobs[0].gen) _jobs[0].gen = null;
+  const it = planSteps(game, vehicle, goal, opts, NEVER);
+  let r = it.next();
+  while (!r.done) r = it.next();
+  return r.value;
+}
+
+/**
+ * The plan, as steps that can stop between frames. It yields whenever `over()`
+ * says the frame's share of time is spent, at the boundaries of the stages and
+ * every so often in the search, and returns the plan (or null) at the end.
+ */
+function* planSteps(game, vehicle, goal, opts, over) {
   const prof = _debug.prof;
   let tp = performance.now();
-  const lap = (k) => { const n = performance.now(); prof[k] = (prof[k] || 0) + n - tp; tp = n; };
+  const pmax = _debug.stageMax;
+  const lap = (k) => {
+    const n = performance.now();
+    prof[k] = (prof[k] || 0) + n - tp;
+    if (n - tp > (pmax[k] || 0)) pmax[k] = n - tp;
+    tp = n;
+    _debug.stage = k;
+  };
   const v = vehicle;
   const spec = v.spec;
   const hw = spec.dims.w * 0.5;
@@ -333,8 +406,10 @@ export function planLocal(game, vehicle, goal, opts = {}) {
   const ox = v.position.x - HALF, oz = v.position.z - HALF;
   rasterise(index, ox, oz);
   lap('raster');
-  clearance();
+  if (over()) { yield; tp = performance.now(); }
+  yield* clearance(over);
   lap('clear');
+  if (over()) { yield; tp = performance.now(); }
 
   // ---- cost to go: every way of finishing, seeded ----
   _cost.fill(INF);
@@ -393,8 +468,11 @@ export function planLocal(game, vehicle, goal, opts = {}) {
       };
     }
     const times = rc.times;
+    if (over()) { yield; tp = performance.now(); }
     const near = graph.edgesNear(v.position.x, v.position.z, HALF * 1.45);
     for (const e of near) {
+      // The other stage too long for a frame (up to 7 ms): pause between roads.
+      if (over()) { yield; tp = performance.now(); }
       if (e.cut && !opts.cuts) continue;
       const sp = Math.min(e.speed * ROAD_SHARE, ROAD_SPEED_CAP);
       const ta = times[e.a], tb = times[e.b];
@@ -436,8 +514,16 @@ export function planLocal(game, vehicle, goal, opts = {}) {
   }
 
   lap('seed');
-  floodCost(hw);
+  if (over()) { yield; tp = performance.now(); }
+  yield* floodCost(hw, over);
   lap('flood');
+  // Cells the field does not reach -- too tight for the flood, which is where
+  // a car pinned against a wall is standing -- take the best of their
+  // neighbours plus the drive there. Worked out once here rather than for every
+  // node the search makes, which was most of a 30-45 ms plan's worst case.
+  yield* nearCost(over);
+  lap('near');
+  if (over()) { yield; tp = performance.now(); }
 
   // ---- hybrid A* over moves the car can make ----
   const wheelbase = spec.wheelbase || 2.8;
@@ -467,24 +553,10 @@ export function planLocal(game, vehicle, goal, opts = {}) {
     return least;
   };
   const fits = (x, z, h) => roomAt(x, z, h) >= need;
-  // The field at a point, or -- where the point itself is too tight to be in
-  // the field, which is where a car pinned against a wall is standing -- the
-  // best of its neighbours plus the drive there.
+  // The field at a point, with the tight cells filled in -- see nearCost.
   const costAt = (x, z) => {
     const k = fcell(x, z);
-    if (k < 0) return INF;
-    if (_cost[k] < INF) return _cost[k];
-    const i = (k / FN) | 0, j = k - i * FN;
-    let best = INF;
-    for (let di = -3; di <= 3; di++) {
-      for (let dj = -3; dj <= 3; dj++) {
-        const ii = i + di, jj = j + dj;
-        if (ii < 0 || jj < 0 || ii >= FN || jj >= FN) continue;
-        const c = _cost[ii * FN + jj];
-        if (c < INF) best = Math.min(best, c + (Math.hypot(di, dj) * FC) / OFF_SPEED);
-      }
-    }
-    return best;
+    return k < 0 ? INF : _costN[k];
   };
 
   const h0 = Math.atan2(v.forward.x, v.forward.z);
@@ -555,13 +627,23 @@ export function planLocal(game, vehicle, goal, opts = {}) {
   opush(root);
   let goalNode = -1, bestNode = root, bestCost = c0;
   let expanded = 0;
-  // A frame budget as well as a node budget: this runs inside the game loop,
-  // and an 80 ms search is a visible stutter. Out of time, it takes the best
-  // progress it has found, which is still a move in the right direction.
-  const tSearch = performance.now();
+  // A time budget as well as a node budget, counted only while it is actually
+  // running: the search pauses for the next frame whenever the frame's share is
+  // spent, and out of budget altogether it takes the best progress it has
+  // found, which is still a move in the right direction.
   const budget = opts.budgetMs || SEARCH_MS;
+  let spent = 0, tRun = performance.now();
   while (open.length && expanded < MAX_EXPAND) {
-    if ((expanded & 127) === 127 && performance.now() - tSearch > budget) break;
+    if ((expanded & 63) === 63) {
+      const now = performance.now();
+      if (spent + (now - tRun) > budget) break;
+      if (over()) {
+        spent += now - tRun;
+        yield;
+        tRun = performance.now();
+        tp = tRun;
+      }
+    }
     const id = opop();
     const n = nodes[id];
     const k = key(n.x, n.z, n.h);
@@ -646,4 +728,113 @@ export function planLocal(game, vehicle, goal, opts = {}) {
 }
 
 /** For the rigs: the last field, as cost at a world point. */
-export const _debug = { cell: CELL, half: HALF, N, cost: _cost, clr: _clr, occ: _occ, prof: {} };
+// ---------------------------------------------------------------- the queue
+//
+// A plan costs 9-22 ms and peaked at 30-45, all of it on whichever frame a
+// unit asked: a visible hitch every time the pack went into an estate. So
+// plans are asked for, not made: a unit puts in a request, and the game spends
+// PUMP_MS of every frame working down the queue (Game._update calls
+// pumpPlanner). One plan at a time, because the grids are shared. The unit
+// carries on with its current plan, or its older reflexes, in the frames
+// between.
+//
+// The car's pose is copied when it asks, so the plan starts where the car was
+// a few frames ago -- under a metre and a half at the speeds this runs at --
+// and Driver.followLocal picks the nearest point on it up from wherever the car
+// actually is.
+
+const NEVER = () => false;
+const _jobs = [];
+let _sliceEnd = 0;
+const _overSlice = () => performance.now() > _sliceEnd;
+/** Requests older than this, in game seconds, are dropped unanswered. */
+const STALE = 1.5;
+const MAX_QUEUE = 8;
+/** Milliseconds of the frame that must be left to start a new plan. */
+const START_MS = 3;
+
+/**
+ * Ask for a plan. Returns a ticket: { done, result } once it has been made,
+ * `result` being what planLocal would have returned. Set `cancelled` on a
+ * ticket to withdraw it.
+ */
+export function requestPlan(game, vehicle, goal, opts = {}) {
+  const v = vehicle;
+  const ticket = {
+    done: false, result: null, cancelled: false, gen: null,
+    game, opts, at: game.clock || 0,
+    goal: { x: goal.x, z: goal.z },
+    snap: {
+      position: { x: v.position.x, y: v.position.y, z: v.position.z },
+      forward: { x: v.forward.x, z: v.forward.z },
+      forwardSpeed: v.forwardSpeed,
+      spec: v.spec,
+    },
+  };
+  if (_jobs.length >= MAX_QUEUE) {
+    // A full queue answers "nothing" at once rather than making everyone wait
+    // longer; the asker falls back to its reflexes and asks again shortly.
+    ticket.done = true;
+    return ticket;
+  }
+  _jobs.push(ticket);
+  return ticket;
+}
+
+/** Spend up to `budgetMs` of this frame making plans. Call once a frame. */
+export function pumpPlanner(budgetMs = PUMP_MS) {
+  if (!_jobs.length) return;
+  const t0 = performance.now();
+  try { pumpSome(budgetMs); } finally {
+    const ms = performance.now() - t0;
+    if (ms > _debug.pumpMax) _debug.pumpMax = ms;
+    if (ms > 8) {
+      _debug.pumpOver8++;
+      // After which stage the long one ended, for finding what will not split.
+      _debug.overAfter[_debug.stage] = (_debug.overAfter[_debug.stage] || 0) + 1;
+    }
+    if (ms > 16) _debug.pumpOver16++;
+    _debug.pumpTotal += ms;
+    _debug.pumpFrames++;
+  }
+}
+
+function pumpSome(budgetMs) {
+  _sliceEnd = performance.now() + budgetMs;
+  while (_jobs.length && performance.now() < _sliceEnd) {
+    const j = _jobs[0];
+    const age = (j.game.clock || 0) - j.at;
+    if (j.cancelled || (!j.gen && age > STALE)) {
+      _jobs.shift();
+      j.done = true;
+      continue;
+    }
+    // A plan's first piece -- drawing the boxes and the room round them -- is
+    // about 2.5 ms that cannot be split, and most of the frames that ran long
+    // were one starting with too little of the frame left. So it waits for the
+    // next frame unless there is room for it in this one.
+    if (!j.gen && _sliceEnd - performance.now() < START_MS) break;
+    if (!j.gen) j.gen = planSteps(j.game, j.snap, j.goal, j.opts, _overSlice);
+    let r;
+    try { r = j.gen.next(); } catch (e) { r = { done: true, value: null }; }
+    if (r.done) {
+      _jobs.shift();
+      j.result = r.value;
+      j.done = true;
+    }
+  }
+}
+
+/** How many plans are waiting, for the rigs. */
+export function plannerQueue() { return _jobs.length; }
+
+export const _debug = {
+  cell: CELL, half: HALF, N, cost: _cost, clr: _clr, occ: _occ, prof: {},
+  // The queue's own cost, for the rigs: the most one frame spent planning, and
+  // the total over the frames that planned at all.
+  pumpMax: 0, pumpTotal: 0, pumpFrames: 0, pumpOver8: 0, pumpOver16: 0,
+  // The longest each stage has ever taken in one go -- a stage cannot be split,
+  // so this is what sets the worst frame.
+  stageMax: {},
+  stage: '', overAfter: {},
+};

@@ -20,7 +20,7 @@ import {
 } from './ai/officer.js';
 import { Driver, SKILL } from './ai/driver.js';
 import { Runner, pickRunnerCar } from './ai/runner.js';
-import { warmLocalPlanner } from './ai/localplan.js';
+import { warmLocalPlanner, pumpPlanner } from './ai/localplan.js';
 import { Heat } from './game/heat.js';
 import { RoadblockManager } from './game/roadblock.js';
 import { Helicopter, buildHelicopterMesh } from './game/helicopter.js';
@@ -2484,6 +2484,10 @@ class Game {
       // where the car went this frame rather than to where it was last one.
       if (this.runner) this.runner.update(dt);
       this.dispatcher.update(dt, hunted);
+      // A few milliseconds of route planning for whichever units have asked --
+      // see the queue in ai/localplan.js, which is why a plan no longer lands
+      // on one frame as a hitch.
+      pumpPlanner();
       if (this.runner) this._runnerSight(dt);
       this.roadblocks.update(dt, hunted);
       this.helicopter.update(dt, hunted);
