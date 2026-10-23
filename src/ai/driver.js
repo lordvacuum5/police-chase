@@ -253,6 +253,9 @@ const TR_LEG = 7;
 const TR_LEGS = 7;
 const TR_TIME = 16;
 const TR_SPEED = 2.0;             // m/s each way
+
+/** Top speed backing up a local plan's reverse leg, m/s. */
+const LP_REVERSE = 3.0;
 const TREE_LOOK = 70;
 const TREE_KEEP = 4;
 const PROPS_ONLY = groups(0xFFFF, GROUP.PROP);
@@ -1581,7 +1584,7 @@ export class Driver {
   _turnRound(goal, dt, opts) {
     const v = this.v;
     const tr = this.turnRoundState;
-    if (opts.holdStill || this.reverseTimer > 0 || window.__noTurnRound) {
+    if (opts.holdStill || opts.noTurnRound || this.reverseTimer > 0 || window.__noTurnRound) {
       this.turnRoundState = null;
       return null;
     }
@@ -1686,6 +1689,94 @@ export class Driver {
     return false;
   }
 
+  /**
+   * Drive a plan from ai/localplan.js: forward and reverse legs in turn.
+   *
+   * Forward legs go through driveTo, so every speed clamp and the stall
+   * recovery still stand behind them; reverse legs are steered here, by pure
+   * pursuit run backwards. Slows into each change of direction. Returns
+   * controls, or null when the plan is finished (`lp.done`), the car has
+   * strayed off it (`lp.lost`) or something is in the way (`lp.blocked`) --
+   * all three mean "plan again".
+   */
+  followLocal(lp, speed, dt) {
+    const v = this.v;
+    const pts = lp.pts;
+    if (lp.i === undefined) lp.i = 0;
+    for (let guard = 0; guard < 4; guard++) {
+      const dirNow = pts[lp.i].dir;
+      let segEnd = lp.i;
+      while (segEnd + 1 < pts.length && pts[segEnd + 1].dir === dirNow) segEnd++;
+
+      // Where on this leg the car is.
+      let best = lp.i, bd = Infinity;
+      for (let k = lp.i; k <= Math.min(segEnd, lp.i + 20); k++) {
+        const d = Math.hypot(pts[k].x - v.position.x, pts[k].z - v.position.z);
+        if (d < bd) { bd = d; best = k; }
+      }
+      lp.i = best;
+      if (bd > 3) { lp.lost = true; return null; }
+
+      const end = pts[segEnd];
+      const ex = end.x - v.position.x, ez = end.z - v.position.z;
+      const toEnd = Math.hypot(ex, ez);
+      // Past the end of the leg, measured the way the car is going.
+      const ahead = (ex * v.forward.x + ez * v.forward.z) * dirNow;
+      if (toEnd < 0.7 || (ahead < 0 && toEnd < 2.5)) {
+        if (segEnd >= pts.length - 1) { lp.done = true; return null; }
+        lp.i = segEnd + 1;
+        continue;
+      }
+
+      let remain = 0;
+      for (let k = lp.i; k < segEnd; k++) {
+        remain += Math.hypot(pts[k + 1].x - pts[k].x, pts[k + 1].z - pts[k].z);
+      }
+      const look = dirNow > 0 ? clamp(2.5 + v.speed * 0.5, 2.5, 7) : 2.5;
+      let k = lp.i, acc = 0;
+      while (k < segEnd && acc < look) {
+        acc += Math.hypot(pts[k + 1].x - pts[k].x, pts[k + 1].z - pts[k].z);
+        k++;
+      }
+      const aim = pts[k];
+      let sp = speed;
+      // Into a change of direction, or the end of the plan, at a stop.
+      if (segEnd < pts.length - 1) sp = Math.min(sp, 0.6 + Math.sqrt(2 * 2.5 * Math.max(0, remain - 0.4)));
+
+      if (dirNow > 0) {
+        this._pureSteer = true;
+        this.localStalled = false;
+        const c = this.driveTo(aim, sp, dt, { noTurnRound: true, noUnstick: true, allowHandbrake: false });
+        this._pureSteer = false;
+        if (this.localStalled) { this.localStalled = false; lp.blocked = true; }
+        return c;
+      }
+
+      // Reverse: steer the tail at the aim point. Backing up with left lock
+      // swings the car's direction of travel right, hence the minus.
+      const out = this.out;
+      const bx = aim.x - v.position.x, bz = aim.z - v.position.z;
+      const dist = Math.hypot(bx, bz) || 1e-3;
+      const back = Math.atan2(-v.forward.x, -v.forward.z);
+      const err = angleDelta(back, Math.atan2(bx, bz));
+      const delta = -Math.atan2(2 * v.spec.wheelbase * Math.sin(err), Math.max(dist, 2));
+      const maxA = Math.max(0.03, v.steerLimit || v.spec.steering.maxAngle);
+      out.steer = clamp(delta / maxA, -1, 1);
+      out.handbrake = 0;
+      out.throttle = 0;
+      if (this._clearBehind(2.5) < 0.5) {
+        lp.blocked = true;
+        return null;
+      }
+      // The brake is reverse once stopped -- see Vehicle's gearbox.
+      out.brake = -v.forwardSpeed < Math.min(LP_REVERSE, sp) ? 0.8 : 0;
+      this.stuckTimer = 0;
+      return out;
+    }
+    lp.done = true;
+    return null;
+  }
+
   /** Clear road straight behind the rear bumper, as clearAhead is in front. */
   _clearBehind(maxDist) {
     const v = this.v;
@@ -1756,7 +1847,10 @@ export class Driver {
     // about to touch. The scenery term is deliberately the stronger of the
     // two: hitting a building ends a unit's chase, being untidy around another
     // car does not.
-    deltaRad += this.avoidBias + this.wallBias;
+    // Not the scenery push while driving a local plan: the plan has already
+    // been checked against the scenery with the car's real footprint, and in a
+    // tight yard the push only shoves the car off the line it was given.
+    deltaRad += this.avoidBias + (this._pureSteer ? 0 : this.wallBias);
 
     // Scale against the lock currently available, not the absolute maximum.
     // The car limits steering by speed, so normalising by maxAngle would make
@@ -1965,7 +2059,13 @@ export class Driver {
     if (v.speed < 1.2 && requested > 3 && !opts.holdStill) this.stuckTimer += dt;
     else this.stuckTimer = Math.max(0, this.stuckTimer - dt * 2);
 
-    if (this.stuckTimer > 1.2) {
+    // Driving a local plan, a stall is the plan's problem: it says so and the
+    // officer plans again, reverse legs and all. The blind reverse below fired
+    // in the middle of one and backed a car into a wall at 20 km/h.
+    if (opts.noUnstick && this.stuckTimer > 1.2) {
+      this.stuckTimer = 0;
+      this.localStalled = true;
+    } else if (this.stuckTimer > 1.2) {
       // Reverse out of something, or drive out of nothing?
       //
       // A unit that overshoots its turn-in and stops is not necessarily

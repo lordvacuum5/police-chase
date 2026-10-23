@@ -11,6 +11,7 @@ import { pitUpdate, relativeTo, boxAim, boxSpeed } from './tactics.js';
 import { hasLineOfSight, sweepBox, raycast, groups, GROUP, RAY_SOLID, RAY_WALL } from '../physics/world.js';
 import { WORLD_HALF } from '../world/common.js';
 import { clamp, clamp01, lerp, dist2, sign, damp } from '../util/math.js';
+import { planLocal } from './localplan.js';
 
 /**
  * How far back a turn starts, in metres: the tangent length of the fillet the
@@ -24,6 +25,16 @@ const LANE_CORNER = 9;
  */
 const FALLBACK_GO = 25;
 const FALLBACK_MAX = 20;
+/**
+ * A local plan is remade once fewer than LP_TAIL of its points (0.4 m each)
+ * are left and it is at least LP_REPLAN seconds old, and in any case after
+ * LP_MAXAGE.
+ */
+const LP_REPLAN = 1.5;
+const LP_TAIL = 20;
+const LP_MAXAGE = 6;
+/** Inside this, metres from the target, the chase is for contact, not planning. */
+const LP_NEAR = 25;
 const CUT_CORNER = 16;
 /** The tightest turn a unit in a hurry plans for. See Driver.arcFloor. */
 /**
@@ -1272,6 +1283,14 @@ export class Officer {
       return this._goTo(dt, point, 1.0);
     }
 
+    // Among things and not going fast: one plan, weighing every way out. See
+    // ai/localplan.js. Everything below is what was there before it, and it is
+    // still what runs at speed in the open, and whenever no plan can be found.
+    if (!window.__noLocalPlan) {
+      const c = this._localDrive(dt, point, speed);
+      if (c) return c;
+    }
+
     // Boxed in: not merely blocked ahead, but no usable gap in any direction
     // *and* not moving. Either alone is normal -- threading a tight gap is
     // slow, and a blocked line is the case this whole method exists for.
@@ -1323,6 +1342,68 @@ export class Officer {
     // `goal` so the driver can tell when the real destination is behind it and
     // it needs to turn round -- the aim is a gap in front by construction.
     return d.driveTo(_aim, speed, dt, { allowHandbrake: false, gap: true, goal: point });
+  }
+
+  /**
+   * Drive by the local planner, if this is the place for it. Returns controls,
+   * or null to let the older reflexes have it.
+   *
+   * It is for close quarters: slow, or with something near. In the open at
+   * speed the gap fan is right and much cheaper. Plans are held while they are
+   * being driven and remade every LP_REPLAN seconds on a forward leg (never in
+   * the middle of a reverse, which is how a turn gets abandoned half done), when
+   * the target has moved, or when the follower says the plan is finished, lost
+   * or blocked. A plan that ends on a road hands the car to the road route, held
+   * the same way as the boxed-in fallback so it is not argued with.
+   */
+  _localDrive(dt, point, speed) {
+    const v = this.vehicle;
+    const d = this.driver;
+    let lp = this._lp;
+    this._lpCool = (this._lpCool || 0) - dt;
+    if (lp && v.speed > 14) { this._lp = null; return null; }
+    const close = v.speed < 3 || d.wallNear < 14 || (d.gapClear !== undefined && d.gapClear < 12);
+    if (!lp && (v.speed > 9 || !close)) return null;
+
+    if (lp) {
+      lp.age += dt;
+      const moved = dist2(point.x, point.z, lp.goalX, lp.goalZ) > 10;
+      const i = lp.i || 0;
+      const reversing = lp.pts[i] && lp.pts[i].dir < 0;
+      // Held until most of it is used, not remade on a clock. Remaking every
+      // second and a half let the choice between two nearly equal ways out flip
+      // with every few metres the car moved, and it drove half of one and then
+      // half of the other, over and over.
+      const nearlyUsed = lp.pts.length - i < LP_TAIL;
+      const tooOld = lp.age > LP_REPLAN && nearlyUsed && !reversing;
+      if (lp.done || lp.lost || lp.blocked || moved || tooOld || lp.age > LP_MAXAGE) {
+        lp = this._lp = null;
+      }
+    }
+    if (!lp) {
+      if (this._lpCool > 0) return null;
+      // One plan a frame across the whole force: a plan is ten to twenty
+      // milliseconds, and three units deciding to plan in the same frame was a
+      // stutter. Whoever is second waits a frame, on the older reflexes.
+      const g = this.game;
+      if (g._lpAt === g.clock) return null;
+      g._lpAt = g.clock;
+      lp = planLocal(this.game, v, point, { cuts: d.allowOffRoad });
+      if (!lp) { this._lpCool = 1.0; return null; }
+      lp.age = 0;
+      this._lp = lp;
+      Officer.localStats.plans++;
+      if (lp.pts.some((p) => p.dir < 0)) Officer.localStats.withReverse++;
+      if (lp.toRoad) Officer.localStats.toRoad++;
+    }
+    this._mode = 'local';
+    const c = d.followLocal(lp, speed, dt);
+    if (c) return c;
+    // Finished or failed this frame: plan again next frame rather than now, so
+    // one bad answer cannot spin a car round in one place.
+    this._lp = null;
+    this._lpCool = 0.25;
+    return null;
   }
 
   /**
@@ -1497,6 +1578,16 @@ export class Officer {
         this._losOpenFor = (this._losOpenFor || 0) + 0.2;
         if (this._losOpenFor >= 0.5 || this._hasLos) this._hasLos = true;
       }
+    }
+
+    // In close quarters the local planner has it whether or not the target can
+    // be seen: a clear line of sight across a back yard says nothing about
+    // whether the car can turn round in it, and with the direct chase and the
+    // planner taking turns the car did half of what each one wanted. Not in
+    // the last stretch, which is for contact. See _localDrive for "close".
+    if (!window.__noLocalPlan && d > LP_NEAR) {
+      const c = this._localDrive(dt, target.position, this._chaseSpeed());
+      if (c) return c;
     }
 
     if (!this._hasLos) {
@@ -2182,3 +2273,6 @@ export class Officer {
     return lerp(0.84, 1.0, this.aggression);
   }
 }
+
+/** Local plans made, how many had a reverse leg, and how many ended on a road. */
+Officer.localStats = { plans: 0, withReverse: 0, toRoad: 0 };

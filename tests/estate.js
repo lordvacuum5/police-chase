@@ -18,6 +18,7 @@
 //             off in a different direction (more than 45 degrees apart over the
 //             first 15 m) -- the "keeps choosing different routes"
 //   still     share of the time under 2 km/h
+//   hits      contacts with scenery -- not with the target, which is the job
 //
 //   await import('/tests/estate.js');
 //   __runEstate();
@@ -116,7 +117,10 @@ window.__runEstate = async function (sites = 8, seconds = 20) {
           frames++;
           if (car.lastImpactAt && car.lastImpactAt !== lastAt && car.lastImpact > 4) {
             lastAt = car.lastImpactAt;
-            hh++;
+            // Scenery only. Arriving at the target and ramming it is the job,
+            // and counting it made a planner that got more cars there look as
+            // if it was hitting more things.
+            if (Math.hypot(car.position.x - tx, car.position.z - tz) > 7) hh++;
           }
           best = Math.min(best, Math.hypot(car.position.x - tx, car.position.z - tz));
         }

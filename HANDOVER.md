@@ -192,16 +192,16 @@ of those stop the run scoring, deliberately.
    README "Stuck among the houses"), plus speed clamps going to zero up close
    (now a creep) and the gap aim ignoring the turn (now `planTrajectory` when
    slow and close). `tests/estate.js` and `tests/betweentrees.js` measure it.
-   A three-point turn (`Driver._turnRound`) now exists: it cut reverses and
-   contacts but did not raise the escape count. **The real remaining problem is
-   architectural** -- the user asked whether they have "a proper routing system
-   where they find different routes and then pick the best one". Off the road
-   they do not: modes (direct/gap, road fallback, regain-road, stall reverse,
-   turn-round) are switched by rules and timers, and every stuck-car bug so far
-   was two of them disagreeing. The next big piece of work is a single local
-   planner (e.g. hybrid A* with reversing over an occupancy grid round the car)
-   that replaces that switching. Site 7 in `estate.js` spawns the car touching
-   something; ignore it. Run `estate.js` at 35 s per case, not 20.
+   **Now there is a local planner** (`src/ai/localplan.js`, README "One planner
+   for the tight places"): an occupancy grid, a cost-to-go field seeded from the
+   target, every nearby road (priced by road time) and the window edge, and
+   hybrid A* with forward/reverse arcs. It runs in close quarters only; the old
+   reflexes (gap fan, turn-round, road fallback) remain underneath for when it
+   has no plan and at speed. Estate: 35/35 out. If cars still dither somewhere,
+   suspect the hand-over between the planner and those older modes first --
+   every loop found so far was two modes disagreeing. `__noLocalPlan` turns it
+   off. Site 7 in `estate.js` spawns the car touching something; ignore it. Run
+   `estate.js` at 35 s per case, not 20. Plans cost 9-22 ms; one per frame max.
    The older note on this follows.
    **One reverse in five is followed by another within ten seconds.** A car
    reverses, re-routes, is handed much the same line, and meets the same thing.
@@ -226,7 +226,9 @@ of those stop the run scoring, deliberately.
    should be heavier"*, and *"so many bugs"* -- none named. Addressed: rotational
    inertia on the cyclic and slower pedals, and the top speed, which had crept to
    505 km/h, capped at 251 with square-law drag (README, "Flying it with some
-   weight"). **The bugs are still unnamed** -- ask for specific ones. A
+   weight"). Then one named: the escapee's HUD flashed TRACKING while a player
+   pilot had eyes on them (fixed, `AIR_MARK_HOLD` in dispatcher.js). Ask for
+   any others by name. A
    two-tab `?net=local` session cannot really be flown from Claude's browser
    pane while it is hidden (it runs at about one frame a second), so this needs
    the user's own reports.

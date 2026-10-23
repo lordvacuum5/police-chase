@@ -20,6 +20,7 @@ import {
 } from './ai/officer.js';
 import { Driver, SKILL } from './ai/driver.js';
 import { Runner, pickRunnerCar } from './ai/runner.js';
+import { warmLocalPlanner } from './ai/localplan.js';
 import { Heat } from './game/heat.js';
 import { RoadblockManager } from './game/roadblock.js';
 import { Helicopter, buildHelicopterMesh } from './game/helicopter.js';
@@ -285,6 +286,9 @@ class Game {
     this.sim.surfaceAt = built.surfaceAt;
     this.sim.heightAt = built.heightAt;
     this.world.__map = built;
+    // The local planner's list of every building and tree box, made now rather
+    // than the first time a unit needs it, which is in the middle of a chase.
+    warmLocalPlanner(this);
 
     // The ways through between the buildings, which the road network does not
     // describe. Has to happen here rather than in the generator: the buildings

@@ -4613,6 +4613,84 @@ worth building.
 
 `window.__noTurnRound` and `__shortFallback` put the old behaviour back.
 
+### One planner for the tight places
+
+*"Build the proper local planner that weighs the different ways out and picks
+the best one."* `src/ai/localplan.js`. Three steps, each on a grid round the
+car, 96 m square:
+
+1. **Room.** Every building and tree is a box (`addStaticBox`), collected once
+   at map load into a spatial index. The ones in the window are drawn onto a
+   0.5 m grid and a chamfer distance transform gives each cell its clearance.
+2. **The weighing.** A Dijkstra flood on a 1 m grid, in seconds, from every way
+   of finishing at once: the target itself if it is in the window; every stretch
+   of road in the window, priced at the road network's own time from there to
+   the target (a reverse Dijkstra over the graph from the target's road, shared
+   by every unit chasing the same car); and the window's edge, priced warily.
+   Each cell ends up holding the time of the best way out through it, so
+   "through that gap", "back out onto the road and round" and "across the grass"
+   are compared as numbers instead of chosen between by rule.
+3. **Hybrid A*.** A search over moves the car can make: 1.6 m arcs, forward and
+   reverse, five steering settings at the car's real turning circle, footprint
+   checked as four discs against the clearance. Guided by the field, reversing
+   dearer, changing direction dearer still. A three-point turn is not a special
+   case; it is what the cheapest sequence of moves looks like in a small yard.
+   It stops when it is five seconds nearer the best way out.
+
+`Driver.followLocal` drives the result — forward legs through `driveTo` so every
+speed clamp still applies (but not the scenery push, which only shoves the car
+off a line that has already been checked), reverse legs by pure pursuit run
+backwards — and `Officer._localDrive` uses it in close quarters (under 32 km/h,
+or something within 14 m) from both the hidden-target and the in-sight chase,
+except in the last 25 m, which is for contact. A plan is held until most of it
+has been driven: remaking it on a clock let two nearly equal ways out swap with
+every metre the car moved.
+
+Things learned getting it to work, in order:
+
+* The flood's queue overflowed and quit early at 0.5 m, leaving almost every
+  cell unreachable and taking 90–220 ms. On a 1 m grid with a done-flag it is
+  3 ms; the footprint check still uses the 0.5 m room.
+* Stopping a plan the moment it touched any road and handing the car to the road
+  router made it loop — the router started from the car's heading and its own
+  idea of the best road, which was not always the field's, so the car reversed
+  onto a road, was sent the other way, and was reversed back: 38 plans in 35 s.
+  The field already prices the road, so plans now just carry on along it.
+* The blind 2.6 s stall reverse fired in the middle of a plan and backed a car
+  into a wall at 20 km/h. While following a plan a stall now hands back to the
+  planner.
+* A plan costs 9–22 ms warm. At most one is made per frame across the whole
+  force, the search has a 5 ms budget and keeps its best progress when it runs
+  out, and a throwaway plan at map load pays the 57 ms the first one cost while
+  the engine compiled it.
+
+`tests/estate.js`, 35 s a case, fresh page each, scenery contacts only (ramming
+the target is the job, and counting it made a planner that got more cars there
+look worse):
+
+| estate, 40 cases | planner off | on |
+|---|---|---|
+| got out | 34 | **35** — every case but site 7, which spawns wedged |
+| stall reverses | 11 | **7** |
+| scenery contacts | 12 | 12 |
+
+The bigger difference is in how quickly. `tests/localplan.js` traces single
+cars; at the five hardest spots, all five now get within 30 m of the target, in
+9–28 s, where before three of them never did.
+
+`window.__noLocalPlan` puts everything before it back.
+
+### Air support you are flying, seen as seen
+
+*"When I'm the helicopter, on my friend's screen ... it keeps on saying
+tracking, and it keeps on refilling the bar."* A player pilot reports the car
+four times a second (`Game.applyMark`), which zeroed the tracking clock but never
+said the car was seen — so the dispatcher's next perception pass found no
+spotter, set `seen` false and started the clock, and the next report zeroed it
+again. A report younger than `AIR_MARK_HOLD` (0.6 s, a dropped packet's worth)
+now counts as eyes on. When the pilot loses the car the reports stop and the
+escapee gets tracking and then the search, as with anyone else.
+
 ### No air support for typed stars
 
 Typing `five` to set the wanted level grounds the helicopter for the rest of the

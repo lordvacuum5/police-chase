@@ -41,6 +41,18 @@ export const TRACK_SECONDS = 3;
 const LOST_CONTACT_SECONDS = 5;
 
 /**
+ * A player pilot's report counts as eyes on the car for this long after it
+ * arrives -- the reports come every 0.25 s (flyheli REPORT_EVERY), so this
+ * covers one dropped. And the "spotter" it stands for: the commentary reads a
+ * callsign off whoever saw the car, and the dangerous-driving rule asks how far
+ * they are from it, which a report does not say, so it is never close enough
+ * to be the witness that starts a chase -- the aircraft feeds a chase, it does
+ * not open one (see Game.applyMark).
+ */
+const AIR_MARK_HOLD = 0.6;
+const AIR_REPORT = { callsign: 'India 99', distanceTo: () => Infinity };
+
+/**
  * How close a unit has to be to the last known position before it stops
  * driving to it and starts searching around it, in metres.
  *
@@ -311,6 +323,21 @@ export class Dispatcher {
     // everything else.
     const heli = this.game.helicopter;
     if (!spotter && heli && heli.canSee(target)) spotter = heli;
+
+    // A player flying air support is seeing the car too, and says so four times
+    // a second (Game.applyMark). Between reports this pass found nobody, set
+    // `seen` false and started the tracking clock, and the next report zeroed
+    // it again -- so the escapee's screen flashed TRACKING and refilled the bar
+    // the whole time the pilot had them: "it keeps on saying tracking ... it
+    // shouldn't be constantly there, because I can see him using the
+    // helicopter's line of sight system." A report younger than AIR_MARK_HOLD
+    // now counts as eyes on, which outlasts one lost packet; when the pilot
+    // loses them the reports stop, and tracking and then the search follow as
+    // they do for anyone else.
+    if (!spotter && this.markedAt !== undefined
+      && (this.game.clock || 0) - this.markedAt < AIR_MARK_HOLD) {
+      spotter = AIR_REPORT;
+    }
 
     if (spotter) {
       k.seen = true;
