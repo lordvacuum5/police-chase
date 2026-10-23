@@ -201,7 +201,11 @@ of those stop the run scoring, deliberately.
    suspect the hand-over between the planner and those older modes first --
    every loop found so far was two modes disagreeing. `__noLocalPlan` turns it
    off. Site 7 in `estate.js` spawns the car touching something; ignore it. Run
-   `estate.js` at 35 s per case, not 20. Plans cost 9-22 ms; one per frame max.
+   `estate.js` at 35 s per case, not 20. Plans cost 9-22 ms typically but peak
+   at 30-45 ms, a visible hitch: **spreading a plan over two or three frames is
+   the next performance job.** Open: estate site 0 at -135 and site 1 at 135
+   loop between two exits (README "Starting tight"). `tests/pinned.js` covers
+   a car starting close to a wall.
    The older note on this follows.
    **One reverse in five is followed by another within ten seconds.** A car
    reverses, re-routes, is handed much the same line, and meets the same thing.

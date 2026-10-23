@@ -373,6 +373,15 @@ class Session {
    */
   _dropped() {
     if (this.closed || this._closing) return;
+    // Let go of the connection that failed, so nothing more it says counts.
+    // A WebSocket that drops fires 'error' and then 'close', and both were
+    // wired here: one failure was two reconnects, two sockets opened on the
+    // same id, the first left open and still delivering messages -- so an
+    // arrest or a restart arrived twice -- and the attempts used up twice as
+    // fast. See _attach, which ignores a transport that is not the current one.
+    const dead = this.transport;
+    this.transport = null;
+    if (dead) { try { dead.close(); } catch { /* already gone */ } }
     if (this.tries >= RECONNECT_TRIES) {
       this.closed = true;
       this.error = this.error || 'Connection lost.';
@@ -385,19 +394,31 @@ class Session {
 
   _reopen() {
     if (this.closed || this._closing) return;
+    let t;
     try {
       const q = this._query(true);
-      this.transport = this.local ? openChannel(q) : openSocket(q);
+      t = this.local ? openChannel(q) : openSocket(q);
     } catch (e) {
       this._dropped();
       return;
     }
-    this.transport.onMessage((msg) => this._receive(msg));
-    this.transport.onClose(() => this._dropped());
-    this.transport.onOpen(() => {
+    this._attach(t);
+    t.onOpen(() => {
+      if (this.transport !== t) return;
       this.reconnecting = false;
       this.tries = 0;
     });
+  }
+
+  /**
+   * Make `t` the connection, and listen to it only while it is the connection.
+   * A transport that has been replaced can still fire -- a late message, its
+   * own close -- and neither may be taken as news about the current one.
+   */
+  _attach(t) {
+    this.transport = t;
+    t.onMessage((msg) => { if (this.transport === t) this._receive(msg); });
+    t.onClose(() => { if (this.transport === t) this._dropped(); });
   }
 
   /**
@@ -424,7 +445,7 @@ class Session {
     this._opts = { room, create, map, wet };
     const query = this._query();
 
-    this.transport = this.local ? openChannel(query) : openSocket(query);
+    const first = this.local ? openChannel(query) : openSocket(query);
     this._keepAlive();
     if (create) {
       // The creator is the escapee, and on a BroadcastChannel it is also the
@@ -436,8 +457,7 @@ class Session {
       this.players = [{ id: this.id, name: this.name, role: 'escapee' }];
     }
 
-    this.transport.onMessage((msg) => this._receive(msg));
-    this.transport.onClose(() => this._dropped());
+    this._attach(first);
 
     return new Promise((resolve, reject) => {
       const done = (err) => {
@@ -449,10 +469,11 @@ class Session {
         : 'The server did not answer.'), this.local ? 1500 : 8000);
       this._ready = done;
 
-      this.transport.onOpen(() => {
+      first.onOpen(() => {
+        if (this.transport !== first) return;
         if (this.local) {
           // No server to register with: announce, and let the host reply.
-          if (create) { done(null); } else { this.transport.send({ t: 'hello', from: this.id, name: this.name }); }
+          if (create) { done(null); } else { first.send({ t: 'hello', from: this.id, name: this.name }); }
         }
         // Over a WebSocket the query string was the request; the server
         // answers with 'joined' or 'error'.

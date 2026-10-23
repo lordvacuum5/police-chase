@@ -89,18 +89,40 @@ public sealed class Rooms
     public Player Add(Room room, string id, string name, WebSocket socket, bool create)
     {
         // The creator is the escapee; so is the first person in, if the
-        // escapee left and somebody is still here.
-        var role = create || room.EscapeeId is null ? "escapee" : "police";
+        // escapee left and somebody is still here -- and so is the escapee
+        // coming back on their own id after a dropped connection. That used to
+        // be made a police unit, because the old connection had not been
+        // noticed as dead yet and the escapee's slot still looked taken.
+        var role = create || room.EscapeeId is null || room.EscapeeId == id ? "escapee" : "police";
         var player = new Player { Id = id, Name = name, Role = role, Socket = socket };
         if (role == "escapee") room.EscapeeId = id;
+        // A reconnect replaces the old connection on the same id. Close the old
+        // one rather than leave it open: its receive loop then ends now, and its
+        // clean-up (see Remove) knows it has been replaced.
+        if (room.Players.TryGetValue(id, out var old) && !ReferenceEquals(old.Socket, socket))
+        {
+            try { old.Socket.Abort(); } catch { /* already gone */ }
+        }
         room.Players[id] = player;
         room.EmptySince = default;
         return player;
     }
 
-    public void Remove(Room room, string id)
+    /// <summary>
+    /// Take this connection out of the room. False if it had already been
+    /// replaced by a reconnect on the same id, in which case nobody has left.
+    /// </summary>
+    public bool Remove(Room room, Player player)
     {
-        room.Players.TryRemove(id, out _);
+        // Only this connection's entry, not whatever is under its id now. It
+        // used to remove by id, so when a dropped connection was finally noticed
+        // -- after the player had already reconnected -- it removed the live
+        // one and told everyone that player had left. For the escapee that is
+        // "The escapee left the game" on every screen, seconds after a
+        // reconnect that had worked: "lose connection quite a lot, and it just
+        // ends the game."
+        if (!room.Players.TryRemove(new KeyValuePair<string, Player>(player.Id, player))) return false;
+        var id = player.Id;
         if (room.EscapeeId == id) room.EscapeeId = null;
         if (room.Players.IsEmpty)
         {
@@ -110,6 +132,7 @@ public sealed class Rooms
             // without a confusing "already exists".
             _rooms.TryRemove(room.Name, out _);
         }
+        return true;
     }
 
     private void Sweep()

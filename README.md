@@ -4680,6 +4680,30 @@ cars; at the five hardest spots, all five now get within 30 m of the target, in
 
 `window.__noLocalPlan` puts everything before it back.
 
+#### Starting tight
+
+*"It's in between these two [houses], and it can literally just turn its
+wheels, and go forwards, and it could just get out of the gap, that's quite
+big. It just doesn't seem able to see it."* The planner asked each footprint
+disc for its radius plus half a cell of room, on top of the half-cell slack the
+boxes are drawn with — about 1.3 m spare across a 1.9 m car. A car that had
+drifted near a wall already stood inside that, so every move from it failed,
+including straight on out of the gap, and the start cell was outside the field
+altogether. With no plan it fell back to the reflexes that had put it there.
+
+`tests/pinned.js` finds 3.2–5.5 m passages from the colliders and parks a car
+0.3 m off one wall, target straight ahead: the planner found a plan from 7 of
+15. Now the room needed is radius plus 0.1 m, the first 4 m of a plan may be as
+tight as where the car starts (no tighter), and a start too tight for the field
+borrows its neighbours' cost: 15 of 15 plan and all 15 drive out.
+
+Estate, 35 s a case, fresh page: got out 35 → 33, stall reverses 7 → 5,
+scenery contacts 12 → 2. The two lost are site 0 at −135° and site 1 at 135°,
+which now loop between two exits (19 and 26 plans, no progress) — the same
+two-modes-disagreeing shape as before, now between plans; the next thing to look
+at. Worst frame while planning is 29–45 ms, which is a visible hitch and worth
+spreading over frames.
+
 ### Air support you are flying, seen as seen
 
 *"When I'm the helicopter, on my friend's screen ... it keeps on saying
@@ -4690,6 +4714,30 @@ spotter, set `seen` false and started the clock, and the next report zeroed it
 again. A report younger than `AIR_MARK_HOLD` (0.6 s, a dropped packet's worth)
 now counts as eyes on. When the pilot loses the car the reports stop and the
 escapee gets tracking and then the search, as with anyone else.
+
+### Reconnecting without ending the game
+
+Three bugs in one place, found reading the code rather than from a report,
+though they fit "lose connection quite a lot, and it just ends the game":
+
+* **One drop, two reconnects.** `session.js` wired a WebSocket's `error` and
+  `close` both to `_dropped`, and a drop fires both — so two sockets opened on
+  the same id, the first was never closed and kept delivering messages (an
+  arrest or a restart handled twice), and the attempts ran out twice as fast.
+  Now a transport is only listened to while it is the current one
+  (`Session._attach`) and a drop closes it. Checked with a fake transport firing
+  both: one reconnect, the dead one closed, its late message ignored.
+* **The server announced a reconnected player as gone.** `Rooms.Remove` removed
+  by id, so when the server finally noticed the old dead connection — after the
+  player was already back — it removed the live one and broadcast `bye`. For
+  the escapee that is "The escapee left the game" on every screen. Now it
+  removes only that connection's own entry, and says `bye` only if it did.
+* **A reconnecting escapee came back as police**, because the escapee slot
+  still looked taken by their own old connection. Now the escapee's own id gets
+  the escapee's slot back, and the old connection is closed when replaced.
+
+The server half could not be compiled on the machine it was written on; CI
+builds it.
 
 ### No air support for typed stars
 

@@ -62,6 +62,8 @@ const STEER_COST = 0.03;         // seconds per unit of lock held, keeps lines s
 const MAX_EXPAND = 6000;
 /** Milliseconds the search may take before it settles for what it has. */
 const SEARCH_MS = 5;
+/** Metres of a plan over which it may be as tight as where the car starts. */
+const ESCAPE = 4;
 /** Good enough: this much nearer the best way out, in seconds. */
 const PROGRESS = 30 / OFF_SPEED;
 
@@ -446,33 +448,65 @@ export function planLocal(game, vehicle, goal, opts = {}) {
   const span = Math.max(0, spec.dims.l * 0.5 - r);
   const offs = [];
   for (let k = 0; k < nDisc; k++) offs.push(-span + (2 * span * k) / (nDisc - 1));
-  const need = r + CELL * 0.5;
+  // Room each disc needs, measured to the nearest occupied cell centre. It was
+  // r plus half a cell, which with the half-cell slack the boxes are drawn with
+  // asked for about 1.3 m spare across a 1.9 m car: gaps a driver would take
+  // were closed, and a car that had drifted near a wall was already "inside"
+  // one. A tenth of a metre over the disc is enough on top of that slack.
+  const need = r + 0.1;
 
-  const fits = (x, z, h) => {
+  // The least room any disc has at a pose.
+  const roomAt = (x, z, h) => {
     const sh = Math.sin(h), ch = Math.cos(h);
+    let least = INF;
     for (const o of offs) {
       const k = cell(x + sh * o, z + ch * o);
-      if (k < 0 || _clr[k] < need) return false;
+      if (k < 0) return -1;
+      if (_clr[k] < least) least = _clr[k];
     }
-    return true;
+    return least;
   };
+  const fits = (x, z, h) => roomAt(x, z, h) >= need;
+  // The field at a point, or -- where the point itself is too tight to be in
+  // the field, which is where a car pinned against a wall is standing -- the
+  // best of its neighbours plus the drive there.
   const costAt = (x, z) => {
     const k = fcell(x, z);
-    return k < 0 ? INF : _cost[k];
+    if (k < 0) return INF;
+    if (_cost[k] < INF) return _cost[k];
+    const i = (k / FN) | 0, j = k - i * FN;
+    let best = INF;
+    for (let di = -3; di <= 3; di++) {
+      for (let dj = -3; dj <= 3; dj++) {
+        const ii = i + di, jj = j + dj;
+        if (ii < 0 || jj < 0 || ii >= FN || jj >= FN) continue;
+        const c = _cost[ii * FN + jj];
+        if (c < INF) best = Math.min(best, c + (Math.hypot(di, dj) * FC) / OFF_SPEED);
+      }
+    }
+    return best;
   };
 
   const h0 = Math.atan2(v.forward.x, v.forward.z);
   const start = { x: v.position.x, z: v.position.z, h: h0 };
   const c0 = costAt(start.x, start.z);
-  _debug.last = { c0, startClr: _clr[cell(start.x, start.z)] };
+  // Where the car is already tighter than `need` -- pinned against a wall, nose
+  // in a hedge -- every move from it used to fail the room test, including the
+  // obvious one of driving straight on out of the gap, and with no plan it fell
+  // back to the reflexes that had put it there: "it can literally just turn its
+  // wheels, and go forwards ... it just doesn't seem able to see it." For the
+  // first ESCAPE metres a move is allowed if it is no tighter than the start.
+  const startRoom = roomAt(start.x, start.z, start.h);
+  const escapeNeed = Math.min(need, Math.max(0, startRoom - 0.05));
+  _debug.last = { c0, startClr: _clr[cell(start.x, start.z)], startRoom };
   if (c0 >= INF) return null;
   const target = Math.max(0.3, c0 - PROGRESS);
 
   // Node pool.
   const nodes = [];
-  const add = (x, z, h, g, dir, steer, parent) => {
+  const add = (x, z, h, g, dir, steer, parent, len = 0) => {
     const f = g + costAt(x, z);
-    nodes.push({ x, z, h, g, f, dir, steer, parent });
+    nodes.push({ x, z, h, g, f, dir, steer, parent, len });
     return nodes.length - 1;
   };
   _stamp++;
@@ -558,7 +592,8 @@ export function planLocal(game, vehicle, goal, opts = {}) {
           x += Math.sin(mid) * SUB * dir;
           z += Math.cos(mid) * SUB * dir;
           h = nh;
-          if (!fits(x, z, h)) { ok = false; break; }
+          const lim = n.len + s < ESCAPE ? escapeNeed : need;
+          if (roomAt(x, z, h) < lim) { ok = false; break; }
         }
         if (!ok) continue;
         let g = n.g + (STEP / OFF_SPEED) * (dir < 0 ? REV_COST : 1)
@@ -566,13 +601,13 @@ export function planLocal(game, vehicle, goal, opts = {}) {
         if (dir !== n.dir) g += SWITCH_COST;
         const kk = key(x, z, h);
         if (kk >= 0 && _seen[kk] === _stamp && _best[kk] <= g) continue;
-        opush(add(x, z, h, g, dir, st, id));
+        opush(add(x, z, h, g, dir, st, id, n.len + STEP));
       }
     }
   }
 
   lap('search');
-  _debug.last = { c0, bestCost, expanded, startClr: _clr[cell(start.x, start.z)], fitsStart: fits(start.x, start.z, start.h) };
+  _debug.last = { c0, bestCost, expanded, startRoom, fitsStart: fits(start.x, start.z, start.h) };
   // Nothing reached the goal set: take the best progress found, if it is real.
   let endId = goalNode;
   if (endId < 0) {

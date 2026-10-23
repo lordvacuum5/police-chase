@@ -175,8 +175,12 @@ app.Map("/ws", async (HttpContext http, Rooms rooms, ILogger<Program> log) =>
     catch (WebSocketException) { /* likewise, less politely */ }
     finally
     {
-        rooms.Remove(found, player.Id);
-        await Broadcast(found, new { t = "bye", from = player.Id }, CancellationToken.None);
+        // A connection that a reconnect has already replaced is not a player
+        // leaving, and must not be announced as one -- see Rooms.Remove.
+        if (rooms.Remove(found, player))
+        {
+            await Broadcast(found, new { t = "bye", from = player.Id }, CancellationToken.None);
+        }
         await Broadcast(found, new { t = "players", players = Rooms.Roster(found) }, CancellationToken.None);
         log.LogInformation("left {Room} ({Desc})", room, Rooms.Describe(found));
     }
