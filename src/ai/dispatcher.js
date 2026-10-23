@@ -58,6 +58,9 @@ const AIR_MARK_HOLD = 0.6;
  * dead ahead of the car is worth than one to the side (one behind is worth
  * 1 - CONTAIN_AHEAD).
  */
+/** Seconds on one heading before a rolling block is put down ahead. */
+const BLOCK_COMMIT = 2;
+
 const CONTAIN_AFTER = 1.5;
 const CONTAIN_RINGS = [70, 110, 160];
 const CONTAIN_REACH = 120;
@@ -793,8 +796,12 @@ export class Dispatcher {
     else if (this.blockCooldown > 0) bg.cooling++;
     else if (this.contactCooldown > 0) bg.contact++;
     else if (Math.abs(target.forwardSpeed) <= 12) bg.slow++;
+    // Only on a road the car has committed to, as with the van: put down ahead
+    // of a car about to turn off, a block is a block on the wrong road.
+    const committed = typeof window !== 'undefined' && window.__oldBlockSite
+      ? true : this.straightFor > BLOCK_COMMIT;
     if (this.tier >= 2 && k.seen && !this.blockUnit && !this.blockMates.length
-        && this.blockCooldown <= 0
+        && this.blockCooldown <= 0 && committed
         && this.contactCooldown <= 0 && Math.abs(target.forwardSpeed) > 12) {
       this.blockCooldown = 14;
       this.blockStats.tried++;

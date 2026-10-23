@@ -141,7 +141,12 @@ async function runOne(kph, seconds, seed) {
         // slows you. Left to the dispatcher's siting, the random route turned
         // off before the block nearly every time, and redrawing the route
         // through the block gave the driver U-turns it crawled round.
-        const u = placeOnRoute(g, M, auto, p, 150);
+        // window.__rbGameSite: the game's own siting instead, gated the way the
+        // dispatcher gates it (on one heading for a couple of seconds) -- for
+        // measuring where blocks are put, rather than what a line does.
+        const u = window.__rbGameSite
+          ? (D.straightFor > 2 ? g.spawnPoliceAhead(p, 4) : null)
+          : placeOnRoute(g, M, auto, p, 150);
         if (u) {
           D.units.push(u);
           u.setRole(M.ROLE.BLOCK);

@@ -60,7 +60,7 @@ window.__runCorners = async function (settings = [[9, 6], [16, 13]], legs = 3) {
     if (!goals.length) { window.__res = 'no route'; return; }
 
     const rows = [];
-    for (const [corner, arcFloor] of settings) {
+    for (const [corner, arcFloor, lane = 2.4] of settings) {
       const place = g._placeOnRoad(start);
       if (!place) { window.__res = 'nowhere to start'; return; }
       const officer = g.spawnPoliceAt(place.position, place.heading, 2);
@@ -77,13 +77,14 @@ window.__runCorners = async function (settings = [[9, 6], [16, 13]], legs = 3) {
       const dips = [];
       const cross = [];
       let hits = 0, t = 0, goalIndex = 0, lastImpact = 0;
-      let dip = Infinity, sinceDip = 0;
+      let dip = Infinity, sinceDip = 0, tight = Infinity, paved = 0;
+      const radii = [];
 
       while (t < 140 && goalIndex < goals.length) {
         // Route with this rounding, re-planned only when it runs out.
         if (!officer.driver.hasPath || officer.goalNode !== goals[goalIndex]) {
           const pts = gr.pathFromPosition(v.position.x, v.position.z,
-            v.forward.x, v.forward.z, goals[goalIndex], 2.4, Infinity, v.speed, corner);
+            v.forward.x, v.forward.z, goals[goalIndex], lane, Infinity, v.speed, corner);
           if (pts.length < 2) break;
           officer.driver.setPath(pts);
           officer.goalNode = goals[goalIndex];
@@ -98,10 +99,24 @@ window.__runCorners = async function (settings = [[9, 6], [16, 13]], legs = 3) {
         cross.push(Math.abs(officer.driver.crossTrack || 0));
         // A dip is a local minimum that lasts: the slowest it got between two
         // stretches of getting on with it. That is the junction.
-        if (kph < 55) { dip = Math.min(dip, kph); sinceDip = 0; } else {
+        // And the radius actually driven, speed over yaw rate, at its tightest in
+        // each junction -- "they go 90 degrees ... instead of just kind of cutting
+        // the corner off" is a small number here.
+        const yr = Math.abs(v.yawRate || 0);
+        const rad = yr > 0.15 ? Math.abs(v.forwardSpeed) / yr : Infinity;
+        if (kph < 55) {
+          dip = Math.min(dip, kph); sinceDip = 0;
+          tight = Math.min(tight, rad);
+        } else {
           sinceDip += 1 / 60;
-          if (dip < Infinity && sinceDip > 1.2) { dips.push(Math.round(dip)); dip = Infinity; }
+          if (dip < Infinity && sinceDip > 1.2) {
+            dips.push(Math.round(dip));
+            if (tight < Infinity) radii.push(Math.round(tight));
+            dip = Infinity; tight = Infinity;
+          }
         }
+        // Wheels on the footway, which is what cutting a junction looks like.
+        if (g.sim.surfaceAt(v.position.x, v.position.z) === 2) paved++;
         if (v.lastImpactAt && v.lastImpactAt !== lastImpact) {
           lastImpact = v.lastImpactAt;
           if (v.lastImpact > 4) hits++;
@@ -116,7 +131,9 @@ window.__runCorners = async function (settings = [[9, 6], [16, 13]], legs = 3) {
 
       const mean = speeds.reduce((a, b) => a + b, 0) / Math.max(1, speeds.length);
       rows.push({
-        corner, arcFloor,
+        corner, arcFloor, lane,
+        radii,
+        paved: Math.round((paved * 100) / Math.max(1, speeds.length)),
         secs: +t.toFixed(1),
         arrived: goalIndex,
         meanKph: Math.round(mean),
@@ -131,10 +148,11 @@ window.__runCorners = async function (settings = [[9, 6], [16, 13]], legs = 3) {
     }
 
     g.paused = false;
-    window.__res = rows.map((r) => `corner ${String(r.corner).padStart(2)} arc ${String(r.arcFloor).padStart(2)}  `
+    window.__res = rows.map((r) => `corner ${String(r.corner).padStart(2)} arc ${String(r.arcFloor).padStart(2)} lane ${r.lane}  `
       + `${String(r.secs).padStart(5)} s  arrived ${r.arrived}/${goals.length}  `
       + `mean ${String(r.meanKph).padStart(3)}  slowest ${String(r.slowest).padStart(3)}  `
-      + `hits ${r.hits}  off ${r.offLine}/${r.worstOff}  junctions [${r.corners.join(', ')}]`).join('\n');
+      + `hits ${r.hits}  off ${r.offLine}/${r.worstOff}  footway ${r.paved}%  `
+      + `junctions [${r.corners.join(', ')}] kph, tightest radius [${r.radii.join(', ')}] m`).join('\n');
   } catch (e) {
     window.__res = 'EX: ' + e.message + ' | ' + (e.stack || '').slice(0, 300);
   }

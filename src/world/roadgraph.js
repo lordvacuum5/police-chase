@@ -50,6 +50,49 @@ function roundCorners(pts, radius) {
   return out;
 }
 
+/** `window.__oldCorners = true` puts the old junction rounding back, for rigs. */
+const OLD_CORNERS = () => typeof window !== 'undefined' && window.__oldCorners === true;
+
+/**
+ * Drop points that lie on a straight line, within `tol` metres, before the
+ * corners are rounded (Douglas-Peucker).
+ *
+ * roundCorners limits each fillet to under half the distance to the points
+ * either side, so a junction with a point eight metres short of it -- every
+ * lead-in from pathFromPosition is sampled every 8 m -- got a fillet of under
+ * four metres, which is a right-angle turn. Points on a bend are kept, because
+ * removing them would move the path more than `tol`.
+ */
+function simplify(pts, tol = 0.3) {
+  if (pts.length < 3) return pts;
+  const keep = new Uint8Array(pts.length);
+  keep[0] = 1; keep[pts.length - 1] = 1;
+  const stack = [[0, pts.length - 1]];
+  while (stack.length) {
+    const [i, j] = stack.pop();
+    const a = pts[i], b = pts[j];
+    let dx = b.x - a.x, dz = b.z - a.z;
+    const l = Math.hypot(dx, dz) || 1e-6;
+    dx /= l; dz /= l;
+    let worst = -1, wi = -1;
+    for (let k = i + 1; k < j; k++) {
+      const px = pts[k].x - a.x, pz = pts[k].z - a.z;
+      const along = px * dx + pz * dz;
+      // Distance to the segment, not the infinite line, so a point that
+      // doubles back is never mistaken for being on the way.
+      const d = along < 0 ? Math.hypot(px, pz)
+        : along > l ? Math.hypot(pts[k].x - b.x, pts[k].z - b.z)
+          : Math.abs(px * dz - pz * dx);
+      if (d > worst) { worst = d; wi = k; }
+    }
+    if (worst > tol && wi > 0) {
+      keep[wi] = 1;
+      stack.push([i, wi], [wi, j]);
+    }
+  }
+  return pts.filter((_, k) => keep[k]);
+}
+
 /** Even out the spacing so curvature is measured over a consistent scale. */
 function resample(pts, maxSeg) {
   if (pts.length < 2) return pts;
@@ -940,9 +983,24 @@ export class RoadGraph {
     if (aheadId === goalId) return lead;
     const route = this.route(aheadId, goalId, speedCap, opts);
     if (!route || route.length < 2) return lead;
-    const tail = this.pathToPoints(route, laneOffset, true, corner);
-    // The tail's first point duplicates the lead's last.
-    return lead.concat(tail.slice(1));
+    if (OLD_CORNERS()) {
+      const tail = this.pathToPoints(route, laneOffset, true, corner);
+      // The tail's first point duplicates the lead's last.
+      return lead.concat(tail.slice(1));
+    }
+    // Rounded as one path, not as two joined at the junction. The tail used to
+    // be rounded on its own and then appended -- and its first point *is* the
+    // junction ahead, which a fillet can never touch, because roundCorners only
+    // rounds points with a neighbour on each side. Police re-plan every second
+    // or so, so the junction ahead was the join every time, and every junction
+    // they ever arrived at was a right angle: "I'll come to a junction, and
+    // they'll do 90 degrees, instead of just kind of cutting the corner off."
+    // Traced: the car sped up to 79 km/h into it with nothing on the path to
+    // slow for, braked at 9 m, turned on full lock at an 8 m radius and ran
+    // out onto the grass.
+    const tailRaw = this._rawPathPoints(route, laneOffset);
+    const whole = lead.concat(tailRaw.slice(1));
+    return resample(roundCorners(simplify(whole), corner), 14);
   }
 
   /**
@@ -1296,7 +1354,7 @@ export class RoadGraph {
     // Junction corners must be rounded before the points are resampled, or the
     // AI reads a right-angle turn as a 50 m radius sweep, carries motorway
     // speed into it and puts the car through a shop window.
-    return resample(roundCorners(raw, corner), 14);
+    return resample(roundCorners(OLD_CORNERS() ? raw : simplify(raw), corner), 14);
   }
 
   _rawPathPoints(path, laneOffset = 0) {

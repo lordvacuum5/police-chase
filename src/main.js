@@ -96,6 +96,13 @@ const MAX_SUBSTEPS = 5;
 const MAX_VEHICLES = 40;
 
 /**
+ * How far up the target's road a rolling block may be put, metres. See
+ * Game._siteUpRoad.
+ */
+const BLOCK_MIN = 110;
+const BLOCK_MAX = 220;
+
+/**
  * Following somebody else's car (see Game._netDriveRemote): how far out of
  * place it may drift before it is simply put where it belongs, and how much
  * speed and spin the correction is allowed to use to get it back there. The
@@ -1198,6 +1205,20 @@ class Game {
     if (Math.hypot(dx, dz) < 4) { dx = target.forward.x; dz = target.forward.z; }
     const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
 
+    // Up the road the car is actually on, first. See _siteUpRoad.
+    if (!(typeof window !== 'undefined' && window.__oldBlockSite)) {
+      const site = this._siteUpRoad(target, dx, dz);
+      if (site) {
+        const kind = tier >= 4 ? 'interceptor' : 'patrol';
+        const v = this.createVehicle(kind, kind, site.pos, site.heading, { police: true });
+        if (v) {
+          v.lampPhase = this.rng();
+          v.setVelocity({ x: Math.sin(site.heading) * 18, y: 0, z: Math.cos(site.heading) * 18 });
+          return new Officer(this, v, { skill: SKILL.advanced, kind });
+        }
+      }
+    }
+
     // Somewhere the target is heading. Around 150 m is the sweet spot: beyond
     // the far clip of a city street, so the car is never seen to appear, but
     // close enough that they run up on it within a few seconds rather than
@@ -1281,6 +1302,94 @@ class Game {
       v.setVelocity({ x: Math.sin(heading) * 18, y: 0, z: Math.cos(heading) * 18 });
 
       return new Officer(this, v, { skill: SKILL.advanced, kind });
+    }
+    return null;
+  }
+
+  /**
+   * Where to put a rolling block: up the road the target is on.
+   *
+   * "Its positioning just seems to ... it keeps on putting it in awful places,
+   * and then they instantly break up because it's in the wrong place." The old
+   * siting took junctions from a forward expansion of the graph within a 50
+   * degree cone -- any road the car *could* take -- and only accepted one the
+   * camera could not see. On a straight road the one place you are going is in
+   * plain view, so it was nearly always round a corner or up a side street you
+   * were not taking.
+   *
+   * This walks the road the car is on, straight on through each junction (the
+   * continuation nearest straight ahead, and none if every way off turns more
+   * than 50 degrees), and samples it every 10 m between BLOCK_MIN and
+   * BLOCK_MAX ahead. The nearest point out of the camera's view wins; if all
+   * of it is in view -- a long straight -- the furthest point is used anyway,
+   * because cars in the distance on the road ahead read as traffic, not as a
+   * spawn. Returns { pos, heading } or null.
+   */
+  _siteUpRoad(target, dx, dz) {
+    const g = this.graph;
+    const snap = g.nearestEdge(target.position.x, target.position.z);
+    if (!snap || snap.edge.cut) return null;
+    let e = snap.edge;
+    const t0 = g.pointAt(e, snap.along);
+    let fwd = t0.tx * dx + t0.tz * dz >= 0;     // travelling a -> b
+    let s = snap.along, run = 0;
+    const samples = [];
+    for (let guard = 0; guard < 40 && run < BLOCK_MAX; guard++) {
+      const end = fwd ? e.length : 0;
+      const step = 10;
+      while (run < BLOCK_MAX && (fwd ? s < end : s > 0)) {
+        s = fwd ? Math.min(end, s + step) : Math.max(0, s - step);
+        run += step;
+        if (run >= BLOCK_MIN) {
+          const p = g.pointAt(e, s);
+          const sg = fwd ? 1 : -1;
+          samples.push({ x: p.x, z: p.z, tx: p.tx * sg, tz: p.tz * sg, edge: e });
+        }
+      }
+      if (run >= BLOCK_MAX) break;
+      // Straight on through the junction at the end of this edge.
+      const nodeId = fwd ? e.b : e.a;
+      const node = g.nodes[nodeId];
+      const inT = g.pointAt(e, fwd ? e.length : 0);
+      const ix = inT.tx * (fwd ? 1 : -1), iz = inT.tz * (fwd ? 1 : -1);
+      let best = null, bestDot = Math.cos(0.87);
+      for (const id of node.edges) {
+        const ne = g.edges[id];
+        if (ne === e || ne.cut) continue;
+        const out = ne.a === nodeId;
+        const p = g.pointAt(ne, out ? Math.min(8, ne.length) : Math.max(0, ne.length - 8));
+        let ox = p.x - node.x, oz = p.z - node.z;
+        const ol = Math.hypot(ox, oz) || 1; ox /= ol; oz /= ol;
+        const d = ox * ix + oz * iz;
+        if (d > bestDot) { bestDot = d; best = { ne, out }; }
+      }
+      if (!best) break;
+      e = best.ne;
+      fwd = best.out;
+      s = fwd ? 0 : e.length;
+    }
+    if (!samples.length) return null;
+
+    const usable = (q) => {
+      const lane = Math.min(3.0, q.edge.width * 0.25);
+      const pos = { x: q.x - q.tz * lane * DRIVE_SIDE, y: 0.95, z: q.z + q.tx * lane * DRIVE_SIDE };
+      if (this.sim.surfaceAt(pos.x, pos.z) !== 1) return null;
+      if (this.nearHuman(pos)) return null;
+      for (const v of this.vehicles) {
+        if (dist2(v.position.x, v.position.z, pos.x, pos.z) < 8) return null;
+      }
+      for (const b of this.roadblocks.blocks) {
+        if (dist2(pos.x, pos.z, b.x, b.z) < 140) return null;
+      }
+      return { pos, heading: Math.atan2(q.tx, q.tz) };
+    };
+    for (const q of samples) {
+      const u = usable(q);
+      if (u && !this.inView(u.pos)) return u;
+    }
+    for (let i = samples.length - 1; i >= 0; i--) {
+      const u = usable(samples[i]);
+      if (u) return u;
     }
     return null;
   }

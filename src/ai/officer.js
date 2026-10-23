@@ -10,7 +10,7 @@ import { Driver, SKILL } from './driver.js';
 import { pitUpdate, relativeTo, boxAim, boxSpeed } from './tactics.js';
 import { hasLineOfSight, sweepBox, raycast, groups, GROUP, RAY_SOLID, RAY_WALL } from '../physics/world.js';
 import { WORLD_HALF } from '../world/common.js';
-import { clamp, clamp01, lerp, dist2, sign, damp } from '../util/math.js';
+import { clamp, clamp01, lerp, dist2, sign, damp, closestOnSegment } from '../util/math.js';
 import { requestPlan, planLocal } from './localplan.js';
 
 /**
@@ -393,6 +393,12 @@ export class Officer {
    */
   _routeTo(goalId, laneOffset = 2.4) {
     const v = this.vehicle;
+    // A unit in a hurry takes the road, not its lane. Routed down the middle,
+    // a right-angle junction is a wider turn and nothing runs out onto the
+    // grass on the far side of it: on tests/turnin.js, fourteen junctions,
+    // the lane gave 52 frames on the grass and the middle none, and got round
+    // 0.13 s quicker. A patrol car keeps to its side.
+    if (this.driver.allowOffRoad && laneOffset > 0 && !window.__laneRoute) laneOffset = 0;
     const pts = this.game.graph.pathFromPosition(
       v.position.x, v.position.z, v.forward.x, v.forward.z, goalId, laneOffset,
       Infinity, v.speed,
@@ -2103,14 +2109,23 @@ export class Officer {
     // the line reads 15-20 m "off to one side" in a straight frame, and the
     // line gave up at the very moment it was reached. So: the target is on a
     // different road from ours (one not even touching it), or off the road.
+    //
+    // And only once they are actually at the line. Judged from 45 m back, the
+    // first version broke up nearly every line it made: Wexbury's roads are
+    // short between junctions, so a car 45 m behind is often two edges back
+    // and read as "on a different road". "They instantly break up because it's
+    // in the wrong place." Now it asks, within 20 m, whether the target is
+    // still on the line's road -- within half its width and a few metres of
+    // the line's own stretch of it.
     let gone = false;
-    if (group && engaged) {
-      const ts = g.nearestEdge(target.position.x, target.position.z);
+    if (group && r.long < 20) {
       const e = snap.edge;
-      if (!ts) gone = true;
-      else if (ts.edge !== e && ts.edge.a !== e.a && ts.edge.a !== e.b
-        && ts.edge.b !== e.a && ts.edge.b !== e.b) gone = true;
-      else if (ts.dist > ts.edge.width * 0.5 + 4) gone = true;
+      let near = Infinity;
+      for (const sg of e.segs) {
+        const c = closestOnSegment(target.position.x, target.position.z, sg.a.x, sg.a.z, sg.b.x, sg.b.z);
+        if (c.dist < near) near = c.dist;
+      }
+      gone = near > e.width * 0.5 + 5;
     }
     if (r.long < -7 || (!group && engaged && Math.abs(r.lat) > sidestep) || gone
       || (group && group.ended)) {

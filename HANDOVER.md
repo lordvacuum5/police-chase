@@ -190,6 +190,13 @@ of those stop the run scoring, deliberately.
   block is unchanged; its end test is known to give up on bends (README).
 * **Planner queue**: plans are made 4 ms a frame. The estate rig is no longer
   exactly repeatable because of it.
+* **Junction rounding fixed** (roadgraph `pathFromPosition` rounded the junction
+  ahead as a raw right angle -- the "90 degree" turns). Chase units now route
+  down the middle of the road. The user wants a proper racing line through
+  junctions; `arcFloor` 28 gives it (41 km/h through, across the footway) but
+  runs onto the grass -- the next thing to try, measured on the whole force.
+* **Rolling block siting** now walks the target's own road (`_siteUpRoad`) and
+  lines only break up when the target is at the line and off its road.
 
 ### Known open problems
 

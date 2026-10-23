@@ -3911,6 +3911,37 @@ the end of the run, and otherwise got by in 1–4 s, usually up a footway. Like 
 one-car block and the roadblocks, it is a tactic and not a wall.
 `window.__oneCarBlock = true` sends the old one-car block instead.
 
+**Then played, and placed badly.** *"I haven't encountered it once because it
+keeps on putting it in awful places, and then they instantly break up because
+it's in the wrong place."* The rig above had sidestepped siting. Two causes:
+
+* **Siting.** `spawnPoliceAhead` took junctions from a forward expansion of the
+  graph in a 50° cone and accepted only a site the camera could not see — which
+  on the road you are actually on, if it is straight, there usually is not, so
+  it went round a corner or up a side street. Now `Game._siteUpRoad` walks the
+  road you are on, straight on through each junction (the continuation nearest
+  straight ahead, none past 50°), samples it every 10 m from 110 to 220 m, takes
+  the nearest point out of view, and if all of it is in view takes the furthest.
+  And a block is only called after two seconds on one heading.
+* **Breaking up.** The line's "gone round us" test ran from 45 m back and
+  counted a target on any road not touching the line's as gone. Wexbury's edges
+  are short; from 45 m back a car following the line is often two edges behind,
+  so lines broke up on sight. It is now judged within 20 m, by the target's
+  distance from the line's own stretch of road.
+
+On the same rig with the game's siting (`window.__rbGameSite`), eight seeds,
+both arms with the new break-up test, so this is the siting alone:
+
+| | old siting | `_siteUpRoad` |
+|---|---|---|
+| time behind the line, all runs | 3.3 s | **10.2 s** |
+| runs that took real speed off the car | 1 of 6 | **5 of 6** |
+| typical | 85→79, 37→36, 107→107 km/h | **63→33, 70→33, 80→38 km/h** |
+
+Two seeds found no site in either. The car still gets by in 1–2.5 s — the line
+is often still settling into its slots when it arrives — so it reads as a
+slowing, not a stop. `window.__oldBlockSite = true` puts the old siting back.
+
 ### Containment
 
 *"Make the police smarter as a team."* When the car has been off the roads for
@@ -4418,6 +4449,71 @@ hard hits, so that is what is in the game.
 It only applies to a unit driving a route. In the last few lengths of a chase
 there is no route — units aim at the car — so there is no line to take, and
 that is the next thing to look at.
+
+### The junction ahead was never rounded
+
+*"I'll come to a junction, and they'll do 90 degrees, instead of just kind of
+cutting the corner off."* Every rounding setting tried on `tests/corners.js`
+drove the same, because the bug was not in the rounding. `pathFromPosition`
+built a route in two pieces — the rest of the car's own road up to the junction
+ahead, then the route onward from that junction — rounded only the second piece,
+and joined them. The join is the junction ahead, and `roundCorners` only rounds
+a point with a neighbour on each side, so that junction was a raw right angle.
+Units re-plan every second or so, so the junction ahead is the join nearly
+every time: every junction they arrived at. Traced, the car accelerated to
+79 km/h into it with nothing on the path to slow for, braked at 9 m, turned on
+full lock at an 8 m radius and ran out onto the grass. (`corners.js` plans each
+leg once and never meets this, which is why it never showed.)
+
+Two fixes in `roadgraph.js`. The whole route is rounded as one. And straight
+runs of points are thinned first (Douglas-Peucker, 0.3 m) before rounding, since
+each fillet is limited to under half the distance to its neighbours and the
+lead-in is sampled every 8 m — a junction 8 m from its last point got a fillet
+of under four. Points on a bend are kept.
+
+Ten 90° junctions, approached at 50 km/h, re-planning every 1.4 s as units do:
+
+| | old | new |
+|---|---|---|
+| made the turn | 5 of 10 | **10 of 10** |
+| slowest through it | 8–37 km/h, five of them 8–12 | **22–33 km/h** |
+| frames on the grass | up to 162 | 0 in eight, 4 and 50 in two |
+| contacts | 0 | 0 |
+
+They take a smooth curve now; they do not yet mount the footway to cut the
+corner tighter. `window.__oldCorners = true` puts the old rounding back.
+
+*"They need to like turn into the corners ... didn't they have a racing line?"*
+Measured further on `tests/turnin.js` (fourteen right-angle junctions on
+Wexbury, arriving at 58 km/h, re-planning every 1.4 s):
+
+| | exit | slowest | grass | footway |
+|---|---|---|---|---|
+| corner 16, in lane (2.4 m) | 5.12 s | 29 km/h | 52 | 0 |
+| corner 16, down the middle | **4.99 s** | 29 km/h | **0** | 0 |
+| corner 24, middle | 4.98 s | 29 km/h | 0 | 0 |
+| corner 30, middle | 4.98 s | 29 km/h | 0 | 0 |
+
+So a unit in a hurry is now routed down the middle of the road
+(`Officer._routeTo`; `window.__laneRoute` puts the lane back) and a patrol car
+keeps its side. A bigger fillet changes nothing because the corner speed is not
+set by the route: under 45 km/h the binding limit was `sArc` 872 frames in 1179
+— the pure-pursuit chord, floored at `arcFloor`. The racing line at junctions
+(`raceMinR` 15 → 7) changed nothing either (5.12 s vs 5.08), being bounded by the
+room the abeam sweeps see. The floor itself, swept again now that junctions are
+curves:
+
+| arcFloor | slowest | exit | grass | footway |
+|---|---|---|---|---|
+| 13 | 29 km/h | 4.98 s | 0 | 0 |
+| 20 | 30 km/h | 5.03 s | 28 | 5 |
+| 28 | **41 km/h** | **4.86 s** | 511 | 155 |
+
+28 m is the racing-car look the player asked for — 41 km/h through the corner,
+across the footway — but it spends most of the exit on the grass and is 2%
+quicker, and the last time this floor was raised, 21 m and up, it cost contacts
+in the whole chase. It is not in the game; it wants a whole-force measurement of
+its own.
 
 ### Straight into a building, together
 
