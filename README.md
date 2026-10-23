@@ -4617,6 +4617,43 @@ ramming are the player's to win. The "lost it" left in the table is that:
 spins after contact. Junction speed on turnin.js is unchanged (39 km/h,
 4.54 s, no contact). `window.__noSpin = 0` turns it off.
 
+
+### Through the gaps, faster: not yet
+
+*"The police cars can fit through really tight gaps now. That's really cool. But
+they're really slow going through these tiny gaps. I know that they'll like
+crash if they don't go slow, but I mean, they're computers."*
+
+A clean gap is not slow. `tests/gapspeed.js`, a whole unit at two blocks on open
+ground: through 3.6, 4.4 and 6 m gaps straight on at 82 km/h, and with the gap
+8 m off to one side at 61–91, none of it under 15 km/h. What is slow is the
+clutter of a real estate. On `tests/weave.js` (Wexbury, ghost at 110 km/h
+through the gaps, 8 runs, fresh page each) a unit spent 21% of its time under
+20 km/h, and on a local plan (ai/localplan.js — the low-speed manoeuvring mode)
+its median speed was 7 km/h, stopped for a third of it. Half of that was
+`sClear`: the stop-in-what-you-can-see probe, swept past the plan's next turn
+into the wall the plan was turning away from. Plan requests themselves were
+quick: median 6 frames, 90th percentile about 21.
+
+Everything tried to lift it, each against the same baseline (59–60 km/h mean,
+stayed with it 38–42%, 131–145 m back, 7–10 hits):
+
+| change | mean | stayed | back | hits |
+|---|---|---|---|---|
+| wall clamp margin 6 m/0.75 → 3 m/0.9 | 57 | 42% | 117 m | 10 |
+| corner floor 13 → 22 m (`__cutArc`) | 55 | 39% | 165 m | 14 |
+| 50% more grip, cheat (`assist.grip` 1.5) | 57 | 36% | 158 m | 8 |
+| all three together | 56 | 44% | 156 m | 9 |
+| on a plan: trust it, no `safeSpeed`, speed from its bends | 53 | 36% | 153 m | 11 |
+| on a plan: the plan's length counts as clear ahead | 52 | 39% | 147 m | 10 |
+
+None is faster, and the two plan changes made units stop on a plan four times as
+often and left one stuck for a third of its run. Every limit in there was
+holding back a car that, given more speed, arrived at the next wall needing to
+stop and stopped harder — the same lesson as the corner and margin sweeps above.
+All reverted. The time is lost in the stops and the stuck spells, not in a speed
+cap, and that is where the next attempt should look: the run where a unit sits
+still for a third of it (weave.js run 5).
 ### Straight into a building, together
 
 *"They were doing pretty well keeping up with me, but then for some reason they

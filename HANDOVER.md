@@ -205,6 +205,12 @@ scoring, deliberately.
 * **Police never spin** (user's call: "break the laws of physics ... as long
   as it looks realistic"). `Vehicle._guardSpin`, slip held to 0.3 rad, yaw
   rate capped, off for 0.8 s after a knock. Do not remove it for realism.
+* **Faster through tight gaps: tried six ways, all worse or neutral, all
+  reverted** (README "Through the gaps, faster: not yet"). Clean gaps are fast
+  (tests/gapspeed.js, 80-90 km/h). The slowness is stops and stuck spells in
+  real clutter, not a speed cap -- look there (weave.js run 5).
+  Rig trap: a weave/keepup tweak that sets `d.arcFloor` does nothing (Officer
+  rewrites it before driving); use `window.__cutArc`.
 * **Rolling blocks never spawn in view** -- `_siteUpRoad` used to fall back
   to the furthest point even when it was visible; it now returns null.
 * **Rig trap: the map.** A fresh page opens on the menu, and START picks
