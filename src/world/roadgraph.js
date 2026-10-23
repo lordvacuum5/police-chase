@@ -50,6 +50,9 @@ function roundCorners(pts, radius) {
   return out;
 }
 
+/** How far behind the car a route's lead-in starts -- see _pathAhead. */
+const LEAD_BACK = 25;
+
 /** `window.__oldCorners = true` puts the old junction rounding back, for rigs. */
 const OLD_CORNERS = () => typeof window !== 'undefined' && window.__oldCorners === true;
 
@@ -966,11 +969,23 @@ export class RoadGraph {
     const endAlong = forward ? e.length : 0;
     const sgn = forward ? 1 : -1;
     const off = laneOffset === 0 ? 0 : Math.min(laneOffset, e.width * 0.5 - 1.6);
-    const span = Math.abs(endAlong - snap.along);
+    // From a little way behind the car, not from the car. roundCorners keeps
+    // a fillet under half the distance to the points either side of it, and the
+    // first point was the car itself -- so as a unit closed on a junction and
+    // re-planned, every new route turned tighter than the last: 4-6 m of radius
+    // by the time it was there, whatever the corner setting, and the unit took
+    // it at a crawl. Starting LEAD_BACK metres back along its own road keeps the
+    // corner the same shape however late the route is drawn; the driver picks
+    // the route up from wherever the car is (Driver._trackPath).
+    // Goes with the driver's route clause, so it is off unless
+    // `window.__routeArc = true` too: on its own it measured no better.
+    const back = typeof window !== 'undefined' && window.__routeArc === true ? LEAD_BACK : 0;
+    const startAlong = forward ? Math.max(0, snap.along - back) : Math.min(e.length, snap.along + back);
+    const span = Math.abs(endAlong - startAlong);
     const steps = Math.max(1, Math.ceil(span / 8));
     const lead = [];
     for (let i = 0; i <= steps; i++) {
-      const s = snap.along + (endAlong - snap.along) * (i / steps);
+      const s = startAlong + (endAlong - startAlong) * (i / steps);
       const p = this.pointAt(e, s);
       const tx = p.tx * sgn, tz = p.tz * sgn;
       lead.push({

@@ -168,6 +168,16 @@ const RACE_ENTRY = 0.4;
 const RACE_EASE = 2.2;
 /** Tighter than this and it is a junction, not a bend. See _raceLine. */
 const RACE_MIN_R = 15;
+/**
+ * The widest corner the arc limit will believe from a route's own radius --
+ * see the route clause in safeSpeed. Past this the route is as good as straight
+ * and the other limits have it.
+ */
+const ROUTE_ARC_MAX = 60;
+/** Metres off the route past which the chord's limit stands. */
+const ROUTE_ARC_ON = 3;
+/** Spacing of the three points the route's radius is measured over, metres. */
+const ROUTE_ARC_SPAN = 7;
 
 /**
  * How far along its own route a unit may get in one frame, beyond what the car
@@ -473,6 +483,23 @@ export class Driver {
   setPath(points) {
     this.path = points || [];
     this.pathIndex = 0;
+    // A route may now start a little behind the car (RoadGraph._pathAhead
+    // begins its lead-in 25 m back, so a corner keeps its shape however late
+    // the route is drawn). _trackPath only lets the index advance as far as the
+    // car could have driven since the last frame, so start it at the car: the
+    // nearest point, or the one after if that is behind.
+    if (this.v && this.path.length > 2) {
+      const v = this.v;
+      let best = 0, bestD = Infinity;
+      for (let i = 0; i < Math.min(this.path.length, 16); i++) {
+        const d = dist2(v.position.x, v.position.z, this.path[i].x, this.path[i].z);
+        if (d < bestD) { bestD = d; best = i; }
+      }
+      const q = this.path[best];
+      if (best < this.path.length - 1
+        && (q.x - v.position.x) * v.forward.x + (q.z - v.position.z) * v.forward.z < 0) best++;
+      this.pathIndex = best;
+    }
     // Stale cross-track from a discarded path would otherwise be applied to
     // the next one for a frame.
     this.crossTrack = 0;
@@ -743,6 +770,42 @@ export class Driver {
     const severity = clamp01((slip - 0.20) / 0.45);
     const keep = lerp(0.96, 0.68, severity * lerp(1.15, 0.75, this.skill.throttleControl));
     return v.speed * keep;
+  }
+
+  /**
+   * The tightest radius of the route from just behind the car to a few points
+   * ahead of it, in metres -- Infinity on a straight. See the route clause of
+   * the arc limit in safeSpeed.
+   */
+  _pathRadiusHere() {
+    // Over points ROUTE_ARC_SPAN apart along the route, not consecutive ones:
+    // where a fillet starts its first point can sit a few centimetres from the
+    // last straight one, and three points that close read as a 3 m hairpin --
+    // which is what this first returned in one corner in ten.
+    const p = this.path;
+    const i0 = Math.max(0, this.pathIndex - 4), i1 = Math.min(p.length - 1, this.pathIndex + 10);
+    if (i1 - i0 < 2) return Infinity;
+    const cum = [0];
+    for (let i = i0 + 1; i <= i1; i++) {
+      cum.push(cum[cum.length - 1] + dist2(p[i - 1].x, p[i - 1].z, p[i].x, p[i].z));
+    }
+    const at = (s) => {
+      s = clamp(s, 0, cum[cum.length - 1]);
+      let k = 1;
+      while (k < cum.length - 1 && cum[k] < s) k++;
+      const a = p[i0 + k - 1], b = p[i0 + k];
+      const t = (s - cum[k - 1]) / Math.max(1e-6, cum[k] - cum[k - 1]);
+      return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t };
+    };
+    const here = cum[Math.min(cum.length - 1, this.pathIndex - i0)];
+    let least = Infinity;
+    // Where the car is, and where it is about to be.
+    for (const c of [here, here + ROUTE_ARC_SPAN]) {
+      const a = at(c - ROUTE_ARC_SPAN), b = at(c), d = at(c + ROUTE_ARC_SPAN);
+      const R = curveRadius(a.x, a.z, b.x, b.z, d.x, d.z);
+      if (R && Number.isFinite(R) && R < least) least = R;
+    }
+    return least;
   }
 
   /**
@@ -1123,6 +1186,35 @@ export class Driver {
       // ending the nonsense at close range.
       if (this._courseRadius) {
         radius = Math.max(radius, Math.min(this._courseRadius, radius * COURSE_LIFT));
+      }
+      // On a route, the corner is the route's, not the chord's.
+      //
+      // "Build a racing line that brakes earlier and turns wider at junctions."
+      // Through a junction the aim point sits on the fillet a few metres ahead,
+      // so the chord to it reads as a 6-10 m circle whatever the fillet's real
+      // radius, and the floor (arcFloor, 13 m) was the binding limit in 872 of
+      // 1179 frames under 45 km/h on tests/turnin.js -- which is why bigger
+      // fillets changed nothing. Lifting the floor everywhere (28 m) made them
+      // quick through junctions and doubled the spins in a chase, because it
+      // also lifted it where there was no route to say what was coming.
+      //
+      // Following a route there is: the radius of the path at the car is a fact,
+      // and planSpeed has already braked for it from far enough back -- that is
+      // the braking earlier. So the chord may be read up to the path's own radius
+      // there, and no further than ROUTE_ARC_MAX.
+      // Only while the car is actually on the route: one that has run wide and
+      // is steering back to it is making the chord's turn, not the route's.
+      // Measured from where the racing line wants it, which is up to three
+      // metres off the route on purpose.
+      //
+      // OFF unless `window.__routeArc = true`. It worked on the corners --
+      // tests/turnin.js, slowest point 29 -> 39 km/h, exit 4.99 -> 4.6 s, no
+      // contact -- and wrecked a unit at 150 km/h in both full-chase runs of
+      // tests/keepup.js, against none without it. See the README.
+      if (onPath && this.hasPath && window.__routeArc === true
+        && Math.abs((this.crossTrack || 0) - (this.lineOffset || 0)) < ROUTE_ARC_ON) {
+        const pr = this._pathRadiusHere();
+        if (pr > radius) radius = Math.min(pr, ROUTE_ARC_MAX);
       }
       c.sArc = cornerSpeedLimit(Math.max(this.arcFloor, radius), mu);
       limit = Math.min(limit, c.sArc);

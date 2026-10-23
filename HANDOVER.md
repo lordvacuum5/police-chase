@@ -196,8 +196,11 @@ scoring, deliberately.
   down the middle of the road. The user wants a proper racing line through
   junctions; `arcFloor` 28 gives the look but measured on keepup.js it doubles
   spins and hard hits (README) -- turned down, at the user's own condition
-  ("turn it on if it doesn't cause crashes"). Needs an earlier-braking wider
-  line, not a looser limit.
+  ("turn it on if it doesn't cause crashes"). The earlier-braking wider line
+  was then built (route-radius arc limit + lead-in from 25 m back): 29 -> 40
+  km/h through junctions on turnin.js, but it wrote off a car at 150 km/h in
+  both keepup.js runs, so it is OFF too, behind `window.__routeArc = true`.
+  keepup.js is noisy (same settings: "lost it" 4 vs 8) -- run it twice.
 * **Rolling block siting** now walks the target's own road (`_siteUpRoad`) and
   lines only break up when the target is at the line and off its road.
 

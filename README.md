@@ -4531,6 +4531,42 @@ so it stays at 13, as the player's own condition said. Getting the racing look
 without this wants a line that brakes earlier and turns wider rather than a
 looser speed limit — the same lesson as every other entry in this section.
 
+So that was built — *"build a racing line that brakes earlier and turns wider at
+junctions, and test it the same way."* Two parts. The route's lead-in now starts
+25 m behind the car (`RoadGraph._pathAhead`, `LEAD_BACK`): the fillet was being
+capped by the distance from the car to the junction, so every re-plan on the
+approach turned tighter, 4–6 m by the time the unit got there. And on a route,
+the arc limit believes the route's own radius at the car (up to 60 m) instead of
+the chord to the aim point, while the car is within 3 m of where its line wants
+it; `planSpeed` has already braked for that radius from further back. On
+`tests/turnin.js` it is what was asked for:
+
+| | slowest | exit | contact | grass | footway |
+|---|---|---|---|---|---|
+| corners 16/24/30, before | 29 km/h | 4.99 s | 0 | 0 | 0 |
+| corner 16, route arc | 38 km/h | 4.78 s | 0 | 0 | 0 |
+| corner 24, route arc | 39 km/h | 4.54 s | 0 | 0 | 0 |
+| corner 30, route arc | **40 km/h** | **4.51 s** | 0 | 0 | 0 |
+
+In full chases (`tests/keepup.js`, as above, fresh page each) it is not:
+
+| | 90 km/h: floor 13 | lead-in only | route arc ×2 | 150 km/h: floor 13 | lead-in only | route arc ×2 |
+|---|---|---|---|---|---|---|
+| mean speed | 56 | 63 | 63, 57 | 62 | 54 | 63, 55 |
+| behind at the end | 77 m | 86 m | 91, 110 m | 172 m | 188 m | 183, 212 m |
+| contacts (hard) | 25 (2) | 28 (2) | 25 (2), 35 (0) | 20 (2) | 14 (1) | 18 (2), 24 (2) |
+| lost it | 4 | 8 | 6, 7 | 5 | 3 | 6, 3 |
+| written off | 0 | 0 | 0, 0 | 0 | 0 | **1, 1** |
+| worst damage | 0.28 | 0.73 | 0.68, 0.49 | 0.74 | 0.98 | 1.00, 0.62 |
+
+Run to run the spread is as wide as the differences — the lead-in alone moved
+"lost it" from 4 to 8 with nothing else changed — but the route arc wrote off a
+car at 150 km/h in both of its runs and nothing else did, and it was no closer
+at the end. By the player's own condition it stays off. Both parts are behind
+`window.__routeArc = true` for rigs. The junction is not where the chases are
+lost: a unit that makes the corner 10 km/h quicker is still 180 m behind at 150,
+and the next thing to look at is what wrote those two cars off.
+
 ### Straight into a building, together
 
 *"They were doing pretty well keeping up with me, but then for some reason they
