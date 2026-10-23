@@ -237,6 +237,22 @@ const TREE_STRIP = 3;
  */
 const CREEP_SPEED = 2.5;          // m/s, 9 km/h
 const CREEP_KEEP = 1.5;
+
+/**
+ * The turn-round: start when the goal is this far off the nose (about 110
+ * degrees) and the forward swing is blocked; done within TR_ALIGNED, or within
+ * TR_DONE (about 50) once the rest of the swing forward is clear;
+ * each leg stops TR_GAP short of something or after TR_LEG metres; given up
+ * after TR_LEGS legs or TR_TIME seconds. See Driver._turnRound.
+ */
+const TR_START = 1.9;
+const TR_DONE = 0.9;
+const TR_ALIGNED = 0.35;          // within 20 degrees it is done whatever is ahead
+const TR_GAP = 1.2;
+const TR_LEG = 7;
+const TR_LEGS = 7;
+const TR_TIME = 16;
+const TR_SPEED = 2.0;             // m/s each way
 const TREE_LOOK = 70;
 const TREE_KEEP = 4;
 const PROPS_ONLY = groups(0xFFFF, GROUP.PROP);
@@ -1536,6 +1552,150 @@ export class Driver {
   }
 
   /**
+   * A three-point turn, or as many points as it takes.
+   *
+   * "It could literally have just turned around." With the target behind it in
+   * a yard too tight to swing round in, a unit had two things it knew how to do:
+   * drive forward on full lock, which meets the wall before the nose comes
+   * round, and the stall recovery, which reverses on a timer in whatever
+   * direction the steering happens to point and then hands back to the first.
+   * Neither is a turn. Traced on tests/estate.js, a car in a back yard with the
+   * target behind it wandered for twenty seconds and finished further away.
+   *
+   * So when the goal is more than TR_START off the nose, the car is all but
+   * stopped and the forward U-turn on full lock would hit something, it does
+   * what a driver does: forward on full lock toward the goal side until there
+   * is TR_GAP left in front, back on the opposite lock until there is TR_GAP
+   * left behind, and again, until the rest of the turn can be driven forward
+   * without meeting anything -- at which point ordinary driving takes over with
+   * a line it can actually take.
+   * Each leg is also cut off at TR_LEG metres, and the whole thing at TR_TIME,
+   * after which it gives up and leaves the stall recovery to it.
+   *
+   * `goal` is where the car is really trying to get to. The aim it is steering
+   * at may be a gap or a planned arc, which is in front of it by construction
+   * and never says "turn round".
+   *
+   * Returns controls while it is turning, null otherwise.
+   */
+  _turnRound(goal, dt, opts) {
+    const v = this.v;
+    const tr = this.turnRoundState;
+    if (opts.holdStill || this.reverseTimer > 0 || window.__noTurnRound) {
+      this.turnRoundState = null;
+      return null;
+    }
+    const heading = Math.atan2(v.forward.x, v.forward.z);
+    const gx = goal.x - v.position.x, gz = goal.z - v.position.z;
+    const alpha = angleDelta(heading, Math.atan2(gx, gz));
+    const far = Math.hypot(gx, gz);
+
+    if (!tr) {
+      this._trCool = (this._trCool || 0) - dt;
+      if (this._trCool > 0 || v.speed > 3 || Math.abs(alpha) < TR_START || far < 10) return null;
+      // Four times a second is plenty to notice a car wants to turn round.
+      this._trCheck = (this._trCheck || 0) - dt;
+      if (this._trCheck > 0) return null;
+      this._trCheck = 0.25;
+      const side = alpha >= 0 ? 1 : -1;
+      if (!this._swingBlocked(side, Math.abs(alpha) - TR_DONE)) return null;
+      this.turnRoundState = {
+        phase: 'fwd', side, legs: 0, t: 0,
+        from: { x: v.position.x, z: v.position.z },
+      };
+      Driver.turnStats.started++;
+      return this._turnRound(goal, 0, opts);
+    }
+
+    tr.t += dt;
+    this.stuckTimer = 0;
+    // Done when it is pointing the right way -- or near enough that the rest of
+    // the turn can be driven forwards without meeting anything. Within TR_DONE
+    // alone was tried first and left a car fifty degrees off with a wall five
+    // metres in front, which it then drove into.
+    const a = Math.abs(alpha);
+    tr.doneCheck = (tr.doneCheck || 0) - dt;
+    let done = a < TR_ALIGNED;
+    if (!done && a < TR_DONE && tr.doneCheck <= 0 && Math.abs(v.forwardSpeed) < 2.5) {
+      tr.doneCheck = 0.2;
+      done = !this._swingBlocked(alpha >= 0 ? 1 : -1, a);
+    }
+    if (done) {
+      this.turnRoundState = null;
+      this.shoveTimer = 0;
+      Driver.turnStats.done++;
+      return null;
+    }
+    if (tr.t > TR_TIME || tr.legs > TR_LEGS) {
+      this.turnRoundState = null;
+      this._trCool = 4;
+      Driver.turnStats.gaveUp++;
+      return null;
+    }
+
+    const moved = Math.hypot(v.position.x - tr.from.x, v.position.z - tr.from.z);
+    const out = this.out;
+    out.handbrake = 0;
+    if (tr.phase === 'fwd') {
+      // Full lock toward the goal side; creep, because the point is the swing.
+      out.steer = tr.side;
+      const room = this.clearAhead(v.forward, 4);
+      if ((room < TR_GAP || moved > TR_LEG) && tr.t > 0.3) {
+        tr.phase = 'back'; tr.legs++; tr.from = { x: v.position.x, z: v.position.z };
+      }
+      const fwd = v.forwardSpeed;
+      out.throttle = fwd < TR_SPEED ? 0.6 : 0;
+      out.brake = fwd > TR_SPEED * 1.3 ? 0.4 : 0;
+    } else {
+      // Backing up swings the nose the other way, so the lock is opposite.
+      out.steer = -tr.side;
+      const room = this._clearBehind(4);
+      if ((room < TR_GAP || moved > TR_LEG) && tr.t > 0.3) {
+        tr.phase = 'fwd'; tr.legs++; tr.from = { x: v.position.x, z: v.position.z };
+      }
+      // The brake is reverse once the car has stopped (see Vehicle's gearbox).
+      out.throttle = 0;
+      out.brake = -v.forwardSpeed < TR_SPEED ? 0.8 : 0;
+    }
+    return out;
+  }
+
+  /**
+   * Would swinging round forward on full lock toward `side`, through `angle`
+   * radians, hit anything? The bicycle-model arc the car actually drives at
+   * walking pace, swept a metre at a time from the front bumper.
+   */
+  _swingBlocked(side, angle) {
+    const v = this.v;
+    const lock = v.spec.steering.maxAngle;
+    const R = v.spec.wheelbase / Math.tan(lock);
+    const steps = Math.min(30, Math.ceil(R * Math.max(0.2, angle)));
+    let h = Math.atan2(v.forward.x, v.forward.z);
+    let x = v.position.x, z = v.position.z;
+    const nose = v.spec.dims.l * 0.45;
+    for (let i = 0; i < steps; i++) {
+      const nh = h + side / R;
+      const nx = x + Math.sin((h + nh) * 0.5);
+      const nz = z + Math.cos((h + nh) * 0.5);
+      _plan.set(x + Math.sin(h) * nose, v.position.y + 0.5, z + Math.cos(h) * nose);
+      _probe.set(nx - x, 0, nz - z).normalize();
+      const toi = sweepBox(v.world, _plan, _probe, 1, RAY_GROUNDS, v.body, this.halfWidth);
+      if (toi < 0.95) return true;
+      x = nx; z = nz; h = nh;
+    }
+    return false;
+  }
+
+  /** Clear road straight behind the rear bumper, as clearAhead is in front. */
+  _clearBehind(maxDist) {
+    const v = this.v;
+    _origin.copy(v.position).addScaledVector(v.forward, -v.spec.dims.l * 0.5);
+    _origin.y += 0.6;
+    _probe.copy(v.forward).negate();
+    return sweepBox(v.world, _origin, _probe, maxDist, RAY_GROUNDS, v.body, this.halfWidth);
+  }
+
+  /**
    * Drive toward a world point. This is the only steering primitive in the
    * game; pursuit, intercept and PIT all reduce to a point and a speed.
    */
@@ -1656,6 +1816,10 @@ export class Driver {
     this._courseRadius = opts.courseRadius === undefined ? null : opts.courseRadius;
     const s = this.steerToward(aim.x, aim.z, dt);
     out.steer = s.steer;
+
+    // Turning round where there is not room to, which overrides everything below.
+    const turning = this._turnRound(opts.goal || aim, dt, opts);
+    if (turning) return turning;
 
     // What the caller actually asked for, before the safety clamp. Stuck
     // detection has to use this: a car pinned against a wall is correctly told
@@ -2452,3 +2616,6 @@ export class Driver {
  * was the wrong answer. Read and zeroed by the rigs.
  */
 Driver.shoveStats = { stalls: 0, couldDrive: 0, blocked: 0 };
+
+/** Turn-rounds started, finished facing the right way, and given up on. */
+Driver.turnStats = { started: 0, done: 0, gaveUp: 0 };

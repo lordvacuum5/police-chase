@@ -17,6 +17,13 @@ import { clamp, clamp01, lerp, dist2, sign, damp } from '../util/math.js';
  * route is rounded with. See RoadGraph.pathToPoints.
  */
 const LANE_CORNER = 9;
+/**
+ * A unit boxed in among buildings that has given up on the direct line keeps
+ * to the road route until it has covered this far, or for this long. See the
+ * road fallback in _driveDirect.
+ */
+const FALLBACK_GO = 25;
+const FALLBACK_MAX = 20;
 const CUT_CORNER = 16;
 /** The tightest turn a unit in a hurry plans for. See Driver.arcFloor. */
 /**
@@ -1159,6 +1166,10 @@ export class Officer {
       // the driver's own recovery and already working.
       if (!hunting) {
         if (v.speed > 7) { this._bogged = false; this._bogFrom = null; return null; }
+        // Nor in the middle of turning round, which by design covers almost no
+        // ground and would otherwise look exactly like being stuck: the rescue
+        // took over half way through a three-point turn and set off the other way.
+        if (this.driver.turnRoundState) { this._bogFrom = null; return null; }
         if (!this._bogged && !window.__eagerRegain) {
           const now = this.offRoadFor;
           if (!this._bogFrom) this._bogFrom = { x: v.position.x, z: v.position.z, at: now };
@@ -1244,15 +1255,36 @@ export class Officer {
 
     if (this._roadFallback > 0) {
       this._roadFallback -= dt;
+      // Committed until it has got somewhere. Five seconds flat was not long
+      // enough to leave a yard by road -- most of it went on turning round to
+      // face the route -- so it timed out, went back to heading straight for the
+      // target, turned round again to face that, was boxed in again, and turned
+      // round for the road again: the ping-pong of "it seemed to just keep on
+      // choosing different routes". It now holds the road until it has driven
+      // FALLBACK_GO metres of it, up to FALLBACK_MAX seconds.
+      const from = this._fallbackFrom;
+      if (this._roadFallback <= 0 && from && !window.__shortFallback
+        && dist2(v.position.x, v.position.z, from.x, from.z) < FALLBACK_GO
+        && from.t < FALLBACK_MAX) {
+        this._roadFallback = 0.5;
+      }
+      if (from) from.t += dt;
       return this._goTo(dt, point, 1.0);
     }
 
     // Boxed in: not merely blocked ahead, but no usable gap in any direction
     // *and* not moving. Either alone is normal -- threading a tight gap is
     // slow, and a blocked line is the case this whole method exists for.
-    if (v.speed < 3.5 && d.gapClear !== undefined && d.gapClear < 9) {
+    // Not while turning round: that is slow and close to things on purpose, and
+    // handing the car to the road router half way through it sent it off on
+    // whatever the router said, which was usually the other way.
+    if (v.speed < 3.5 && d.gapClear !== undefined && d.gapClear < 9 && !d.turnRoundState) {
       this._boxedIn = (this._boxedIn || 0) + dt;
-      if (this._boxedIn > 1.6) { this._roadFallback = 5; this._boxedIn = 0; }
+      if (this._boxedIn > 1.6) {
+        this._roadFallback = 5;
+        this._boxedIn = 0;
+        this._fallbackFrom = { x: v.position.x, z: v.position.z, t: 0 };
+      }
     } else {
       this._boxedIn = Math.max(0, (this._boxedIn || 0) - dt * 0.6);
     }
@@ -1288,7 +1320,9 @@ export class Officer {
     d.setPath([]);
     // `gap` says the aim point is the gap search's, so safeSpeed may use the swept
     // measurement that came with it rather than probing the same line again worse.
-    return d.driveTo(_aim, speed, dt, { allowHandbrake: false, gap: true });
+    // `goal` so the driver can tell when the real destination is behind it and
+    // it needs to turn round -- the aim is a gap in front by construction.
+    return d.driveTo(_aim, speed, dt, { allowHandbrake: false, gap: true, goal: point });
   }
 
   /**
@@ -1587,7 +1621,7 @@ export class Officer {
     return this.driver.driveTo(_aim, Math.min(
       speed, this._chaseSpeed() * lerp(1, 1.15, ram), this._gapCap(target),
       this._planCap === undefined ? Infinity : this._planCap,
-    ), dt, { courseRadius: this._courseRadius });
+    ), dt, { courseRadius: this._courseRadius, goal: target.position });
   }
 
   /**

@@ -192,8 +192,16 @@ of those stop the run scoring, deliberately.
    README "Stuck among the houses"), plus speed clamps going to zero up close
    (now a creep) and the gap aim ignoring the turn (now `planTrajectory` when
    slow and close). `tests/estate.js` and `tests/betweentrees.js` measure it.
-   **Still missing: a three-point turn** for a target behind the car in a tight
-   yard. Site 7 in `estate.js` spawns the car touching something; ignore it.
+   A three-point turn (`Driver._turnRound`) now exists: it cut reverses and
+   contacts but did not raise the escape count. **The real remaining problem is
+   architectural** -- the user asked whether they have "a proper routing system
+   where they find different routes and then pick the best one". Off the road
+   they do not: modes (direct/gap, road fallback, regain-road, stall reverse,
+   turn-round) are switched by rules and timers, and every stuck-car bug so far
+   was two of them disagreeing. The next big piece of work is a single local
+   planner (e.g. hybrid A* with reversing over an occupancy grid round the car)
+   that replaces that switching. Site 7 in `estate.js` spawns the car touching
+   something; ignore it. Run `estate.js` at 35 s per case, not 20.
    The older note on this follows.
    **One reverse in five is followed by another within ten seconds.** A car
    reverses, re-routes, is handed much the same line, and meets the same thing.
@@ -257,3 +265,7 @@ backwards and forwards exactly as described. Treat the report as real and the
 explanation as a hypothesis to test.
 
 They do not read long replies. See `CLAUDE.md`.
+
+When they report anything about routing, getting stuck or the police driving,
+they mean **Wexbury, the town map**, unless they say otherwise ("I'm basically
+always talking about the UK map, the town map"). Measure there first.

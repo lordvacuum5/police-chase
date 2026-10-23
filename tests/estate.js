@@ -22,6 +22,7 @@
 //   await import('/tests/estate.js');
 //   __runEstate();
 import { weavePath } from './weave.js?v=31';
+import { Driver } from '../src/ai/driver.js';
 
 function heading(pts, from, along = 15) {
   // Direction of the first `along` metres of a path, from `from`.
@@ -44,6 +45,7 @@ window.__runEstate = async function (sites = 8, seconds = 20) {
     }
     const g = window.__game;
     const { SKILL, ROLE, Officer } = window.__modules;
+    const ts0 = Object.assign({}, Driver.turnStats);
     let out = 0, cases = 0, revs = 0, switches = 0, still = 0, frames = 0, hits = 0;
     const rows = [];
     for (let w = 0; w < sites; w++) {
@@ -131,8 +133,14 @@ window.__runEstate = async function (sites = 8, seconds = 20) {
       }
       rows.push(line);
     }
+    // Every car on the map counts towards these, not only the one under test --
+    // the dispatcher's own units are driving about the whole time.
+    const ts = Driver.turnStats;
     rows.push(`${cases} cases: out ${out}  reverses ${revs}  route switches ${switches}  hits ${hits}  `
-      + `still ${Math.round((still * 100) / Math.max(1, frames))}% of the time`);
+      + `still ${Math.round((still * 100) / Math.max(1, frames))}% of the time  `
+      + `| turn-rounds, all cars: started ${ts.started - ts0.started} finished ${ts.done - ts0.done} `
+      + `gave up ${ts.gaveUp - ts0.gaveUp}`
+      + `${window.__noTurnRound ? '  (turn-round OFF)' : ''}`);
     window.__res = rows.join('\n');
   } catch (e) {
     window.__res = 'EX: ' + e.message + ' | ' + (e.stack || '').slice(0, 400);

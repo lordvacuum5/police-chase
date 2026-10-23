@@ -4565,6 +4565,54 @@ fresh-page batches of the identical town setup read 37% and 49%, which is the no
 closest 30 m, contacts 37, hard 9 — the fewest hard knocks of the three.
 `window.__eagerRegain`, `__noCreep` and `__noCloseArc` put each piece back.
 
+### A three-point turn
+
+*"Add a proper three-point turn for when the target is behind them in a tight
+space."* A unit had two things it could do with the target behind it in a yard:
+full lock forwards, which meets the wall before the nose comes round, and the stall
+recovery, which reverses on a timer with whatever lock the steering happened to
+have. Neither is a turn.
+
+`Driver._turnRound` is one. When the real destination (`opts.goal`, passed by
+`_driveDirect` and `_pursue` — the aim is a gap or a planned arc and always in
+front) is more than 110° off the nose, the car is all but stopped, and the forward
+swing on full lock would hit something (`_swingBlocked`, the bicycle-model arc swept
+a metre at a time), it goes forward on full lock toward the goal side until 1.2 m is
+left in front, back on the opposite lock until 1.2 m is left behind, and again —
+until it is within 20° of the goal, or within 50° with the rest of the swing clear
+forwards. Each leg is capped at 7 m; it gives up after 7 legs or 16 s.
+
+Two things had to be told to leave it alone, because a turn covers almost no ground
+on purpose and looks exactly like being stuck: the bogged-down rescue in
+`_regainRoad` (it took over half way through and set off the other way) and the
+boxed-in road fallback in `_driveDirect`. And that fallback now holds the road
+until it has covered 25 m (up to 20 s) rather than a flat five seconds, which was
+spent mostly on turning round to face the route — after which it went back to the
+direct line, turned round again, and was boxed in again.
+
+`tests/estate.js` at 35 s a case (20 s was too short for a car that has to turn and
+go round by road), fresh page each:
+
+| estate, 40 cases | turn-round off | on |
+|---|---|---|
+| got out | 34 | 34 |
+| reverses | 17 | **11** |
+| contacts | 19 | **16** |
+
+So it does not get them out of anywhere new — it gets them out more cleanly. The
+five failures in each arm are site 7 (spawns touching something) and one more.
+
+What this does not fix is the thing underneath: *"do they have a proper routing
+system where they find different routes and then pick the best one?"* On the roads,
+yes; in the last thirty metres, an eleven-arc trajectory planner; but nothing weighs
+"through that gap" against "turn round and go by road" as alternatives. Rules and
+timers switch a unit between modes, and every bug in this section and the last was
+two of those modes disagreeing. The real fix is one local planner over the ground
+round the car — gaps, yards and reversing included — and that is the next thing
+worth building.
+
+`window.__noTurnRound` and `__shortFallback` put the old behaviour back.
+
 ### No air support for typed stars
 
 Typing `five` to set the wanted level grounds the helicopter for the rest of the
