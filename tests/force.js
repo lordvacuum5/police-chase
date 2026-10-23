@@ -357,6 +357,8 @@ function run(which, seconds, kph, tweak, pinSight, kind) {
   st.solved = 0; st.late = 0; st.noShortlist = 0; st.noMargin = 0; st.overLimit = 0;
   const bs = g.dispatcher.blockStats;
   for (const key of Object.keys(bs)) bs[key] = 0;
+  const cs = g.dispatcher.containStats;
+  if (cs) for (const key of Object.keys(cs)) cs[key] = 0;
 
   // Sight held, when asked, by standing in for the perception pass itself --
   // pinning the knowledge before the step is useless, because _updateKnowledge
@@ -567,6 +569,8 @@ function run(which, seconds, kph, tweak, pinSight, kind) {
       + `| intercepts solved ${st.solved} no-junction ${st.noShortlist} `
       + `no-margin ${st.noMargin} late-but-sent ${st.late} `
       + `over-limit ${st.overLimit} cands ${st.candidates}  `
+      + `| contain: ${cs ? `${cs.calls} calls, ways out ${(cs.exits / Math.max(1, cs.calls)).toFixed(1)} `
+        + `covered ${(cs.covered / Math.max(1, cs.calls)).toFixed(1)}` : 'n/a'}  `
       + `| ahead: tried ${bs.tried} placed ${bs.placed} `
       + `blocked-by ${Object.keys(bs).filter((x) => x !== 'tried' && x !== 'placed' && bs[x])
         .map((x) => `${x} ${bs[x]}`).join(' ') || 'nothing'}`,

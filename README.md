@@ -3874,6 +3874,75 @@ committed to a road the same code held blocks for a median of 12 s with half of
 them turning into a sustained engagement. It is a tactic, not a wall — going
 round it is meant to work, and costs you the time it takes.
 
+### The rolling roadblock
+
+*"It'd be nice if you could try and make, like, rolling roadblocks."* The one-car
+rolling block above is a car you drive round. From three stars, a block is now a
+line: `Game.spawnBlockMates` puts more cars abreast of the first, two on a road
+over 7 m wide and three over 11 m, each in the middle of its own share of the
+width (slots as fractions of the width; spaced evenly, because the first version
+bunched them toward the middle and the blocked car drove through the 4–5 m left
+at the kerb). They stay one group (`orders.group`):
+
+* **One road.** Every car follows the first car's road at its own place across
+  it. Each following the road nearest to itself, a line reached a junction and
+  split — one car each way, two hundred metres apart a few seconds later.
+* **One line.** A car ahead of the group's average along the road eases off, one
+  behind closes up.
+* **The squeeze.** Once the target is within 30 m behind the line, the line slows
+  together from 0.88 of the target's speed to half of it over eight seconds —
+  the whole point of a rolling roadblock. While still well ahead it gives away
+  half the target's speed, not a third, so it is reached in a few seconds rather
+  than fifteen.
+* **One ending.** One car passed is all of them passed. And *gone round* is
+  judged by the road — the target on a road that does not even touch the line's,
+  or off the road altogether — not by a straight-line sideways distance, which on
+  a bend reads a car following right behind as 15–20 m off to one side. The
+  one-car block ends that way and was seen to give up at the moment it was
+  reached; it is left as it was.
+
+`tests/rollblock.js` drives a car down a route at 110 km/h with the police
+`Driver` (which steers round any car in its way) and puts the line on that route
+150 m ahead — where a block is *sited* is the dispatcher's guess and a separate
+question, and the rig's random routes turned off before it nearly every time.
+Of eight seeds, two found no site and two lines were never caught; of the four
+met, the car was taken from 105 → 48, 79 → 26 and 83 → 24 km/h, once held to
+the end of the run, and otherwise got by in 1–4 s, usually up a footway. Like the
+one-car block and the roadblocks, it is a tactic and not a wall.
+`window.__oneCarBlock = true` sends the old one-car block instead.
+
+### Containment
+
+*"Make the police smarter as a team."* When the car has been off the roads for
+1.5 s, `Dispatcher._assignContainment` stops predicting junctions along roads
+the car is not on — right one time in ten — and covers the ways out instead: a
+ring round where the car was last known (1.5 s along its heading), grown from 70
+to 110 to 160 m until it has two exits; for every road crossing it, the end
+outside the ring is an exit (within 120 m of it). Exits ahead of the car are
+worth up to 1.6 times one to the side, each goes to the free unit that can reach
+it soonest by road, a unit keeps an exit it already holds, and each then runs as
+an ordinary intercept — drive there, wait facing in, engage within 70 m. The
+pursuers are untouched. The radio says so: *"All units, contain the area. Cover
+the exits."*
+
+Measured on `tests/force.js` (the whole force against a car weaving between the
+buildings at 110 km/h, eight 30 s runs, fresh page each):
+
+| | containment off | on |
+|---|---|---|
+| a unit within 80 m | 46% | 44% |
+| held on (s) | 26.3 | 24.5 |
+| nearest unit, mean | 105 m | 103 m |
+| someone in front | 65% | 63% |
+| junctions sent to that the car came through | **8%** | **15%** |
+| contacts | 68 | **27** |
+
+Neutral on the chase itself, with the junction accuracy doubled and the contacts
+cut by more than half. That rig is not the case containment is for: its car
+never stops or hides, it weaves straight across town without a pause, so it is
+never contained in anything. A car gone to ground in an estate is, and a rig for
+that is the next thing to build. `window.__noContain = true` turns it off.
+
 ### Getting busted
 
 Drop below 3 km/h with a police car within 3 m of your bodywork and a five

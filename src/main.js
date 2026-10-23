@@ -1286,6 +1286,67 @@ class Game {
   }
 
   /**
+   * More cars for a rolling block, abreast of the one already placed, so that
+   * between them they span the carriageway: "rolling roadblocks" -- several
+   * cars across the road, slowing together -- rather than one car you can
+   * simply drive round.
+   *
+   * Two on a road over 7 m wide, three on one over 11 m, none on anything
+   * narrower, where one car already fills it. A slot is a place across the
+   * road as a fraction of its width, -0.5 at one kerb and +0.5 at the other,
+   * and the leader takes whichever is nearest where it already is. A slot that is off the tarmac or already has a car in it is skipped
+   * rather than forced. Returns { leaderSlot, mates: [{ officer, slot }] }, or
+   * null when this road is too narrow for more than one.
+   */
+  spawnBlockMates(leader, tier) {
+    const g = this.graph;
+    const lv = leader.vehicle;
+    const snap = g.nearestEdge(lv.position.x, lv.position.z);
+    if (!snap || snap.edge.cut) return null;
+    const W = snap.edge.width;
+    const count = W >= 11 ? 3 : W >= 7 ? 2 : 1;
+    if (count < 2) return null;
+    // Evenly across the whole width: each car in the middle of its own share of
+    // the road, as a fraction of the width. Bunched toward the middle, as the
+    // first version was, the cars left 4-5 m at the kerbs and the car being
+    // blocked simply drove through there.
+    const slots = count === 3 ? [-1 / 3, 0, 1 / 3] : [-0.25, 0.25];
+
+    const p = g.pointAt(snap.edge, snap.along);
+    let tx = p.tx, tz = p.tz;
+    if (tx * lv.forward.x + tz * lv.forward.z < 0) { tx = -tx; tz = -tz; }
+    // Across the road, the same convention as Officer._block: +lat is (tz, -tx),
+    // and a slot is a fraction of the road's width.
+    const leaderLat = ((lv.position.x - snap.x) * tz - (lv.position.z - snap.z) * tx) / Math.max(0.1, W);
+    let li = 0;
+    for (let i = 1; i < slots.length; i++) {
+      if (Math.abs(slots[i] - leaderLat) < Math.abs(slots[li] - leaderLat)) li = i;
+    }
+    const heading = Math.atan2(lv.forward.x, lv.forward.z);
+    const speed = Math.max(12, lv.speed);
+    const mates = [];
+    for (let i = 0; i < slots.length; i++) {
+      if (i === li) continue;
+      if (this.vehicles.length >= this.vehicleLimit) break;
+      const s = slots[i];
+      const pos = { x: snap.x + tz * s * W, y: 0.95, z: snap.z - tx * s * W };
+      if (this.sim.surfaceAt(pos.x, pos.z) !== 1) continue;
+      let occupied = false;
+      for (const v of this.vehicles) {
+        if (v !== lv && dist2(v.position.x, v.position.z, pos.x, pos.z) < 4.5) { occupied = true; break; }
+      }
+      if (occupied) continue;
+      const kind = tier >= 4 ? 'interceptor' : 'patrol';
+      const v = this.createVehicle(kind, kind, pos, heading, { police: true });
+      if (!v) continue;
+      v.lampPhase = this.rng();
+      v.setVelocity({ x: Math.sin(heading) * speed, y: 0, z: Math.cos(heading) * speed });
+      mates.push({ officer: new Officer(this, v, { skill: SKILL.advanced, kind }), slot: s });
+    }
+    return mates.length ? { leaderSlot: slots[li], mates } : null;
+  }
+
+  /**
    * An armoured van put on the road well ahead of the target and pointed back
    * down it, to be driven straight at them (Officer._rhino).
    *

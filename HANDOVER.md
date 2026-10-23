@@ -178,6 +178,19 @@ of those stop the run scoring, deliberately.
   on 95% of its running frames — and raising `gripScale` in step with the
   rubber took its mean speed in a chase from 88 to 122 km/h.
 
+### Added 23 Oct 2026, measured but not yet seen in play
+
+* **Containment** (`Dispatcher._assignContainment`): off the roads, spare units
+  go to the exits of a ring round the car instead of predicted junctions. Neutral
+  on `tests/force.js` (whose car never hides) with junction accuracy 8% -> 15%
+  and contacts 68 -> 27. Needs a rig where the car goes to ground in an estate.
+* **Rolling roadblock** (`Game.spawnBlockMates`, group logic in
+  `Officer._block`): 2-3 cars abreast from three stars, one road, one line, a
+  squeeze down to half the target's speed. `tests/rollblock.js`. The one-car
+  block is unchanged; its end test is known to give up on bends (README).
+* **Planner queue**: plans are made 4 ms a frame. The estate rig is no longer
+  exactly repeatable because of it.
+
 ### Known open problems
 
 1. **Police cars occasionally hit a tree in a chase -- much reduced, not gone.**

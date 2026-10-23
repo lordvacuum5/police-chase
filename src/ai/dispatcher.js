@@ -50,6 +50,18 @@ const LOST_CONTACT_SECONDS = 5;
  * not open one (see Game.applyMark).
  */
 const AIR_MARK_HOLD = 0.6;
+
+/**
+ * Containment -- see Dispatcher._assignContainment. Seconds off the roads
+ * before it starts; the ring radii tried, smallest first, until one has two
+ * ways out; how far beyond the ring an exit may be; and how much more an exit
+ * dead ahead of the car is worth than one to the side (one behind is worth
+ * 1 - CONTAIN_AHEAD).
+ */
+const CONTAIN_AFTER = 1.5;
+const CONTAIN_RINGS = [70, 110, 160];
+const CONTAIN_REACH = 120;
+const CONTAIN_AHEAD = 0.6;
 const AIR_REPORT = { callsign: 'India 99', distanceTo: () => Infinity };
 
 /**
@@ -142,6 +154,8 @@ export class Dispatcher {
      */
     this.contactCooldown = 0;
     this.blockUnit = null;
+    // The other cars of a rolling roadblock -- see Game.spawnBlockMates.
+    this.blockMates = [];
     this.rhinoCooldown = 25;
     this.rhinoUnit = null;
     // How long the car has been going the same way, for the head-on van: it
@@ -182,7 +196,10 @@ export class Dispatcher {
     // tests/force.js. Counted because the whole of the force's answer to being
     // outrun is to get something ahead, and 'ahead' is worked out along the
     // road network.
-    this.blockStats = { tried: 0, placed: 0, tier: 0, unseen: 0, busy: 0, cooling: 0, contact: 0, slow: 0 };
+    this.blockStats = { tried: 0, placed: 0, tier: 0, unseen: 0, busy: 0, cooling: 0, contact: 0, slow: 0, abreast: 0 };
+    // How containment went: how often it was called, how many ways out it found
+    // and how many of them had a unit sent, summed over calls. See tests/force.js.
+    this.containStats = { calls: 0, exits: 0, covered: 0, ring: 0 };
 
     // The shape of the intercept window: how soon and how far ahead a junction
     // is worth predicting, how much time a unit may have in hand when it gets
@@ -243,6 +260,13 @@ export class Dispatcher {
     this._updateKnowledge(dt, target);
     this._learnHabits(target);
     this._manageRoster(dt, target);
+
+    // How long the car has been off the roads, as far as the force knows --
+    // the trigger for containment, see _assignContainment.
+    const sim = this.game.sim;
+    const kp = this.knowledge.position;
+    const offRoad = sim && sim.surfaceAt && sim.surfaceAt(kp.x, kp.z) !== 1;
+    this.offRoadFor = offRoad ? (this.offRoadFor || 0) + dt : Math.max(0, (this.offRoadFor || 0) - dt * 2);
 
     this.roleTimer -= dt;
     this.interceptTimer -= dt;
@@ -667,6 +691,10 @@ export class Dispatcher {
         assigned.add(this.blockUnit);
       }
     }
+    // And the rest of a rolling roadblock, for the same reason.
+    this.blockMates = this.blockMates.filter((u) => u.role === ROLE.BLOCK
+      && !u.vehicle.disabled && available.includes(u));
+    for (const u of this.blockMates) assigned.add(u);
 
     // ---- 3. direct pursuit ----
     //
@@ -761,11 +789,12 @@ export class Dispatcher {
     const bg = this.blockStats;
     if (this.tier < 2) bg.tier++;
     else if (!k.seen) bg.unseen++;
-    else if (this.blockUnit) bg.busy++;
+    else if (this.blockUnit || this.blockMates.length) bg.busy++;
     else if (this.blockCooldown > 0) bg.cooling++;
     else if (this.contactCooldown > 0) bg.contact++;
     else if (Math.abs(target.forwardSpeed) <= 12) bg.slow++;
-    if (this.tier >= 2 && k.seen && !this.blockUnit && this.blockCooldown <= 0
+    if (this.tier >= 2 && k.seen && !this.blockUnit && !this.blockMates.length
+        && this.blockCooldown <= 0
         && this.contactCooldown <= 0 && Math.abs(target.forwardSpeed) > 12) {
       this.blockCooldown = 14;
       this.blockStats.tried++;
@@ -785,7 +814,29 @@ export class Dispatcher {
         u.setRole(ROLE.BLOCK);
         this.blockUnit = u;
         assigned.add(u);
-        this.game.say('block', [
+        // From three stars, a rolling roadblock: more cars abreast of this
+        // one across the carriageway, which then hold their places across it
+        // and slow together. See Game.spawnBlockMates and Officer._block.
+        const abreast = this.tier >= 3 && !(typeof window !== 'undefined' && window.__oneCarBlock)
+          ? this.game.spawnBlockMates(u, this.tier) : null;
+        if (abreast) {
+          const group = { members: [u], ended: false, squeeze: 0 };
+          u.setRole(ROLE.BLOCK, { group, slot: abreast.leaderSlot });
+          for (const m of abreast.mates) {
+            this.units.push(m.officer);
+            available.push(m.officer);
+            assigned.add(m.officer);
+            m.officer.setRole(ROLE.BLOCK, { group, slot: m.slot });
+            group.members.push(m.officer);
+            this.blockMates.push(m.officer);
+          }
+          this.blockStats.abreast++;
+          this.game.say('rollingBlock', [
+            'All units, rolling roadblock. Bring them down.',
+            'Control, rolling block ahead of them. Ease them down.',
+            'All units ahead, form up across the road and slow them.',
+          ], {}, true, { every: 30 });
+        } else this.game.say('block', [
           (v) => `${v.cs}, I'm ahead, slowing them.`,
           (v) => `${v.cs}, getting in front.`,
           (v) => `${v.cs}, up front, bringing them down.`,
@@ -861,6 +912,15 @@ export class Dispatcher {
 
     if (!free.length || limit <= 0) {
       for (const u of free) u.setRole(ROLE.RESPOND, { point: k.position.clone() });
+      return;
+    }
+
+    // Off the roads, the junctions predicted along them are wrong nine times in
+    // ten (see the note on interceptHorizon), so stop guessing where the car
+    // will come out and cover every way it could.
+    if (!(typeof window !== 'undefined' && window.__noContain)
+      && this.tier >= 2 && this.offRoadFor > CONTAIN_AFTER
+      && this._assignContainment(free, target, limit)) {
       return;
     }
 
@@ -1023,6 +1083,127 @@ export class Dispatcher {
     }
   }
 
+  /**
+   * Containment: cover the ways out instead of predicting one.
+   *
+   * "Make the police smarter as a team." A car weaving between the houses beat
+   * the force the same way every time: the pursuers followed it in, the
+   * interceptors were sent to junctions predicted along the roads it was not
+   * on -- right about one time in ten -- and everybody ended up behind it. What
+   * a real force does with a car gone to ground in an estate is contain it:
+   * cars on every road out, and the pursuers go in after it.
+   *
+   * So: a ring round where the car was last known (a second and a half along
+   * its heading), and every road crossing that ring is a way out -- the end of
+   * it outside the ring is the exit, where a unit can sit and see the car come
+   * out. The ring grows until it has at least two. Exits ahead of the car are
+   * worth more than ones behind, and each goes to whichever free unit can get
+   * there soonest by road. A unit keeps an exit it already holds. Each one then
+   * runs as an ordinary intercept: drive there, wait facing in, and engage when
+   * the car comes within 70 m. The pursuers are untouched.
+   *
+   * Returns false when there is no sensible ring -- no roads near at all --
+   * and the ordinary intercept solver carries on instead.
+   */
+  _assignContainment(free, target, limit) {
+    const k = this.knowledge;
+    const g = this.game.graph;
+    const cx = k.position.x + k.velocity.x * 1.5;
+    const cz = k.position.z + k.velocity.z * 1.5;
+
+    let exits = [];
+    let ring = 0;
+    for (const R of CONTAIN_RINGS) {
+      exits = this._exits(cx, cz, R);
+      ring = R;
+      if (exits.length >= 2) break;
+    }
+    if (!exits.length) return false;
+
+    const sp = Math.hypot(k.velocity.x, k.velocity.z);
+    const vx = sp > 3 ? k.velocity.x / sp : 0, vz = sp > 3 ? k.velocity.z / sp : 0;
+    for (const e of exits) {
+      const dx = e.x - cx, dz = e.z - cz;
+      const d = Math.hypot(dx, dz) || 1;
+      e.value = 1 + CONTAIN_AHEAD * ((dx * vx + dz * vz) / d);
+    }
+    exits.sort((a, b) => b.value - a.value);
+    const want = exits.slice(0, limit);
+
+    this.claimedNodes.clear();
+    const taken = new Set();
+    // Keep what is already held.
+    for (const u of free) {
+      if (u.role === ROLE.INTERCEPT && u.orders && want.some((e) => e.id === u.orders.node)
+        && !this.claimedNodes.has(u.orders.node)) {
+        this.claimedNodes.add(u.orders.node);
+        taken.add(u);
+      }
+    }
+    // Then the most valuable exits first, each to the unit that can get there
+    // soonest by road.
+    for (const e of want) {
+      if (this.claimedNodes.has(e.id)) continue;
+      let best = null, bestT = Infinity;
+      for (const u of free) {
+        if (taken.has(u)) continue;
+        const from = g.nodeAhead(u.position.x, u.position.z, u.vehicle.forward.x, u.vehicle.forward.z);
+        const path = g.route(from.id, e.id, u.vehicle.spec.topSpeedHint * 0.55);
+        if (!path) continue;
+        const t = g.routeTime(path, 0.82) + dist2(u.position.x, u.position.z, from.x, from.z) / 15;
+        if (t < bestT) { bestT = t; best = u; }
+      }
+      if (!best) continue;
+      taken.add(best);
+      this.claimedNodes.add(e.id);
+      const changed = best.role !== ROLE.INTERCEPT || best.orders.node !== e.id;
+      best.setRole(ROLE.INTERCEPT, { node: e.id, contain: true });
+      if (changed) best._routeTo(e.id, 2.4);
+    }
+    for (const u of free) {
+      if (!taken.has(u)) u.setRole(ROLE.RESPOND, { point: k.position.clone() });
+    }
+
+    const st = this.containStats;
+    st.calls++;
+    st.exits += exits.length;
+    st.covered += Math.min(taken.size, exits.length);
+    st.ring = ring;
+    this.game.say('contain', [
+      'All units, contain the area. Cover the exits.',
+      'Control, they\'re off-road. Seal it off, all exits.',
+      'All units, box the area. Nobody gets out.',
+      'Control, containment. Units to the exits.',
+    ], {}, true, { every: 40 });
+    return true;
+  }
+
+  /**
+   * The ways out of a circle: for every road with one end inside it, the end
+   * outside; for a road that passes through with both ends outside, both ends.
+   * Only exits within reach of the ring count -- a long road's far end can be
+   * half a kilometre away and is not covering anything.
+   */
+  _exits(cx, cz, R) {
+    const g = this.game.graph;
+    const out = new Map();
+    const add = (n) => {
+      if (dist2(n.x, n.z, cx, cz) < R + CONTAIN_REACH) out.set(n.id, { id: n.id, x: n.x, z: n.z });
+    };
+    for (const e of g.edgesNear(cx, cz, R + 40)) {
+      if (e.cut) continue;
+      const a = g.nodes[e.a], b = g.nodes[e.b];
+      const ia = dist2(a.x, a.z, cx, cz) < R, ib = dist2(b.x, b.z, cx, cz) < R;
+      if (ia !== ib) { add(ia ? b : a); continue; }
+      if (ia && ib) continue;
+      for (let s = 0; s <= e.length; s += 10) {
+        const p = g.pointAt(e, s);
+        if (dist2(p.x, p.z, cx, cz) < R) { add(a); add(b); break; }
+      }
+    }
+    return [...out.values()];
+  }
+
   // --------------------------------------------------------------- box logic
 
   _updateBox(dt, target) {
@@ -1098,6 +1279,7 @@ export class Dispatcher {
     const i = this.units.indexOf(unit);
     if (i >= 0) this.units.splice(i, 1);
     if (this.blockUnit === unit) this.blockUnit = null;
+    this.blockMates = this.blockMates.filter((u) => u !== unit);
     if (this.rhinoUnit === unit) this.rhinoUnit = null;
     if (this.activePit === unit) this.activePit = null;
     // A boxing unit is held by the assignment as well. Leaving it there means
@@ -1126,6 +1308,7 @@ export class Dispatcher {
     this.activePit = null;
     this.boxAssignment = null;
     this.blockUnit = null;
+    this.blockMates = [];
     this.rhinoUnit = null;
     this.claimedNodes.clear();
     this.pitCooldown = 0;
@@ -1147,6 +1330,7 @@ export class Dispatcher {
   /** A blocker that has been passed, or has lost the target, goes back in the pack. */
   onBlockEnded(unit) {
     if (this.blockUnit === unit) this.blockUnit = null;
+    this.blockMates = this.blockMates.filter((u) => u !== unit);
     this.blockCooldown = Math.max(this.blockCooldown, 8);
   }
 

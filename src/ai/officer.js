@@ -35,6 +35,16 @@ const LP_TAIL = 20;
 const LP_MAXAGE = 6;
 /** Inside this, metres from the target, the chase is for contact, not planning. */
 const LP_NEAR = 25;
+
+/**
+ * A rolling roadblock's squeeze -- see Officer._block. It starts once the
+ * target is within SQUEEZE_RANGE metres behind the line, and over SQUEEZE_TIME
+ * seconds of being there the line slows from 0.88 of the target's speed to
+ * SQUEEZE_FLOOR of it.
+ */
+const SQUEEZE_RANGE = 30;
+const SQUEEZE_TIME = 8;
+const SQUEEZE_FLOOR = 0.5;
 const CUT_CORNER = 16;
 /** The tightest turn a unit in a hurry plans for. See Driver.arcFloor. */
 /**
@@ -2060,7 +2070,15 @@ export class Officer {
     const g = this.game.graph;
     const r = relativeTo(target, v);
 
-    const snap = g.nearestEdge(v.position.x, v.position.z);
+    // A line follows its first car's road. Each following the road nearest to
+    // itself, a line came to a junction and split -- one car one way, its
+    // partner the other, two hundred metres apart a few seconds later.
+    const grp = this.orders && this.orders.group;
+    const leadCar = grp && grp.members[0] && grp.members[0] !== this
+      && grp.members[0].role === ROLE.BLOCK && !grp.members[0].vehicle.disabled
+      ? grp.members[0].vehicle : null;
+    const anchor = leadCar || v;
+    const snap = g.nearestEdge(anchor.position.x, anchor.position.z);
     if (!snap) return this._pursue(dt, target);
 
     // Once they are past us the block has failed; fall back into the chase.
@@ -2074,8 +2092,29 @@ export class Officer {
     // roads the block was giving up on a target that had merely moved into the
     // far lane -- exactly where it should have been following them across.
     const engaged = r.long < 45;
+    const group = this.orders && this.orders.group;
+    // In a rolling roadblock the cars are spread across the road on purpose, so
+    // the target being well to one side of *this* car is not it getting round;
+    // only leaving the road altogether is. And one of them being passed is all
+    // of them being passed.
     const sidestep = Math.max(14, snap.edge.width * 0.75);
-    if (r.long < -7 || (engaged && Math.abs(r.lat) > sidestep)) {
+    // Gone round us, for a line: judged by the road, not by a straight-line
+    // sideways distance. On a bend a car following straight up the road behind
+    // the line reads 15-20 m "off to one side" in a straight frame, and the
+    // line gave up at the very moment it was reached. So: the target is on a
+    // different road from ours (one not even touching it), or off the road.
+    let gone = false;
+    if (group && engaged) {
+      const ts = g.nearestEdge(target.position.x, target.position.z);
+      const e = snap.edge;
+      if (!ts) gone = true;
+      else if (ts.edge !== e && ts.edge.a !== e.a && ts.edge.a !== e.b
+        && ts.edge.b !== e.a && ts.edge.b !== e.b) gone = true;
+      else if (ts.dist > ts.edge.width * 0.5 + 4) gone = true;
+    }
+    if (r.long < -7 || (!group && engaged && Math.abs(r.lat) > sidestep) || gone
+      || (group && group.ended)) {
+      if (group) group.ended = true;
       // Change role, not just behaviour. Returning pursuit controls while
       // still holding the BLOCK role means we come straight back in here next
       // frame and report the block ended all over again, which holds the
@@ -2085,9 +2124,10 @@ export class Officer {
       return this._pursue(dt, target);
     }
 
-    // Road direction, oriented the way we are travelling.
+    // Road direction, oriented the way we -- or the line's first car -- are
+    // travelling.
     const dir = g.edgeDirection(snap.edge, snap.along, { x: 0, z: 1 });
-    if (dir.x * v.forward.x + dir.z * v.forward.z < 0) { dir.x = -dir.x; dir.z = -dir.z; }
+    if (dir.x * anchor.forward.x + dir.z * anchor.forward.z < 0) { dir.x = -dir.x; dir.z = -dir.z; }
 
     // Where the target sits across the carriageway, measured from our own
     // point on the centreline. Matching it is what keeps us in front of them
@@ -2099,8 +2139,13 @@ export class Officer {
     // twenty-odd metres of clear road. Sitting a car's width in from the edge
     // costs almost nothing in coverage and is most of the difference.
     const margin = Math.min(3.4, snap.edge.width * 0.28);
-    const lat = clamp(rx * dir.z - rz * dir.x,
-      -(snap.edge.width * 0.5 - margin), snap.edge.width * 0.5 - margin);
+    // A rolling roadblock's cars each keep their own place across the road --
+    // that is what closes it -- rather than all crowding over to wherever the
+    // target is, which would leave the far lane open.
+    const lat = group && this.orders.slot !== undefined
+      ? this.orders.slot * snap.edge.width
+      : clamp(rx * dir.z - rz * dir.x,
+        -(snap.edge.width * 0.5 - margin), snap.edge.width * 0.5 - margin);
 
     // Follow the carriageway forward rather than extrapolating a straight line
     // down the current tangent. Straight-line lead is fine on a straight and
@@ -2123,8 +2168,35 @@ export class Officer {
     // in seconds rather than half a minute; once they are on us we ease back to
     // just under their pace, which holds the block instead of simply being
     // rammed off the road.
-    const factor = lerp(0.88, 0.66, clamp01((r.long - 20) / 90));
+    let factor = lerp(0.88, 0.66, clamp01((r.long - 20) / 90));
+    if (group) {
+      // Let them catch up sooner. At two thirds of their speed a line put down
+      // 140 m ahead took fifteen seconds to be reached -- most of a straight --
+      // so a line still well ahead gives away half their speed instead.
+      factor = lerp(0.88, 0.5, clamp01((r.long - 20) / 60));
+      // The squeeze. Once the target is right up behind the line, the line
+      // slows together, a little more each second, and takes the target's
+      // speed down with it -- the rolling roadblock's whole point. Counted by
+      // the first car only, or a line of three squeezes three times as fast.
+      if (group.members[0] === this && r.long > 0 && r.long < SQUEEZE_RANGE) {
+        group.squeeze += dt;
+      }
+      if (group.squeeze > 0) {
+        factor = Math.min(factor, lerp(0.88, SQUEEZE_FLOOR, clamp01(group.squeeze / SQUEEZE_TIME)));
+      }
+    }
     let speed = clamp(Math.abs(target.forwardSpeed) * factor, 7, this._chaseSpeed());
+    if (group) {
+      // Abreast: whoever is ahead of the others' average eases off, whoever
+      // is behind closes up, so the line stays a line and not a staircase.
+      let sum = 0, n = 0;
+      for (const m of group.members) {
+        if (m.role !== ROLE.BLOCK || m.vehicle.disabled) continue;
+        sum += relativeTo(target, m.vehicle).long;
+        n++;
+      }
+      if (n > 1) speed = Math.max(4, speed - (r.long - sum / n) * 0.6);
+    }
 
     // A blocker is the one unit that deliberately moves sideways across the
     // carriageway at speed, and that is what puts its flank into things. It
