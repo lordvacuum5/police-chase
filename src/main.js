@@ -1778,8 +1778,11 @@ class Game {
    * letters are the only number word whose letters are all unbound. F, I, V, E
    * drive nothing; O is fine but N mutes, R rights the car, H is the help.
    *
-   * With the debug telemetry up (F3), the number keys set any level, 0 to 5,
-   * which is the same tool with the ceremony removed.
+   * The number keys 0 to 5 set that level outright, top row or keypad. They
+   * used to need the debug telemetry up (F3) first; "if I type in any number up
+   * to 5 on the keyboard, make it then that wanted level." Nothing else is on
+   * the digits, and like FIVE it stops the run scoring, so it is a way to look
+   * at a level and not a way to a high score.
    *
    * In a multiplayer game this is the escapee's to do: the chase runs on their
    * machine and a police player's copy of the heat is told to it, so setting
@@ -1795,8 +1798,8 @@ class Game {
       // `five` wipes the very letters `fiveh` would need.
       this._fiveAt = performance.now();
     }
-    if (this.debug) {
-      for (let n = 0; n <= 5; n++) if (i.tapped(`Digit${n}`)) want = n;
+    for (let n = 0; n <= 5; n++) {
+      if (i.tapped(`Digit${n}`) || i.tapped(`Numpad${n}`)) want = n;
     }
     if (want === null) return;
 

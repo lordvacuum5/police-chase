@@ -615,7 +615,8 @@ export class Officer {
     // A unit that may use the width of the road turns like one: see
     // Driver.arcFloor. A patrol car on its beat keeps the tight one and takes
     // its junctions properly.
-    this.driver.arcFloor = this.driver.allowOffRoad ? (this.cutArc || CUT_ARC) : 6;
+    this.driver.arcFloor = this.driver.allowOffRoad
+      ? (this.cutArc || (typeof window !== 'undefined' && window.__cutArc) || CUT_ARC) : 6;
 
     // Off the hard surface: getting back onto it is the only job.
     //

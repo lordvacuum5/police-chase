@@ -138,9 +138,10 @@ behaviour back without editing code: `__shovePatience`, `__arcLead`,
 
 **Testing by hand**, which is how most bugs actually arrive: **type FIVE** in
 the game for an instant five-star chase, or **FIVE then H** for the same with
-air support left in play (typed stars ground the helicopter otherwise). F3 puts
-the debug telemetry up, and with it the number keys set any wanted level. All
-of those stop the run scoring, deliberately.
+air support left in play (typed stars ground the helicopter otherwise). The
+number keys 0-5 set any wanted level directly (no F3 needed any more, at the
+user's request). F3 puts the debug telemetry up. All of those stop the run
+scoring, deliberately.
 
 ---
 
@@ -193,8 +194,10 @@ of those stop the run scoring, deliberately.
 * **Junction rounding fixed** (roadgraph `pathFromPosition` rounded the junction
   ahead as a raw right angle -- the "90 degree" turns). Chase units now route
   down the middle of the road. The user wants a proper racing line through
-  junctions; `arcFloor` 28 gives it (41 km/h through, across the footway) but
-  runs onto the grass -- the next thing to try, measured on the whole force.
+  junctions; `arcFloor` 28 gives the look but measured on keepup.js it doubles
+  spins and hard hits (README) -- turned down, at the user's own condition
+  ("turn it on if it doesn't cause crashes"). Needs an earlier-braking wider
+  line, not a looser limit.
 * **Rolling block siting** now walks the target's own road (`_siteUpRoad`) and
   lines only break up when the target is at the line and off its road.
 

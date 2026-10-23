@@ -4511,9 +4511,25 @@ curves:
 
 28 m is the racing-car look the player asked for — 41 km/h through the corner,
 across the footway — but it spends most of the exit on the grass and is 2%
-quicker, and the last time this floor was raised, 21 m and up, it cost contacts
-in the whole chase. It is not in the game; it wants a whole-force measurement of
-its own.
+quicker. Asked for anyway — *"test the faster racing-line setting in full chases
+and turn it on if it doesn't cause crashes"* — and measured on `tests/keepup.js`,
+two interceptors after a ghost on four Wexbury routes, fresh page each
+(`window.__cutArc` sets it):
+
+| | 90 km/h, floor 13 | floor 28 | 150 km/h, floor 13 | floor 28 |
+|---|---|---|---|---|
+| mean speed | 56 | **60** | **62** | 53 |
+| behind at the end | **77 m** | 103 m | **172 m** | 191 m |
+| contacts (hard) | **25 (2)** | 39 (1) | **20 (2)** | 22 (4) |
+| lost it | **4** | 7 | **5** | 10 |
+| worst damage | **0.28** | 0.52 | **0.74** | 0.98 |
+| tyre used in corners | 72% | 74% | 76% | 96% |
+
+Faster through the corner and worse at everything else: twice the spins, nearly
+a car written off at 150, and further behind at both speeds. It causes crashes,
+so it stays at 13, as the player's own condition said. Getting the racing look
+without this wants a line that brakes earlier and turns wider rather than a
+looser speed limit — the same lesson as every other entry in this section.
 
 ### Straight into a building, together
 
@@ -5942,7 +5958,9 @@ so the E that completes `five` wipes the very letters `fiveh` would need. The H
 never does both jobs -- armed it calls in the helicopter, unarmed it is the
 controls card as usual.
 
-With the debug telemetry up (F3) the number keys set any level. Using either stops the run scoring, for
+The number keys 0 to 5 (top row or keypad) set that level outright — they used
+to need the debug telemetry (F3) up first: *"if I type in any number up to 5 on
+the keyboard, make it then that wanted level."* Using either stops the run scoring, for
 the rest of the run: five stars is worth about sixty points a second, and a
 typed word at the top of the table would make the rest of it meaningless. What
 was earned before it stands, and the score readout says OFF so a number that
