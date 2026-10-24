@@ -184,11 +184,14 @@ const _drawn = { position: null, quaternion: null, up: _up };
  * and how much of it the front wheels show as opposite lock.
  */
 const DRIFT_LOOK_MAX = 0.32;
-const DRIFT_LOOK_START = 0.45;
+const DRIFT_LOOK_START = 0.6;
 const DRIFT_LOOK_FULL = 0.95;
 const DRIFT_LOOK_FROM = 9;
 const DRIFT_LOOK_EASE = 5;
 const DRIFT_LOOK_LOCK = 0.8;
+/** Turning radii, metres: none of the look on a turn wider, all of it tighter. */
+const DRIFT_LOOK_WIDE = 22;
+const DRIFT_LOOK_TIGHT = 12;
 const _atV = new THREE.Vector3();
 
 const boot = {
@@ -3002,8 +3005,8 @@ class Game {
    * gripped -- the spin guard holds it -- and only the picture swings: the body
    * yawed into the corner by up to DRIFT_LOOK_MAX, pivoting on the front axle so
    * the tail is what moves, the front wheels on opposite lock, eased in and out.
-   * It scales with how much of the tyre the corner is using, so a gentle bend
-   * shows nothing and a car on the limit is visibly sideways. Drawing only:
+   * It scales with how much of the tyre the corner is using and how tight the
+   * turn is, so a bend shows nothing and a junction taken hard shows it. Drawing only:
    * nothing in the simulation, the camera or the collisions sees it.
    * `window.__driftLook = false` turns it off.
    */
@@ -3012,8 +3015,15 @@ class Game {
     if (v.grounded >= 3 && v.speed > DRIFT_LOOK_FROM && v.forwardSpeed > 0) {
       const mu = Math.max(0.3, v.surfaceMu || 1);
       const use = Math.abs(v.yawRate * v.speed) / (mu * 9.81);
+      // And only in a tight turn. "It keeps on like drifting, it looks really
+      // weird just on any turn ... it should only drift when ... almost a 90
+      // degree corner." Hard on the tyres is not enough on its own: a quick
+      // sweeping bend uses the tyre just as hard and nobody drifts it. The
+      // radius being driven is speed over yaw rate.
+      const R = v.speed / Math.max(1e-3, Math.abs(v.yawRate));
       want = Math.sign(v.yawRate) * DRIFT_LOOK_MAX
         * clamp01((use - DRIFT_LOOK_START) / (DRIFT_LOOK_FULL - DRIFT_LOOK_START))
+        * clamp01((DRIFT_LOOK_WIDE - R) / (DRIFT_LOOK_WIDE - DRIFT_LOOK_TIGHT))
         * clamp01((v.speed - DRIFT_LOOK_FROM) / 6);
     }
     const k = 1 - Math.exp(-DRIFT_LOOK_EASE * Math.min(dt || 0, 0.1));

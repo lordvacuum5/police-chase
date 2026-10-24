@@ -165,6 +165,8 @@ const RACE_APEX = 1;
  * written off.
  */
 const RACE_ENTRY = 0.4;
+/** Metres past the edge of the carriageway the line may use. See _raceLine. */
+const RACE_PAVE = 0;
 const RACE_EASE = 2.2;
 /** Tighter than this and it is a junction, not a bend. See _raceLine. */
 const RACE_MIN_R = 15;
@@ -869,7 +871,13 @@ export class Driver {
     const v = this.v;
     let want = 0;
     if (this.raceLine && this.allowOffRoad && this.hasPath && v.speed > 7) {
-      const room = (this._room || WIDE) * 0.5 - this.halfWidth - 0.4;
+      // Past the kerb as well, when nothing is standing there. "I basically
+      // drive on the pavement half the time ... Why is the police car staying
+      // in the centre of the road?" Half the carriageway was the whole of the
+      // allowance; RACE_PAVE more is the footway and verge, and the abeam
+      // sweeps below still keep it off anything built or planted on them.
+      const pave = window.__raceExtra !== undefined ? window.__raceExtra : RACE_PAVE;
+      const room = (this._room || WIDE) * 0.5 + pave - this.halfWidth - 0.4;
       if (room > 0.4) {
         // Where the car is about to be, and where it is about to be after that.
         const kn = this._curveAt(Math.max(5, v.speed * 0.55));

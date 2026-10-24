@@ -4720,6 +4720,33 @@ front wheels on opposite lock, scaled by how much of the tyre the corner uses
 was showing in 14% of frames, up to 15°. Drawing only: the physics, the camera
 and the collisions never see it. `window.__driftLook = false` turns it off.
 
+*"It keeps on like drifting, it looks really weird just on any turn ... it
+should only drift when ... almost a 90 degree corner."* Using the tyre hard was
+the only trigger, and a quick sweeping bend uses it as hard as a junction. Now
+the turn has to be tight as well — the radius being driven, speed over yaw
+rate, under 22 m, all of it by 12 — and the tyre past 60%. Same 110 km/h
+chase: 14% of frames → 9% with the radius alone → **5%**, at most 10°.
+
+**The pavement.** *"I basically drive on the pavement half the time ... Why is
+the police car staying in the centre of the road?"* Because the racing line
+(`Driver._raceLine`) is allowed half the carriageway less the car — about 3 m
+either side on a 9 m road — and never the footway or verge. `RACE_PAVE` adds
+metres past the kerb, still kept off anything built or planted by the abeam
+sweeps. Measured and left at 0:
+
+| | turnin: exit | slowest | grass/footway frames | keepup 90: behind | 150: behind | 150: written off |
+|---|---|---|---|---|---|---|
+| kerb (as it is) | 4.33 s | 43 km/h | 0 / 0 | 117 m | 172 m | 0 |
+| +2 m | 4.46 s | 37 km/h | 4 / 0 | — | — | — |
+| +3 m | — | — | — | **75 m** | 230 m | 1, its own |
+| +4 m | 4.34 s | 36 km/h | 74 / 22 | — | — | — |
+
+Slower through junctions, closer at 90, further back and a car written off at
+150. A player on the pavement is choosing where to put the car from what they
+can see; the police line is a smoothed offset from the middle of the road, and
+pushed wider it mostly puts the car where it then has to slow down.
+`window.__raceExtra` sets it for rigs.
+
 ### Through the gaps, faster: not yet
 
 *"The police cars can fit through really tight gaps now. That's really cool. But
