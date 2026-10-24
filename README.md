@@ -708,16 +708,18 @@ themselves:
 | `R` | Flip the car upright, or restart after being busted |
 | `P` | Pause · `H` Controls · `N` Sound on or off · `M` Back to the menu · `F3` Debug telemetry |
 | `0`–`5`, or type `zero`…`five` | Set the wanted level (stops the run scoring) |
-| type `stuck` | Save a police report — see below |
+| type `st` | Save a police report — see below |
 
-**Type `stuck` when you see a police car stuck.** *"Add a key I can press when
+**Type `st` when you see a police car stuck.** *"Add a key I can press when
 I see police stuck, so it records what they were doing and you can see it ...
 make sure the key is like really hard to press and no one else is in
-accidentally press it."* A word, so no single key does it. Every police car
+accidentally press it."* Two letters, so no single key does it: it was the word
+`stuck` until *"can you make it that I have to type in ST? Because it's
+easier."* T is bound to nothing, so S then T only happens on purpose. Every police car
 keeps the last twelve seconds of what it was doing, ten lines a second
 (`Officer._record`): where it was, its speed, its role and mode, the plan or
 route it was following, every speed limit and which was lowest, what it could
-see ahead, the controls it chose, damage and knocks. `stuck` saves that for
+see ahead, the controls it chose, damage and knocks. `st` saves that for
 every car within 250 m of you, and any car that has been nearly still for three
 seconds anywhere, with the buildings and trees within 25 m of each and the
 plan it held, as `police-report-<date>-<time>.json` in your downloads

@@ -1826,7 +1826,7 @@ class Game {
   }
 
   /**
-   * Type `stuck`: save what the police near you have been doing.
+   * Type `st`: save what the police near you have been doing.
    *
    * "Add a key I can press when I see police stuck, so it records what they
    * were doing and you can see it." Every rig built to catch a unit stuck
@@ -2128,9 +2128,11 @@ class Game {
     }
     this._wantedShortcut(i);
     this._appleShortcut(i);
-    // A word, not a key: "make sure the key is like really hard to press and
-    // no one else is in accidentally press it."
-    if (i.typed('stuck')) this._policeReport();
+    // Two letters, not a key: "make sure the key is like really hard to press
+    // and no one else is in accidentally press it." It was `stuck`; then
+    // "can you make it that I have to type in ST? Because it's easier." T is
+    // bound to nothing, so S-then-T only happens on purpose.
+    if (i.typed('st')) this._policeReport();
     if (i.tapped('KeyR')) {
       // Starting again is the escapee's call: there is one chase, and a police
       // player restarting their own copy of it would only desynchronise them.
