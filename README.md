@@ -727,6 +727,29 @@ plan it held, as `police-report-<date>-<time>.json` in your downloads
 In someone else's multiplayer game it says it only works on the host, where the
 police are run.
 
+**The first report.** *"I reported one, but couldn't find many stuck ... you
+know when like two roads are kind of on each other."* A patrol car at 15 km/h
+for two seconds where a road meets a roundabout through a 4.7 m stub: two
+corners 4.7 m apart, each rounded inside half that gap, so the route turned on
+a 2 m radius (0.2 m in the kerb lane, where the stub's six points crossed over
+each other) and `planSpeed` slowed it to a crawl. Route points under 6 m apart
+are now thinned before the corners are rounded (`roadgraph.js` `dropClose`), so
+the pair is one bend — 35 m there. 205 random Wexbury routes: 0 points off the
+hard surface either way (8 m put 7 there), kinks under 5 m radius 243 → 174.
+`tests/keepup.js`, fresh pages side by side:
+
+| | 90 km/h before | after | 150 km/h before | after |
+|---|---|---|---|---|
+| mean | 60 | 59 | 54 | 57 |
+| behind at the end | 87 m | **60 m** | 229 m | **200 m** |
+| contacts not with the ghost (hard) | 25 (2) | 17 (1) | 12 (0) | 10 (1) |
+| written off | 0 | 0 | 0 | 1, by the ghost |
+| lost it | 5 | 7 | 1 | 3 |
+| worst damage | 0.49 | 0.68 | 0.44 | 1.00 (the ghost) |
+
+Closer at both speeds and no more crashes of their own; the extra spins follow
+the extra ghost contact (23 against 10 at 90), being close enough to touch it.
+
 The other number words: *"when I type in the 1 to level, I want like 4, 1, 2,
 doesn't work."* Only `five` was ever a word; the digit keys did work. Now
 `zero`, `one`, `two`, `three` and `four` do too.

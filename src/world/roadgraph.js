@@ -66,7 +66,40 @@ const OLD_CORNERS = () => typeof window !== 'undefined' && window.__oldCorners =
  * four metres, which is a right-angle turn. Points on a bend are kept, because
  * removing them would move the path more than `tol`.
  */
+/**
+ * Drop points closer than `min` metres to the last one kept (never the last).
+ *
+ * "You know when like two roads are kind of on each other ... the police car
+ * is still." From a police report (type `st`): a patrol car at 15 km/h where a
+ * road meets a Wexbury roundabout through a 4.7 m stub. Two corners 4.7 m
+ * apart, and roundCorners can only fit a fillet in half the gap either side,
+ * so the route turned on a 2 m radius there -- 0.2 m in the kerb lane, where
+ * the stub's six points, offset, cross over each other -- and planSpeed held
+ * the car to a crawl. Thinning the points first lets the two corners be
+ * rounded as one bend: 35 m there. Over 205 random Wexbury routes, points off
+ * the hard surface in the first 150 m stay at 0 (8 m put 7 there), and kinks
+ * under 5 m of radius go 243 -> 174. `window.__keepClose = true` turns it off,
+ * `window.__closeMin` sets the distance.
+ */
+const CLOSE_MIN = 6;
+
+function dropClose(pts, min = CLOSE_MIN) {
+  if (pts.length < 3) return pts;
+  const out = [pts[0]];
+  for (let k = 1; k < pts.length - 1; k++) {
+    const q = out[out.length - 1];
+    if (Math.hypot(pts[k].x - q.x, pts[k].z - q.z) >= min) out.push(pts[k]);
+  }
+  const last = pts[pts.length - 1], q = out[out.length - 1];
+  if (out.length > 1 && Math.hypot(last.x - q.x, last.z - q.z) < min) out.pop();
+  out.push(last);
+  return out;
+}
+
 function simplify(pts, tol = 0.3) {
+  if (typeof window === 'undefined' || window.__keepClose !== true) {
+    pts = dropClose(pts, (typeof window !== 'undefined' && window.__closeMin) || CLOSE_MIN);
+  }
   if (pts.length < 3) return pts;
   const keep = new Uint8Array(pts.length);
   keep[0] = 1; keep[pts.length - 1] = 1;
