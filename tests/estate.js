@@ -48,6 +48,7 @@ window.__runEstate = async function (sites = 8, seconds = 20) {
     const { SKILL, ROLE, Officer } = window.__modules;
     const ts0 = Object.assign({}, Driver.turnStats);
     let out = 0, cases = 0, revs = 0, switches = 0, still = 0, frames = 0, hits = 0;
+    let outTime = 0, outN = 0;
     const rows = [];
     for (let w = 0; w < sites; w++) {
       const W = weavePath(w);
@@ -96,7 +97,7 @@ window.__runEstate = async function (sites = 8, seconds = 20) {
           return realSet(pts);
         };
 
-        let rev = 0, wasRev = false, lastAt = 0, hh = 0, f = 0, best = Infinity;
+        let rev = 0, wasRev = false, lastAt = 0, hh = 0, f = 0, best = Infinity, outAt = null;
         const start = Math.hypot(tx - a.x, tz - a.z);
         for (f = 0; f < seconds * 60; f++) {
           g.heat.value = 3;
@@ -123,7 +124,11 @@ window.__runEstate = async function (sites = 8, seconds = 20) {
             if (Math.hypot(car.position.x - tx, car.position.z - tz) > 7) hh++;
           }
           best = Math.min(best, Math.hypot(car.position.x - tx, car.position.z - tz));
+          if (outAt === null && (best < 30 || best < start - 40)) outAt = f / 60;
         }
+        // How long it took, which is what a stall costs: "out" alone says a car
+        // that sat for twenty seconds and then went did as well as one that went.
+        if (outAt !== null) { outTime += outAt; outN++; }
         const got = best < 30 || best < start - 40;
         if (got) out++;
         cases++;
@@ -141,7 +146,7 @@ window.__runEstate = async function (sites = 8, seconds = 20) {
     // the dispatcher's own units are driving about the whole time.
     const ts = Driver.turnStats;
     rows.push(`${cases} cases: out ${out}  reverses ${revs}  route switches ${switches}  hits ${hits}  `
-      + `still ${Math.round((still * 100) / Math.max(1, frames))}% of the time  `
+      + `took ${outN ? (outTime / outN).toFixed(1) : "-"} s  still ${Math.round((still * 100) / Math.max(1, frames))}% of the time  `
       + `| turn-rounds, all cars: started ${ts.started - ts0.started} finished ${ts.done - ts0.done} `
       + `gave up ${ts.gaveUp - ts0.gaveUp}`
       + `${window.__noTurnRound ? '  (turn-round OFF)' : ''}`);

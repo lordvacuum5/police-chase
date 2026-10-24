@@ -4654,6 +4654,48 @@ stop and stopped harder — the same lesson as the corner and margin sweeps abov
 All reverted. The time is lost in the stops and the stuck spells, not in a speed
 cap, and that is where the next attempt should look: the run where a unit sits
 still for a third of it (weave.js run 5).
+
+So the stops and the stuck spells, next: *"find out why the police stall and get
+stuck between houses and fix it."* What the rigs say:
+
+* **weave.js run 5 is not a stuck car.** Traced frame by frame, both units are
+  spawned at 110 km/h fourteen metres behind the ghost and hit the wall of the
+  first gap 0.3 s in (damage 0.5), then take two seconds to back off it. The rest
+  of the run they drive. It is the rig's start, not the AI.
+* **Direct pursuit is not throttled by its own asks.** Of the frames in `direct`
+  with the target past 30 m, the asked speed was the target's plus the closing
+  margin 85% of the time; the car-ahead cap 7%, the trajectory planner 7%.
+  The force's time in the gaps: no line of sight 44%, local plan 26%, direct 22%.
+* **Plans are thrown away whenever the target moves.** A plan is dropped when
+  its goal is 10 m from where the target is now — a third of a second at
+  30 m/s — and a fresh one is refused on arrival for the same reason, so in the
+  weave plans lived 0.1–0.2 s and the car drove the gaps between them on its
+  older reflexes.
+* **`tests/estate.js` is where the stuck cars are, and it has not regressed.**
+  At 35 s a case it gets 31–35 of 40 out across five fresh-page runs of the
+  current code, the planner's queue on or off (`__syncPlan` 34) and every change
+  since the planner off together (35); the planner commit itself recorded 33.
+  Site 7 (five cases) spawns wedged and never counts. The rig now also reports
+  how long the ones that got out took (`took`): 10–11 s.
+
+Keeping a plan while the next is made, instead of dropping it when the target
+moves, and accepting one whose goal is within a third of the distance:
+
+| | weave: mean | hits | near a wall with no plan | estate: out | took | hits |
+|---|---|---|---|---|---|---|
+| plans dropped on a move (as it is) | 57 | 16 | 2575 frames | 33 | 10.4 s | 12 |
+| kept, and accepted loosely | 60 | 9 | **712** | 32 | 11.1 s | 8 |
+| kept, accepted strictly | 54 | 13 | 937 | — | — | — |
+
+It does what it says — a fifth of the plan-less driving near walls — and the
+outcomes do not move past the noise (weave means have run 52–60 for identical
+code this session). On the roads (keepup.js, both at once, fresh pages) it is
+worse: hard hits 3 and 3 against 1 and 0, a write-off at 150 km/h that was not
+the ghost, worst damage 0.53/1.00 against 0.29/0.64; kept-strictly 35 and 32
+contacts against 25 and 27. Reverted under the player's own rule. Nothing in the
+rigs reproduces a unit sitting stuck among houses outside site 7; the next step
+is a capture of one from a real game.
+
 ### Straight into a building, together
 
 *"They were doing pretty well keeping up with me, but then for some reason they

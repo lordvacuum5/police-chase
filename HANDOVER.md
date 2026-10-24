@@ -209,6 +209,13 @@ scoring, deliberately.
   reverted** (README "Through the gaps, faster: not yet"). Clean gaps are fast
   (tests/gapspeed.js, 80-90 km/h). The slowness is stops and stuck spells in
   real clutter, not a speed cap -- look there (weave.js run 5).
+  Then "why do they stall and get stuck between houses": weave.js run 5 is
+  the rig's start (units spawned into a wall), estate.js has not regressed
+  (31-35/40; site 7 always wedged), and keeping local plans while the target
+  moves cut plan-less driving by 72% but measured worse on the roads --
+  reverted. No rig reproduces a real stuck unit; capture one from play.
+  Noise: weave.js mean speed ran 52-60 km/h for identical code; keepup.js
+  contacts 21-41. Two parallel tabs (tabs_create) halve the wait.
   Rig trap: a weave/keepup tweak that sets `d.arcFloor` does nothing (Officer
   rewrites it before driving); use `window.__cutArc`.
 * **Rolling blocks never spawn in view** -- `_siteUpRoad` used to fall back
