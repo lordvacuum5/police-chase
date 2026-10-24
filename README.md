@@ -4664,6 +4664,62 @@ spins after contact. Junction speed on turnin.js is unchanged (39 km/h,
 4.54 s, no contact). `window.__noSpin = 0` turns it off.
 
 
+### Drifting, the grip cheat, and corners at a distance
+
+*"Can they like drift? ... I don't slow down for corners. I don't slow down for
+say a roundabout ... they seem to go slower."* Then: *"I think I figured it
+out ... they don't cut corners when they're like more than 30 meters away from
+the subject."*
+
+**The grip cheat does not help.** `tests/keepup.js` with `assist.grip` held at
+1.3 and 1.5 and the driver believing all of it (`bandBelief` 1), fresh pages:
+mean 53–56 km/h against 59 at 90, no closer, and *less* of the tyre used in
+corners (55–62% against 78%) — the extra grip was not what held them; 1.5 wrote
+off a car on its own. Not kept.
+
+**The player was right about distance.** Inside about 30 m a unit drives at the
+car and nothing about a route is involved. Further out it follows a route, and
+every junction on that route was taken at the 13 m arc floor — 37 km/h —
+whatever fillet it was given (16, 24 and 30 all came out at 38–40 km/h on
+`tests/turnin.js`). Two reasons, found in turn:
+
+* `Driver._pathRadiusHere` measured the route's curve over points 7 m apart on
+  a route drawn every 14 m, so it read the polyline's vertices instead of the
+  curve: 10–16 m in a fillet whose radius was 22–26. Now 14 m
+  (`ROUTE_ARC_SPAN`); 20 read it too wide and put cars on the grass.
+* The route's lead-in started 25 m behind the car and a fillet is held under
+  0.45 of the distance to the point before the corner, so each re-plan on the
+  approach shrank it: 22–26 m from 60 m out, 12–15 m from 10 m out. Now 60 m
+  (`LEAD_BACK`), and the fillet holds all the way in.
+
+With both, the bigger fillet finally counts, and `CUT_CORNER` goes 16 → 30.
+`tests/turnin.js`, fourteen right-angle junctions: exit 4.78 → **4.33 s**,
+slowest 38 → **43 km/h**, no contact, grass or footway. `tests/keepup.js`, fresh
+pages side by side:
+
+| | 90 km/h, before | after | 150 km/h ×8 routes, before | after |
+|---|---|---|---|---|
+| mean speed | 62 | **64** | 50 | **53** |
+| behind at the end | 89 m | **52 m** | 221 m | **209 m** |
+| hard contacts | 2 | 2 | 7 | **5** |
+| written off | 0 | 0 | 2 | **0** |
+| lost it | 11 | **6** | 20 | **14** |
+| worst damage | 0.58 | 0.70 | 1.00 | **0.90** |
+
+(A first 150 km/h run of four routes went the other way — 183 m against 144,
+two hard hits against none — so it was run again over eight; this is that.)
+`window.__arcSpan`, `__leadBack` and `__cutCorner` set them for rigs.
+
+**The drift, faked.** A real drift was built twice and measured slower both
+times (see `BAND_DRIFT` in `ai/officer.js`): sideways is not faster on these
+tyres. So the car stays gripped — the spin guard holds it — and only the
+picture swings: `Game._driftLook` draws a police car in a hard corner yawed into
+it by up to 0.32 rad, pivoting on the front axle so the tail is what moves,
+front wheels on opposite lock, scaled by how much of the tyre the corner uses
+(none below 45%, all of it at 95%) and eased in and out. In a 110 km/h chase it
+was showing in 14% of frames, up to 15°. Drawing only: the physics, the camera
+and the collisions never see it. `window.__driftLook = false` turns it off.
+
 ### Through the gaps, faster: not yet
 
 *"The police cars can fit through really tight gaps now. That's really cool. But

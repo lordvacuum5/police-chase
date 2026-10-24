@@ -218,6 +218,12 @@ scoring, deliberately.
   contacts 21-41. Two parallel tabs (tabs_create) halve the wait.
   Rig trap: a weave/keepup tweak that sets `d.arcFloor` does nothing (Officer
   rewrites it before driving); use `window.__cutArc`.
+* **Route corners for distant units fixed** (ROUTE_ARC_SPAN 7 -> 14,
+  LEAD_BACK 25 -> 60, CUT_CORNER 16 -> 30): junctions were all taken at the
+  13 m arc floor because the arc check read polyline vertices. The grip cheat
+  (assist.grip 1.3/1.5) measured no faster -- not kept. Police are drawn
+  sideways in hard corners (Game._driftLook, drawing only) -- the user asked
+  for a fake drift; a real one measured worse twice.
 * **Police reports**: the player types `st` in game and a
   `police-report-*.json` downloads (Game._policeReport; each Officer keeps a
   12 s `trace`, Officer._record). When they hand one over, read the `still`

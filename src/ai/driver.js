@@ -176,8 +176,20 @@ const RACE_MIN_R = 15;
 const ROUTE_ARC_MAX = 60;
 /** Metres off the route past which the chord's limit stands. */
 const ROUTE_ARC_ON = 3;
-/** Spacing of the three points the route's radius is measured over, metres. */
-const ROUTE_ARC_SPAN = 7;
+/**
+ * Spacing of the three points the route's radius is measured over, metres.
+ *
+ * The route's own spacing (resample, 14 m), not half of it. At 7 m the three
+ * points straddled the vertices of the drawn polyline and read its corners
+ * rather than its curve: 10-16 m in the middle of a junction fillet whose real
+ * radius was 22-26, so the arc limit held every unit to the 13 m floor --
+ * 37 km/h -- whatever size of fillet it was given. "They don't cut corners
+ * when they're like more than 30 meters away from the subject": close in, a
+ * unit drives at the car and the route is not involved. 20 m read the fillet
+ * as wider than it is and put cars on the grass (37 frames on turnin.js).
+ * `window.__arcSpan` sets it for rigs.
+ */
+const ROUTE_ARC_SPAN = 14;
 
 /**
  * How far along its own route a unit may get in one frame, beyond what the car
@@ -800,8 +812,9 @@ export class Driver {
     const here = cum[Math.min(cum.length - 1, this.pathIndex - i0)];
     let least = Infinity;
     // Where the car is, and where it is about to be.
-    for (const c of [here, here + ROUTE_ARC_SPAN]) {
-      const a = at(c - ROUTE_ARC_SPAN), b = at(c), d = at(c + ROUTE_ARC_SPAN);
+    const span = window.__arcSpan || ROUTE_ARC_SPAN;
+    for (const c of [here, here + span]) {
+      const a = at(c - span), b = at(c), d = at(c + span);
       const R = curveRadius(a.x, a.z, b.x, b.z, d.x, d.z);
       if (R && Number.isFinite(R) && R < least) least = R;
     }

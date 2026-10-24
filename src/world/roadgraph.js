@@ -50,8 +50,15 @@ function roundCorners(pts, radius) {
   return out;
 }
 
-/** How far behind the car a route's lead-in starts -- see _pathAhead. */
-const LEAD_BACK = 25;
+/**
+ * How far behind the car a route's lead-in starts -- see _pathAhead.
+ *
+ * roundCorners keeps a fillet under 0.45 of the distance to the point before
+ * the corner, and that point is the start of the lead-in, so at 25 m back a
+ * unit 10 m from a junction got a 12-15 m fillet where it had been given 22-26
+ * from 60 m out: every re-plan on the approach turned tighter. At 60 it holds.
+ */
+const LEAD_BACK = 60;
 
 /** `window.__oldCorners = true` puts the old junction rounding back, for rigs. */
 const OLD_CORNERS = () => typeof window !== 'undefined' && window.__oldCorners === true;
@@ -82,6 +89,8 @@ const OLD_CORNERS = () => typeof window !== 'undefined' && window.__oldCorners =
  * `window.__closeMin` sets the distance.
  */
 const CLOSE_MIN = 6;
+/** How far a route may be straightened before its corners are rounded. */
+const SIMPLIFY_TOL = () => (typeof window !== 'undefined' && window.__simplifyTol) || 0.3;
 
 function dropClose(pts, min = CLOSE_MIN) {
   if (pts.length < 3) return pts;
@@ -1013,7 +1022,7 @@ export class RoadGraph {
     // Goes with the driver's route clause, and `window.__routeArc = false`
     // turns both off.
     const back = OLD_CORNERS() || (typeof window !== 'undefined' && window.__routeArc === false)
-      ? 0 : LEAD_BACK;
+      ? 0 : ((typeof window !== 'undefined' && window.__leadBack) || LEAD_BACK);
     const startAlong = forward ? Math.max(0, snap.along - back) : Math.min(e.length, snap.along + back);
     const span = Math.abs(endAlong - startAlong);
     const steps = Math.max(1, Math.ceil(span / 8));
@@ -1049,7 +1058,7 @@ export class RoadGraph {
     // out onto the grass.
     const tailRaw = this._rawPathPoints(route, laneOffset);
     const whole = lead.concat(tailRaw.slice(1));
-    return resample(roundCorners(simplify(whole), corner), 14);
+    return resample(roundCorners(simplify(whole, SIMPLIFY_TOL()), corner), 14);
   }
 
   /**
@@ -1403,7 +1412,7 @@ export class RoadGraph {
     // Junction corners must be rounded before the points are resampled, or the
     // AI reads a right-angle turn as a 50 m radius sweep, carries motorway
     // speed into it and puts the car through a shop window.
-    return resample(roundCorners(OLD_CORNERS() ? raw : simplify(raw), corner), 14);
+    return resample(roundCorners(OLD_CORNERS() ? raw : simplify(raw, SIMPLIFY_TOL()), corner), 14);
   }
 
   _rawPathPoints(path, laneOffset = 0) {

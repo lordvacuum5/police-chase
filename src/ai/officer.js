@@ -52,7 +52,14 @@ const TRACE_EVERY = 0.1;
 const SQUEEZE_RANGE = 30;
 const SQUEEZE_TIME = 8;
 const SQUEEZE_FLOOR = 0.5;
-const CUT_CORNER = 16;
+/**
+ * The fillet a unit in a hurry's route takes a junction with -- see _routeTo
+ * and RoadGraph.roundCorners. 16 until the arc limit could read a route's
+ * curve properly (Driver ROUTE_ARC_SPAN), after which 30 is quicker round
+ * tests/turnin.js (exit 4.78 -> 4.33 s, slowest 38 -> 43 km/h, no grass or
+ * contact). `window.__cutCorner` sets it for rigs.
+ */
+const CUT_CORNER = 30;
 /** The tightest turn a unit in a hurry plans for. See Driver.arcFloor. */
 /**
  * The tightest turn a pursuit unit's speed limiter will believe in, in metres --
@@ -469,7 +476,7 @@ export class Officer {
       // hurry does -- starting it earlier, running wider, carrying the speed
       // through -- instead of following its lane round the kerb and braking to
       // a walk for every junction: "they slow down loads and then they turn".
-      this.driver.allowOffRoad ? CUT_CORNER : LANE_CORNER,
+      this.driver.allowOffRoad ? (window.__cutCorner || CUT_CORNER) : LANE_CORNER,
       // The ways through between buildings, but only for a unit that is allowed
       // off the carriageway in the first place -- a patrol car threading
       // somebody's garden looks like a bug whatever it saves -- and only ones

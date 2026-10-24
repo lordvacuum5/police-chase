@@ -176,6 +176,19 @@ const _up = new THREE.Vector3();
  * against this rather than against where the solver last left it.
  */
 const _drawn = { position: null, quaternion: null, up: _up };
+
+/**
+ * The drawn-only drift of a police car -- see Game._driftLook. The most the
+ * body is turned, radians; the share of the tyre in use where it starts and
+ * where it is full; the speed below which there is none; how fast it eases;
+ * and how much of it the front wheels show as opposite lock.
+ */
+const DRIFT_LOOK_MAX = 0.32;
+const DRIFT_LOOK_START = 0.45;
+const DRIFT_LOOK_FULL = 0.95;
+const DRIFT_LOOK_FROM = 9;
+const DRIFT_LOOK_EASE = 5;
+const DRIFT_LOOK_LOCK = 0.8;
 const _atV = new THREE.Vector3();
 
 const boot = {
@@ -2979,6 +2992,44 @@ class Game {
 
   // ================================================================= render
 
+  /**
+   * The drift, faked: a police car in a hard corner is drawn with its tail out.
+   *
+   * "Can they like drift? ... I don't slow down for corners ... they seem to
+   * go slower." A real drift was built twice and measured slower both times
+   * (see BAND_DRIFT in ai/officer.js): sideways is not faster on these tyres,
+   * and the AI fighting the slide tripled the spins. So the car itself stays
+   * gripped -- the spin guard holds it -- and only the picture swings: the body
+   * yawed into the corner by up to DRIFT_LOOK_MAX, pivoting on the front axle so
+   * the tail is what moves, the front wheels on opposite lock, eased in and out.
+   * It scales with how much of the tyre the corner is using, so a gentle bend
+   * shows nothing and a car on the limit is visibly sideways. Drawing only:
+   * nothing in the simulation, the camera or the collisions sees it.
+   * `window.__driftLook = false` turns it off.
+   */
+  _driftLook(v, dt) {
+    let want = 0;
+    if (v.grounded >= 3 && v.speed > DRIFT_LOOK_FROM && v.forwardSpeed > 0) {
+      const mu = Math.max(0.3, v.surfaceMu || 1);
+      const use = Math.abs(v.yawRate * v.speed) / (mu * 9.81);
+      want = Math.sign(v.yawRate) * DRIFT_LOOK_MAX
+        * clamp01((use - DRIFT_LOOK_START) / (DRIFT_LOOK_FULL - DRIFT_LOOK_START))
+        * clamp01((v.speed - DRIFT_LOOK_FROM) / 6);
+    }
+    const k = 1 - Math.exp(-DRIFT_LOOK_EASE * Math.min(dt || 0, 0.1));
+    v.lookYaw = (v.lookYaw || 0) + (want - (v.lookYaw || 0)) * k;
+    const yaw = v.lookYaw;
+    if (Math.abs(yaw) < 1e-3) return;
+    // About the front axle: move the centre by what turning the body about a
+    // point ahead of it would do, then turn it.
+    _v.set(0, 0, 1).applyQuaternion(v.view.quaternion);
+    const L = (v.spec.wheelbase || 2.7) * 0.5;
+    _qA.setFromAxisAngle(AXIS_Y, yaw);
+    _v2.copy(_v).applyQuaternion(_qA);
+    v.view.position.addScaledVector(_v, L).addScaledVector(_v2, -L);
+    v.view.quaternion.premultiply(_qA);
+  }
+
   _render(dt) {
     // Cones are dynamic bodies, so their meshes have to follow them.
     this.roadblocks.syncVisuals();
@@ -3024,9 +3075,11 @@ class Game {
       if (ud.tail) ud.tail.rotation[ud.tailAxis || 'y'] = air.rotor * 1.7;
     }
 
+    const lookOn = !(typeof window !== 'undefined' && window.__driftLook === false);
     for (const v of this.vehicles) {
       v.view.position.lerpVectors(v.prevPos, v.position, alpha);
       v.view.quaternion.copy(v.prevQuat).slerp(v.quaternion, alpha);
+      if (lookOn && v.isPolice && v !== this.player) this._driftLook(v, dt);
       // The wheels, the lamps and the camera all have to agree with the body
       // they are attached to, so everything below works off the drawn pose.
       _drawn.position = v.view.position;
@@ -3041,7 +3094,9 @@ class Game {
       for (let i = 0; i < 4; i++) {
         const w = v.wheels[i];
         v.wheelCentre(i, _v, _drawn);
-        _qA.setFromAxisAngle(AXIS_Y, w.steer);
+        // Front wheels pointing where the car is going, not where the body
+        // is: the opposite lock of the drift look below.
+        _qA.setFromAxisAngle(AXIS_Y, w.front ? w.steer - (v.lookYaw || 0) * DRIFT_LOOK_LOCK : w.steer);
         _qB.setFromAxisAngle(AXIS_X, -w.spin);
         _qC.copy(v.view.quaternion).multiply(_qA).multiply(_qB);
         const width = !w.front && s.wheelWidthRear ? s.wheelWidthRear : s.wheelWidth;
