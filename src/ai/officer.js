@@ -37,6 +37,13 @@ const LP_MAXAGE = 6;
 const LP_NEAR = 25;
 
 /**
+ * The flight recorder: how many seconds each unit keeps, and how often it
+ * writes a line. See Officer._record and Game._policeReport.
+ */
+const TRACE_SECS = 12;
+const TRACE_EVERY = 0.1;
+
+/**
  * A rolling roadblock's squeeze -- see Officer._block. It starts once the
  * target is within SQUEEZE_RANGE metres behind the line, and over SQUEEZE_TIME
  * seconds of being there the line slows from 0.88 of the target's speed to
@@ -395,6 +402,54 @@ export class Officer {
   distanceTo(p) { return dist2(this.vehicle.position.x, this.vehicle.position.z, p.x, p.z); }
 
   /**
+   * One line of the flight recorder, every TRACE_EVERY seconds, the last
+   * TRACE_SECS of them kept.
+   *
+   * "Add a key I can press when I see police stuck, so it records what they
+   * were doing and you can see it." Every rig built to find a unit stuck
+   * between houses came back clean, so the evidence has to come from a real
+   * game: what the car was doing, what it was asked, and which limit was
+   * holding it, for the seconds before the player noticed. Written at the top
+   * of update, so a line holds what the previous frame decided -- the
+   * controls, the caps, the plan -- alongside where that left the car.
+   * Game._policeReport writes them out.
+   */
+  _record(dt, target) {
+    this._traceT = (this._traceT || 0) + dt;
+    if (this._traceT < TRACE_EVERY) return;
+    this._traceT = 0;
+    if (!this.trace) this.trace = [];
+    const v = this.vehicle, d = this.driver, c = d.caps || {}, ctl = v.controls || {};
+    const r1 = (x) => (x === undefined || x === null || !Number.isFinite(x) ? null : Math.round(x * 10) / 10);
+    const kph = (x) => (x === undefined || x === null || !Number.isFinite(x) ? null : Math.round(x * 3.6));
+    const lp = this._lp;
+    let onRoad = 0;
+    for (const w of v.wheels || []) if (w.surface === 1) onRoad++;
+    this.trace.push({
+      t: r1(this.game.clock),
+      x: r1(v.position.x), z: r1(v.position.z),
+      head: Math.round(Math.atan2(v.forward.x, v.forward.z) * 57.3),
+      kph: kph(v.speed), fwd: r1(v.forwardSpeed), slip: r1(v.slipAngleBody),
+      role: this.role, mode: this._mode || null,
+      path: d.hasPath ? (d.path || []).length : 0, pi: d.pathIndex || 0,
+      lp: lp ? `${lp.i || 0}/${lp.pts.length} ${lp.pts[lp.i || 0] && lp.pts[lp.i || 0].dir < 0 ? 'rev' : 'fwd'}`
+        + `${lp.blocked ? ' blocked' : ''}${lp.lost ? ' lost' : ''}${lp.done ? ' done' : ''}` : null,
+      ask: this._lpTicket ? 1 : 0,
+      caps: {
+        asked: kph(c.asked), safe: kph(c.safe), wall: kph(c.wall), way: kph(c.way),
+        clear: kph(c.sClear), travel: kph(c.sTravel), runout: kph(c.sRunout), arc: kph(c.sArc),
+        back: kph(c.sBack), slide: kph(c.slide),
+      },
+      wallNear: r1(d.wallNear), gap: r1(d.gapClear), tree: r1(d.treeNear),
+      rev: r1(d.reverseTimer), stuck: r1(this.stuckTimer !== undefined ? this.stuckTimer : d.stuckTimer),
+      th: r1(ctl.throttle), br: r1(ctl.brake), st: r1(ctl.steer), hb: r1(ctl.handbrake),
+      road: onRoad, dmg: r1(v.damage), hit: v.lastImpact > 4 ? r1(v.lastImpact) : 0,
+      tgt: target ? Math.round(this.distanceTo(target.position)) : null,
+    });
+    if (this.trace.length > TRACE_SECS / TRACE_EVERY) this.trace.shift();
+  }
+
+  /**
    * Route to a node, starting from where this car actually is rather than from
    * the junction behind it. Returns false if no route exists.
    */
@@ -528,6 +583,7 @@ export class Officer {
 
   update(dt, target) {
     const v = this.vehicle;
+    this._record(dt, target);
     // A "move along" blip of lights and siren runs down whatever else happens
     // (see _warnIfBlocked).
     if (v.blipFor > 0) v.blipFor = Math.max(0, v.blipFor - dt);

@@ -20,7 +20,7 @@ import {
 } from './ai/officer.js';
 import { Driver, SKILL } from './ai/driver.js';
 import { Runner, pickRunnerCar } from './ai/runner.js';
-import { warmLocalPlanner, pumpPlanner } from './ai/localplan.js';
+import { warmLocalPlanner, pumpPlanner, boxesNear } from './ai/localplan.js';
 import { Heat } from './game/heat.js';
 import { RoadblockManager } from './game/roadblock.js';
 import { Helicopter, buildHelicopterMesh } from './game/helicopter.js';
@@ -1809,6 +1809,13 @@ class Game {
     for (let n = 0; n <= 5; n++) {
       if (i.tapped(`Digit${n}`) || i.tapped(`Numpad${n}`)) want = n;
     }
+    // And the rest as words, the way `five` is: "when I type in the 1 to
+    // level, I want like 4, 1, 2, doesn't work." Only five was ever a word.
+    // `zero` clears. (Not `fiveh`: see above -- five arms the H.)
+    const WORDS = ['zero', 'one', 'two', 'three', 'four'];
+    for (let n = 0; n < WORDS.length; n++) {
+      if (i.typed(WORDS[n])) want = n;
+    }
     if (want === null) return;
 
     // A police player's copy of the heat is told to it by the escapee, so
@@ -1816,6 +1823,76 @@ class Game {
     // let the machine that owns the chase do it -- the answer comes back the
     // ordinary way, in the world update, and everybody sees the same stars.
     this._askWanted(want, false);
+  }
+
+  /**
+   * Type `stuck`: save what the police near you have been doing.
+   *
+   * "Add a key I can press when I see police stuck, so it records what they
+   * were doing and you can see it." Every rig built to catch a unit stuck
+   * between houses came back clean, so this takes it from a real game: each
+   * unit keeps the last twelve seconds of what it did and why (Officer._record),
+   * and this writes those out for every unit within 250 m of you -- and any
+   * that has been nearly still for three seconds anywhere -- with the buildings
+   * and trees round each one and the plan it was following, as a .json file
+   * the browser saves. Nothing is sent anywhere.
+   *
+   * Only where the force is run: a police player in someone else's game has no
+   * officers on their machine to ask.
+   */
+  _policeReport() {
+    if (session.active && !session.isHost) {
+      this.hud.toast('POLICE REPORT: ONLY ON THE HOST');
+      return;
+    }
+    const p = this.player;
+    const r1 = (x) => Math.round(x * 10) / 10;
+    const units = [];
+    for (const u of this.dispatcher.units) {
+      const v = u.vehicle;
+      if (!v || !u.trace || !u.trace.length) continue;
+      const near = dist2(v.position.x, v.position.z, p.position.x, p.position.z) < 250;
+      const recent = u.trace.slice(-30);
+      const still = recent.length >= 30 && recent.every((s) => s.kph < 5);
+      if (!near && !still) continue;
+      const pts = (a, every) => (a || []).filter((_, k) => k % every === 0)
+        .map((q) => [r1(q.x), r1(q.z), q.dir < 0 ? -1 : undefined].filter((x) => x !== undefined));
+      units.push({
+        callsign: u.callsign, kind: u.kind, role: u.role, still,
+        at: [r1(v.position.x), r1(v.position.z)],
+        heading: Math.round(Math.atan2(v.forward.x, v.forward.z) * 57.3),
+        plan: u._lp ? pts(u._lp.pts, 2) : null,
+        route: u.driver.hasPath ? pts(u.driver.path, 3).slice(0, 60) : null,
+        nearby: boxesNear(this, v.position.x, v.position.z, 25)
+          .map((b) => [r1(b.x), r1(b.z), r1(b.hx), r1(b.hz), Math.round(Math.atan2(b.s, b.c) * 57.3)]),
+        trace: u.trace,
+      });
+    }
+    const report = {
+      what: 'police-chase police report',
+      when: new Date().toISOString(),
+      map: this.mapDef && this.mapDef.id,
+      clock: r1(this.clock || 0),
+      wanted: this.heat.tier,
+      player: {
+        at: [r1(p.position.x), r1(p.position.z)],
+        heading: Math.round(Math.atan2(p.forward.x, p.forward.z) * 57.3),
+        kph: Math.round(p.speed * 3.6),
+      },
+      units,
+    };
+    const blob = new Blob([JSON.stringify(report)], { type: 'application/json' });
+    const a = document.createElement('a');
+    const stamp = report.when.replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+    a.href = URL.createObjectURL(blob);
+    a.download = `police-report-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    this.hud.toast(units.length
+      ? `POLICE REPORT SAVED · ${units.length} CAR${units.length === 1 ? '' : 'S'}`
+      : 'POLICE REPORT SAVED · NO POLICE NEAR');
   }
 
   /**
@@ -2051,6 +2128,9 @@ class Game {
     }
     this._wantedShortcut(i);
     this._appleShortcut(i);
+    // A word, not a key: "make sure the key is like really hard to press and
+    // no one else is in accidentally press it."
+    if (i.typed('stuck')) this._policeReport();
     if (i.tapped('KeyR')) {
       // Starting again is the escapee's call: there is one chase, and a police
       // player restarting their own copy of it would only desynchronise them.

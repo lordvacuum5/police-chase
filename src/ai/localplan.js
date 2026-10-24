@@ -137,6 +137,25 @@ function obstacleIndex(game) {
 }
 
 /**
+ * The buildings and trees within `r` of (x, z), as the planner sees them:
+ * { x, z, hx, hz, c, s } -- centre, half sizes, and the cosine and sine of the
+ * yaw. For Game._policeReport, so a report shows what the car was among.
+ */
+export function boxesNear(game, x, z, r) {
+  if (!game || !game.world) return [];
+  const { B, buckets } = obstacleIndex(game);
+  const out = new Set();
+  for (let bx = Math.floor((x - r) / B); bx <= Math.floor((x + r) / B); bx++) {
+    for (let bz = Math.floor((z - r) / B); bz <= Math.floor((z + r) / B); bz++) {
+      for (const b of buckets.get(bx * 100003 + bz) || []) {
+        if (Math.hypot(b.x - x, b.z - z) < r + b.rad) out.add(b);
+      }
+    }
+  }
+  return [...out];
+}
+
+/**
  * Build the obstacle list up front, and run one throwaway plan, while the map
  * is loading -- see Game's map load. The first plan of a session cost 57 ms
  * against 9-22 for the rest, all of it the engine compiling this file, and it

@@ -218,6 +218,12 @@ scoring, deliberately.
   contacts 21-41. Two parallel tabs (tabs_create) halve the wait.
   Rig trap: a weave/keepup tweak that sets `d.arcFloor` does nothing (Officer
   rewrites it before driving); use `window.__cutArc`.
+* **Police reports**: the player types `stuck` in game and a
+  `police-report-*.json` downloads (Game._policeReport; each Officer keeps a
+  12 s `trace`, Officer._record). When they hand one over, read the `still`
+  units' `trace` (caps = speed limits in km/h, `lp` = local plan state, `mode`)
+  against `nearby` boxes [x, z, half-x, half-z, yaw deg]. Same map and positions
+  can be rebuilt in a rig by teleporting a unit to `trace[0]`.
 * **Rolling blocks never spawn in view** -- `_siteUpRoad` used to fall back
   to the furthest point even when it was visible; it now returns null.
 * **Rig trap: the map.** A fresh page opens on the menu, and START picks
