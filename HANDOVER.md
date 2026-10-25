@@ -375,6 +375,12 @@ detection ring is round the subject for a police player**; **police spawn only
 where no player can see** (`Game.seenByAnyone`); **a downed or dried-out
 helicopter waits 30 s** with a countdown; **trees are never planted into a
 building** (`nearBuilding`).
+**The first unit to reach a lost car's last known position follows its road
+on** (`Dispatcher._trail`, `RoadGraph.walkAhead`). `tests/patrol.js` measures
+patrol driving; three fixes tried for "they're really bad at driving" changed
+nothing measurable and were reverted -- ask the user what exactly looks wrong
+before trying a fourth. Open: the getaway car "vanishing" at 50 m on Haldon in
+BE THE POLICE (suspect hedges; unconfirmed).
 **Rig trap:** spawn anything on a hilly map at `groundAt + ...`, never a fixed
 y -- response.js put its cars inside the hill and reported the AI as stuck.
 

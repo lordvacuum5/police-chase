@@ -1071,6 +1071,55 @@ export class RoadGraph {
     return pts.length >= 2 ? pts : null;
   }
 
+  /**
+   * Where a car at (x, z) heading (dx, dz) would be after `dist` metres if it
+   * carried on: along the road it is on, and straight on through every
+   * junction -- the way nearest its heading, round a corner where that is the
+   * only way on, never back the way it came; at a dead end it stops there.
+   * Returns { x, z, dx, dz }
+   * with the heading it arrives on, or null off the network. For the unit
+   * that follows a lost car on down its road (Dispatcher._trail).
+   */
+  walkAhead(x, z, dx, dz, dist) {
+    const snap = this.nearestEdge(x, z, 60);
+    if (!snap) return null;
+    let e = snap.edge;
+    const d0 = this.edgeDirection(e, snap.along, { x: 0, z: 1 });
+    let fwd = d0.x * dx + d0.z * dz >= 0;
+    let along = snap.along, left = dist;
+    let hx = dx, hz = dz;
+    for (let hop = 0; hop < 40; hop++) {
+      const room = fwd ? e.length - along : along;
+      if (left <= room) {
+        const s = fwd ? along + left : along - left;
+        const p = this.pointAt(e, s);
+        const t = this.edgeDirection(e, s, { x: 0, z: 1 });
+        return { x: p.x, z: p.z, dx: t.x * (fwd ? 1 : -1), dz: t.z * (fwd ? 1 : -1) };
+      }
+      left -= room;
+      const nodeId = fwd ? e.b : e.a;
+      const node = this.nodes[nodeId];
+      const endDir = this.edgeDirection(e, fwd ? e.length : 0, { x: 0, z: 1 });
+      hx = endDir.x * (fwd ? 1 : -1); hz = endDir.z * (fwd ? 1 : -1);
+      let next = null, best = -0.5;
+      for (const id of node.edges) {
+        const o = this.edges[id];
+        if (o === e || o.cut) continue;
+        const out = o.a === nodeId;
+        // Which way it leaves, from a point ten metres along it: the tangent
+        // at the very end can be a stub of nothing.
+        const q = this.pointAt(o, out ? Math.min(10, o.length) : Math.max(0, o.length - 10));
+        let ox = q.x - node.x, oz = q.z - node.z;
+        const ol = Math.hypot(ox, oz) || 1; ox /= ol; oz /= ol;
+        const dot = ox * hx + oz * hz;
+        if (dot > best) { best = dot; next = { o, out }; }
+      }
+      if (!next) return { x: node.x, z: node.z, dx: hx, dz: hz };
+      e = next.o; fwd = next.out; along = fwd ? 0 : e.length;
+    }
+    return null;
+  }
+
   /** The path from a car's position via the junction ahead. See pathFromPosition. */
   _pathAhead(x, z, dirX, dirZ, goalId, laneOffset, speedCap, corner = 9, opts = null) {
     const snap = this.nearestEdge(x, z);

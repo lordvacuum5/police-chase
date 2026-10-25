@@ -6546,6 +6546,59 @@ the airframe (height still from the skids, so a bank does not bob it), and
 swings round behind the nose at 7/s rather than 3.4 -- which trailed a steady
 turn by a third of a second, another view from the side.
 
+### Roads missing from the map, the car that follows your road, and patrols measured
+
+**Roads missing from the minimap.** *"On the UK map and the new map, there
+seems like there's certain roads that aren't showing up on the map."* The
+minimap drew a fixed list of six road kinds, written before Wexbury's dual
+carriageway bypass and Haldon Vale's single-track lanes and farm tracks -- both
+left off. It now draws every kind there is, widest first.
+
+**Following your road once you are lost.** *"When they lose you, they go to my
+last known location. I want the first police car that gets there to continue
+on my predicted route ... if I'm going down a straight road, just continue."*
+`Dispatcher._trail`: the first unit within 40 m of the last known position is
+sent on along the road you were on, straight on through junctions and round a
+corner where that is the only way on (`RoadGraph.walkAhead`), 250 m at a time
+and extended as it gets near, out to 1.2 km or a dead end; then it searches
+with the rest. Nobody is sent if you were standing still when lost -- there is
+no heading to follow. `window.__trail = false` turns it off. Tested by losing a
+car doing 72 km/h on a city avenue: the first unit there carried on 250 m down
+it.
+
+**Patrol driving.** *"The police cars, when they're patrolling, they do not
+drive well ... they're really bad at driving."* `tests/patrol.js` leaves the
+game running with nobody wanted and watches every patrol car: speed, lane,
+wrong side, off the road, knocks, harsh braking over half a second, steering
+reversals, reversing. Two minutes on each map:
+
+| | mean | lane error | wrong side | off road | harsh braking | knocks |
+|---|---|---|---|---|---|---|
+| city | 23 km/h | 0.89 m | 4% | 4% | 7% | 2 |
+| Wexbury | 29 km/h | 0.68 m | 3% | 0% | 8% | 0 |
+| Haldon Vale | 54 km/h | 0.42 m | 2% | 2% | 10% | 0 |
+
+The city's low mean is red lights: a patrol stops at every one, and in the
+grid that is every block. Three things tried, none kept, each measured on a
+fresh page: braking into corners at a comfortable 3.5 m/s/s in the speed
+planner, previewing the bend three aim-distances ahead, and letting a car that
+took the amber carry on through the red -- harsh braking 10% -> 10% on Haldon,
+7% -> 7% in the city, and a little more reversing. The rig's first two
+readings were wrong and are worth knowing about: it counted one knock dozens
+of times (headless, a frame is a fraction of a wall-clock millisecond), and it
+counted the speed controller pulsing the brake as harsh braking. And a patrol
+car queueing behind the parked test car for the whole run is
+`_warnIfBlocked` doing its job, so the rig parks the player off the road.
+
+**The getaway car vanishing at 50 m on Haldon Vale.** *"When I'm the police in
+single player ... when you get like 50 metres away from it, it seems to just
+vanish."* Not found yet. Nothing in the game hides a car by distance, the
+model is where the car is, the drawn ground is almost never above the
+drivable one (top 1% within 9 cm), and a ray from the camera to the car met
+nothing. The likeliest thing is hedges: from the chase camera, a two-metre
+hedge ten metres short of a car fifty metres off covers it completely, and the
+getaway car now cuts through fields.
+
 Shared terrain, surfaces, road meshes and scenery live in `world/common.js`; a
 map generator only has to lay out a road graph and decide where buildings go.
 

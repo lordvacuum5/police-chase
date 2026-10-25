@@ -39,6 +39,10 @@ export const TRACK_SECONDS = 3;
  * and mills about there.
  */
 const LOST_CONTACT_SECONDS = 5;
+/** The unit that follows your road once you are lost: how near counts as there, how far each leg runs, how far in all. See _trail. */
+const TRAIL_ARRIVE = 40;
+const TRAIL_STEP = 250;
+const TRAIL_MAX = 1200;
 
 /**
  * A player pilot's report counts as eyes on the car for this long after it
@@ -605,17 +609,89 @@ export class Dispatcher {
 
   // ------------------------------------------------------------ role assignment
 
+  /**
+   * The car that carries on down your road once they have lost you.
+   *
+   * "When they lose you, they go to my last known location. I want the first
+   * police car that gets there to continue on my predicted route ... if I'm
+   * going down a straight road, just continue." Everybody else goes to the
+   * last known position and searches round it, as before; the first unit to
+   * get within TRAIL_ARRIVE of it is sent on, along the road the car was on
+   * and straight on through junctions, the way it was going -- TRAIL_STEP at
+   * a time, extended as it gets near the end, out to TRAIL_MAX in all. A car
+   * that was not moving when it was lost leaves no heading to follow, and
+   * nobody is sent.
+   *
+   * Returns the unit doing it, so the role loop leaves it alone.
+   */
+  _trail(k) {
+    let t = this.trailUnit;
+    if (k.seen || k.timeSinceSeen <= LOST_CONTACT_SECONDS || window.__trail === false) {
+      this.trailUnit = null;
+      this._trailFrom = null;
+      return null;
+    }
+    if (t && (!this.units.includes(t) || t.vehicle.disabled)) t = this.trailUnit = null;
+    // A new loss: remember where and which way, once.
+    if (!this._trailFrom || this._trailFrom.x !== k.position.x || this._trailFrom.z !== k.position.z) {
+      const sp = Math.hypot(k.velocity.x, k.velocity.z);
+      this._trailFrom = { x: k.position.x, z: k.position.z, dx: sp > 3 ? k.velocity.x / sp : 0, dz: sp > 3 ? k.velocity.z / sp : 0 };
+      this._trailAt = null;
+      this._trailRun = 0;
+      t = this.trailUnit = null;
+    }
+    const from = this._trailFrom;
+    if (!from.dx && !from.dz) return null;
+    if (!t) {
+      let best = null, bd = TRAIL_ARRIVE;
+      for (const u of this.units) {
+        if (u.role === ROLE.HOLD || u.vehicle.disabled) continue;
+        const d = dist2(u.position.x, u.position.z, from.x, from.z);
+        if (d < bd) { bd = d; best = u; }
+      }
+      if (!best) return null;
+      t = this.trailUnit = best;
+      this._trailAt = this.game.graph.walkAhead(from.x, from.z, from.dx, from.dz, TRAIL_STEP);
+      this._trailRun = TRAIL_STEP;
+    }
+    const at = this._trailAt;
+    if (!at) return null;
+    // Nearly there: on down the road, until it has gone far enough.
+    if (dist2(t.position.x, t.position.z, at.x, at.z) < TRAIL_ARRIVE && this._trailRun < TRAIL_MAX) {
+      const next = this.game.graph.walkAhead(at.x, at.z, at.dx, at.dz, TRAIL_STEP);
+      if (next && dist2(next.x, next.z, at.x, at.z) > 20) {
+        this._trailAt = next;
+        this._trailRun += TRAIL_STEP;
+      } else {
+        // The road has run out: a dead end. Done following.
+        this._trailRun = TRAIL_MAX;
+      }
+    }
+    const goal = this._trailAt;
+    if (t.role !== ROLE.RESPOND || !t.orders || !t.orders.point
+      || t.orders.point.x !== goal.x || t.orders.point.z !== goal.z) {
+      t.setRole(ROLE.RESPOND, { point: new THREE.Vector3(goal.x, 0, goal.z) });
+    }
+    // Run out of road to follow: it searches with everybody else.
+    if (this._trailRun >= TRAIL_MAX && dist2(t.position.x, t.position.z, goal.x, goal.z) < TRAIL_ARRIVE) {
+      return null;
+    }
+    return t;
+  }
+
   _assignRoles(target) {
     const k = this.knowledge;
     const rules = this.rules;
 
     if (this.tier === 0 || k.timeSinceSeen > LOST_CONTACT_SECONDS) {
+      const trail = this.tier > 0 ? this._trail(k) : null;
       for (const u of this.units) {
         if (u.role === ROLE.HOLD) continue;
         if (this.tier === 0) {
           if (u.role !== ROLE.PATROL) u.setRole(ROLE.PATROL);
           continue;
         }
+        if (u === trail) continue;
         // Get there first, then look.
         //
         // Every unit used to flip straight to SEARCH the moment contact was

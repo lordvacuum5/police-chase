@@ -103,17 +103,21 @@ export class Hud {
 
     const toPx = (x) => (x + WORLD_HALF) * scale;
 
-    // Draw wide roads first so junctions read cleanly.
-    const order = ['motorway', 'avenue', 'ramp', 'country', 'street', 'lane'];
+    // Draw wide roads first so junctions read cleanly. Every kind there is,
+    // not a list of them: the list was written before Wexbury's bypass and
+    // Haldon Vale's tracks, and left both off the map -- "there's certain
+    // roads that aren't showing up on the map".
+    const order = Object.keys(ROAD_KIND).filter((k) => k !== 'cut')
+      .sort((a, b) => ROAD_KIND[b].width - ROAD_KIND[a].width);
     const colour = {
-      motorway: '#4a5766', avenue: '#3b444f', ramp: '#3b444f',
-      country: '#39413a', street: '#2f353d', lane: '#333a33',
+      motorway: '#4a5766', avenue: '#3b444f', ramp: '#3b444f', dual: '#46525f',
+      country: '#39413a', street: '#2f353d', lane: '#333a33', track: '#36382f',
     };
 
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     for (const kind of order) {
-      ctx.strokeStyle = colour[kind];
+      ctx.strokeStyle = colour[kind] || '#333a33';
       for (const e of this.game.graph.edges) {
         // Cuts are not drawn: the ways through between buildings are something
         // the player finds, not something the map hands them.
