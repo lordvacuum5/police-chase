@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import { MeshBuilder, vertexColorMaterial } from '../util/meshbuild.js';
 import { RoadGraph, ROAD_KIND } from './roadgraph.js';
-import { GROUP, addStaticBox, addCanopy } from '../physics/world.js';
+import { GROUP, addStaticBox, addCanopy, nearBuilding } from '../physics/world.js';
 import { makeRng, rand, randInt, clamp, lerp, dist2, closestOnSegment, TAU } from '../util/math.js';
 import {
   WORLD_HALF, CELL, GRID_N, KERB_H, SURF_GRASS, SURF_ROAD, SURF_PAVED, PALETTE,
@@ -731,6 +731,7 @@ function addParkContents(ctx, b, rng, x0, z0, x1, z1) {
     const pz = rand(rng, z0 + 6, z1 - 6);
     if (ctx.graph.overlapsRoad(px, pz, 2.4, 2.4, 0, 2.0)) continue;
     const h = rand(rng, 5, 10);
+    if (nearBuilding(ctx.sim.world, px, pz, h * 0.375)) continue;
     b.addBox(0.7, h * 0.45, 0.7, px, h * 0.22, pz, 0x4a3b2c);
     b.addTaperedBox(h * 0.75, h * 0.65, h * 0.75, px, h * 0.62, pz, 0x394d2c, 0.25, 0.25);
     // Park trees are solid too -- every tree in the game stops a car.
@@ -783,6 +784,7 @@ function buildCountryside(ctx) {
         // next one, so check the network rather than just the parent edge.
         if (graph.overlapsRoad(tx, tz, 1.6, 1.6, 0, 0.8)) continue;
         const h = rand(rng, 6, 12);
+        if (nearBuilding(sim.world, tx, tz, h * 0.4)) continue;
         trees.addBox(0.8, h * 0.5, 0.8, tx, h * 0.25, tz, 0x463726);
         trees.addTaperedBox(h * 0.8, h * 0.7, h * 0.8, tx, h * 0.68, tz, 0x33471f, 0.2, 0.2);
         addStaticBox(sim.world, tx, 2.5, tz, 0.6, 2.5, 0.6, GROUP.PROP);
@@ -820,6 +822,7 @@ function scatterWoodland(ctx, trees) {
     // Never on a road. The margin keeps trunks off the verge as well.
     if (graph.overlapsRoad(tx, tz, 2.4, 2.4, 0, 2.0)) return;
     const h = rand(rng, 6, 13) * scale;
+    if (nearBuilding(sim.world, tx, tz, h * 0.39)) return;
     const trunk = 0.55 + h * 0.035;
     trees.addBox(trunk, h * 0.5, trunk, tx, h * 0.25, tz, 0x463726);
     trees.addTaperedBox(h * 0.78, h * 0.72, h * 0.78, tx, h * 0.66, tz,

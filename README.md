@@ -6477,6 +6477,75 @@ its uphill side, and the crown collider (above) was measured from the foot of
 the trunk. A car climbing past met leaves 0.75 times over across the sixty
 runs. Crowns are now measured from the highest ground under them: none.
 
+### Trees out of buildings, hedges that bite, and spawning out of everyone's sight
+
+**Trees inside buildings.** *"Mainly on the new map, but on the UK map as well.
+Sometimes trees are like inside buildings."* Trees were only ever kept off the
+roads. Every building box is now noted as it is made (`addStaticBox` ->
+`noteBlock`, 32 m cells), and a tree whose drawn crown would touch one is not
+planted (`nearBuilding`), on all three maps. Rapier cannot be asked instead: its
+scene queries only see colliders after a step. The list is dropped once the map
+is built. Haldon Vale: trunks inside a building 5 -> 0, crowns 8 -> 0.
+
+**Hedges.** *"It doesn't slow down enough ... it should be more of a
+punishment. Like, really, I can't notice it."* 12% over 0.6 s -> 40% over 0.8 s
+(`HEDGE_LOSS`, `HEDGE_DRAG`), and going in thumps -- camera shake and the
+impact sound, `HEDGE_THUMP` -- with no damage. Through one at 100 km/h, 1.5 s
+later: 97 km/h past it, 63 through it.
+
+**The red ring, round the subject.** *"Whenever someone is a police officer,
+the red circle that appears shouldn't be round them, it should be round the
+subject."* The ring is how far the force can see the car it is chasing, so for
+a police player it is now drawn round that car (the suspect marker), and not at
+all while the suspect is lost.
+
+**The radio blaming the suspect for your ram.** *"If I ram a police car
+accidentally, when I'm a police car, it will say 'They've just rammed us' ...
+no, that was me."* Commentary read `game.player` as the suspect. It reads
+`game.quarry` now, and a police car's knocks are never called as the
+suspect's.
+
+**More bales.** *"Can you add a few more bales on the new map? Because I love
+them."* Two rows of six in 24 stubble fields: 78 -> 268.
+
+**Police appearing in front of you.** *"I keep on seeing that these guys spawn
+right in front of me. A lot of the time when I'm in the police ... only spawn
+them when they're out of everyone's line of sight, so they're in the distance
+only."* Two things were wrong. The camera test looked at a point 1.2 m above
+sea level, which on Haldon Vale's hills is inside the hill: it fell outside the
+view and the spot counted as hidden when it was in plain sight. And another
+player only counted as watching within 170 m, by distance alone. Now
+`Game.seenByAnyone`: on screen here, within 170 m of another player, or in a
+clear line from any player's car -- this one's too -- out to 600 m, where
+buildings, trees, hedges and the hills themselves hide a spot. Used for every
+pursuit spawn, rolling block and block-mate.
+
+**The helicopter, down.** *"When the helicopter goes down, or runs out of fuel
+... have a message appear saying respawning in, and then a countdown of 30
+seconds. So it's more of a punishment that they didn't return to base."* The
+wait is 30 s from coming to rest (was 10), `RESPAWNING IN n` counts it down
+where the start prompt goes, and an aircraft that runs dry and comes down
+anywhere but the pad is now down the same as a crash -- it used to sit there
+with an empty tank.
+
+**The village road that turned grey.** *"That village there, the road's kind
+of black, normal, when you're more than a few metres away. And then as you're
+going down the road, it changes to grey."* The village pavement is one sheet
+the full width of the street, a kerb high, under the tarmac as well as beside
+it -- and the tarmac is 0.13 m lower. Depth-tested, the road only won at a
+distance, where the polygon offset outweighed the gap. The pavement is now
+drawn straight after the ground and writes no depth, so the hills still hide it
+and the road always covers it.
+
+**The helicopter camera off to one side.** *"When I'm flying at an angle, the
+camera doesn't stay behind the helicopter ... it almost looks like I'm looking
+at it slightly from the side."* The air camera followed the aircraft's
+position, which is its skids, and it banks about them: rolled 30 degrees the
+cabin swings a metre sideways and the rotor two. It now follows the middle of
+the airframe (height still from the skids, so a bank does not bob it), and
+swings round behind the nose at 7/s rather than 3.4 -- which trailed a steady
+turn by a third of a second, another view from the side.
+
 Shared terrain, surfaces, road meshes and scenery live in `world/common.js`; a
 map generator only has to lay out a road graph and decide where buildings go.
 

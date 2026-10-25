@@ -297,8 +297,11 @@ const DISC_LEAD = 0.18;
 const DISC_MAX = 0.12;
 
 const START_TIME = 1.8;
-/** Seconds on the ground before a wrecked aircraft is back on the pad. */
-const RECOVER_TIME = 10;
+/**
+ * Seconds on the ground before a wrecked or dried-out aircraft is back on
+ * the pad. Was 10; asked for 30, "so it's more of a punishment".
+ */
+const RECOVER_TIME = 30;
 
 /** How far short of a surface to stop, so the next sweep is not already touching. */
 const CONTACT_GAP = 0.15;
@@ -667,6 +670,7 @@ export class FlyingHelicopter {
       this.fuel = Math.max(0, this.fuel - dt * (0.55 + this.collective * 0.9));
     }
     this._refuel(dt);
+    this._outOfFuel();
     this._recover(dt);
 
     // ---- published state ----
@@ -959,6 +963,12 @@ export class FlyingHelicopter {
    * thumb. See core/touch.js for the layout this names.
    */
   get startPrompt() {
+    // Down, crashed or dry: how long until it is back on the pad. The wait
+    // counts from coming to rest; before that it is still falling.
+    if (this.disabled) {
+      const left = Math.ceil(Math.min(RECOVER_TIME - (this.downFor || 0), RECOVER_TIME * 3 - (this.wreckFor || 0)));
+      return `RESPAWNING IN ${Math.max(0, left)}`;
+    }
     if (!this.engineOff) return null;
     if (this.starting > 0) return `STARTING — ${Math.round(this.startFrac * 100)}%`;
     const touch = this.game.input && this.game.input.touch;
@@ -1036,6 +1046,22 @@ export class FlyingHelicopter {
     // A dead rotor still turns, slowing, on the way down.
     this.spin = Math.max(this.spin, 0.9);
     if (this.game.hud) this.game.hud.toast('AIRCRAFT DOWN');
+  }
+
+  /**
+   * Dry and down somewhere other than the pad: the sortie is over, the same
+   * as a crash. "When the helicopter goes down, or runs out of fuel ... have
+   * a message appear saying respawning in, and then a countdown of 30
+   * seconds. So it's more of a punishment that they didn't return to base."
+   * It used to sit wherever it came down with an empty tank.
+   */
+  _outOfFuel() {
+    if (this.disabled || this.fuel > 0) return;
+    if (!(this.onGround || this.speed < 1.5) || this.onPad()) return;
+    this.disabled = true;
+    this.wreckFor = 0;
+    this.downFor = 0;
+    if (this.game.hud) this.game.hud.toast('OUT OF FUEL');
   }
 
   /**

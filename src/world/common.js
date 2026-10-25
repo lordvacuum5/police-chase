@@ -11,7 +11,7 @@ import { ROAD_KIND } from './roadgraph.js';
 import {
   planJunctions, buildJunctionCorners, buildStopLines, sliceLine, approachesAt, addNodeWedges,
 } from './junctions.js';
-import { GROUP, addStaticBox, addCanopy, PLATE_HALF, EDGE_FACE } from '../physics/world.js';
+import { GROUP, addStaticBox, addCanopy, nearBuilding, PLATE_HALF, EDGE_FACE } from '../physics/world.js';
 import { rand, randInt, lerp, TAU } from '../util/math.js';
 
 export const WORLD_HALF = 1000;
@@ -497,6 +497,8 @@ export function addTree(ctx, builder, tx, tz, scale = 1) {
   if (graph.overlapsRoad(tx, tz, 2.4, 2.4, 0, 2.0)) return false;
 
   const h = rand(rng, 6, 13) * scale;
+  // Not through a wall, crown and all. See nearBuilding.
+  if (nearBuilding(sim.world, tx, tz, h * 0.39)) return false;
   const trunk = 0.55 + h * 0.035;
   builder.addBox(trunk, h * 0.5, trunk, tx, h * 0.25, tz, 0x463726);
   builder.addTaperedBox(h * 0.78, h * 0.72, h * 0.78, tx, h * 0.66, tz,

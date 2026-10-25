@@ -1,7 +1,7 @@
 // Entry point: builds the world, owns the loop, wires everything together.
 
 import * as THREE from 'three';
-import { initPhysics, createWorld, hasLineOfSight, addStaticBox, GROUP } from './physics/world.js';
+import { initPhysics, createWorld, hasLineOfSight, addStaticBox, GROUP, groups } from './physics/world.js';
 import { Vehicle } from './physics/vehicle.js';
 import {
   SPECS, LIVERIES, buildCarGeometry, buildWheelGeometry, LAMP_OFFSETS,
@@ -115,6 +115,13 @@ const NET_SPIN = 6;      // rad/s
 const NET_RANGE = 400;   // m
 /** Within this of your own car, a followed car is treated as in contact. */
 const NET_CONTACT = 6;   // m
+/** How far another player can be taken to see a clear spot, m. See nearHuman. */
+const HUMAN_SIGHT = 600;
+/**
+ * What hides a spawn: buildings, trees, hedges and the hills themselves. A car
+ * appearing behind the brow of a hill has appeared out of sight.
+ */
+const SPAWN_SIGHT = groups(0xFFFF, GROUP.BUILDING | GROUP.PROP | GROUP.HEDGE | GROUP.HILL);
 /** How long another player's helicopter sits still before it is solid. See _netAirParked. */
 const AIR_PARK_AFTER = 0.6;   // s
 
@@ -317,6 +324,9 @@ class Game {
     this.sim.terrainAt = built.terrainAt || null;
     this.sim.relief = built.relief || 0;
     this.world.__map = built;
+    // The building footprints the trees were kept out of: not needed now,
+    // and a helicopter landing later should not add to them.
+    this.world.__blocks = null;
     // The local planner's list of every building and tree box, made now rather
     // than the first time a unit needs it, which is in the middle of a chase.
     warmLocalPlanner(this);
@@ -1021,12 +1031,44 @@ class Game {
     return out;
   }
 
-  /** True if another player's car is close enough to see what happens here. */
-  nearHuman(pos, radius = 170) {
+  /**
+   * True if another player's car is close enough to see what happens here --
+   * or, with `sight`, can see it from further off, with nothing in between.
+   *
+   * "I keep on seeing that these guys spawn right in front of me. A lot of
+   * the time when I'm in the police ... only spawn them when they're out of
+   * everyone's line of sight, so they're in the distance only." Another
+   * player's camera cannot be asked, but their car can: a flat 170 m was
+   * enough to stop a car appearing beside them, and nothing like enough down
+   * a straight lane or across open country. So past `radius`, out to
+   * HUMAN_SIGHT, a spot they have a clear line to counts as seen too.
+   */
+  nearHuman(pos, radius = 170, sight = true) {
     for (const p of this.humanPositions()) {
-      if (dist2(p.x, p.z, pos.x, pos.z) < radius) return true;
+      const d = dist2(p.x, p.z, pos.x, pos.z);
+      if (d < radius) return true;
+      if (sight && d < HUMAN_SIGHT && this._sees(p, pos)) return true;
     }
     return false;
+  }
+
+  /**
+   * Could anybody playing see a car appear here? On this machine's screen,
+   * near another player, or in clear sight of any player's car -- this one's
+   * included, because what is behind you now is in front of you after the
+   * next corner, and the mirror shows it before that.
+   */
+  seenByAnyone(pos) {
+    if (this.inView(pos) || this.nearHuman(pos)) return true;
+    const me = this.player && this.player.position;
+    return !!me && dist2(me.x, me.z, pos.x, pos.z) < HUMAN_SIGHT && this._sees(me, pos);
+  }
+
+  /** A clear line from a car's driving seat to a point a car's height off the ground. */
+  _sees(from, pos) {
+    _eyeV.set(from.x, (from.y || this.groundAt(from.x, from.z)) + 1.3, from.z);
+    _atV.set(pos.x, this.groundAt(pos.x, pos.z) + 1.2, pos.z);
+    return hasLineOfSight(this.world, _eyeV, _atV, 0.3, SPAWN_SIGHT);
   }
 
   /** How far this is from the nearest person playing, whoever that is. */
@@ -1042,7 +1084,11 @@ class Game {
     const cam = this.camera;
     if (!cam) return false;
     cam.updateMatrixWorld(true);
-    _atV.set(pos.x, 1.2, pos.z);
+    // At the ground, not at sea level. On Haldon Vale's hills a point 1.2 m
+    // above zero is inside the hill: it fell outside the camera's view and
+    // the spot counted as hidden when it was in plain sight, which is most of
+    // "they spawn right in front of me" on the new map.
+    _atV.set(pos.x, this.groundAt(pos.x, pos.z) + 1.2, pos.z);
     const d = cam.position.distanceTo(_atV);
     if (d > 700) return false;
     _viewMat.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
@@ -1051,7 +1097,7 @@ class Game {
     _sphere.radius = 4 + d * 0.2;
     if (!_frustum.intersectsSphere(_sphere)) return false;
     _eyeV.copy(cam.position);
-    return hasLineOfSight(this.world, _eyeV, _atV, 0.3);
+    return hasLineOfSight(this.world, _eyeV, _atV, 0.3, SPAWN_SIGHT);
   }
 
   spawnPoliceNear(target, tier) {
@@ -1100,7 +1146,7 @@ class Game {
       // the next, which is what the margin is for.
       if (d < minBehind + warn * 0.4 || d > maxD) continue;
       place = this._placeOnRoad(n);
-      if (place && (this.inView(place.position) || this.nearHuman(place.position))) place = null;
+      if (place && this.seenByAnyone(place.position)) place = null;
       if (place) break;
     }
 
@@ -1123,7 +1169,7 @@ class Game {
       place = this._placeOnRoad(n);
       // Never where you are looking: a car that has to drive in from out of
       // sight is a car arriving, not one appearing.
-      if (place && (this.inView(place.position) || this.nearHuman(place.position))) place = null;
+      if (place && this.seenByAnyone(place.position)) place = null;
       if (place) break;
     }
     if (!place) return null;
@@ -1322,7 +1368,7 @@ class Game {
       // fifty metres up the road is worse than no rolling block; the
       // dispatcher tries again after its cooldown, by which time the road
       // ahead has usually turned a corner.
-      if (this.inView(pos) || this.nearHuman(pos)) continue;
+      if (this.seenByAnyone(pos)) continue;
       let occupied = false;
       for (const v of this.vehicles) {
         if (dist2(v.position.x, v.position.z, pos.x, pos.z) < 8) { occupied = true; break; }
@@ -1484,7 +1530,7 @@ class Game {
       pos.y += this.groundAt(pos.x, pos.z);
       if (this.sim.surfaceAt(pos.x, pos.z) !== 1) continue;
       // Never appearing in front of anyone, the same as the leader.
-      if (this.inView(pos) || this.nearHuman(pos)) continue;
+      if (this.seenByAnyone(pos)) continue;
       let occupied = false;
       for (const v of this.vehicles) {
         if (v !== lv && dist2(v.position.x, v.position.z, pos.x, pos.z) < 4.5) { occupied = true; break; }
@@ -2670,7 +2716,7 @@ class Game {
       // Not where another person is sitting: _placeOnRoad keeps cars 7 m
       // apart, which is enough not to overlap and not enough to be a
       // different place to start.
-      if (this.nearHuman({ x: node.x, z: node.z }, 40)) continue;
+      if (this.nearHuman({ x: node.x, z: node.z }, 40, false)) continue;
       const place = this._placeOnRoad(node);
       if (place) { best = place; break; }
     }

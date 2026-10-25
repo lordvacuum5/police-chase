@@ -155,14 +155,17 @@ export class Commentary {
   }
 
   _describe() {
-    return DESCRIBE[this.game.player.specKey] || 'the suspect vehicle';
+    return DESCRIBE[this.game.quarry.specKey] || 'the suspect vehicle';
   }
 
   // ------------------------------------------------------------------ update
 
   update(dt) {
     const g = this.game;
-    const heat = g.heat, d = g.dispatcher, p = g.player;
+    // The car being chased, which is not always the player's: as the police
+    // in BE THE POLICE it is the getaway car. Reading the player here had the
+    // radio describing your own police car as the suspect's.
+    const heat = g.heat, d = g.dispatcher, p = g.quarry;
     if (!p || g.outcome) return;
 
     this.gap -= dt;
@@ -450,6 +453,12 @@ export class Commentary {
 
   /** The suspect hitting things -- scenery, or the police. */
   _crashes(p) {
+    // Only the suspect's hits are the suspect's doing. "If I ram a police car
+    // accidentally, when I'm a police car, it will say 'They've just rammed
+    // us' ... no, that was me." In a multiplayer game the car the force is
+    // after is somebody else's, and the one this machine knows the knocks of
+    // is a police car -- so it says nothing.
+    if (p.isPolice) return;
     if (!p.lastImpactAt || p.lastImpactAt === this.lastImpactAt) return;
     if (performance.now() - p.lastImpactAt > 200) return;
     this.lastImpactAt = p.lastImpactAt;
@@ -632,7 +641,7 @@ export class Commentary {
 
   /** Called on the arrest itself, before Control stands everybody down. */
   onBusted() {
-    const g = this.game, p = g.player;
+    const g = this.game, p = g.quarry;
     const near = g.dispatcher.units
       .filter((u) => !u.vehicle.disabled)
       .sort((a, b) => a.distanceTo(p.position) - b.distanceTo(p.position))[0];

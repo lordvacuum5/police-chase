@@ -25,7 +25,7 @@
 import * as THREE from 'three';
 import { RoadGraph, ROAD_KIND } from './roadgraph.js';
 import { approachesAt, addNodeWedges } from './junctions.js';
-import { GROUP, groups, addStaticBox, addCanopy, EDGE_FACE, RAPIER } from '../physics/world.js';
+import { GROUP, groups, addStaticBox, addCanopy, nearBuilding, EDGE_FACE, RAPIER } from '../physics/world.js';
 import { makeRng, rand, randInt, clamp, lerp, dist2, TAU } from '../util/math.js';
 import {
   WORLD_HALF, CELL, GRID_N, KERB_H, SURF_GRASS, SURF_ROAD, SURF_PAVED, PALETTE,
@@ -57,6 +57,9 @@ const VILLAGE_CLEAR = 80;
 const BALE_R = 0.8;
 const BALE_H = 1.5;
 const BALE_MASS = 90;
+/** How many stubble fields get bales, and how many to a row (two rows each). */
+const BALE_FIELDS = 24;
+const BALE_ROW = 6;
 
 export function buildCountry(sim, scene, seed = 4417) {
   const rng = makeRng(seed);
@@ -126,13 +129,17 @@ export function buildCountry(sim, scene, seed = 4417) {
     }
     return 0;
   };
-  meshes.push(buildTerrainMesh(grid, (x, z, y, c) => groundColour(ctx, fields, x, z, y, c), 8, nearRoad));
+  const terrain = buildTerrainMesh(grid, (x, z, y, c) => groundColour(ctx, fields, x, z, y, c), 8, nearRoad);
+  // Before the pavements, which write no depth: see buildVillagePavements.
+  terrain.renderOrder = DRAW_ORDER.ground;
+  meshes.push(terrain);
   // And the fields on out to the edge of the plate, which is 200 m wider than
   // the hills on every side. Without it that strip was drivable and not
   // drawn: sky under the wheels, and the field hedges running on across it.
   const plate = { half: EDGE_FACE + 4, at: () => 0 };
   const ring = buildTerrainMesh(plate, (x, z, y, c) => groundColour(ctx, fields, x, z, y, c), 8, null, WORLD_HALF);
   ring.name = 'terrain-edge';
+  ring.renderOrder = DRAW_ORDER.ground;
   meshes.push(ring);
   // Without the kerbs: a country lane has a verge, not a kerb, and the grip
   // grid has none here outside the villages to match one.
@@ -708,7 +715,14 @@ function buildVillagePavements(ctx) {
     const app = approachesAt(graph, n).filter((a) => paved(a.edge));
     if (app.length) addNodeWedges(b, n, app, (e) => (e.width + 6) * 0.5, KERB_H - 0.001, PALETTE.pavement);
   }
-  const mesh = new THREE.Mesh(b.build(), vertexColorMaterial({ polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }));
+  // One sheet the full width of the street, a kerb high, under the tarmac as
+  // well as beside it -- and the tarmac is 0.13 m lower. Depth-tested, the
+  // road won only at a distance, where the polygon offset outweighed the
+  // gap: "the road's black when you're more than a few metres away, and as
+  // you go down it, it changes to grey". So the pavement is drawn first and
+  // writes no depth: the hills still hide it, and the road always covers it.
+  const mesh = new THREE.Mesh(b.build(), vertexColorMaterial({ depthWrite: false }));
+  mesh.renderOrder = DRAW_ORDER.pavement;
   liftMesh(mesh, ctx.at, 0.05);
   mesh.name = 'pavements';
   mesh.receiveShadow = true;
@@ -1009,6 +1023,8 @@ function addTreeT(ctx, b, pieces, x, z, scale = 1) {
   if (graph.overlapsRoad(x, z, 2.4, 2.4, 0, 2.5)) return false;
   if (inVillage(ctx, x, z, -20) || ctx.farms.some((f) => Math.hypot(f.x - x, f.z - z) < 40)) return false;
   const h = rand(rng, 8, 15) * scale;
+  // Not through a barn roof or a cottage wall, crown and all. See nearBuilding.
+  if (nearBuilding(ctx.sim.world, x, z, h * 0.4)) return false;
   const trunk = 0.55 + h * 0.035;
   const s = b.vertexCount;
   b.addBox(trunk, h * 0.5, trunk, x, h * 0.25, z, 0x463726);
@@ -1145,11 +1161,15 @@ function buildBalesAndTurbines(ctx, fields, hills) {
   // Round bales, in rows in a few of the stubble fields. Loose: see buildBales.
   const stubble = fields.seeds.filter((s) => !s.wood && (s.crop === CROPS[4] || s.crop === CROPS[5]));
   const bales = [];
-  for (const s of stubble.slice(0, 14)) {
+  // More of them, two rows to a field: "can you add a few more bales on the
+  // new map? Because I love them." 14 fields of 6 was 78 bales.
+  for (const s of stubble.slice(0, BALE_FIELDS)) {
     const rot = rng() * TAU;
-    for (let k = 0; k < 6; k++) {
-      const x = s.x + Math.cos(rot) * (k - 3) * 9 + rand(rng, -1, 1), z = s.z + Math.sin(rot) * (k - 3) * 9 + rand(rng, -1, 1);
-      if (graph.overlapsRoad(x, z, 2, 2, 0, 3) || inVillage(ctx, x, z, 0)) continue;
+    for (let k = 0; k < BALE_ROW * 2; k++) {
+      const row = k < BALE_ROW ? -1 : 1, i = (k % BALE_ROW) - (BALE_ROW - 1) / 2;
+      const ox = Math.cos(rot) * i * 8 - Math.sin(rot) * row * 6, oz = Math.sin(rot) * i * 8 + Math.cos(rot) * row * 6;
+      const x = s.x + ox + rand(rng, -1, 1), z = s.z + oz + rand(rng, -1, 1);
+      if (graph.overlapsRoad(x, z, 2, 2, 0, 3) || inVillage(ctx, x, z, 0) || nearBuilding(ctx.sim.world, x, z, 1.2)) continue;
       bales.push({ x, z, rot });
     }
   }

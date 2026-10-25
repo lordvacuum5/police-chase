@@ -644,18 +644,26 @@ export class Hud {
     // Centred on the car, which is the middle of the picture until the map has
     // been dragged off it.
     const me = toMap(player.position.x, player.position.z);
-    if (heat.tier > 0 && dispatcher.inContact && dispatcher.sightRange) {
+    // Round the subject, when you are the police. "Whenever someone is a
+    // police officer, the red circle shouldn't be round them, it should be
+    // round the subject." The range is how far the force can see the car it is
+    // chasing, so it is drawn round that car: the getaway car in BE THE
+    // POLICE, the escapee in a multiplayer game. Round your own police car it
+    // meant nothing at all.
+    const hunted = player.isPolice ? (this.suspect && !this.suspectStale ? this.suspect : null) : player.position;
+    const at = hunted ? toMap(hunted.x, hunted.z) : null;
+    if (at && heat.tier > 0 && dispatcher.inContact && dispatcher.sightRange) {
       const rad = dispatcher.sightRange * k;
       ctx.save();
       ctx.beginPath();
-      ctx.arc(me.x, me.y, rad, 0, Math.PI * 2);
+      ctx.arc(at.x, at.y, rad, 0, Math.PI * 2);
       ctx.strokeStyle = 'rgba(255,59,48,0.55)';
       ctx.lineWidth = 2;
       ctx.setLineDash([7, 6]);
       ctx.stroke();
       ctx.setLineDash([]);
       // A wash inside it, so "inside the ring" reads at a glance.
-      const grd = ctx.createRadialGradient(me.x, me.y, rad * 0.55, me.x, me.y, rad);
+      const grd = ctx.createRadialGradient(at.x, at.y, rad * 0.55, at.x, at.y, rad);
       grd.addColorStop(0, 'rgba(255,59,48,0)');
       grd.addColorStop(1, 'rgba(255,59,48,0.13)');
       ctx.fillStyle = grd;

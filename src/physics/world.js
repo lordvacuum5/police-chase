@@ -250,6 +250,7 @@ export function addStaticBox(
     bodyDesc.setRotation({ x: 0, y: Math.sin(h), z: 0, w: Math.cos(h) });
   }
   const body = world.createRigidBody(bodyDesc);
+  if ((group & GROUP.BUILDING) && !(group & GROUP.HEDGE)) noteBlock(world, cx, cz, hx, hz, rotY);
   const col = RAPIER.ColliderDesc.cuboid(hx, hy, hz)
     .setFriction(0.9)
     .setRestitution(0.05)
@@ -288,4 +289,52 @@ export function addCanopy(world, x, z, ground, cy, ch, w) {
   const hh = (top - bottom) * 0.5;
   const hw = w * 0.35;
   addStaticBox(world, x, ground + bottom + hh, z, hw, hh, hw, GROUP.CANOPY);
+}
+
+/**
+ * Every building's footprint, kept while a map is being built so the trees
+ * planted after the buildings can stay out of them.
+ *
+ * "Mainly on the new map, but on the UK map as well. Sometimes trees are like
+ * inside buildings." The trees were only ever kept off the roads: a copse on
+ * the edge of a village, or the woods round a farm, planted trunks and crowns
+ * through walls and barn roofs. Rapier cannot be asked here -- its scene
+ * queries only see colliders after a step -- so the boxes are noted as they
+ * are made, in 32 m cells, and the game drops the list (sets it to null) once
+ * the map is built.
+ */
+const BLOCK_CELL = 32;
+function noteBlock(world, x, z, hx, hz, rot) {
+  if (world.__blocks === null) return;
+  if (!world.__blocks) world.__blocks = new Map();
+  const r = Math.hypot(hx, hz);
+  const b = { x, z, hx, hz, c: Math.cos(rot), s: Math.sin(rot) };
+  for (let i = Math.floor((x - r) / BLOCK_CELL); i <= Math.floor((x + r) / BLOCK_CELL); i++) {
+    for (let j = Math.floor((z - r) / BLOCK_CELL); j <= Math.floor((z + r) / BLOCK_CELL); j++) {
+      const k = i * 4096 + j;
+      let list = world.__blocks.get(k);
+      if (!list) world.__blocks.set(k, list = []);
+      list.push(b);
+    }
+  }
+}
+
+/** Does a circle of radius `r` at (x, z) touch any building noted so far? */
+export function nearBuilding(world, x, z, r) {
+  const blocks = world.__blocks;
+  if (!blocks) return false;
+  for (let i = Math.floor((x - r) / BLOCK_CELL); i <= Math.floor((x + r) / BLOCK_CELL); i++) {
+    for (let j = Math.floor((z - r) / BLOCK_CELL); j <= Math.floor((z + r) / BLOCK_CELL); j++) {
+      const list = blocks.get(i * 4096 + j);
+      if (!list) continue;
+      for (const b of list) {
+        // Into the box's own frame (addStaticBox turns it by rotY about y).
+        const dx = x - b.x, dz = z - b.z;
+        const lx = dx * b.c - dz * b.s, lz = dx * b.s + dz * b.c;
+        const ox = Math.max(0, Math.abs(lx) - b.hx), oz = Math.max(0, Math.abs(lz) - b.hz);
+        if (ox * ox + oz * oz < r * r) return true;
+      }
+    }
+  }
+  return false;
 }

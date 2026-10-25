@@ -370,6 +370,11 @@ car on the ground can meet one), and **another player's landed helicopter is
 solid** on your screen too (`Game._netAirParked`). **Cars turn round** when it
 pays and they are slow (`pathFromPosition`, `UTURN_MAX`); at speed it was tried
 and cost the chase. `tests/routecheck.js` is the route-quality rig.
+**Hedges cost 40% of your speed** (asked for "more of a punishment"); **the
+detection ring is round the subject for a police player**; **police spawn only
+where no player can see** (`Game.seenByAnyone`); **a downed or dried-out
+helicopter waits 30 s** with a countdown; **trees are never planted into a
+building** (`nearBuilding`).
 **Rig trap:** spawn anything on a hilly map at `groundAt + ...`, never a fixed
 y -- response.js put its cars inside the hill and reported the AI as stuck.
 

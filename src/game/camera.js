@@ -107,6 +107,8 @@ function hoodEye(v) {
 
 /** How far above the ground the camera is always kept, metres; less from the bonnet seat. */
 const CAM_CLEAR = 0.6;
+/** How quickly the air camera swings round behind the aircraft's nose, 1/s. */
+const AIR_FOLLOW = 7;
 const HOOD_CLEAR = 0.3;
 /** Where round the camera the ground is also sampled for that. */
 const CLEAR_RING = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -141,8 +143,23 @@ export class ChaseCamera {
   _air(dt, v, alpha = 1) {
     const back = 17, up = 5.4;
     _carPos.copy(v.prevPos || v.position).lerp(v.position, alpha);
+    // Followed by the middle of the airframe, not its skids. "When I'm flying
+    // at an angle, the camera doesn't stay behind the helicopter ... it looks
+    // like I'm looking at it slightly from the side." The aircraft's position
+    // is at the skids, and it banks about them: rolled 30 degrees, the cabin
+    // swings a metre sideways and the rotor two, so a camera aimed at the
+    // skids sat off to one side of what you were looking at. Height is still
+    // taken from the skids, so a bank does not bob the camera up and down.
+    if (v.quaternion) {
+      _upv.copy(AXIS_U).applyQuaternion(v.quaternion);
+      const mid = ((v.spec && v.spec.dims && v.spec.dims.h) || 3) * 0.5;
+      _carPos.x += _upv.x * mid;
+      _carPos.z += _upv.z * mid;
+    }
     const nose = v.yaw !== undefined ? v.yaw : Math.atan2(v.forward.x, v.forward.z);
-    this.heading += angleDelta(this.heading, nose) * (1 - Math.exp(-3.4 * dt));
+    // And closer behind it in a turn: at 3.4 the camera trailed a steady turn
+    // by a third of a second, which is a view from the side as well.
+    this.heading += angleDelta(this.heading, nose) * (1 - Math.exp(-AIR_FOLLOW * dt));
 
     const sh = Math.sin(this.heading), ch = Math.cos(this.heading);
     // Rise with speed so the ground stays in shot in a dash across town, and

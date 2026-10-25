@@ -15,8 +15,10 @@ import * as THREE from 'three';
 import { RAPIER, GROUP, groups, raycast, RAY_GROUNDS, RAY_WHEELS, EDGE_FACE } from './world.js';
 
 /** Through a hedge: this share of the speed, lost over this many seconds. */
-const HEDGE_LOSS = 0.12;
-const HEDGE_DRAG = 0.6;
+const HEDGE_LOSS = 0.40;
+const HEDGE_DRAG = 0.8;
+/** How hard going into one feels to the camera and the sound, as an impact in m/s. */
+const HEDGE_THUMP = 5;
 const HEDGE_QUERY = groups(0xFFFF, GROUP.HEDGE);
 /** _guardFlip: the tilt it starts at, radians (about 23 degrees), and how hard it rights the car. */
 const FLIP_FROM = 0.4;
@@ -599,6 +601,14 @@ export class Vehicle {
       },
       undefined, HEDGE_QUERY, this.collider,
     );
+    // "It doesn't slow down enough ... it should be more of a punishment.
+    // Like, really, I can't notice it." 12% over 0.6 s was not something you
+    // felt; 40% over 0.8 s is, and going in thumps like a knock -- the camera
+    // shakes and the impact sounds -- without costing any bodywork.
+    if (inHedge && !(this._hedgeFor > 0)) {
+      this.lastImpact = HEDGE_THUMP;
+      this.lastImpactAt = performance.now();
+    }
     if (inHedge) this._hedgeFor = HEDGE_DRAG;
     if (!(this._hedgeFor > 0)) return;
     this._hedgeFor -= dt;
