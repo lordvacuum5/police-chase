@@ -6599,6 +6599,59 @@ nothing. The likeliest thing is hedges: from the chase camera, a two-metre
 hedge ten metres short of a car fifty metres off covers it completely, and the
 getaway car now cuts through fields.
 
+### Patrols holding their lane, and opening up on open ground
+
+**Patrols weaving.** *"Patrol cars weave about and don't hold their lane."*
+Traced on a city straight, the car tracks its own path to the centimetre; the
+swinging starts at the exit of a junction, where it had come in on the full
+grip of its tyres -- the same corner speed a pursuit car plans -- ran three
+metres wide and swung back across. A patrol now plans a tight turn (under 25 m
+radius, `TIGHT_TURN`) on 0.6 of its grip (`PATROL_CORNER`, `__patrolCorner`).
+tests/patrol.js, five minutes a map, fresh page each (the rig is exactly
+repeatable, so one incident -- a car stuck reversing -- moves a whole run):
+
+| | lane error | off road | wrong side | knocks | reversing |
+|---|---|---|---|---|---|
+| city, before | 1.83 m | 7% | 7% | 2 | 0 s |
+| city, 0.6 | **0.94 m** | **2%** | 5% | 2 | 3 s |
+| Wexbury, before | 0.96 m | 3% | 6% | 0 | 0 s |
+| Wexbury, 0.6 | 0.88 m | 1% | 5% | 6 | 6 s |
+| Wexbury, 0.75 | 0.84 m | 1% | 4% | 0 | 0 s |
+| Haldon, before | 0.78 m | 5% | 4% | 0 | 2 s |
+| Haldon, 0.6 | 1.02 m | 6% | 5% | 2 | 3 s |
+| Haldon, 0.75 | 1.41 m | 10% | 9% | 2 | 25 s |
+
+Kept at 0.6 on the city and Wexbury, and not on Haldon Vale, where every
+setting measured worse. Tried and not kept on the way: no steering reaction
+lag (lane error 0.89 -> 1.93 m: the lag was damping it), a longer look ahead
+(less weaving on straights, 28 -> 19 swings a km, but more corner-cutting into
+the other lane, 4% -> 7%), and the longer look only when no bend is coming
+(no better than before). Also found: `WIDE` is 20 m, so the "look only as far
+as the corridor is wide" rule caps the look on every ordinary road narrower
+than that. Left as it is, measured as making no difference to patrols.
+
+**Faster on open ground.** *"When there's no obstacles near, can you let the
+police go faster ... a big open area, just grass, where they can fully open up
+their speed."* Driving at a parked car four hundred metres across an open
+field, an interceptor held 82 km/h: a direct pursuit asks for the target's
+speed plus a closing margin, and the margin stopped at 58-97 km/h whatever the
+ground. Now, further off than 90 m with nothing solid within 30 m ahead, it may
+close at up to 45 m/s (162 km/h) above the target's speed (`OPEN_CLOSE`), set by
+the distance so it comes down as the gap shuts. The same field: top 82 -> 160
+km/h, there in 16.3 s. keepup.js on Haldon: at a 150 km/h ghost the mean
+68 -> 71 km/h and 309 -> 296 m behind; at 90 no change; light knocks up (23 ->
+32 at 150), no damage. `window.__openClose = false` turns it off.
+
+**How fast are they, and is it the car or the wanted level?** Both. The cars
+themselves: a Patrol's planner top speed is 317 km/h (197 mph), the SUV 331
+(206), the Interceptor 356 (221), the Unmarked 371 (230), the van 158 (98); the
+player's Runner is 288 (179). The wanted level then decides two things: which
+of those cars are sent (more interceptors, SUVs and unmarked cars at higher
+stars), and how hard each one drives -- its pace runs from 84% of the car's
+speed at one star to 100% at five, and the catch-up boost, which only works
+when a unit is well behind, grows with the level too, up to about two and a
+half times the engine at five stars and long range.
+
 Shared terrain, surfaces, road meshes and scenery live in `world/common.js`; a
 map generator only has to lay out a road graph and decide where buildings go.
 

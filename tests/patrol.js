@@ -43,6 +43,7 @@ window.__runPatrol = async function (seconds = 90) {
   const parkY = (g.groundAt ? g.groundAt(park.x, park.z) : 0) + 1;
   const s = { n: 0, speed: 0, stopped: 0, lane: 0, laneBad: 0, wrong: 0, off: 0, hits: 0, rev: 0, dist: 0, flips: 0 };
   const last = new Map();
+  const sides = new Map();
   for (let i = 0; i < seconds * 60; i++) {
     g.heat.value = 0;
     if (i % 60 === 0) p.teleport({ x: park.x, y: parkY, z: park.z }, 0);
@@ -50,6 +51,7 @@ window.__runPatrol = async function (seconds = 90) {
     g._update(1 / 60);
     for (const u of g.dispatcher.units) {
       if (u.role !== ROLE.PATROL) continue;
+      if (window.__patrolTweak) window.__patrolTweak(u);
       const v = u.vehicle;
       const snap = gr.nearestEdge(v.position.x, v.position.z, 40);
       if (!snap) continue;
@@ -91,6 +93,36 @@ window.__runPatrol = async function (seconds = 90) {
       const prev = last.get(u);
       if (prev) s.dist += Math.hypot(v.position.x - prev.x, v.position.z - prev.z);
       last.set(u, { x: v.position.x, z: v.position.z, hitAt: v.lastImpactAt, hist });
+      // On a straight stretch of its own route (no more than 4 degrees of turn
+      // in the 20 m either side of the car), how far off the route it is, and
+      // how often it swings from one side of it to the other by more than
+      // 0.3 m: weaving, measured where nothing excuses it.
+      const pts = u.driver.path || [];
+      if (pts.length > 4 && v.speed > 5) {
+        let ci = 0, cd = Infinity;
+        for (let k = Math.max(0, u.driver.pathIndex - 6); k < Math.min(pts.length, u.driver.pathIndex + 8); k++) {
+          const dd = Math.hypot(pts[k].x - v.position.x, pts[k].z - v.position.z);
+          if (dd < cd) { cd = dd; ci = k; }
+        }
+        const back = (k0, dist) => { let k = k0, acc = 0; while (k > 0 && acc < dist) { acc += Math.hypot(pts[k].x - pts[k - 1].x, pts[k].z - pts[k - 1].z); k--; } return k; };
+        const fwdK = (k0, dist) => { let k = k0, acc = 0; while (k < pts.length - 1 && acc < dist) { acc += Math.hypot(pts[k + 1].x - pts[k].x, pts[k + 1].z - pts[k].z); k++; } return k; };
+        const a = pts[back(ci, 20)], m = pts[ci], b = pts[fwdK(ci, 20)];
+        const h1 = Math.atan2(m.x - a.x, m.z - a.z), h2 = Math.atan2(b.x - m.x, b.z - m.z);
+        let turn = Math.abs(h2 - h1); if (turn > Math.PI) turn = 2 * Math.PI - turn;
+        if (turn < 4 / 57.3 && Math.hypot(b.x - a.x, b.z - a.z) > 30) {
+          const hx = b.x - a.x, hz = b.z - a.z, hl = Math.hypot(hx, hz);
+          const xt = ((v.position.x - a.x) * hz - (v.position.z - a.z) * hx) / hl;
+          s.sN = (s.sN || 0) + 1;
+          s.sErr = (s.sErr || 0) + Math.abs(xt);
+          if (Math.abs(xt) > 1) s.sBad = (s.sBad || 0) + 1;
+          const side = sides.get(u) || 0;
+          let now = side;
+          if (xt > 0.3) now = 1; else if (xt < -0.3) now = -1;
+          if (side && now && now !== side) s.swings = (s.swings || 0) + 1;
+          sides.set(u, now);
+          s.sDist = (s.sDist || 0) + v.speed / 60;
+        }
+      }
       const st = v.controls ? v.controls.steer || 0 : 0;
       if (prev && prev.st !== undefined && Math.sign(st) !== Math.sign(prev.st) && Math.abs(st - prev.st) > 0.3) s.weave = (s.weave || 0) + 1;
       last.get(u).st = st;
@@ -103,6 +135,7 @@ window.__runPatrol = async function (seconds = 90) {
     + `wrong side ${(100 * s.wrong / n).toFixed(0)}%  off road ${(100 * s.off / n).toFixed(0)}%  `
     + `off the tarmac ${(100 * (s.kerb || 0) / n).toFixed(0)}%  over the limit ${(100 * (s.fast || 0) / n).toFixed(0)}%  `
     + `hard braking ${(100 * (s.brake || 0) / n).toFixed(0)}%  `
+    + `on straights: off the route ${((s.sErr || 0) / Math.max(1, s.sN || 0)).toFixed(2)} m (over 1 m ${(100 * (s.sBad || 0) / Math.max(1, s.sN || 0)).toFixed(0)}%), swings ${((s.swings || 0) / Math.max(0.1, (s.sDist || 0) / 1000)).toFixed(0)}/km  `
     + `hits ${s.hits}  weave ${((s.weave || 0) / Math.max(0.1, s.dist / 1000)).toFixed(0)}/km  `
     + `reverse ${(s.rev / 60).toFixed(0)} s  flipped frames ${s.flips}  km ${(s.dist / 1000).toFixed(1)}`;
   return window.__res;

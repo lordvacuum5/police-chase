@@ -53,6 +53,12 @@ const CROSS_MAX = 250;
 const CROSS_SAVING = 1.35;
 /** Grass a direct chase may cross to a target on the road, in hedged country -- see _pursue. */
 const CROSS_GRASS = 20;
+/** Open ground: further off than this, m, with nothing within OPEN_CLEAR ahead, a unit may close at up to OPEN_CLOSE m/s above the target's speed. See _pursue. */
+const OPEN_FROM = 90;
+const OPEN_CLEAR = 30;
+const OPEN_CLOSE = 45;
+/** The share of its grip a patrol car plans a corner on. See the role switch in update. */
+const PATROL_CORNER = 0.6;
 /**
  * Whether the hedged-country rules above apply: keep to the lanes when the
  * target is on one, and count a straight line across the fields as closed.
@@ -738,6 +744,14 @@ export class Officer {
     if (regain) { v.setControls(regain); return; }
 
     let controls;
+    // On patrol, corners at a share of the grip: "patrol cars weave about and
+    // don't hold their lane". Planned on all of it, as a pursuit car is, a
+    // patrol car came into every junction too fast for the line, ran three
+    // metres wide on the way out and swung back across. See PATROL_CORNER.
+    // Not on Haldon Vale, where it measured slightly worse: its junctions are
+    // hedged lanes meeting at an angle, not town corners.
+    this.driver.cornerShare = this.role === ROLE.PATROL && !this.game.sim.terrainAt
+      ? (window.__patrolCorner === undefined ? PATROL_CORNER : window.__patrolCorner) : 1;
     switch (this.role) {
       case ROLE.PURSUE:    controls = this._pursue(dt, target); break;
       case ROLE.INTERCEPT: controls = this._intercept(dt, target); break;
@@ -1961,7 +1975,16 @@ export class Officer {
     // second and every contact was a nudge. Now a floor that rises with the
     // wanted level: about 20 km/h faster than you at one star, 58 at five.
     this._mode = d < ramRange + 8 ? 'ram' : 'direct';
-    const closeBy = Math.max(lerp(5.5, 16, ram), Math.min(d * 0.35, 16 + 11 * ram));
+    // And far off with nothing solid ahead, a good deal more. "When there's no
+    // obstacles near, can you let the police go faster ... a big open area,
+    // where they can just fully open up their speed." Across an open field
+    // at a parked car four hundred metres away, an interceptor held 82 km/h:
+    // the closing margin above stopped at 58-97 km/h whatever the ground.
+    // Past OPEN_FROM, with the way ahead clear for as far as the wall probe
+    // looks, it may close at up to OPEN_CLOSE -- the distance still sets it,
+    // so it comes down again as the gap shuts.
+    const open = d > OPEN_FROM && this.driver.wallNear > OPEN_CLEAR && window.__openClose !== false;
+    const closeBy = Math.max(lerp(5.5, 16, ram), Math.min(d * 0.35, open ? OPEN_CLOSE : 16 + 11 * ram));
     const speed = Math.abs(target.forwardSpeed) + closeBy;
     return this.driver.driveTo(_aim, Math.min(
       speed, this._chaseSpeed() * lerp(1, 1.15, ram), this._gapCap(target),

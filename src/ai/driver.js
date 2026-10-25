@@ -124,6 +124,8 @@ const MU_TRUST = 0.87;
 
 /** Wide enough that the lane terms behave as they always did. */
 const WIDE = 20;
+/** A turn tighter than this radius, m, is a junction rather than a bend. See planSpeed. */
+const TIGHT_TURN = 25;
 
 /**
  * How far the pure-pursuit chord may be relaxed toward the corner the target is
@@ -942,7 +944,10 @@ export class Driver {
       const a = this.path[i], b = this.path[i + 1], c = this.path[i + 2];
       acc += dist2(a.x, a.z, b.x, b.z);
       const R = curveRadius(a.x, a.z, b.x, b.z, c.x, c.z);
-      let vc = cornerSpeedLimit(R, mu);
+      // A car not in a hurry (a patrol) takes a tight turn -- a junction, not a
+      // bend in the road -- on a share of its grip, not all of it. See
+      // Officer's PATROL_CORNER.
+      let vc = cornerSpeedLimit(R, mu * (R < TIGHT_TURN ? (this.cornerShare || 1) : 1));
       if (b.speed) {
         vc = Math.min(vc, b.speed * this.limitScale * lerp(1.0, 1.35, skill.aggression - 0.7));
       }
