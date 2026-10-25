@@ -1017,7 +1017,15 @@ function addTreeT(ctx, b, pieces, x, z, scale = 1) {
     0.22, 0.22, rand(rng, 0, TAU));
   pieces.push([s, b.vertexCount, x, z]);
   addStaticBox(ctx.sim.world, x, ctx.at(x, z) + 2.6, z, 0.65, 2.6, 0.65, GROUP.PROP);
-  addCanopy(ctx.sim.world, x, z, ctx.at(x, z), h * 0.66, h * 0.72, h * 0.8);
+  // From the highest ground under the crown, not the foot of the trunk: on a
+  // hillside the crown's uphill edge is that much nearer the ground, and a
+  // car climbing past met leaves where it could see none.
+  const r = h * 0.8 * 0.35;
+  let top = ctx.at(x, z);
+  for (const [ox, oz] of [[r, 0], [-r, 0], [0, r], [0, -r], [r, r], [-r, r], [r, -r], [-r, -r]]) {
+    top = Math.max(top, ctx.at(x + ox, z + oz));
+  }
+  addCanopy(ctx.sim.world, x, z, top, h * 0.66, h * 0.72, h * 0.8);
   return true;
 }
 

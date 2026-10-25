@@ -6455,6 +6455,28 @@ back, 17 hits against 12, mean 41 km/h -- worse, not kept, the same answer the
 65% trial gave before. The gaps are where they were; the long list under
 "Through the gaps, faster: not yet" still says where the time goes.
 
+### Damage from the hill itself
+
+*"Sometimes when I go up a hill -- and my friend also experiences this -- you
+suddenly take a ton of damage. There's something weird when you go up hills."*
+
+The bodywork rests on a heightfield sunk 0.35 m under the drawn ground, as a
+backstop under the suspension. Where a slope steepens, or a car comes down on
+its nose, the body meets it, and that stop was charged exactly like hitting a
+wall: up to 12% at a time with nothing in the way. Now, when everything the
+car is touching is ground (`Vehicle._onlyGround`), the hit costs 35% of that
+(`GROUND_SHARE`), the same as a landing. A tree, a wall or another car on the
+hill is still charged in full.
+
+Driven at the hillsides -- ten of the steepest places, both ways, at 40, 80 and
+120 km/h, flat out and not steering -- the damage taken from the ground alone,
+summed over the sixty runs: 2.46 before, 0.49 after.
+
+The same runs found a second cause: on a slope a tree's crown hangs lower on
+its uphill side, and the crown collider (above) was measured from the foot of
+the trunk. A car climbing past met leaves 0.75 times over across the sixty
+runs. Crowns are now measured from the highest ground under them: none.
+
 Shared terrain, surfaces, road meshes and scenery live in `world/common.js`; a
 map generator only has to lay out a road graph and decide where buildings go.
 

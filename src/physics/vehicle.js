@@ -23,6 +23,10 @@ const FLIP_FROM = 0.4;
 const FLIP_RIGHT = 3.0;
 /** How much of a landing's vertical stop counts as an impact. See postStep. */
 const LANDING_SHARE = 0.35;
+/** What a hit costs when all the car touched was the ground. See _onlyGround. */
+const GROUND_SHARE = 0.35;
+/** The knock below which takeImpact charges nothing; _onlyGround is only asked above it. */
+const IMPACT_FROM = 2.6;
 import {
   tyreForces, slipRatioOf, slipAngleOf, slipIntensity, loadedMu,
   TYRE_ROAD, TYRE_GRASS, TYRE_PAVED,
@@ -556,7 +560,7 @@ export class Vehicle {
     // and the ordinary bumping of a pack of cars all sit under it. Raised
     // along with `durability` so bodywork survives a chase that involves
     // contact, which this one always does.
-    this.takeImpact(dv);
+    this.takeImpact(dv > IMPACT_FROM && this._onlyGround() ? dv * GROUND_SHARE : dv);
     this._prevVel.copy(_v1);
 
     this._hedgeDrag(dt);
@@ -601,6 +605,32 @@ export class Vehicle {
     const lv = this.body.linvel();
     const s = Math.hypot(lv.x, lv.z);
     this.applySpeedLoss(s * (1 - Math.exp((Math.log(1 - HEDGE_LOSS) / HEDGE_DRAG) * dt)));
+  }
+
+  /**
+   * Is everything this car is touching the ground itself?
+   *
+   * "Sometimes when I go up a hill -- and my friend also experiences this --
+   * you suddenly take a ton of damage." On a hilly map the bodywork rests on
+   * a heightfield sunk under the drawn ground (world/terrain.js), and where a
+   * slope steepens, or a car comes down on its nose, the body meets it. That
+   * stop was charged like a wall: up to 12% at a time with nothing in the way.
+   * The ground is what the suspension is for, so a hit where all the car is
+   * touching is ground costs GROUND_SHARE of it, the same as a landing. A hill
+   * with a tree on it, or another car, is charged in full.
+   */
+  _onlyGround() {
+    if (!this.sim.terrainAt) return false;
+    let ground = false, other = false;
+    this.world.contactPairsWith(this.collider, (o) => {
+      const m = (o.collisionGroups() >>> 16) & 0xFFFF;
+      let touching = false;
+      this.world.contactPair(this.collider, o, (man) => { if (man.numContacts() > 0) touching = true; });
+      if (!touching) return;
+      if (m & (GROUP.HILL | GROUP.TERRAIN)) ground = true;
+      else other = true;
+    });
+    return ground && !other;
   }
 
   /**
