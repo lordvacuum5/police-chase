@@ -34,7 +34,7 @@
 // real map -- generating a map costs a second or so, and the whole point of the
 // menu is to appear instantly.
 
-import { MAPS, mapById } from '../world/maps.js';
+import { MAPS, mapById, mapsOnMenu } from '../world/maps.js';
 import { session } from '../net/session.js';
 import { prefersTouch } from './touch.js';
 import { appleMode, realApple, setAppleMode } from './platform.js';
@@ -305,7 +305,7 @@ export function setSoloRole(role) {
 export function chosenMap() {
   let id = null;
   try { id = localStorage.getItem(MAP_KEY); } catch (e) { /* storage blocked */ }
-  return MAPS.some((m) => m.id === id) ? id : MAPS[0].id;
+  return mapsOnMenu().some((m) => m.id === id) ? id : MAPS[0].id;
 }
 
 function remember(key, id) {
@@ -372,7 +372,7 @@ function buildMaps() {
     for (const c of cards) c.classList.toggle('chosen', c.dataset.id === current);
   };
 
-  for (const m of MAPS) {
+  for (const m of mapsOnMenu()) {
     const card = document.createElement('div');
     card.className = 'mapcard';
     card.tabIndex = 0;
@@ -708,7 +708,10 @@ function buildBestScores() {
   const wrap = document.getElementById('bestwrap');
   const holder = document.getElementById('bestscores');
   if (!wrap || !holder) return;
-  const list = bestScores().slice(0, 5);
+  // Not the scores from a map the menu is keeping quiet about: its name is in them.
+  const shown = new Set(mapsOnMenu().map((m) => m.name));
+  const hiddenNames = new Set(MAPS.filter((m) => !shown.has(m.name)).map((m) => m.name));
+  const list = bestScores().filter((r) => !hiddenNames.has(r.map)).slice(0, 5);
   wrap.hidden = !list.length;
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   holder.innerHTML = list.map((r, i) => {

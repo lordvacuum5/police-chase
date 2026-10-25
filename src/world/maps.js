@@ -36,8 +36,23 @@ export const MAPS = [
          + 'drive straight through, woods to lose them in, and humpback crests '
          + 'to leave the ground over. A ring lane loops the whole vale.',
     build: buildCountry,
+    // Kept off the menu for now -- "my friend might have a look and I want it
+    // to be a surprise for him". Still a map: `?haldon=1` on the address
+    // shows it on the menu for that tab, and a refresh or a multiplayer
+    // session on it still loads it. See mapsOnMenu.
+    hidden: true,
   },
 ];
+
+/** The maps the menu offers: the hidden ones only when unlocked for this tab. */
+export function mapsOnMenu() {
+  let open = false;
+  try {
+    if (new URLSearchParams(location.search).get('haldon') === '1') sessionStorage.setItem('pc.unhide', '1');
+    open = sessionStorage.getItem('pc.unhide') === '1';
+  } catch (e) { /* storage blocked */ }
+  return MAPS.filter((m) => !m.hidden || open);
+}
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) || MAPS[0];
