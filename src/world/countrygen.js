@@ -891,6 +891,7 @@ function buildHedges(ctx, fields) {
   const { graph, rng } = ctx;
   const b = new MeshBuilder();
   const W = ctx.sim.world;
+  ctx.sim.hedges = new Set();
   const hedge = (x0, z0, x1, z1) => {
     const len = Math.hypot(x1 - x0, z1 - z0);
     if (len < 1.5) return;
@@ -911,7 +912,15 @@ function buildHedges(ctx, fields) {
     // first chase rig 85% of their time was off the road, at 36 km/h. A hedge
     // as tall as a house to the sweeps (and to sight: you can hide behind
     // one) keeps them to the lanes, which is where the way through is.
-    addStaticBox(W, mx, ctx.at(mx, mz) + HEDGE_SOLID * 0.5, mz, len * 0.5, HEDGE_SOLID * 0.5, 0.7, GROUP.BUILDING, rot);
+    //
+    // Not to a car, though: "make it so you can go through hedges, but it
+    // reduces the player's speed slightly ... just for a second". It collides
+    // with nothing that drives, and Vehicle._hedgeDrag charges for the trip.
+    // Not a sensor: rays ignore sensors, and the police would have seen
+    // straight through every hedge on the map.
+    const body = addStaticBox(W, mx, ctx.at(mx, mz) + HEDGE_SOLID * 0.5, mz, len * 0.5, HEDGE_SOLID * 0.5, 0.7,
+      GROUP.BUILDING, rot, 0xFFFF & ~GROUP.VEHICLE);
+    ctx.sim.hedges.add(body.collider(0).handle);
   };
 
   // Along the roads, in runs of up to 8 m, with gaps near junctions and gates.

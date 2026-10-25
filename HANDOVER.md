@@ -354,6 +354,14 @@ to that grip, and torque **1.28x**. Mass untouched. If it ever needs toning
 down, durability is the dial that changes how chases end and `gripScale` is the
 one that changes how fast it goes.
 
+Asked for on Haldon Vale and not to be undone: **hedges are drivable
+through** (they collide with no vehicle; `Vehicle._hedgeDrag` slows you for a
+moment) but stay walls to every AI sweep and line of sight; **police cars do not
+roll over** (`Vehicle._guardFlip`); **landings cost 35%** of what the same stop
+against a wall would (`LANDING_SHARE`); **the camera is never below the
+ground** (`ChaseCamera._aboveGround`). Wheel rays use `RAY_WHEELS`, which asks
+as a car -- anything a car does not collide with, a wheel does not stand on.
+
 The flyable helicopter tilts to a full **180 degrees** in pitch and roll, which
 was asked for twice; the things that stop it being twitchy are `CYCLIC_RATE`
 and, since it was asked to feel heavier, `CYCLIC_ACCEL`/`CYCLIC_GAIN` -- not the

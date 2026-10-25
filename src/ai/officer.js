@@ -2491,6 +2491,8 @@ export class Officer {
     const a = this.vehicle.assist;
     // Never spins, chasing or not, near or far. See Vehicle._guardSpin.
     a.noSpin = window.__noSpin === undefined ? NO_SPIN : window.__noSpin;
+    // Nor rolls over. See Vehicle._guardFlip.
+    a.noFlip = window.__noFlip !== false;
     const chasing = target && this.game.heat.tier > 0 && this.role !== ROLE.PATROL;
     if (!chasing) {
       a.boost = 1; a.grip = 1; a.stability = 0; a.steer = 1; a.rotate = 0;

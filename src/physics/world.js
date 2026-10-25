@@ -40,6 +40,13 @@ export const EDGE_FACE = PLATE_HALF - 4;
 
 /** What a suspension ray is allowed to see -- deliberately not other vehicles. */
 export const RAY_GROUNDS = groups(0xFFFF, GROUP.TERRAIN | GROUP.BUILDING | GROUP.PROP);
+/**
+ * The same, asked as a car: so it also misses what a car does not collide
+ * with. That is a hedge (world/countrygen.js), which is a wall to every sweep
+ * and eye in the game and something a car drives through -- and a wheel that
+ * found the top of one would climb it.
+ */
+export const RAY_WHEELS = groups(GROUP.VEHICLE, GROUP.TERRAIN | GROUP.BUILDING | GROUP.PROP);
 
 /**
  * What is worth *braking* for, as opposed to steering around.

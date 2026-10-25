@@ -6282,6 +6282,53 @@ because it catches anyone faster. `window.__laneAhead = false` puts the old
 routing back. The gap at 150 km/h is still five hundred metres: on single-track
 lanes between hedges nobody keeps up with a car doing 150.
 
+### Through the hedges, never on the roof, never under the ground
+
+Four requests at once, after the first play of Haldon Vale.
+
+**Hedges you can drive through.** *"Make it so you can go through hedges, but
+it reduces the player's speed slightly. Like, just for a bit, just for a
+second."* A hedge's collider no longer collides with anything that drives (its
+filter leaves out `GROUP.VEHICLE`), and `Vehicle._hedgeDrag` takes 12% off the
+speed over 0.6 s from going in, topped up while still in it -- every car, the
+police too. It stays a wall to every sweep, ray and eye: hedges still keep the
+police to the lanes and you can still hide behind one. The suspension rays ask
+as a car (`RAY_WHEELS`), so they miss the hedge too and a wheel cannot climb
+one. A sensor was tried first and dropped: rays here miss sensors, and the
+police would have seen through every hedge on the map. Measured through one at
+120 km/h coasting, three seconds on: 75 km/h without the hedge, 58 with (the
+drag compounds with the coasting). keepup.js on Haldon, 90 km/h: behind
+193 -> 177 m, off the road 40 -> 31%, with it 13 -> 42%, hits 16 -> 8.
+
+**Police cars that do not roll over.** *"Make it so the police find it much
+harder to flip themselves ... quite unlikely for the police to like flip
+themselves."* `Vehicle._guardFlip`, the same kind of cheat as `_guardSpin`:
+past 23 degrees of tilt a police car may not rotate further over and is turned
+back toward upright, faster the further over it is. Under that nothing is
+touched, so it still leans, banks and pitches like a car. Kicked into a roll on
+the ground (six cases, roll 3-10 rad/s, pitch up to 4): three of six ended on
+the roof or the side without it, none with it. `window.__noFlip = false` turns
+it off.
+
+**Less damage from landings.** *"Make sure police cars and players take less
+damage from like big jumps and stuff."* A landing's vertical stop now counts at
+35% (`LANDING_SHARE`) toward the impact; sideways and along count in full, so
+landing into something is still a crash. The player's car dropped flat:
+3 m 5.3% -> 0%, 6 m 10.6% -> 1.5%, 10 m 14.9% -> 3.0%. `window.__landingShare`
+sets it for rigs. With the flip guard, keepup.js at 150 km/h: wrecked 1 -> 0,
+worst damage 1.00 -> 0.53.
+
+**The camera never goes into the ground.** *"The camera sometimes phases into
+the ground when you're going to different camera views. You need to make sure
+it never ever phases into the ground."* Nothing in the camera knew where the
+ground was: changing view it springs from one seat to the next in a straight
+line, and on a hill that line, the cinematic orbit and the chase seat behind a
+car climbing all go through the hillside. `ChaseCamera._aboveGround` holds it
+0.6 m above the highest ground under it and a metre round it (0.3 m from the
+bonnet seat), before and after the shake, and the air camera too. Twelve of
+the steepest hillsides, four headings, every view: under the ground in 1892 of
+11520 frames and by as much as 8.4 m before; in none after, the lowest 0.65 m.
+
 Shared terrain, surfaces, road meshes and scenery live in `world/common.js`; a
 map generator only has to lay out a road graph and decide where buildings go.
 

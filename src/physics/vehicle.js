@@ -12,7 +12,17 @@
 // spin out for the same reasons you would.
 
 import * as THREE from 'three';
-import { RAPIER, GROUP, groups, raycast, RAY_GROUNDS, EDGE_FACE } from './world.js';
+import { RAPIER, GROUP, groups, raycast, RAY_GROUNDS, RAY_WHEELS, EDGE_FACE } from './world.js';
+
+/** Through a hedge: this share of the speed, lost over this many seconds. */
+const HEDGE_LOSS = 0.12;
+const HEDGE_DRAG = 0.6;
+const HEDGE_QUERY = groups(0xFFFF, GROUP.BUILDING);
+/** _guardFlip: the tilt it starts at, radians (about 23 degrees), and how hard it rights the car. */
+const FLIP_FROM = 0.4;
+const FLIP_RIGHT = 3.0;
+/** How much of a landing's vertical stop counts as an impact. See postStep. */
+const LANDING_SHARE = 0.35;
 import {
   tyreForces, slipRatioOf, slipAngleOf, slipIntensity, loadedMu,
   TYRE_ROAD, TYRE_GRASS, TYRE_PAVED,
@@ -349,6 +359,7 @@ export class Vehicle {
   prepare(dt) {
     this._readState();
     if (this.assist.noSpin > 0) this._guardSpin(dt);
+    if (this.assist.noFlip) this._guardFlip();
     this._updateSteering(dt);
 
     const driveTorque = this._updateDrivetrain(dt);
@@ -416,6 +427,33 @@ export class Vehicle {
       changed = true;
     }
     if (changed) this._readState();
+  }
+
+  /**
+   * Another cheat on purpose, and the same deal as _guardSpin: a police car
+   * does not roll over. "Make it so the police find it much harder to flip
+   * themselves ... quite unlikely for the police to like flip themselves."
+   *
+   * Past FLIP_FROM of tilt, on the ground or in the air, the car may not
+   * rotate any further over, and is turned back toward upright at a rate that
+   * grows with the tilt. Under it -- banking on a slope, pitching over a crest,
+   * leaning in a corner -- nothing is touched, so it still looks like a car.
+   * Only the tipping part of the spin is changed; the yaw and any rotation
+   * that does not change the tilt are left alone.
+   */
+  _guardFlip() {
+    const u = this.up;
+    const tilt = Math.acos(clamp(u.y, -1, 1));
+    if (tilt < FLIP_FROM) return;
+    // The axis that turns `up` toward the sky: up x worldUp.
+    let nx = -u.z, nz = u.x;
+    const nl = Math.hypot(nx, nz);
+    if (nl < 1e-4) { nx = this.forward.x; nz = this.forward.z; } else { nx /= nl; nz /= nl; }
+    const av = this.body.angvel();
+    const toward = av.x * nx + av.z * nz;
+    const want = Math.max(toward, FLIP_RIGHT * (tilt - FLIP_FROM));
+    if (want === toward) return;
+    this.body.setAngvel({ x: av.x + (want - toward) * nx, y: av.y, z: av.z + (want - toward) * nz }, true);
   }
 
   /** Called once per physics substep, after world.step(). */
@@ -505,13 +543,23 @@ export class Vehicle {
     const yaw = av.x * this.up.x + av.y * this.up.y + av.z * this.up.z;
     const spinStop = Math.abs(yaw - this._prevYaw) * this._lever;
     this._prevYaw = yaw;
-    const dv = _v1.distanceTo(this._prevVel) + spinStop;
+    // A landing is charged at LANDING_SHARE of its vertical stop. "Make sure
+    // police cars and players take less damage from like big jumps and stuff":
+    // the suspension is there to take a landing, and a car coming down off a
+    // crest is not a car that hit a wall. Sideways and along still count in
+    // full, so landing into something is still a crash.
+    const dx = _v1.x - this._prevVel.x, dz = _v1.z - this._prevVel.z;
+    let dy = _v1.y - this._prevVel.y;
+    if (dy > 0 && this._prevVel.y < 0) dy *= window.__landingShare === undefined ? LANDING_SHARE : window.__landingShare;
+    const dv = Math.hypot(dx, dy, dz) + spinStop;
     // Below this a knock is just a knock: kerbs, cones, a scrape along a wall
     // and the ordinary bumping of a pack of cars all sit under it. Raised
     // along with `durability` so bodywork survives a chase that involves
     // contact, which this one always does.
     this.takeImpact(dv);
     this._prevVel.copy(_v1);
+
+    this._hedgeDrag(dt);
 
     if (this.up.y < 0.25) this.flippedFor += dt;
     else this.flippedFor = 0;
@@ -524,6 +572,35 @@ export class Vehicle {
     }
 
     if (this.damage >= 0.92) this.disabled = true;
+  }
+
+  /**
+   * Through a hedge, at a cost. "Make it so you can go through hedges, but it
+   * reduces the player's speed slightly. Like, just for a bit, just for a
+   * second." A hedge does not collide with cars (world/countrygen.js), so
+   * nothing stops the car; being in one starts HEDGE_DRAG seconds of drag
+   * that take HEDGE_LOSS off the speed, topped up while the car is still in
+   * it. Every car pays it, the police too -- though their sweeps still see a
+   * hedge as a wall, so they keep out of them.
+   */
+  _hedgeDrag(dt) {
+    const hedges = this.sim.hedges;
+    if (!hedges || !hedges.size) return;
+    let inHedge = false;
+    this.world.intersectionsWithShape(
+      this.collider.translation(), this.collider.rotation(), this.collider.shape,
+      (other) => {
+        if (hedges.has(other.handle)) { inHedge = true; return false; }
+        return true;
+      },
+      undefined, HEDGE_QUERY, this.collider,
+    );
+    if (inHedge) this._hedgeFor = HEDGE_DRAG;
+    if (!(this._hedgeFor > 0)) return;
+    this._hedgeFor -= dt;
+    const lv = this.body.linvel();
+    const s = Math.hypot(lv.x, lv.z);
+    this.applySpeedLoss(s * (1 - Math.exp((Math.log(1 - HEDGE_LOSS) / HEDGE_DRAG) * dt)));
   }
 
   /**
@@ -880,7 +957,7 @@ export class Vehicle {
       // needs 140 mm of slack; terrain would need its full relief, and this is
       // the one number that has to grow for hills.
       const hit = raycast(
-        this.world, w.worldPos, _v1, maxToi + (this.sim.relief || GROUND_RELIEF), RAY_GROUNDS, this.body,
+        this.world, w.worldPos, _v1, maxToi + (this.sim.relief || GROUND_RELIEF), RAY_WHEELS, this.body,
       );
 
       if (hit) {

@@ -387,6 +387,7 @@ class Game {
     this.input = new Input();
     this.touch = new TouchControls(this);
     this.camera3 = new ChaseCamera(this.camera);
+    this.camera3.groundAt = (x, z) => (this.sim.heightAt ? this.sim.heightAt(x, z) : this.groundAt(x, z));
     this.camera3.snapTo(this.player);
     this.pauseMenu = new PauseMenu(this);
 

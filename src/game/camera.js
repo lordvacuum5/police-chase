@@ -105,6 +105,12 @@ function hoodEye(v) {
   return out;
 }
 
+/** How far above the ground the camera is always kept, metres; less from the bonnet seat. */
+const CAM_CLEAR = 0.6;
+const HOOD_CLEAR = 0.3;
+/** Where round the camera the ground is also sampled for that. */
+const CLEAR_RING = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
 export class ChaseCamera {
   constructor(camera) {
     this.camera = camera;
@@ -151,6 +157,7 @@ export class ChaseCamera {
     const wantFov = 64 + smoothstep(20, 80, v.speed) * 8;
     this.fov = damp(this.fov, wantFov, 3.5, dt);
 
+    this._aboveGround(this.pos, CAM_CLEAR);
     this.camera.position.copy(this.pos);
     if (this.shake > 0.001) {
       const sk = this.shake * this.shake * 0.45;
@@ -158,6 +165,7 @@ export class ChaseCamera {
       this.camera.position.y += (Math.random() - 0.5) * sk;
       this.camera.position.z += (Math.random() - 0.5) * sk;
     }
+    this._aboveGround(this.camera.position, CAM_CLEAR);
     this.camera.lookAt(this.look);
     // Bank the picture a little with the aircraft -- a fraction of the real
     // roll, which reads as a turn without taking the horizon away.
@@ -268,6 +276,7 @@ export class ChaseCamera {
     }
 
     // ---- apply ----
+    this._aboveGround(this.pos, mode === 'hood' ? HOOD_CLEAR : CAM_CLEAR);
     this.camera.position.copy(this.pos);
     if (this.shake > 0.001) {
       const s = this.shake * this.shake * 0.45;
@@ -286,6 +295,8 @@ export class ChaseCamera {
       this.camera.position.x += Math.sin(this.buzzPhase * 43) * a * 0.7;
       if (this.buzzFor <= 0) this.buzz = 0;
     }
+    // And again after the shake, which can dip it as well.
+    this._aboveGround(this.camera.position, mode === 'hood' ? HOOD_CLEAR : CAM_CLEAR);
     this.camera.lookAt(this.look);
 
     // A touch of roll in the direction of the slide sells the lateral load.
@@ -309,6 +320,25 @@ export class ChaseCamera {
       this.camera.fov = fov;
       this.camera.updateProjectionMatrix();
     }
+  }
+
+  /**
+   * Never under the ground. "The camera sometimes phases into the ground when
+   * you're going to different camera views. You need to make sure it never
+   * ever phases into the ground." Switching view, the camera springs from one
+   * place to the next, and on the way from the bonnet to behind the car -- or
+   * swinging round in the cinematic orbit, or behind a car climbing a hill --
+   * the straight line it takes can run through the hillside. Nothing here
+   * knew where the ground was. Now it is held above the highest point under
+   * it and a little round it, so the near plane cannot clip into a slope
+   * either. `groundAt` is given by the game: terrain and kerbs.
+   */
+  _aboveGround(p, clear) {
+    const at = this.groundAt;
+    if (!at) return;
+    let g = at(p.x, p.z);
+    for (const [ox, oz] of CLEAR_RING) g = Math.max(g, at(p.x + ox, p.z + oz));
+    if (p.y < g + clear) p.y = g + clear;
   }
 
   snapTo(v) {
