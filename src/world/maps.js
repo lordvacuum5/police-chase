@@ -36,11 +36,6 @@ export const MAPS = [
          + 'drive straight through, woods to lose them in, and humpback crests '
          + 'to leave the ground over. A ring lane loops the whole vale.',
     build: buildCountry,
-    // Kept off the menu for now -- "my friend might have a look and I want it
-    // to be a surprise for him". Still a map: `?haldon=1` on the address
-    // shows it on the menu for that tab, and a refresh or a multiplayer
-    // session on it still loads it. See mapsOnMenu.
-    hidden: true,
   },
 ];
 
