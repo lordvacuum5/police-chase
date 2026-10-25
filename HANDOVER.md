@@ -234,6 +234,13 @@ scoring, deliberately.
   (Game._driveReport): their last 60 s at 10 Hz plus nearby police positions.
   Use it to compare their junction lines with the police's (the user says
   police still square off T-junctions in play, which turnin.js does not show).
+* **Replay rig** (tests/replay.js + tests/data/): replays a player `log` with
+  a unit put where a police car was. It found the angled-sweep wallBias
+  pushing units off line for houses 10 m to the side (now WALL_CORRIDOR).
+  `Officer._crossCountry` drives straight to a last-known point across open
+  ground when the road is much longer (tests/across.js).
+  Still open: "on the big curve they don't turn enough and hit a building"
+  -- asked the user for an `st` report from one.
 * **Police reports**: the player types `st` in game and a
   `police-report-*.json` downloads (Game._policeReport; each Officer keeps a
   12 s `trace`, Officer._record). When they hand one over, read the `still`

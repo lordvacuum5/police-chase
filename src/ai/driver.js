@@ -225,6 +225,13 @@ const PATH_STEP = 4;
 const PATH_SKIP = 18;
 
 const DODGE_LOOK = 12;
+/**
+ * How far outside its own half-width something seen on the angled sweeps may
+ * be before the scenery bias stops treating it as urgent -- see
+ * _avoidScenery -- and the sine of those sweeps' angle.
+ */
+const WALL_CORRIDOR = 4;
+const SIN_SIDE = Math.sin(0.42);
 const DODGE_ROOM = 3;
 
 const WALL_KEEP = 6;
@@ -2651,7 +2658,21 @@ export class Driver {
     // to be hit dominates.
     // Urgency from whichever flank is tightest, not from the forward-only
     // figure, so a wall alongside is reacted to even with open road ahead.
-    const tightest = Math.min(leftClear, rightClear, nearest);
+    //
+    // Only what is in the car's way counts as urgent. A hit on an angled sweep
+    // is that far out along a line 24 degrees off the nose, so it sits
+    // toi * sin(24 deg) to the side of where the car is going: a house 25 m
+    // out on that sweep is 10 m off the line, and it was steering units off
+    // the player's line regardless. From a driving log (type `log`): the
+    // player crossed a paved square at 120 km/h, the unit 15 m behind was
+    // pushed 10 m off line by the houses beside the road, and stopped dead
+    // against a shelter on the square it had been pushed toward. Nearer than
+    // WALL_CORRIDOR outside the car's half-width, it counts as before; the
+    // side with more room is still the side it steers to.
+    // `window.__wideWall = true` puts the old rule back.
+    const corridor = hw + WALL_CORRIDOR;
+    const inWay = (toi) => (window.__wideWall === true || toi * SIN_SIDE <= corridor ? toi : reach);
+    const tightest = Math.min(inWay(leftClear), inWay(rightClear), nearest);
     const urgency = clamp01(1 - tightest / reach);
     const bias = ((leftClear - rightClear) / reach) * urgency * urgency * 2.4;
 

@@ -4809,6 +4809,46 @@ Quicker through every junction, closer at 90, a little further back on average a
 crashes. On. `window.__freeLine = false` puts the road line back;
 `__freeLen`, `__freeIter` and `__freeGrass` for rigs.
 
+### From the driving logs
+
+The first `log` file (kept as `tests/data/my-driving-20261025-072216.json`, and
+replayed by `tests/replay.js`, which drives a ghost along the player's recorded
+line and puts a unit where a recorded police car was): the player went straight
+across a paved square at 115–130 km/h where the road bent away; U2, 15 m behind
+at 112 km/h, braked to nothing and stopped against a shelter on the square.
+Replayed, it did the same — and the trace said why. It was in direct pursuit,
+aiming at the player, while `Driver._avoidScenery`'s angled sweeps (24° either
+side) found the houses beside the road 25 m out and pushed it away from them
+(`wallBias` −0.67). A hit 25 m out on a 24° sweep is 10 m off the line the car is
+on; it was never in the way. Now those sweeps count as urgent only when what they
+hit is within the car's half-width plus `WALL_CORRIDOR` (4 m) of its line; the
+side with more room is still the side it steers to.
+
+| | replay: end gap | weave.js: back | hits | keepup 90: behind | non-ghost contacts (hard) | lost it | keepup 150: behind | non-ghost (hard) |
+|---|---|---|---|---|---|---|---|---|
+| as it was | 172 m, stopped | 150 m | 16 | 89 m | 30 (2) | 8 | 215 m | 8 (2) |
+| corridor | **50 m**, with it | 147 m | **10** | **80 m** | **16 (1)** | **2** | **204 m** | 24 (1) |
+
+More light contacts at 150 (24 against 8, two of them trees), fewer hard ones and
+fewer spins everywhere. `window.__wideWall = true` puts the old rule back.
+
+**Across, not round.** *"There was this like break in buildings, quite a big
+gap, and then it could literally have just gone across the grass to the last
+known location ... but instead it just went all the way around."* `Officer._goTo`
+followed the road until 22 m from the end. `Officer._crossCountry` now checks, a
+few times a second, whether the straight line to the point is open — a sweep the
+car's width plus 0.6 m against buildings, trees and terrain — and whether the road
+is at least 1.35 times as long plus 25 m; within 250 m, it drives straight there.
+`tests/across.js` finds such places (60–200 m straight, 1.5× or more by road):
+
+| | reached (of 12) | mean time | hits |
+|---|---|---|---|
+| road | 10 | 10.5 s | 0 |
+| across | **12** | 10.6 s | 0 |
+
+The two the road never reached in 40 s took 8.6 and 22.8 s; 67 m that took 12.5 s
+by road took 5.2. `window.__crossCountry = false` turns it off.
+
 ### Through the gaps, faster: not yet
 
 *"The police cars can fit through really tight gaps now. That's really cool. But

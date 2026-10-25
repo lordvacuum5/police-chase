@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import { Driver, SKILL } from './driver.js';
 import { pitUpdate, relativeTo, boxAim, boxSpeed } from './tactics.js';
-import { hasLineOfSight, sweepBox, raycast, groups, GROUP, RAY_SOLID, RAY_WALL } from '../physics/world.js';
+import { hasLineOfSight, sweepBox, raycast, groups, GROUP, RAY_SOLID, RAY_WALL, RAY_GROUNDS } from '../physics/world.js';
 import { WORLD_HALF } from '../world/common.js';
 import { clamp, clamp01, lerp, dist2, sign, damp, closestOnSegment } from '../util/math.js';
 import { requestPlan, planLocal } from './localplan.js';
@@ -43,6 +43,16 @@ const LP_NEAR = 25;
  */
 const FREE_LINE = () => !(typeof window !== 'undefined' && window.__freeLine === false);
 const FREE_FROM = 6;
+
+/**
+ * Straight across to a point instead of round by road -- see
+ * Officer._crossCountry: the furthest it will try, and how much longer the
+ * road has to be (as a multiple of the straight line) to bother.
+ */
+const CROSS_MAX = 250;
+const CROSS_SAVING = 1.35;
+const _ccDir = { x: 0, y: 0, z: 0, set(x, y, z) { this.x = x; this.y = y; this.z = z; return this; } };
+const _ccFrom = { x: 0, y: 0, z: 0, set(x, y, z) { this.x = x; this.y = y; this.z = z; return this; } };
 
 /**
  * The flight recorder: how many seconds each unit keeps, and how often it
@@ -1219,7 +1229,40 @@ export class Officer {
       // asked for the rest of the way.
       return this.driver.driveTo(point, this._chaseSpeed() * Math.min(0.8, speedFactor), dt);
     }
+    // Straight across, when it is open all the way and the road is the long
+    // way round. "There was this like break in buildings, quite a big gap,
+    // and then it could literally have just gone across the grass to the last
+    // known location ... but instead it just went all the way around."
+    if (this._crossCountry(dt, point)) {
+      this._mode = 'across';
+      return this.driver.driveTo(point, this._chaseSpeed() * speedFactor, dt);
+    }
     return this.driver.followPath(dt, this._chaseSpeed() * speedFactor);
+  }
+
+  /**
+   * Is the straight line to `point` open ground all the way, and the road way
+   * round much longer? Asked a few times a second, not every frame, and only
+   * of a unit allowed off the carriageway. The sweep is the car's own width
+   * plus a margin against buildings, trees and terrain; grass is fine, as the
+   * player drives it.
+   */
+  _crossCountry(dt, point) {
+    if (!this.driver.allowOffRoad || window.__crossCountry === false) return false;
+    this._ccFor = (this._ccFor || 0) - dt;
+    if (this._ccFor > 0) return this._ccOpen;
+    this._ccFor = 0.4;
+    const v = this.vehicle;
+    const dx = point.x - v.position.x, dz = point.z - v.position.z;
+    const d = Math.hypot(dx, dz);
+    const road = this.driver.remaining();
+    this._ccOpen = false;
+    if (d < 25 || d > CROSS_MAX || road < d * CROSS_SAVING + 25) return false;
+    _ccDir.set(dx / d, 0, dz / d);
+    _ccFrom.set(v.position.x, v.position.y + 0.5, v.position.z);
+    const toi = sweepBox(v.world, _ccFrom, _ccDir, d, RAY_GROUNDS, v.body, this.driver.halfWidth + 0.6);
+    this._ccOpen = toi >= d - 2;
+    return this._ccOpen;
   }
 
   /**
