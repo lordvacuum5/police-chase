@@ -6329,6 +6329,62 @@ bonnet seat), before and after the shake, and the air camera too. Twelve of
 the steepest hillsides, four headings, every view: under the ground in 1892 of
 11520 frames and by as much as 8.4 m before; in none after, the lowest 0.65 m.
 
+### Bales to knock about, police across the fields, and no more cliffs
+
+**Bales.** *"The bales, can you make them like cones in the sense that you can
+like whack them and kind of hit them around?"* Each round bale is now a loose
+90 kg cylinder (`buildBales`), in `GROUP.DEBRIS` with the cones so no AI sweep
+sees one, asleep until something touches it, drawn as one instanced mesh that
+follows the bodies. Driven into at 80 km/h a bale goes 12-13 m and the car
+keeps its speed and takes no damage.
+
+**The police and the hedges.** *"Does their routing system know that you can
+go through hedges?"* It did not: a hedge was a wall to every AI sweep, so the
+police kept to the lanes while the player cut across the fields. And *"I could
+easily lose 1 to level 5"* on this map. Hedges now have their own group,
+`GROUP.HEDGE`, which is in the sight mask -- you still cannot be seen through
+one -- and in none of the driving masks or the local planner, so the police
+drive through them like the player does. The rules that kept units on the
+lanes when the target was on one (`_mode 'lanes'`, the grass limit on a direct
+line and on `_crossCountry`) were written for hedges nobody could get through,
+and are off (`FIELD_RULES`; `window.__fieldRules` puts them back). Three
+settings, fresh page each, first batch:
+
+| | force.js near | held on | mean nearest | keepup 90 behind | keepup 150 behind |
+|---|---|---|---|---|---|
+| A hedges walls to the AI, lane rules on (before) | 30% | 15.0 s | 167 m | 161 m | 394 m |
+| B police through hedges, lane rules on | 32% | 16.2 s | 148 m | 127 m | 326 m |
+| C police through hedges, lane rules off (kept) | 64% | 26.8 s | 93 m | 120 m | 361 m |
+
+force.js is the whole force against a weaving target at 110 km/h, four 30 s
+runs; "near" is the share of the run a unit was within 80 m. C doubles it.
+At 150 km/h on keepup C is a little behind B; at 90 it is ahead, and it is the
+only one that holds on in the whole-force rig, so it is the one kept.
+`sessionStorage 'pc.hedgeWall' = '1'` before loading puts the old hedges back
+for a rig.
+
+**Thrown off steep banks.** *"When I drive up a really steep bit ... I almost
+seem to go too high ... Or sometimes when I go slowly up it."* A road held to
+its 8% grade through the side of a hill cuts into it, and the fade either side
+was a fixed 16 m however deep the cut: through Haldon Beacon that left banks of
+120% -- fifteen metres up in twelve. Now no bank beside a road or a pad is
+steeper than 45% (`BANK_GRADE`): everything that is not road surface or the
+flat of a pad is held in a cone of that grade from its neighbours, cut where
+too high and filled where too low, then smoothed three passes so the top of a
+bank is a curve and not a lip. Steepest ground on the map 120% -> 54%; roads
+untouched (`_check.js` gives the same figures). Driven into the eight worst
+spots both ways, the highest the car got above its ride height and the
+longest in the air:
+
+| | 25 km/h | 60 km/h | 100 km/h |
+|---|---|---|---|
+| before | 8.07 m, 2.53 s | 9.37 m, 2.52 s | 12.60 m, 3.37 s |
+| after | 0.31 m, 0.53 s | 4.06 m, 1.55 s | 4.96 m, 4.33 s |
+
+At 100 km/h you still leave the top of a hill, which is what a hill does.
+`sessionStorage 'pc.bankGrade' = '99'` before loading puts the old ground
+back.
+
 Shared terrain, surfaces, road meshes and scenery live in `world/common.js`; a
 map generator only has to lay out a road graph and decide where buildings go.
 

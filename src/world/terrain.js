@@ -26,6 +26,10 @@ import { rand, TAU, clamp, lerp, smoothstep } from '../util/math.js';
 export const H_STEP = 4;
 /** How far the bodywork's heightfield sits under the wheels' ground. See addHeightfield. */
 export const HILL_SINK = 0.35;
+/** The steepest a bank beside a road or a pad may be. See buildHeightGrid. */
+export const BANK_GRADE = 0.45;
+/** How many smoothing passes round off the lips that leaves. */
+const BANK_ROUND = 3;
 /** The steepest a road may climb or fall, as a fraction. See buildHeightGrid. */
 export const MAX_GRADE = 0.08;
 
@@ -209,6 +213,55 @@ export function buildHeightGrid(base, { half = 1000, graph = null, flatten = [],
     if (W[k] > 0) H[k] = lerp(H[k], L[k], W[k]);
     if (RW[k] > 0) H[k] = lerp(H[k], RS[k] / RN[k], RW[k]);
     if (H[k] < 0) H[k] = 0;
+  }
+
+  // No bank steeper than BANK_GRADE. A road held to its grade through the
+  // side of a hill cuts into it, and the fade either side was a fixed 16 m
+  // however deep the cut: through Haldon Beacon that left banks of 120% --
+  // fifteen metres up in twelve -- and a car that drove up one was thrown off
+  // the top of it. "When I drive up a really steep bit ... I almost seem to go
+  // too high." The road surfaces and the flat of the pads stay where they
+  // are; everything else is held inside a cone of BANK_GRADE from its
+  // neighbours, cut down where it stands too high and filled where too low,
+  // by sweeping the grid forward and back.
+  const pinned = new Uint8Array(n * n);
+  for (let k = 0; k < H.length; k++) if (RW[k] >= 0.999 || W[k] >= 0.999) pinned[k] = 1;
+  let bank = BANK_GRADE;
+  try { const r = sessionStorage.getItem('pc.bankGrade'); if (r !== null) bank = +r; } catch (e) { /* none */ }
+  const d1 = bank * H_STEP, d2 = bank * H_STEP * Math.SQRT2;
+  const NB = [[-1, 0, d1], [0, -1, d1], [-1, -1, d2], [1, -1, d2]];
+  const hold = (i, j, sgn) => {
+    const k = idx(i, j);
+    if (pinned[k]) return;
+    let h = H[k];
+    for (const [di, dj, d] of NB) {
+      const ii = i + di * sgn, jj = j + dj * sgn;
+      if (ii < 0 || jj < 0 || ii >= n || jj >= n) continue;
+      const o = H[idx(ii, jj)];
+      if (h > o + d) h = o + d;
+      else if (h < o - d) h = o - d;
+    }
+    H[k] = h;
+  };
+  if (bank < 50) {
+    for (let pass = 0; pass < 3; pass++) {
+      for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) hold(i, j, 1);
+      for (let j = n - 1; j >= 0; j--) for (let i = n - 1; i >= 0; i--) hold(i, j, -1);
+    }
+    // And round the edges the cone leaves. Held to a grade, the top of a
+    // bank is a lip, and a car going over a lip leaves the ground however
+    // gentle the slopes either side of it are.
+    const T = new Float32Array(H.length);
+    for (let pass = 0; pass < BANK_ROUND; pass++) {
+      T.set(H);
+      for (let j = 1; j < n - 1; j++) {
+        for (let i = 1; i < n - 1; i++) {
+          const k = idx(i, j);
+          if (pinned[k]) continue;
+          H[k] = (T[k] * 4 + T[k - 1] + T[k + 1] + T[k - n] + T[k + n]) / 8;
+        }
+      }
+    }
   }
 
   // The level something claimed a point at, before the claims are applied:

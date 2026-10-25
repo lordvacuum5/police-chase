@@ -159,8 +159,8 @@ scoring, deliberately.
   the police keep to the lanes (`_mode 'lanes'`, `_laneAhead`, the grass rule
   in `_pursue` and `_crossCountry`). `tests/data/_check.js`, evaluated in the
   page, is the road-network check -- run it after any change to the
-  generator. Still true there: police are off the road about 40% of a chase
-  and fall 200-500 m behind on the lanes.
+  generator. Police there now cross the fields and go through hedges like the
+  player; at 150 km/h they still fall about 350 m behind.
 
 * **BE THE POLICE** — a solo mode where you are the police and `ai/runner.js`
   drives the getaway car. It plans by running `RoadGraph.predict` (the same
@@ -356,7 +356,11 @@ one that changes how fast it goes.
 
 Asked for on Haldon Vale and not to be undone: **hedges are drivable
 through** (they collide with no vehicle; `Vehicle._hedgeDrag` slows you for a
-moment) but stay walls to every AI sweep and line of sight; **police cars do not
+moment) and **the police drive through them too** (`GROUP.HEDGE`: in the sight
+mask only, so they still hide you; the lane-keeping `FIELD_RULES` are off --
+it doubled how long the force held on); **bales are loose** (`buildBales`);
+**no bank steeper than 45%** (`BANK_GRADE`, after cars were thrown 8 m off a
+120% cutting at 25 km/h); **police cars do not
 roll over** (`Vehicle._guardFlip`); **landings cost 35%** of what the same stop
 against a wall would (`LANDING_SHARE`); **the camera is never below the
 ground** (`ChaseCamera._aboveGround`). Wheel rays use `RAY_WHEELS`, which asks

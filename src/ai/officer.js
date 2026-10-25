@@ -53,6 +53,17 @@ const CROSS_MAX = 250;
 const CROSS_SAVING = 1.35;
 /** Grass a direct chase may cross to a target on the road, in hedged country -- see _pursue. */
 const CROSS_GRASS = 20;
+/**
+ * Whether the hedged-country rules above apply: keep to the lanes when the
+ * target is on one, and count a straight line across the fields as closed.
+ * They were made for hedges a car could not get through. `window.__fieldRules`
+ * sets it for rigs.
+ */
+function fieldRules(game) {
+  if (!game.sim.terrainAt) return false;
+  return window.__fieldRules === undefined ? FIELD_RULES : window.__fieldRules;
+}
+const FIELD_RULES = false;
 const _ccDir = { x: 0, y: 0, z: 0, set(x, y, z) { this.x = x; this.y = y; this.z = z; return this; } };
 const _ccFrom = { x: 0, y: 0, z: 0, set(x, y, z) { this.x = x; this.y = y; this.z = z; return this; } };
 
@@ -1295,7 +1306,7 @@ export class Officer {
     // In hedged country, not across fields to a point on a road: the way in
     // is a gateway and the way out the next one, and the lane is quicker. See
     // the same rule in _pursue.
-    if (this._ccOpen && this.game.sim.terrainAt && this.game.sim.surfaceAt(point.x, point.z) !== 0) {
+    if (this._ccOpen && fieldRules(this.game) && this.game.sim.surfaceAt(point.x, point.z) !== 0) {
       let grass = 0;
       for (let t = 2; t < d; t += 4) {
         if (this.game.sim.surfaceAt(v.position.x + _ccDir.x * t, v.position.z + _ccDir.z * t) === 0) grass += 4;
@@ -1789,7 +1800,7 @@ export class Officer {
       // pavement, the straight line counts as open only if it crosses less
       // than CROSS_GRASS of grass. A target in the fields is still followed
       // into them. Only on a map with hills -- the town keeps its commons.
-      if (open && this.game.sim.terrainAt) {
+      if (open && fieldRules(this.game)) {
         const sf = this.game.sim.surfaceAt;
         if (sf(target.position.x, target.position.z) !== 0) {
           let grass = 0;
@@ -1839,7 +1850,7 @@ export class Officer {
       // and on Haldon Vale it had units out in the fields more than half the
       // time, at a crawl, while the target drove off down the lane. A target
       // that is itself in the fields is still followed in.
-      if (this.game.sim.terrainAt && this.game.sim.surfaceAt(target.position.x, target.position.z) !== 0) {
+      if (fieldRules(this.game) && this.game.sim.surfaceAt(target.position.x, target.position.z) !== 0) {
         this._mode = 'lanes';
         return this._goTo(dt, this._laneAhead(target), 1.0);
       }

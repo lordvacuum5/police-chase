@@ -3133,6 +3133,8 @@ class Game {
   _render(dt) {
     // Cones are dynamic bodies, so their meshes have to follow them.
     this.roadblocks.syncVisuals();
+    // And anything loose the map put down: the bales on Haldon Vale.
+    if (this.world.__map && this.world.__map.update) this.world.__map.update();
 
     // ---- car transforms ----
     //

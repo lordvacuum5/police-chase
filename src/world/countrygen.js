@@ -25,22 +25,38 @@
 import * as THREE from 'three';
 import { RoadGraph, ROAD_KIND } from './roadgraph.js';
 import { approachesAt, addNodeWedges } from './junctions.js';
-import { GROUP, addStaticBox, EDGE_FACE } from '../physics/world.js';
+import { GROUP, groups, addStaticBox, EDGE_FACE, RAPIER } from '../physics/world.js';
 import { makeRng, rand, randInt, clamp, lerp, dist2, TAU } from '../util/math.js';
 import {
   WORLD_HALF, CELL, GRID_N, KERB_H, SURF_GRASS, SURF_ROAD, SURF_PAVED, PALETTE,
   paintDisc, rasteriseRoads, makeSurfaceAt, makeHeightAt, DRAW_ORDER,
   buildGround, buildRoadMeshes, MeshBuilder, vertexColorMaterial,
 } from './common.js';
-import { baseRelief, buildHeightGrid, addHeightfield, buildTerrainMesh, liftMesh, liftPieces } from './terrain.js';
+import { baseRelief, buildHeightGrid, addHeightfield, buildTerrainMesh, liftMesh, liftPieces, HILL_SINK } from './terrain.js';
 
 const RIDGEWAY_R = 800;
+/**
+ * Whether a hedge is a wall to the AI's driving sweeps (and the local
+ * planner), or only to its eyes. `window.__hedgeWall` sets it for rigs; read
+ * when the map is built.
+ */
+const HEDGE_WALL = false;
+const hedgeWall = () => {
+  let rig = null;
+  try { rig = sessionStorage.getItem('pc.hedgeWall'); } catch (e) { /* none */ }
+  if (rig !== null) return rig === '1';
+  return window.__hedgeWall === undefined ? HEDGE_WALL : window.__hedgeWall;
+};
 /** How tall a hedge is to the physics and the AI's sweeps -- see buildHedges. */
 const HEDGE_SOLID = 6;
 /** How many single-track lanes to try to fit -- see buildLanes. */
 const LANE_COUNT = 34;
 /** How far a village centre keeps from a road laid before it: the green, its loop and a margin. */
 const VILLAGE_CLEAR = 80;
+/** A round bale: radius, height, kilos. See buildBales. */
+const BALE_R = 0.8;
+const BALE_H = 1.5;
+const BALE_MASS = 90;
 
 export function buildCountry(sim, scene, seed = 4417) {
   const rng = makeRng(seed);
@@ -129,6 +145,7 @@ export function buildCountry(sim, scene, seed = 4417) {
   meshes.push(buildHedges(ctx, fields));
   meshes.push(buildWoods(ctx, fields));
   meshes.push(buildBalesAndTurbines(ctx, fields, hills));
+  meshes.push(ctx.bales.mesh);
   for (const m of meshes) if (m) scene.add(m);
 
   return {
@@ -143,6 +160,8 @@ export function buildCountry(sim, scene, seed = 4417) {
     villages,
     farms,
     hills,
+    // Called every frame by the game: the bales follow their bodies.
+    update: ctx.bales.update,
   };
 }
 
@@ -919,7 +938,7 @@ function buildHedges(ctx, fields) {
     // Not a sensor: rays ignore sensors, and the police would have seen
     // straight through every hedge on the map.
     const body = addStaticBox(W, mx, ctx.at(mx, mz) + HEDGE_SOLID * 0.5, mz, len * 0.5, HEDGE_SOLID * 0.5, 0.7,
-      GROUP.BUILDING, rot, 0xFFFF & ~GROUP.VEHICLE);
+      hedgeWall() ? GROUP.BUILDING | GROUP.HEDGE : GROUP.HEDGE, rot, 0xFFFF & ~GROUP.VEHICLE);
     ctx.sim.hedges.add(body.collider(0).handle);
   };
 
@@ -1039,24 +1058,93 @@ function buildWoods(ctx, fields) {
   return mesh;
 }
 
+/**
+ * Round bales you can knock about. "The bales, can you make them like cones
+ * in the sense that you can like whack them and kind of hit them around?"
+ *
+ * Each is a dynamic cylinder standing on its end, BALE_MASS kilos -- light
+ * enough that a car at speed sends it flying and barely feels it (under the
+ * impact threshold at any speed, see Vehicle.takeImpact), heavy enough that a
+ * nudge only rolls it. In GROUP.DEBRIS with the cones, so no AI sweep or eye
+ * sees one: a police car drives through a row of bales, it does not brake
+ * for them. They sleep until something touches them.
+ *
+ * Drawn as one instanced mesh, moved by `update`, which the game calls every
+ * frame. The bodies rest on whatever is highest of the flat plate and the
+ * heightfield, and the heightfield is sunk HILL_SINK under the drawn ground,
+ * so each is drawn lifted by the difference where it stands.
+ */
+function buildBales(ctx, spots) {
+  const W = ctx.sim.world;
+  const geo = new THREE.CylinderGeometry(BALE_R, BALE_R, BALE_H, 14, 1);
+  const mat = new THREE.MeshLambertMaterial({ color: 0xb79a52 });
+  const mesh = new THREE.InstancedMesh(geo, mat, Math.max(1, spots.length));
+  mesh.count = spots.length;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.name = 'bales';
+  const bodies = [];
+  for (const { x, z, rot } of spots) {
+    const y = ctx.at(x, z) + BALE_H * 0.5 + 0.05;
+    const body = W.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic()
+        .setTranslation(x, y, z)
+        .setRotation({ x: 0, y: Math.sin(rot / 2), z: 0, w: Math.cos(rot / 2) })
+        .setLinearDamping(0.25)
+        .setAngularDamping(0.5)
+        .setCcdEnabled(true),
+    );
+    W.createCollider(
+      RAPIER.ColliderDesc.cylinder(BALE_H * 0.5, BALE_R)
+        .setMass(BALE_MASS)
+        .setFriction(0.8)
+        .setRestitution(0.1)
+        .setCollisionGroups(groups(GROUP.DEBRIS, GROUP.TERRAIN | GROUP.HILL | GROUP.VEHICLE | GROUP.DEBRIS)),
+      body,
+    );
+    // Start asleep, standing: eighty-odd bales do not need solving until hit.
+    body.sleep();
+    bodies.push(body);
+  }
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
+  const lift = (x, z) => {
+    const h = ctx.at(x, z);
+    return h - Math.max(0, h - HILL_SINK);
+  };
+  const update = () => {
+    for (let i = 0; i < bodies.length; i++) {
+      const t = bodies[i].translation(), r = bodies[i].rotation();
+      p.set(t.x, t.y + lift(t.x, t.z), t.z);
+      q.set(r.x, r.y, r.z, r.w);
+      m.compose(p, q, one);
+      mesh.setMatrixAt(i, m);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  };
+  update();
+  mesh.computeBoundingSphere();
+  // Bales roll; the bounds are the whole map, so the mesh is never culled.
+  mesh.frustumCulled = false;
+  return { mesh, bodies, update };
+}
+
 function buildBalesAndTurbines(ctx, fields, hills) {
   const { rng, graph } = ctx;
   const b = new MeshBuilder();
   const pieces = [];
   const W = ctx.sim.world;
-  // Round bales, in rows in a few of the stubble fields.
+  // Round bales, in rows in a few of the stubble fields. Loose: see buildBales.
   const stubble = fields.seeds.filter((s) => !s.wood && (s.crop === CROPS[4] || s.crop === CROPS[5]));
+  const bales = [];
   for (const s of stubble.slice(0, 14)) {
     const rot = rng() * TAU;
     for (let k = 0; k < 6; k++) {
       const x = s.x + Math.cos(rot) * (k - 3) * 9 + rand(rng, -1, 1), z = s.z + Math.sin(rot) * (k - 3) * 9 + rand(rng, -1, 1);
       if (graph.overlapsRoad(x, z, 2, 2, 0, 3) || inVillage(ctx, x, z, 0)) continue;
-      const p0 = b.vertexCount;
-      b.addTaperedBox(1.6, 1.5, 1.6, x, 0.75, z, 0xb79a52, 0.85, 0.85, rot);
-      pieces.push([p0, b.vertexCount, x, z]);
-      addStaticBox(W, x, ctx.at(x, z) + 0.75, z, 0.8, 0.75, 0.8, GROUP.PROP, rot);
+      bales.push({ x, z, rot });
     }
   }
+  ctx.bales = buildBales(ctx, bales);
   // Wind turbines along the tops of the big hills.
   for (const h of hills) {
     for (let k = 0; k < 3; k++) {

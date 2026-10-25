@@ -22,6 +22,10 @@ export const GROUP = {
   // through sim.heightAt, and an AI sweep that met a hillside rising ahead of
   // it would brake for it as a wall.
   HILL: 0x0040,
+  // Hedges (world/countrygen.js): something you drive through, slowed, and
+  // cannot see through. In the sight mask, so they hide you; whether the AI's
+  // driving sweeps see one depends on the map putting BUILDING on it as well.
+  HEDGE: 0x0080,
 };
 
 export const groups = (membership, filter) => ((membership << 16) | filter) >>> 0;
@@ -58,7 +62,7 @@ export const RAY_WHEELS = groups(GROUP.VEHICLE, GROUP.TERRAIN | GROUP.BUILDING |
  */
 export const RAY_SOLID = groups(0xFFFF, GROUP.TERRAIN | GROUP.BUILDING);
 /** What a line-of-sight ray is allowed to see -- buildings block, vehicles do not. */
-export const RAY_SIGHT = groups(0xFFFF, GROUP.BUILDING | GROUP.PROP);
+export const RAY_SIGHT = groups(0xFFFF, GROUP.BUILDING | GROUP.PROP | GROUP.HEDGE);
 
 let initialised = false;
 

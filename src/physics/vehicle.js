@@ -17,7 +17,7 @@ import { RAPIER, GROUP, groups, raycast, RAY_GROUNDS, RAY_WHEELS, EDGE_FACE } fr
 /** Through a hedge: this share of the speed, lost over this many seconds. */
 const HEDGE_LOSS = 0.12;
 const HEDGE_DRAG = 0.6;
-const HEDGE_QUERY = groups(0xFFFF, GROUP.BUILDING);
+const HEDGE_QUERY = groups(0xFFFF, GROUP.HEDGE);
 /** _guardFlip: the tilt it starts at, radians (about 23 degrees), and how hard it rights the car. */
 const FLIP_FROM = 0.4;
 const FLIP_RIGHT = 3.0;
