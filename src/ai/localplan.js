@@ -156,6 +156,24 @@ export function boxesNear(game, x, z, r) {
 }
 
 /**
+ * Is (x, z) within `margin` metres of a building or tree? The same boxes the
+ * planner draws; see ai/freeline.js.
+ */
+export function blockedAt(game, x, z, margin = 0) {
+  const { B, buckets } = obstacleIndex(game);
+  const list = buckets.get(Math.floor(x / B) * 100003 + Math.floor(z / B));
+  if (!list) return false;
+  for (const b of list) {
+    const dx = x - b.x, dz = z - b.z;
+    if (Math.abs(dx) > b.rad + margin || Math.abs(dz) > b.rad + margin) continue;
+    // Into the box's own frame (yaw about +y).
+    const lx = dx * b.c - dz * b.s, lz = dx * b.s + dz * b.c;
+    if (Math.abs(lx) <= b.hx + margin && Math.abs(lz) <= b.hz + margin) return true;
+  }
+  return false;
+}
+
+/**
  * Build the obstacle list up front, and run one throwaway plan, while the map
  * is loading -- see Game's map load. The first plan of a session cost 57 ms
  * against 9-22 for the rest, all of it the engine compiling this file, and it

@@ -224,6 +224,12 @@ scoring, deliberately.
   (assist.grip 1.3/1.5) measured no faster -- not kept. Police are drawn
   sideways in hard corners (Game._driftLook, drawing only) -- the user asked
   for a fake drift; a real one measured worse twice.
+* **Open-ground racing line ON** (src/ai/freeline.js, from Officer._routeTo):
+  min-curvature line through road + pavement within 200 m, clear of boxes by
+  half-width + 0.8 m. Junctions 4.33 -> 3.84 s. At 150 km/h slightly further
+  back on average, no more crashes. `__freeLine = false` turns it off. The drift
+  look only shows on tight turns (radius < 22 m) -- the user found it weird
+  on every turn.
 * **Police reports**: the player types `st` in game and a
   `police-report-*.json` downloads (Game._policeReport; each Officer keeps a
   12 s `trace`, Officer._record). When they hand one over, read the `still`

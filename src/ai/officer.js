@@ -12,6 +12,7 @@ import { hasLineOfSight, sweepBox, raycast, groups, GROUP, RAY_SOLID, RAY_WALL }
 import { WORLD_HALF } from '../world/common.js';
 import { clamp, clamp01, lerp, dist2, sign, damp, closestOnSegment } from '../util/math.js';
 import { requestPlan, planLocal } from './localplan.js';
+import { freeLine } from './freeline.js';
 
 /**
  * How far back a turn starts, in metres: the tangent length of the fillet the
@@ -35,6 +36,13 @@ const LP_TAIL = 20;
 const LP_MAXAGE = 6;
 /** Inside this, metres from the target, the chase is for contact, not planning. */
 const LP_NEAR = 25;
+
+/**
+ * The open-ground racing line (ai/freeline.js): whether a unit in a hurry
+ * routes along it, and the speed below which it does not bother.
+ */
+const FREE_LINE = () => !(typeof window !== 'undefined' && window.__freeLine === false);
+const FREE_FROM = 6;
 
 /**
  * The flight recorder: how many seconds each unit keeps, and how often it
@@ -488,7 +496,14 @@ export class Officer {
       },
     );
     if (pts.length < 2) return false;
-    this.driver.setPath(pts);
+    // Through the open ground rather than down the road: see ai/freeline.js.
+    const freed = this.driver.allowOffRoad && v.speed > FREE_FROM && FREE_LINE();
+    this.driver.setPath(freed
+      ? freeLine(this.game, pts, v, { halfWidth: this.driver.halfWidth, grass: window.__freeGrass === true })
+      : pts);
+    // The line already is the racing line; the offset one on top would only
+    // push it back toward the middle.
+    this.driver.freeLined = freed;
     this.goalNode = goalId;
     return true;
   }

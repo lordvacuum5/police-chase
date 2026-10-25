@@ -15,6 +15,8 @@
 //
 //   await import('/tests/turnin.js');
 //   __runTurnIn([[16, 2.4], [24, 0]]);   // [corner, lane] pairs; window.__res
+import { freeLine } from '../src/ai/freeline.js';
+
 window.__runTurnIn = async function (settings = [[16, 2.4]], count = 14, tweak = null) {
   window.__turnDone = false;
   window.__res = null;
@@ -70,7 +72,11 @@ window.__runTurnIn = async function (settings = [[16, 2.4]], count = 14, tweak =
         if (f % 84 === 0) {
           const pts = gr.pathFromPosition(v.position.x, v.position.z, v.forward.x, v.forward.z,
             endNode.id, lane, Infinity, v.speed, corner);
-          if (pts.length > 1) o.driver.setPath(pts);
+          // The open-ground line, as Officer._routeTo would hand it over.
+          if (pts.length > 1 && window.__freeLine !== false) {
+            o.driver.setPath(freeLine(g, pts, v, { halfWidth: o.driver.halfWidth, grass: window.__freeGrass === true }));
+            o.driver.freeLined = true;
+          } else if (pts.length > 1) { o.driver.setPath(pts); o.driver.freeLined = false; }
         }
         v.setControls(o.driver.followPath(1 / 60, 60));
         g.stepHeadless(1 / 60);

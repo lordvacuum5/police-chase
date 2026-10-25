@@ -4747,6 +4747,52 @@ can see; the police line is a smoothed offset from the middle of the road, and
 pushed wider it mostly puts the car where it then has to slow down.
 `window.__raceExtra` sets it for rigs.
 
+**So it plans through the ground instead.** *"Build a racing line that plans
+through all the open ground (road, pavement, verges) like I drive."*
+`src/ai/freeline.js`, applied by `Officer._routeTo` to every route a unit in a
+hurry is given: stations every 4 m along the next 200 m of route; at each, the
+free ground either side, walked out along the normal until a building or tree
+is within the car's half-width plus 0.8 m or the ground stops being road or
+pavement (grass optional — it measured the same, so off), and never past 0.6 of
+the bend's own radius on the inside; then the line through those intervals that
+bends least. Pinned to the car and its nose at the start and to the route at
+the far end. 1.4 ms a plan. `Driver._raceLine` stands down on it.
+
+Two things learned building it:
+
+* Pulling each point to the midpoint of its neighbours is a string pulled taut —
+  the shortest line — and it kinks hard wherever it touches the room's edge: the
+  line came out at 3–8 m of radius through corners the road took at 22. The
+  minimum-curvature update, `(-p[j-2] + 4p[j-1] + 4p[j+1] - p[j+2]) / 6`, spreads
+  the turn over the corner: 13 → 17, 22 → 26–29, 28 → 31 m. It needs about a
+  thousand passes to settle; at 200 it had not.
+* At 120 m long it was pinned back to the road centre inside a 150 km/h car's
+  braking distance, and the car braked for the join: 296 and 215 m behind in two
+  runs. 200 m: 180, 223 and 244.
+
+`tests/turnin.js`, fourteen right-angle junctions:
+
+| | exit | slowest | hits | grass / footway frames |
+|---|---|---|---|---|
+| road line | 4.33 s | 43 km/h | 0 | 0 / 0 |
+| open-ground line | **3.84 s** | **61 km/h** | 0 | 51 / 16 |
+
+`tests/keepup.js`, fresh pages side by side:
+
+| | 90 km/h: road | open ground | 150 km/h: road | open ground (×3 runs) |
+|---|---|---|---|---|
+| mean speed | 57 | **62** | 54 | 61, 53, 53 |
+| with it | 49% | **60%** | 24% | 26%, 24%, 25% |
+| behind at the end | 76 m | 76 m | 208 m | 180, 223, 244 m |
+| hard contacts | 1 | 2 | 0 | 0, 3, 0 |
+| written off | 0 | 0 | 1 | 0, 0, 0 |
+| worst damage | 0.86 | 0.58 | 1.00 | 0.44, 0.87, 0.44 |
+
+Quicker through every junction, closer at 90, a little further back on average at
+150 (the road line's last seven runs there averaged about 187 m), and no more
+crashes. On. `window.__freeLine = false` puts the road line back;
+`__freeLen`, `__freeIter` and `__freeGrass` for rigs.
+
 ### Through the gaps, faster: not yet
 
 *"The police cars can fit through really tight gaps now. That's really cool. But

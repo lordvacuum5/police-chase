@@ -870,7 +870,7 @@ export class Driver {
   _raceLine(dt) {
     const v = this.v;
     let want = 0;
-    if (this.raceLine && this.allowOffRoad && this.hasPath && v.speed > 7) {
+    if (this.raceLine && !this.freeLined && this.allowOffRoad && this.hasPath && v.speed > 7) {
       // Past the kerb as well, when nothing is standing there. "I basically
       // drive on the pavement half the time ... Why is the police car staying
       // in the centre of the road?" Half the carriageway was the whole of the
