@@ -284,7 +284,7 @@ export class StreetProps {
       .setDensity(Math.max(4, def.mass / Math.max(0.02, vol)))
       .setFriction(0.7)
       .setRestitution(0.05)
-      .setCollisionGroups(groups(GROUP.STREET, GROUP.TERRAIN | GROUP.VEHICLE));
+      .setCollisionGroups(groups(GROUP.STREET, GROUP.TERRAIN | GROUP.HILL | GROUP.VEHICLE));
     this.game.world.createCollider(col, body);
 
     const vv = v.linvel;

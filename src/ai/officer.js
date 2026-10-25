@@ -51,6 +51,8 @@ const FREE_FROM = 6;
  */
 const CROSS_MAX = 250;
 const CROSS_SAVING = 1.35;
+/** Grass a direct chase may cross to a target on the road, in hedged country -- see _pursue. */
+const CROSS_GRASS = 20;
 const _ccDir = { x: 0, y: 0, z: 0, set(x, y, z) { this.x = x; this.y = y; this.z = z; return this; } };
 const _ccFrom = { x: 0, y: 0, z: 0, set(x, y, z) { this.x = x; this.y = y; this.z = z; return this; } };
 
@@ -1199,6 +1201,34 @@ export class Officer {
   }
 
   /** Head for a fixed world point by road, flat out. */
+  /**
+   * Where to route to so the route runs down the target's own lane: the
+   * junction at the far end of the road it is on, the way it is heading.
+   *
+   * Routed to the junction nearest the target instead, a unit already at that
+   * junction got a route of nothing, and with under 22 m of route left _goTo
+   * drives straight at the point -- which on Haldon Vale was a car two hundred
+   * metres down the lane, across the fields and through the hedges. Measured
+   * on keepup.js that was most of the 58% of the chase spent on grass.
+   */
+  _laneAhead(target) {
+    const g = this.game.graph;
+    const p = target.position;
+    const on = window.__laneAhead === false ? null : g.nearestEdge(p.x, p.z, 40);
+    if (!on) return p;
+    const e = on.edge, A = g.nodes[e.a], B = g.nodes[e.b];
+    let toB;
+    if (target.speed > 3) {
+      // The edge's own direction where the target is on it.
+      const s = e.segs.find((q) => on.along <= q.start + q.len) || e.segs[e.segs.length - 1];
+      toB = (s.b.x - s.a.x) * target.forward.x + (s.b.z - s.a.z) * target.forward.z > 0;
+    } else {
+      const v = this.vehicle.position;
+      toB = dist2(v.x, v.z, B.x, B.z) > dist2(v.x, v.z, A.x, A.z);
+    }
+    return toB ? B : A;
+  }
+
   _goTo(dt, point, speedFactor = 1) {
     if (!point) return this._patrol(dt);
     const g = this.game.graph;
@@ -1262,6 +1292,16 @@ export class Officer {
     _ccFrom.set(v.position.x, v.position.y + 0.5, v.position.z);
     const toi = sweepBox(v.world, _ccFrom, _ccDir, d, RAY_GROUNDS, v.body, this.driver.halfWidth + 0.6);
     this._ccOpen = toi >= d - 2;
+    // In hedged country, not across fields to a point on a road: the way in
+    // is a gateway and the way out the next one, and the lane is quicker. See
+    // the same rule in _pursue.
+    if (this._ccOpen && this.game.sim.terrainAt && this.game.sim.surfaceAt(point.x, point.z) !== 0) {
+      let grass = 0;
+      for (let t = 2; t < d; t += 4) {
+        if (this.game.sim.surfaceAt(v.position.x + _ccDir.x * t, v.position.z + _ccDir.z * t) === 0) grass += 4;
+      }
+      if (grass > CROSS_GRASS) this._ccOpen = false;
+    }
     return this._ccOpen;
   }
 
@@ -1741,6 +1781,25 @@ export class Officer {
         if (!hasLineOfSight(this.game.world, _eye, _aim2, 1.5, RAY_WALL)) { open = false; break; }
       }
 
+      // In hedged country, open is not the same as quick. A field gateway
+      // passes the wall test above, and the straight line through it is a
+      // field of grass with the next hedge on the far side: on Haldon Vale the
+      // direct chase took units off the lanes and into the fields most of the
+      // time, at walking pace. So there, when the target is on a road or a
+      // pavement, the straight line counts as open only if it crosses less
+      // than CROSS_GRASS of grass. A target in the fields is still followed
+      // into them. Only on a map with hills -- the town keeps its commons.
+      if (open && this.game.sim.terrainAt) {
+        const sf = this.game.sim.surfaceAt;
+        if (sf(target.position.x, target.position.z) !== 0) {
+          let grass = 0;
+          for (let t = 2; t < look; t += 4) {
+            if (sf(v.position.x + ux * t, v.position.z + uz * t) === 0) grass += 4;
+          }
+          if (grass > CROSS_GRASS) open = false;
+        }
+      }
+
       // Hysteresis, because this decides how the car drives and a car that
       // changes its mind four times a second drives into things. Blocked is
       // believed at once -- there is a building there -- but a corridor that
@@ -1775,6 +1834,15 @@ export class Officer {
       //
       // The road network is still the answer when a unit is genuinely boxed
       // in, and `_driveDirect` keeps that as its own fallback.
+      // Except in hedged country with the target on a road. There the way
+      // through is the lanes: the gaps _driveDirect finds are field gateways,
+      // and on Haldon Vale it had units out in the fields more than half the
+      // time, at a crawl, while the target drove off down the lane. A target
+      // that is itself in the fields is still followed in.
+      if (this.game.sim.terrainAt && this.game.sim.surfaceAt(target.position.x, target.position.z) !== 0) {
+        this._mode = 'lanes';
+        return this._goTo(dt, this._laneAhead(target), 1.0);
+      }
       this._mode = 'noLos';
       return this._driveDirect(dt, target.position, this._chaseSpeed());
     }

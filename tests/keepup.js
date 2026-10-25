@@ -194,13 +194,28 @@ function chase(kph, seconds, tweak, which) {
   const speed = kph / 3.6;
   const p = g.player;
   p.repair();
-  p.teleport({ x: pts[0].x, y: 0.9, z: pts[0].z }, 0);
+  // On the hills where there are hills: Game.groundAt is zero elsewhere.
+  const gy = (x, z) => (g.groundAt ? g.groundAt(x, z) : 0);
+  p.teleport({ x: pts[0].x, y: 0.9 + gy(pts[0].x, pts[0].z), z: pts[0].z }, 0);
   p._readState();
 
   const units = [];
+  // Where the two units start. On the flat maps, a fixed offset from the
+  // start, as every number in the README was measured with. On Haldon Vale
+  // that put them in a hedged field beside the lane half the time, and the
+  // rig measured them getting out of it; there they start on the route,
+  // twelve metres back, either side of its middle.
+  const hilly = !!(g.sim && g.sim.terrainAt);
+  let hx = 0, hz = 1;
+  if (hilly) {
+    const L = Math.hypot(pts[1].x - pts[0].x, pts[1].z - pts[0].z) || 1;
+    hx = (pts[1].x - pts[0].x) / L; hz = (pts[1].z - pts[0].z) / L;
+  }
   for (const off of [-4, 4]) {
+    const sx = hilly ? pts[0].x - hx * 12 + hz * off * 0.6 : pts[0].x + off;
+    const sz = hilly ? pts[0].z - hz * 12 - hx * off * 0.6 : pts[0].z - 12;
     const car = g.createVehicle('interceptor', 'interceptor',
-      { x: pts[0].x + off, y: 0.95, z: pts[0].z - 12 }, 0, { police: true });
+      { x: sx, y: 0.95 + gy(sx, sz), z: sz }, hilly ? Math.atan2(hx, hz) : 0, { police: true });
     if (!car) continue;
     const o = new Officer(g, car, { skill: SKILL.pursuit, kind: 'interceptor' });
     o.setRole(ROLE.PURSUE);
@@ -295,7 +310,7 @@ function chase(kph, seconds, tweak, which) {
       z += hx * sway;
     }
     const head = Math.atan2(hx, hz);
-    p.teleport({ x, y: 0.9, z }, head);
+    p.teleport({ x, y: 0.9 + gy(x, z), z }, head);
     // Velocity first, then read the state off it: the other way round leaves
     // forwardSpeed derived from the velocity teleport had just cleared, and the
     // ghost reads as stationary to anything that asks how fast it is going.

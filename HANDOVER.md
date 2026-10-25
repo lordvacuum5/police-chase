@@ -68,8 +68,9 @@ src/
   game/           vehicle specs, heat, HUD, audio, garage, roadblocks,
                   helicopter (AI) and flyheli.js (the flyable one), score,
                   commentary, weather, props
-  world/          map generation: citygen.js, towngen.js, roadgraph.js,
-                  cutgraph.js, common.js
+  world/          map generation: citygen.js, towngen.js, countrygen.js
+                  (Haldon Vale), terrain.js (hills: height grid, heightfield,
+                  ground mesh), roadgraph.js, cutgraph.js, common.js
   core/           input.js (keyboard/pad/mouse/touch), touch.js (the on-screen
                   controls), menu.js, platform.js
   net/session.js  rooms, roles, car packets, interpolation
@@ -148,6 +149,18 @@ scoring, deliberately.
 ## Where things stand
 
 ### Recently finished
+
+* **Haldon Vale** (25 Oct 2026), the third map: open country, hedges, hills,
+  three villages, farms you can drive through, woods. README "Haldon Vale" has
+  the design, the bugs found on the way and the numbers. On a hilly map
+  `sim.terrainAt` is set, and a few things change only there: wheels solve
+  their contact along the ray, `Game.groundAt` lifts every spawn, the
+  helicopter flies over the ground, the garage looks for a level plot, and
+  the police keep to the lanes (`_mode 'lanes'`, `_laneAhead`, the grass rule
+  in `_pursue` and `_crossCountry`). `tests/data/_check.js`, evaluated in the
+  page, is the road-network check -- run it after any change to the
+  generator. Still true there: police are off the road about 40% of a chase
+  and fall 200-500 m behind on the lanes.
 
 * **BE THE POLICE** — a solo mode where you are the police and `ai/runner.js`
   drives the getaway car. It plans by running `RoadGraph.predict` (the same
@@ -251,7 +264,17 @@ scoring, deliberately.
   to the furthest point even when it was visible; it now returns null.
 * **Rig trap: the map.** A fresh page opens on the menu, and START picks
   Ashfield City, not Wexbury. Set `sessionStorage.setItem('pc.map','wexbury')`
-  and reload; it drops straight into Wexbury. Check `__game.mapDef.id`.
+  (or `'haldon'`) and reload; it drops straight into that map. Check
+  `__game.mapDef.id`.
+* **Rig trap: the hidden Browser pane freezes the page.** While the pane is
+  not on screen the page only runs while one of Claude's javascript calls is
+  in flight. A sweep started with setTimeout and left alone looks exactly like
+  a hang (a whole session went on chasing one). Keep it moving with calls like
+  `await new Promise(r => setTimeout(r, 20000)); sessionStorage.getItem(...)`
+  and have the rig write its result to sessionStorage. Screenshots of a hidden
+  pane are stale too: render into the canvas yourself and POST
+  `canvas.toDataURL()` to `/__shot?name=x` (serve.ps1 writes `shots/x.jpg`),
+  then Read the file.
 * **Rolling block siting** now walks the target's own road (`_siteUpRoad`) and
   lines only break up when the target is at the line and off its road.
 

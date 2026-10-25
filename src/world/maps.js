@@ -5,6 +5,7 @@
 
 import { buildCity } from './citygen.js';
 import { buildTown } from './towngen.js';
+import { buildCountry } from './countrygen.js';
 
 export const MAPS = [
   {
@@ -25,6 +26,16 @@ export const MAPS = [
          + 'crescents and dead ends, and a dual carriageway bypass joined by '
          + 'roundabouts. Nothing meets at a right angle.',
     build: buildTown,
+  },
+  {
+    id: 'haldon',
+    name: 'Haldon Vale',
+    tag: 'Open country · Hills',
+    blurb: 'Rolling farmland under big hills: single-track lanes sunk between '
+         + 'hedges, three villages round their greens, farms whose barns you can '
+         + 'drive straight through, woods to lose them in, and humpback crests '
+         + 'to leave the ground over. A ring lane loops the whole vale.',
+    build: buildCountry,
   },
 ];
 

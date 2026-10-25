@@ -252,7 +252,16 @@ export class Helicopter {
 
     this.pos.x += this.vel.x * dt;
     this.pos.z += this.vel.z * dt;
-    this.pos.y = damp(this.pos.y, ALTITUDE, 1.4, dt);
+    // Above the ground under it, not above sea level: on Haldon Vale the
+    // hills stand forty metres up and the turbines on them seventy more.
+    // Looked for a little ahead too, so it climbs before a hill, not into it.
+    const ga = this.game.groundAt ? this.game.groundAt.bind(this.game) : () => 0;
+    const ground = Math.max(
+      ga(this.pos.x, this.pos.z),
+      ga(this.pos.x + this.vel.x * 3, this.pos.z + this.vel.z * 3),
+    );
+    const tall = this.game.world && this.game.world.__map && this.game.world.__map.hills ? 15 : 0;
+    this.pos.y = damp(this.pos.y, ALTITUDE + ground + tall, 1.4, dt);
 
     const speed = Math.hypot(this.vel.x, this.vel.z);
     if (speed > 1) this.heading = Math.atan2(this.vel.x, this.vel.z);

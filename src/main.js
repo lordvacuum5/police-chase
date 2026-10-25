@@ -310,6 +310,10 @@ class Game {
     this.graph = built.graph;
     this.sim.surfaceAt = built.surfaceAt;
     this.sim.heightAt = built.heightAt;
+    // Hills (world/terrain.js): the ground under the kerbs, and how high it
+    // gets, for the suspension rays. Flat maps have neither.
+    this.sim.terrainAt = built.terrainAt || null;
+    this.sim.relief = built.relief || 0;
     this.world.__map = built;
     // The local planner's list of every building and tree box, made now rather
     // than the first time a unit needs it, which is in the middle of a chase.
@@ -728,6 +732,15 @@ class Game {
     return g;
   }
 
+  /**
+   * The ground under a point, for anything placed by height: zero on the flat
+   * maps, the hills on Haldon Vale (world/terrain.js). Everything that puts a
+   * car down at "0.95 above the road" adds this.
+   */
+  groundAt(x, z) {
+    return this.sim && this.sim.terrainAt ? this.sim.terrainAt(x, z) : 0;
+  }
+
   createVehicle(specKey, liveryKey, position, heading, opts = {}) {
     // `opts.spec` is a car of this kind with something changed -- the police
     // car a person drives. It has to be given here rather than assigned to
@@ -961,7 +974,7 @@ class Game {
       }
       if (blocked) continue;
 
-      return { position: { x, y: 0.95, z }, heading: Math.atan2(dx, dz) };
+      return { position: { x, y: 0.95 + this.groundAt(x, z), z }, heading: Math.atan2(dx, dz) };
     }
     return null;
   }
@@ -1300,6 +1313,7 @@ class Game {
         y: 0.95,
         z: p.z + p.tx * sign * lane * DRIVE_SIDE,
       };
+      pos.y += this.groundAt(pos.x, pos.z);
       if (this.sim.surfaceAt(pos.x, pos.z) !== 1) continue;
       // In view means no block this time. A car materialising a hundred and
       // fifty metres up the road is worse than no rolling block; the
@@ -1391,6 +1405,7 @@ class Game {
     const usable = (q) => {
       const lane = Math.min(3.0, q.edge.width * 0.25);
       const pos = { x: q.x - q.tz * lane * DRIVE_SIDE, y: 0.95, z: q.z + q.tx * lane * DRIVE_SIDE };
+      pos.y += this.groundAt(pos.x, pos.z);
       if (this.sim.surfaceAt(pos.x, pos.z) !== 1) return null;
       if (this.nearHuman(pos)) return null;
       for (const v of this.vehicles) {
@@ -1463,6 +1478,7 @@ class Game {
       if (this.vehicles.length >= this.vehicleLimit) break;
       const s = slots[i];
       const pos = { x: snap.x + tz * s * W, y: 0.95, z: snap.z - tx * s * W };
+      pos.y += this.groundAt(pos.x, pos.z);
       if (this.sim.surfaceAt(pos.x, pos.z) !== 1) continue;
       // Never appearing in front of anyone, the same as the leader.
       if (this.inView(pos) || this.nearHuman(pos)) continue;
@@ -1545,6 +1561,7 @@ class Game {
         y: 0.95,
         z: p.z + p.tx * sign * lane * -DRIVE_SIDE,
       };
+      pos.y += this.groundAt(pos.x, pos.z);
       if (this.sim.surfaceAt(pos.x, pos.z) !== 1) continue;
       // Appearing in plain view is only acceptable a long way off.
       if ((this.inView(pos) && dist2(pos.x, pos.z, target.position.x, target.position.z) < 260)

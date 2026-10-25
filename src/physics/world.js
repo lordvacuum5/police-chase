@@ -17,6 +17,11 @@ export const GROUP = {
   // an AI that brakes for a bollard, or a wheel that climbs a lamp post, is
   // worse than furniture you can drive through.
   STREET: 0x0020,
+  // Hills: a heightfield for the bodywork to land on (see world/terrain.js).
+  // In none of the ray masks below. The wheels already ride the same surface
+  // through sim.heightAt, and an AI sweep that met a hillside rising ahead of
+  // it would brake for it as a wall.
+  HILL: 0x0040,
 };
 
 export const groups = (membership, filter) => ((membership << 16) | filter) >>> 0;
@@ -214,7 +219,7 @@ export function addCone(world, x, y, z, radius = 0.30, height = 0.75) {
     .setDensity(38)               // ~2.5 kg for this size: it flies, you do not
     .setFriction(0.55)
     .setRestitution(0.12)
-    .setCollisionGroups(groups(GROUP.DEBRIS, GROUP.TERRAIN | GROUP.VEHICLE));
+    .setCollisionGroups(groups(GROUP.DEBRIS, GROUP.TERRAIN | GROUP.HILL | GROUP.VEHICLE));
   world.createCollider(col, body);
   return body;
 }
@@ -222,7 +227,7 @@ export function addCone(world, x, y, z, radius = 0.30, height = 0.75) {
 /** Static box helper -- used for buildings, barriers and bridge decks. */
 export function addStaticBox(
   world, cx, cy, cz, hx, hy, hz, group = GROUP.BUILDING, rotY = 0,
-  filter = group === GROUP.STREET ? (GROUP.TERRAIN | GROUP.VEHICLE) : 0xFFFF,
+  filter = group === GROUP.STREET ? (GROUP.TERRAIN | GROUP.HILL | GROUP.VEHICLE) : 0xFFFF,
 ) {
   const bodyDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(cx, cy, cz);
   if (rotY !== 0) {

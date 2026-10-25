@@ -168,7 +168,19 @@ export class Garage {
           // Somewhere you can find, but not so close it is the first thing you
           // drive into.
           if (d < 110 || d > 700) continue;
-          const score = Math.abs(d - 280) + (e.kind === 'lane' || e.kind === 'country' ? 60 : 0);
+          let score = Math.abs(d - 280) + (e.kind === 'lane' || e.kind === 'country' ? 60 : 0);
+          // On the hills (Haldon Vale), level ground: the lot is one flat slab
+          // and the ground under the first site it took varied by three
+          // metres, so the forecourt was half buried and half in the air.
+          if (game.sim.terrainAt) {
+            let lo = Infinity, hi = -Infinity;
+            for (const [u, v] of [[0, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+              const y = game.sim.terrainAt(cx + ax * u * LOT_L * 0.5 + nx * v * LOT_D * 0.5,
+                cz + az * u * LOT_L * 0.5 + nz * v * LOT_D * 0.5);
+              lo = Math.min(lo, y); hi = Math.max(hi, y);
+            }
+            score += (hi - lo) * 120;
+          }
           if (best && score >= best.score) continue;
           if (!clear(cx, cz, ax, az, nx, nz, e)) continue;
           best = { score, cx, cz, ax, az, nx, nz, edge: e, roadName: e.name };
@@ -206,7 +218,9 @@ export class Garage {
 
     const group = new THREE.Group();
     group.name = 'garage';
-    group.position.set(site.cx, 0, site.cz);
+    // On the hills where there are hills (Game.groundAt).
+    const gy = game.groundAt ? game.groundAt(site.cx, site.cz) : 0;
+    group.position.set(site.cx, gy, site.cz);
     group.rotation.y = site.heading;
 
     const b = new MeshBuilder();
@@ -339,7 +353,7 @@ export class Garage {
     // Solid where it looks solid.
     const box = (u, v, y, w, h, d, kind = GROUP.BUILDING) => {
       const p = this.toWorld(u, v);
-      addStaticBox(game.world, p.x, y, p.z, w * 0.5, h * 0.5, d * 0.5, kind, site.heading);
+      addStaticBox(game.world, p.x, y + gy, p.z, w * 0.5, h * 0.5, d * 0.5, kind, site.heading);
     };
     box(-10, 8.25, y0 + 2.1, 12, 4.2, 6.5);
     box(4.2, 5.5, y0 + 2.8, 0.4, 5.6, 12);
@@ -467,7 +481,7 @@ export class Garage {
   get helipad() {
     if (!this.site) return null;
     const at = this.toWorld(PAD_U, PAD_V);
-    return { x: at.x, z: at.z, y: PAD_Y, r: PAD_R };
+    return { x: at.x, z: at.z, y: PAD_Y + (this.game && this.game.groundAt ? this.game.groundAt(this.site.cx, this.site.cz) : 0), r: PAD_R };
   }
 }
 

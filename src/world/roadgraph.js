@@ -50,6 +50,9 @@ function roundCorners(pts, radius) {
   return out;
 }
 
+/** Map tags a road keeps when stitching splits it -- see stitchCrossings. */
+const CARRIED = ['aroad', 'village', 'farm', 'crest', 'name'];
+
 /**
  * How far behind the car a route's lead-in starts -- see _pathAhead.
  *
@@ -205,6 +208,8 @@ export const ROAD_KIND = {
   ramp:     { width: 10, lanes: 1, speed: 19, colour: 0x2a2d31 },
   country:  { width: 9,  lanes: 1, speed: 26, colour: 0x2b2b28 },
   lane:     { width: 9,  lanes: 1, speed: 16, colour: 0x2e2c26 },
+  // Single-track, between hedges: Haldon Vale's lanes and farm tracks.
+  track:    { width: 6,  lanes: 1, speed: 14, colour: 0x32302a },
   // Not a road: a way through between buildings, found after the map is built --
   // see world/cutgraph.js. Deliberately slow, because the router costs edges by
   // time and a cut should only win when it genuinely saves some. Never drawn and
@@ -374,6 +379,50 @@ export class RoadGraph {
   }
 
   /** Rebuild every node's edge list from the edge array. */
+  /**
+   * Two roads between the same two junctions are one road drawn twice, on top
+   * of each other. Stitching can make them -- a split piece of one road that
+   * lands on a road already joining the same two nodes -- and so, on Haldon
+   * Vale, did an A-road meeting the other at the crossroads. Keep the first.
+   */
+  dropDuplicateEdges() {
+    // Only when the second really is the same road: two different roads can
+    // join the same pair of junctions -- the two halves of a loop -- and
+    // those both stay. Same means its middle is within a few metres of the
+    // first's.
+    const seen = new Map();
+    let dropped = 0;
+    this.droppedEdges = [];
+    const mid = (e) => {
+      let s = e.length * 0.5;
+      for (const sg of e.segs) {
+        if (s <= sg.len) {
+          const t = sg.len ? s / sg.len : 0;
+          return { x: sg.a.x + (sg.b.x - sg.a.x) * t, z: sg.a.z + (sg.b.z - sg.a.z) * t };
+        }
+        s -= sg.len;
+      }
+      return e.points[e.points.length - 1];
+    };
+    for (const e of this.edges) {
+      if (e.dead || e.cut) continue;
+      const key = e.a < e.b ? `${e.a}-${e.b}` : `${e.b}-${e.a}`;
+      const m = mid(e);
+      const prev = seen.get(key) || [];
+      if (prev.some((p) => Math.hypot(p.x - m.x, p.z - m.z) < 6)) {
+        e.dead = true;
+        dropped++;
+        this.droppedEdges.push({ kind: e.kind, x: m.x, z: m.z, length: e.length });
+      } else {
+        prev.push(m);
+        seen.set(key, prev);
+      }
+    }
+    if (dropped) this.reindexEdges();
+    this.duplicatesDropped = dropped;
+    return dropped;
+  }
+
   reindexEdges() {
     this.edges = this.edges.filter((e) => !e.dead);
     this.edges.forEach((e, i) => { e.id = i; });
@@ -703,6 +752,10 @@ export class RoadGraph {
         const mid = pts && pts.length > 2 ? pts.slice(1, -1) : null;
         const ne = this.addEdge(fromNode, toNode, e.kind, mid, opts);
         if (e.turningHead) ne.turningHead = true;
+        // And whatever the map generator tagged the road with -- which A-road
+        // it is, which village it runs through -- or a split A-road is named
+        // as a B-road and a split village street loses its pavement.
+        for (const k of CARRIED) if (e[k] !== undefined) ne[k] = e[k];
         made++;
       };
       for (const c of list) {
@@ -728,6 +781,7 @@ export class RoadGraph {
     // middle of an arc, or a polyline rounded off, can put two roads across
     // each other that were not crossing before it ran.
     this.stitchCrossings();
+    this.dropDuplicateEdges();
     for (const n of this.nodes) {
       this.bounds.minX = Math.min(this.bounds.minX, n.x);
       this.bounds.maxX = Math.max(this.bounds.maxX, n.x);

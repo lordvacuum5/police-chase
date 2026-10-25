@@ -395,7 +395,9 @@ function buildMaps() {
     blurb.textContent = m.blurb;
     card.appendChild(blurb);
 
-    if (m.id === 'wexbury') drawTown(canvas); else drawCity(canvas);
+    if (m.id === 'wexbury') drawTown(canvas);
+    else if (m.id === 'haldon') drawCountry(canvas);
+    else drawCity(canvas);
 
     const select = () => { current = m.id; remember(MAP_KEY, m.id); paint(); };
     card.addEventListener('click', select);
@@ -925,6 +927,68 @@ function base(canvas) {
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   return ctx;
+}
+
+/** Haldon Vale: contour rings of hills, a patchwork, a ring lane, two A-roads. */
+function drawCountry(canvas) {
+  const ctx = base(canvas);
+  const W = canvas.width, H = canvas.height;
+  const cx = W / 2, cy = H / 2;
+  const rng = makeRng(41);
+
+  // field patchwork, faint
+  for (let i = 0; i < 70; i++) {
+    const x = cx + (rng() - 0.5) * 380, y = cy + (rng() - 0.5) * 270;
+    ctx.fillStyle = ['#141b14', '#18201a', '#1d2318', '#171b12'][i % 4];
+    ctx.fillRect(x, y, 22 + rng() * 34, 16 + rng() * 26);
+  }
+  // hills, as contour rings
+  ctx.strokeStyle = '#263024';
+  ctx.lineWidth = 1.5;
+  for (const [hx, hy, hr] of [[-110, -60, 60], [120, 40, 52], [30, 90, 40]]) {
+    for (let k = 1; k <= 4; k++) {
+      ctx.beginPath();
+      ctx.ellipse(cx + hx, cy + hy, hr * k / 4, hr * k / 4 * 0.8, 0.3, 0, TAU);
+      ctx.stroke();
+    }
+  }
+  // lanes, wandering
+  ctx.strokeStyle = '#2f353d';
+  ctx.lineWidth = 1.6;
+  for (let i = 0; i < 9; i++) {
+    ctx.beginPath();
+    let x = cx + (rng() - 0.5) * 300, y = cy + (rng() - 0.5) * 220;
+    ctx.moveTo(x, y);
+    for (let k = 0; k < 6; k++) { x += (rng() - 0.5) * 70; y += (rng() - 0.5) * 60; ctx.lineTo(x, y); }
+    ctx.stroke();
+  }
+  // the Ridgeway, round it all
+  ctx.strokeStyle = '#3b444f';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  for (let k = 0; k <= 48; k++) {
+    const a = (k / 48) * TAU;
+    const rr = 120 * (1 + Math.sin(a * 4) * 0.05);
+    const x = cx + Math.cos(a) * rr * 1.35, y = cy + Math.sin(a) * rr;
+    if (k === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  // two A-roads across, crossing in the middle
+  ctx.strokeStyle = '#4a5766';
+  ctx.lineWidth = 4.5;
+  ctx.beginPath();
+  ctx.moveTo(cx - 162, cy + 10);
+  ctx.bezierCurveTo(cx - 70, cy - 40, cx + 60, cy + 40, cx + 162, cy - 8);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(cx + 6, cy - 120);
+  ctx.bezierCurveTo(cx - 40, cy - 40, cx + 40, cy + 40, cx - 4, cy + 120);
+  ctx.stroke();
+  // villages
+  ctx.fillStyle = '#6b7684';
+  for (const [vx, vy] of [[-70, -10], [90, -60], [-30, 70]]) {
+    ctx.beginPath(); ctx.arc(cx + vx, cy + vy, 6, 0, TAU); ctx.fill();
+  }
 }
 
 function drawCity(canvas) {

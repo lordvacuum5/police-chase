@@ -6157,8 +6157,8 @@ arrest saved it as a new best and cleared the score for the next run.
 
 ## The maps
 
-Two, chosen from the menu at startup. Press **M** in game to come back and
-switch. Both are 2 × 2 km, generated from authored layout rules with a fixed
+Three, chosen from the menu at startup. Press **M** in game to come back and
+switch. All are 2 × 2 km, generated from authored layout rules with a fixed
 seed, so each is identical every run.
 
 ### Ashfield City — grid
@@ -6188,6 +6188,99 @@ what produces terraced streets and makes the lanes feel enclosed: shops crowd
 the pavement in the centre, terraces run in unbroken rows along the Victorian
 streets, detached houses sit back behind gardens further out, and farms are
 scattered along the B-roads. Nothing meets at a right angle unless it happens to.
+
+### Haldon Vale — open country, with hills
+
+*"I want you to make the map. The new map ... with hedges, like a kind of
+countryside. And with hills, and just make it as good as you can ... quite big
+... Make a variety. Make it cool."* (`world/countrygen.js`, `world/terrain.js`)
+
+* **The Ridgeway**, a lane right round the vale at about 800 m, so there is
+  always a way round and never only one;
+* **two A-roads** across it, crossing in the middle;
+* **three villages** -- Haldon St Mary, Little Combe, Ashwell -- each a loop of
+  lane round a green, with a church, a pub, cottages crowding the street, a
+  street out the far side and pavements;
+* **B-roads** from the villages to the Ridgeway and to each other, then
+  **single-track lanes** between hedges, with turning loops at their ends;
+* **farm tracks** to the farms: a paved yard, a house, a barn open at both ends
+  and a Dutch barn that is a roof on posts. You can drive through both;
+* **fields** in a patchwork of crops with **hedges** between them, with a
+  gateway somewhere along each, and **woods** dense enough to lose someone in;
+* **hills** under all of it -- Haldon Beacon (34 m), Coombe Hill, Windy Knoll,
+  Long Down -- with wind turbines on the tops so they read from anywhere, and
+  a few humpback **crests** on the farm tracks to leave the ground over.
+
+**The ground is a heightfield.** A 4 m grid (`buildHeightGrid`) of the hills,
+then flattened where things stand on it: village and farm pads first (first
+claim wins), and the roads on a layer of their own, blended by a squared
+weight across a 16 m fade so a junction is a blend of its roads rather than
+whichever was laid first. Each road's profile is pinned to the level of its
+two junctions, held inside a grade cone (`MAX_GRADE` 8%) and smoothed. Wheels
+read `sim.heightAt`, and on a hilly map solve their contact along the
+suspension ray rather than straight down -- a tilted car's ray landed metres
+sideways otherwise, and cars sat on slopes with two wheels in the air. The
+heightfield collider (`GROUP.HILL`) is sunk 0.35 m so the bodywork only meets
+it when something has really gone wrong, and it is in none of the AI's ray
+masks, or a hillside ahead would read as a wall.
+
+**Hedges are solid, and taller to the physics than they look:** drawn about two
+metres high, collided six (`HEDGE_SOLID`). The AI's sweeps run level from the
+car, and from a car on a slope the line passed over a two-metre hedge further
+down: police took the field as open ground and drove into the hedge. On the
+first chase rig they spent 85% of their time off the road, at 36 km/h.
+
+**Checked, all scripted** (`tests/data/_check.js`, run in the page): one
+connected network, 18.2 km of road over 78 edges, no crossing that is not a
+junction, no junction with two roads leaving within 25 degrees of each other,
+the steepest stretch 14% (a crest), 300 random routes all found, the median
+route 1.47 times the straight line and the 90th percentile 2.02. A sweep down
+every road for anything solid standing on it finds nothing. A ten-minute soak
+with thirty cars reports nothing. Along the way:
+
+* **Two roads drawn on top of each other**, the thing the other maps have had:
+  a new road is refused if it joins two junctions already joined, or leaves a
+  junction within 25 degrees of a road already there; and
+  `RoadGraph.dropDuplicateEdges` drops any edge whose middle is within 6 m of
+  another's (it took 6 out of Wexbury and 1 out of the city as well).
+  Splitting an edge at a crossing used to lose its tags; `CARRIED` lists them.
+* **Roads up 113% slopes**, from pads blocking the road layer and from the
+  grade limiter moving a road's pinned ends. Both fixed; junction patches tried
+  in between made it worse and were taken out.
+* **Two village greens with an A-road straight across the middle and the
+  church standing on it.** The villages were placed blind. A village centre now
+  keeps 80 m from any road laid before it (`VILLAGE_CLEAR`), and the church is
+  put somewhere on the green clear of every road, or not at all.
+* **The ground stopped 200 m short of the edge of the world.** The hills cover
+  ±1000 m and the plate you can drive on ±1200; the strip between was drivable
+  and not drawn, with the field hedges running on across the sky. The fields
+  now carry on to the plate edge and the hedges stop at it.
+* **Crests that flipped cars**: made gentler and kept to farm tracks. A crest
+  now gives 0.1-0.6 s of air and no flips.
+
+**The police on it.** Hedged country is not town, and three town rules were
+wrong here. Keepup.js, 90 km/h ghost, four routes, mean / gap / off the road:
+
+| | mean | behind | off road |
+|---|---|---|---|
+| first run on the map | 36 km/h | | 85% |
+| hedges solid to 6 m, units start on the route | 62 | 248 m | 58% |
+| target unseen in the lanes: route down its lane, not at it | 68 | 193 m | 40% |
+
+The last row is `Officer._laneAhead`. With the target out of sight and on a
+road, a unit routes to the junction at the far end of the target's own road,
+the way it is heading. It used to route to the junction *nearest* the target;
+a unit already at that junction got an empty route, and with under 22 m of
+route left `_goTo` drives straight at the point -- which here was a car two
+hundred metres down the lane, across the fields and through the hedges. The
+honest numbers, first batch against first batch on fresh pages: off the road
+54% -> 40% at 90 km/h and 40% -> 40% at 150; mean speed and gap about the same
+(65 -> 68 km/h, 185 -> 193 m; 150 km/h: 78 -> 76, 493 -> 500 m); light hits up
+(4 -> 16 at 90), with nothing wrecked. Kept because staying on the lanes is the
+thing the player asked for (*"the police cars don't stick to roads"*), not
+because it catches anyone faster. `window.__laneAhead = false` puts the old
+routing back. The gap at 150 km/h is still five hundred metres: on single-track
+lanes between hedges nobody keeps up with a car doing 150.
 
 Shared terrain, surfaces, road meshes and scenery live in `world/common.js`; a
 map generator only has to lay out a road graph and decide where buildings go.

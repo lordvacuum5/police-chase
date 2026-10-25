@@ -257,7 +257,7 @@ export class RoadblockManager {
       const pz = z + nz * f * spread + tz * back;
       const ang = heading + ANG * (i % 2 ? 1 : -1);
 
-      const unit = game.spawnPoliceAt({ x: px, y: 0.95, z: pz }, ang, tier);
+      const unit = game.spawnPoliceAt({ x: px, y: 0.95 + game.groundAt(px, pz), z: pz }, ang, tier);
       if (!unit) continue;
       unit.setRole(ROLE.HOLD, {
         site: { x, z },
@@ -288,7 +288,7 @@ export class RoadblockManager {
       const cone = new THREE.Mesh(this.coneGeo, coneMat);
       cone.castShadow = true;
       game.scene.add(cone);
-      const body = addCone(game.world, cx, 0.02, cz, 0.30, 0.75);
+      const body = addCone(game.world, cx, 0.02 + game.groundAt(cx, cz), cz, 0.30, 0.75);
       block.cones.push({ mesh: cone, body });
     }
 
@@ -301,7 +301,7 @@ export class RoadblockManager {
     const sx = x - tx * SPIKE_BACK, sz = z - tz * SPIKE_BACK;
     const mesh = new THREE.Mesh(spikeStripGeometry(len), game.stingerMaterial
       || (game.stingerMaterial = vertexColorMaterial()));
-    mesh.position.set(sx, 0.012, sz);
+    mesh.position.set(sx, 0.012 + game.groundAt(sx, sz), sz);
     mesh.rotation.y = heading;
     mesh.receiveShadow = true;
     game.scene.add(mesh);

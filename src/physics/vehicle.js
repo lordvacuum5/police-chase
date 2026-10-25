@@ -880,11 +880,11 @@ export class Vehicle {
       // needs 140 mm of slack; terrain would need its full relief, and this is
       // the one number that has to grow for hills.
       const hit = raycast(
-        this.world, w.worldPos, _v1, maxToi + GROUND_RELIEF, RAY_GROUNDS, this.body,
+        this.world, w.worldPos, _v1, maxToi + (this.sim.relief || GROUND_RELIEF), RAY_GROUNDS, this.body,
       );
 
       if (hit) {
-        const px = hit.point.x, pz = hit.point.z;
+        let px = hit.point.x, pz = hit.point.z;
         let toi = hit.toi, py = hit.point.y;
         let nx = hit.normal.x, ny = hit.normal.y, nz = hit.normal.z;
 
@@ -895,7 +895,28 @@ export class Vehicle {
         // suspension ray, a wheel that climbs one gets the bump, the weight
         // transfer and the tyre's answer to both for free.
         const H = this.sim.heightAt;
-        if (H) {
+        const onPlate = !hit.collider || ((hit.collider.collisionGroups() >>> 16) & GROUP.TERRAIN);
+        if (H && this.sim.terrainAt && onPlate && _v1.y < -0.2) {
+          // Hills (world/terrain.js): where the ray actually meets the ground.
+          // Lifting the plate hit by the height at that point, as below, is
+          // right for a kerb a metre under the wheel and wrong for a hill ten
+          // metres over the plate: the ray runs along the car's own down, so a
+          // car leaning a few degrees lands it metres to one side, and the
+          // height read there is somebody else's. Cars on Haldon Vale's slopes
+          // sat on two wheels, full throttle, going nowhere. Solved along the
+          // ray instead -- three steps of "how far down is the ground under
+          // where I would be" -- and tilted by the slope there.
+          const o = w.worldPos, d = _v1, dy = -d.y;
+          let t = (o.y - H(o.x, o.z)) / dy;
+          for (let it = 0; it < 3; it++) t = (o.y - H(o.x + d.x * t, o.z + d.z * t)) / dy;
+          toi = t;
+          px = o.x + d.x * t; pz = o.z + d.z * t; py = o.y + d.y * t;
+          const e = 0.55;
+          const gx = (H(px + e, pz) - H(px - e, pz)) / (2 * e);
+          const gz = (H(px, pz + e) - H(px, pz - e)) / (2 * e);
+          const l = Math.hypot(gx, 1, gz);
+          nx = -gx / l; ny = 1 / l; nz = -gz / l;
+        } else if (H) {
           const h = H(px, pz);
           toi -= h;
           py += h;
