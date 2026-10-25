@@ -25,7 +25,7 @@
 import * as THREE from 'three';
 import { RoadGraph, ROAD_KIND } from './roadgraph.js';
 import { approachesAt, addNodeWedges } from './junctions.js';
-import { GROUP, groups, addStaticBox, EDGE_FACE, RAPIER } from '../physics/world.js';
+import { GROUP, groups, addStaticBox, addCanopy, EDGE_FACE, RAPIER } from '../physics/world.js';
 import { makeRng, rand, randInt, clamp, lerp, dist2, TAU } from '../util/math.js';
 import {
   WORLD_HALF, CELL, GRID_N, KERB_H, SURF_GRASS, SURF_ROAD, SURF_PAVED, PALETTE,
@@ -1017,6 +1017,7 @@ function addTreeT(ctx, b, pieces, x, z, scale = 1) {
     0.22, 0.22, rand(rng, 0, TAU));
   pieces.push([s, b.vertexCount, x, z]);
   addStaticBox(ctx.sim.world, x, ctx.at(x, z) + 2.6, z, 0.65, 2.6, 0.65, GROUP.PROP);
+  addCanopy(ctx.sim.world, x, z, ctx.at(x, z), h * 0.66, h * 0.72, h * 0.8);
   return true;
 }
 

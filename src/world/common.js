@@ -11,7 +11,7 @@ import { ROAD_KIND } from './roadgraph.js';
 import {
   planJunctions, buildJunctionCorners, buildStopLines, sliceLine, approachesAt, addNodeWedges,
 } from './junctions.js';
-import { GROUP, addStaticBox, PLATE_HALF, EDGE_FACE } from '../physics/world.js';
+import { GROUP, addStaticBox, addCanopy, PLATE_HALF, EDGE_FACE } from '../physics/world.js';
 import { rand, randInt, lerp, TAU } from '../util/math.js';
 
 export const WORLD_HALF = 1000;
@@ -503,6 +503,7 @@ export function addTree(ctx, builder, tx, tz, scale = 1) {
     new THREE.Color().setHSL(rand(rng, 0.22, 0.30), rand(rng, 0.28, 0.46), rand(rng, 0.13, 0.22)),
     0.22, 0.22, rand(rng, 0, TAU));
   addStaticBox(sim.world, tx, 2.6, tz, 0.65, 2.6, 0.65, GROUP.PROP);
+  addCanopy(sim.world, tx, tz, 0, h * 0.66, h * 0.72, h * 0.78);
   return true;
 }
 

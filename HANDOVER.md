@@ -365,6 +365,13 @@ roll over** (`Vehicle._guardFlip`); **landings cost 35%** of what the same stop
 against a wall would (`LANDING_SHARE`); **the camera is never below the
 ground** (`ChaseCamera._aboveGround`). Wheel rays use `RAY_WHEELS`, which asks
 as a car -- anything a car does not collide with, a wheel does not stand on.
+**Tree crowns are solid** (`addCanopy`, `GROUP.CANOPY`, never below 3 m so no
+car on the ground can meet one), and **another player's landed helicopter is
+solid** on your screen too (`Game._netAirParked`). **Cars turn round** when it
+pays and they are slow (`pathFromPosition`, `UTURN_MAX`); at speed it was tried
+and cost the chase. `tests/routecheck.js` is the route-quality rig.
+**Rig trap:** spawn anything on a hilly map at `groundAt + ...`, never a fixed
+y -- response.js put its cars inside the hill and reported the AI as stuck.
 
 The flyable helicopter tilts to a full **180 degrees** in pitch and roll, which
 was asked for twice; the things that stop it being twitchy are `CYCLIC_RATE`

@@ -1,7 +1,7 @@
 // Entry point: builds the world, owns the loop, wires everything together.
 
 import * as THREE from 'three';
-import { initPhysics, createWorld, hasLineOfSight } from './physics/world.js';
+import { initPhysics, createWorld, hasLineOfSight, addStaticBox, GROUP } from './physics/world.js';
 import { Vehicle } from './physics/vehicle.js';
 import {
   SPECS, LIVERIES, buildCarGeometry, buildWheelGeometry, LAMP_OFFSETS,
@@ -26,7 +26,7 @@ import { RoadblockManager } from './game/roadblock.js';
 import { Helicopter, buildHelicopterMesh } from './game/helicopter.js';
 import { loadHelicopterModel, buildImportedHelicopter } from './game/helimodel.js';
 import {
-  FlyingHelicopter, MARK_RANGE as AIR_MARK_RANGE, SKID as AIR_SKID,
+  FlyingHelicopter, MARK_RANGE as AIR_MARK_RANGE, SKID as AIR_SKID, AIR_DIMS,
 } from './game/flyheli.js';
 
 /**
@@ -115,6 +115,8 @@ const NET_SPIN = 6;      // rad/s
 const NET_RANGE = 400;   // m
 /** Within this of your own car, a followed car is treated as in contact. */
 const NET_CONTACT = 6;   // m
+/** How long another player's helicopter sits still before it is solid. See _netAirParked. */
+const AIR_PARK_AFTER = 0.6;   // s
 
 /** Seconds between any two routine radio lines -- commentary, units en route. */
 const ROUTINE_GAP = 12;
@@ -2302,6 +2304,7 @@ class Game {
     _qN.set(car.qx, car.qy, car.qz, car.qw);
     a.quat.slerp(_qN, 1 - Math.exp(-11 * dt));
     a.rotor += dt * 34;
+    this._netAirParked(a, car, dt);
     if (a.view) {
       a.view.position.copy(a.pos);
       a.view.quaternion.copy(a.quat);
@@ -2311,10 +2314,42 @@ class Game {
     }
   }
 
+  /**
+   * Somebody else's helicopter, landed, is something you can drive into.
+   *
+   * "Make sure that in multiplayer people can crash into the helicopter like
+   * when it's landed." The pilot's own game gives a landed aircraft a static
+   * box (FlyingHelicopter._parkedCollider), but everybody else only ever drew
+   * it: on their screens a parked helicopter was a picture a car went
+   * straight through. So here too, once it has sat still for AIR_PARK_AFTER
+   * seconds -- the packets do not say "landed", but an aircraft that is not
+   * moving is either on something or about to be -- there is the same box
+   * where it is, gone again the moment it moves.
+   */
+  _netAirParked(a, car, dt) {
+    const at = { x: car.x, y: car.y, z: car.z };
+    const moved = a.lastAt ? Math.hypot(at.x - a.lastAt.x, at.y - a.lastAt.y, at.z - a.lastAt.z) : 0;
+    a.lastAt = at;
+    const still = dt > 0 && moved / dt < 0.6;
+    a.stillFor = still ? (a.stillFor || 0) + dt : 0;
+    if (a.parked && (!still || Math.hypot(at.x - a.parkedAt.x, at.y - a.parkedAt.y, at.z - a.parkedAt.z) > 0.5)) {
+      this.world.removeRigidBody(a.parked);
+      a.parked = null;
+    }
+    if (!a.parked && a.stillFor > AIR_PARK_AFTER) {
+      const yaw = 2 * Math.atan2(car.qy, car.qw);
+      const d = AIR_DIMS;
+      a.parked = addStaticBox(this.world, at.x, at.y + d.h * 0.45, at.z,
+        d.w * 0.5, d.h * 0.45, d.l * 0.5, GROUP.BUILDING, yaw);
+      a.parkedAt = at;
+    }
+  }
+
   /** Take a departed player's helicopter out of the sky. */
   _netDropAir(id) {
     const a = this.netAir && this.netAir.get(id);
     if (!a) return;
+    if (a.parked) { this.world.removeRigidBody(a.parked); a.parked = null; }
     if (a.view) this.scene.remove(a.view);
     this.netAir.delete(id);
   }

@@ -6385,6 +6385,76 @@ At 100 km/h you still leave the top of a hill, which is what a hill does.
 `sessionStorage 'pc.bankGrade' = '99'` before loading puts the old ground
 back.
 
+### Turning round, trees with crowns, and a helicopter you can hit
+
+*"Look for any more bugs ... and imperfections in the routing system ... make
+the police better ... And going through tight gaps."* Then: *"make sure that in
+multiplayer people can crash into the helicopter like when it's landed. Also,
+like with the trees, when I do a small jump, I seem to be able to go through
+them if I'm in midair or some trees almost don't seem solid."*
+
+**A route rig.** `tests/routecheck.js` asks `RoadGraph.pathFromPosition` for
+600 routes from random places on the roads, pointing either way, exactly as a
+unit does, and counts the ones a player would see go wrong: no path, a path
+that does not pass the car, a teleport, a U-turn in the middle of the route, a
+path that stops short, one off every road, one over 1.5x the graph's own
+shortest. On all three maps: no missing paths, no teleports, nothing short or
+off the road. What it did find:
+
+**Nobody ever turned round.** A car pointing the wrong way always drove on to
+the junction ahead first: to the end of a dead-end farm track and back, or
+three hundred metres down the Ridgeway with what it wanted behind it. On
+Haldon 44 of 600 routes were over 1.5x the shortest. `pathFromPosition` now
+also prices turning round where the car is -- 5 s, plus 0.35 s per m/s to shed
+and regain -- and takes it when it saves that. Detours 44 -> 8.
+
+At any speed it cost the chase: a unit at speed turned round for a target that
+was only behind it for a moment (keepup.js Haldon 90 km/h: 114 -> 163 m behind;
+the whole force held on 15 -> 22 s but sat 139 -> 158 m back). So it is only
+offered below 8 m/s (`UTURN_MAX`), to a car setting off or crawling, which is
+where the dead ends are. tests/response.js on Haldon, a unit sent 380-650 m
+across country from a standstill, twelve trips:
+
+| | reached in 80 s | total time | stuck |
+|---|---|---|---|
+| on to the next junction | 8 | 757 s | 18 s |
+| turning round (kept) | 11 | 581 s | 5 s |
+
+`window.__uTurn = false` turns it off. On the city map it changes nothing: the
+blocks are short enough that the junction ahead is always the way round.
+
+*A rig bug found on the way:* response.js spawned its unit at y 0.95, which on
+Haldon Vale is inside the hill. Nine trips in twelve "never arrived" -- not the
+AI, the car was buried. It now stands the car on the ground.
+
+**Tree crowns are solid.** Every tree in the game was collided as its trunk
+alone, a box 1.3 m across and 5.2 m tall, under a crown drawn 5-12 m across
+from 2-4 m up. A car on the ground met the trunk; a car in the air went
+through the leaves. `addCanopy` gives every tree a second box for the lower
+part of its crown, a little inside what is drawn, in its own group
+(`GROUP.CANOPY`) that no ray or sweep looks at -- so a wheel does not land on a
+tree and the AI does not brake for one -- and never lower than 3 m off the
+ground, over the roof of the tallest van, so nothing on the road meets an
+invisible bough. Flown at crown height past isolated trees, beside the trunk:
+before, through at 67-70 km/h every time; now stopped. weave.js through
+Wexbury, crowns on and off: stayed with it 58% / 59%, mean 45 / 43 km/h -- no
+cost on the ground.
+
+**Another player's landed helicopter is solid.** The pilot's own game has
+always given a landed aircraft a static box (`_parkedCollider`), but everybody
+else only drew it, so on their screens it was a picture you drove through.
+`Game._netAirParked` gives a remote helicopter the same box once it has sat
+still for 0.6 s and takes it away the moment it moves. A car driven at one
+stops against it (16% damage at 54 km/h); lifted 5 m, the box is gone.
+
+**Tight gaps.** weave.js (Wexbury, ghost at 110 km/h through the buildings,
+eight runs, fresh page): stayed 58%, held on 13.3 s, 137 m back, mean 45 km/h.
+One more thing tried, against that: believing itself 70% of its width when
+choosing a gap instead of 80% (`squeeze`). Stayed 58%, held on 13.0 s, 165 m
+back, 17 hits against 12, mean 41 km/h -- worse, not kept, the same answer the
+65% trial gave before. The gaps are where they were; the long list under
+"Through the gaps, faster: not yet" still says where the time goes.
+
 Shared terrain, surfaces, road meshes and scenery live in `world/common.js`; a
 map generator only has to lay out a road graph and decide where buildings go.
 

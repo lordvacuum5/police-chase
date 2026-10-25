@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import { MeshBuilder, vertexColorMaterial } from '../util/meshbuild.js';
 import { RoadGraph, ROAD_KIND } from './roadgraph.js';
-import { GROUP, addStaticBox } from '../physics/world.js';
+import { GROUP, addStaticBox, addCanopy } from '../physics/world.js';
 import { makeRng, rand, randInt, clamp, lerp, dist2, closestOnSegment, TAU } from '../util/math.js';
 import {
   WORLD_HALF, CELL, GRID_N, KERB_H, SURF_GRASS, SURF_ROAD, SURF_PAVED, PALETTE,
@@ -735,6 +735,7 @@ function addParkContents(ctx, b, rng, x0, z0, x1, z1) {
     b.addTaperedBox(h * 0.75, h * 0.65, h * 0.75, px, h * 0.62, pz, 0x394d2c, 0.25, 0.25);
     // Park trees are solid too -- every tree in the game stops a car.
     addStaticBox(ctx.sim.world, px, 2.4, pz, 0.6, 2.4, 0.6, GROUP.PROP);
+    addCanopy(ctx.sim.world, px, pz, 0, h * 0.62, h * 0.65, h * 0.75);
   }
 }
 
@@ -785,6 +786,7 @@ function buildCountryside(ctx) {
         trees.addBox(0.8, h * 0.5, 0.8, tx, h * 0.25, tz, 0x463726);
         trees.addTaperedBox(h * 0.8, h * 0.7, h * 0.8, tx, h * 0.68, tz, 0x33471f, 0.2, 0.2);
         addStaticBox(sim.world, tx, 2.5, tz, 0.6, 2.5, 0.6, GROUP.PROP);
+        addCanopy(sim.world, tx, tz, 0, h * 0.68, h * 0.7, h * 0.8);
       }
     }
   }
@@ -827,6 +829,7 @@ function scatterWoodland(ctx, trees) {
     // Every tree is solid. Making distant ones scenery-only saved broad-phase
     // work but meant you could drive straight through half the woodland.
     addStaticBox(sim.world, tx, 2.6, tz, 0.65, 2.6, 0.65, GROUP.PROP);
+    addCanopy(sim.world, tx, tz, 0, h * 0.66, h * 0.72, h * 0.78);
     collided++;
   };
 

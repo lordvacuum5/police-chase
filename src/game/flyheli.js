@@ -327,6 +327,8 @@ const AXES = ['x', 'y', 'z'];
  * the job and the thing that makes it possible to shake one off.
  */
 export const MARK_RANGE = 180;
+/** The airframe's box: what a landed one collides as, here and on everybody else's screen. */
+export const AIR_DIMS = { l: 12.4, w: 2.5, h: 3.5 };
 const MARK_CONE = 0.95;          // radians off the nose, a generous windscreen
 /** How often the fix is sent to the machine that owns the chase. */
 const REPORT_EVERY = 0.25;
@@ -420,7 +422,7 @@ export class FlyingHelicopter {
     // anything -- the aircraft has no collider and is not in `vehicles` --
     // but plenty of code reads spec.dims without asking what it is holding.
     this.spec = {
-      dims: { l: 12.4, w: 2.5, h: 3.5 },
+      dims: AIR_DIMS,
       mass: 2800,
       dragArea: 2.0,
       // The sound comes out of the car engine note, which needs a redline and

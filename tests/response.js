@@ -90,7 +90,10 @@ window.__runResponse = async function (trips = 12, timeout = 80, seedValue = 0x5
       if (route.length < 2) continue;
 
       park();
-      unit = g.spawnPoliceAt({ x: pos.x, y: 0.95, z: pos.z }, place.heading, 3);
+      // On the ground, where there is ground: at y 0.95 a car on Haldon Vale
+      // started inside the hill, and nine trips in twelve "never arrived".
+      const gy = g.groundAt ? g.groundAt(pos.x, pos.z) : 0;
+      unit = g.spawnPoliceAt({ x: pos.x, y: 0.95 + gy, z: pos.z }, place.heading, 3);
       if (!unit) continue;
       const goal = new M.THREE.Vector3(b.x, 0, b.z);
       unit.setRole(M.ROLE.RESPOND, { point: goal });

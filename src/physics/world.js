@@ -26,6 +26,10 @@ export const GROUP = {
   // cannot see through. In the sight mask, so they hide you; whether the AI's
   // driving sweeps see one depends on the map putting BUILDING on it as well.
   HEDGE: 0x0080,
+  // The leafy top of a tree (addCanopy). Solid to a car, in no ray or sweep:
+  // it starts well above a car on the ground, so the AI never needs it, and a
+  // wheel must not land on it.
+  CANOPY: 0x0100,
 };
 
 export const groups = (membership, filter) => ((membership << 16) | filter) >>> 0;
@@ -255,3 +259,33 @@ export function addStaticBox(
 }
 
 export { RAPIER };
+
+/**
+ * The solid part of a tree's crown, as well as its trunk.
+ *
+ * "With the trees, when I do a small jump, I seem to be able to go through
+ * them if I'm in midair, or some trees almost don't seem solid." Every tree
+ * was collided as its trunk alone: a box 1.3 m across and 5.2 m tall, under a
+ * crown drawn 5-12 m across starting 2-4 m off the ground. A car on the
+ * ground met the trunk; a car in the air went through the leaves, and one
+ * clipping the edge of a crown passed through what it could see.
+ *
+ * The crown is drawn as a box tapering to a fifth of its width at the top;
+ * this collides the lower part of it, a little inside what is drawn. `cy`
+ * and `ch` are the drawn crown's centre height and height above `ground`,
+ * `w` its width at the bottom.
+ */
+/** The lowest a crown's collider starts above the ground: over the tallest car's roof. */
+const CANOPY_CLEAR = 3.0;
+
+export function addCanopy(world, x, z, ground, cy, ch, w) {
+  // Never low enough to catch the roof of a car on the ground: nothing in
+  // the AI looks for it, and an invisible bough that stops a police car dead
+  // would be the worst kind of bug.
+  const bottom = Math.max(CANOPY_CLEAR, cy - ch * 0.5);
+  const top = cy - ch * 0.5 + ch * 0.6;
+  if (top - bottom < 0.5) return;
+  const hh = (top - bottom) * 0.5;
+  const hw = w * 0.35;
+  addStaticBox(world, x, ground + bottom + hh, z, hw, hh, hw, GROUP.CANOPY);
+}

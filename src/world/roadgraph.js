@@ -187,6 +187,11 @@ export const DRIVE_SIDE = +1;   // left-hand traffic
  */
 const TURN_SPEED = 13;
 const TURN_BIAS = 2;
+/** Turning round in the road: seconds, plus this many per m/s of speed to shed and regain. */
+const UTURN_COST = 5;
+const UTURN_PER_MS = 0.35;
+/** And only below this speed, m/s (about 30 km/h). See pathFromPosition. */
+const UTURN_MAX = 8;
 
 /** Seconds to drive a path at its roads' speeds. */
 function pathTime(pts) {
@@ -991,8 +996,23 @@ export class RoadGraph {
     corner = 9, opts = null) {
     const straight = this._pathAhead(x, z, dirX, dirZ, goalId, laneOffset, speedCap, corner, opts);
     const turn = this._turnHere(x, z, dirX, dirZ, goalId, laneOffset, speedCap, speed, corner, opts);
-    if (turn && (!straight.length || pathTime(turn) < pathTime(straight) - TURN_BIAS)) return turn;
-    return straight;
+    let best = straight, bestT = straight.length ? pathTime(straight) : Infinity;
+    if (turn && pathTime(turn) < bestT - TURN_BIAS) { best = turn; bestT = pathTime(turn); }
+    // Or turn round where it is. The path ahead always runs on to the next
+    // junction first, so a car pointing the wrong way went all the way there
+    // and back: to the end of a dead-end farm track and out again, or three
+    // hundred metres down the Ridgeway, with what it wanted behind it. A
+    // driver turns round. Priced at what stopping, turning and getting back
+    // up to speed costs, so it is only taken when it saves that and more;
+    // Driver._turnRound does the turning. `window.__uTurn = false` turns it off.
+    // Only from a crawl: tried at any speed, priced by it, it cost the chase
+    // (keepup.js Haldon, 90 km/h: 114 -> 163 m behind) -- a unit at speed
+    // turned round for a target that was only behind it for a moment.
+    if ((typeof window === 'undefined' || window.__uTurn !== false) && speed < UTURN_MAX) {
+      const back = this._pathAhead(x, z, -dirX, -dirZ, goalId, laneOffset, speedCap, corner, opts);
+      if (back.length && pathTime(back) + UTURN_COST + speed * UTURN_PER_MS < bestT) best = back;
+    }
+    return best;
   }
 
   /**
