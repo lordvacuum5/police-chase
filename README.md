@@ -709,6 +709,7 @@ themselves:
 | `P` | Pause · `H` Controls · `N` Sound on or off · `M` Back to the menu · `F3` Debug telemetry |
 | `0`–`5`, or type `zero`…`five` | Set the wanted level (stops the run scoring) |
 | type `st` | Save a police report — see below |
+| type `log` | Save your last minute of driving — see below |
 
 **Type `st` when you see a police car stuck.** *"Add a key I can press when
 I see police stuck, so it records what they were doing and you can see it ...
@@ -749,6 +750,16 @@ hard surface either way (8 m put 7 there), kinks under 5 m radius 243 → 174.
 
 Closer at both speeds and no more crashes of their own; the extra spins follow
 the extra ghost contact (23 against 10 at 90), being close enough to touch it.
+
+**Type `log` to save your own driving.** *"Is there any way that I can show you
+how I drive and you try to make the police like drive a bit like how I drive?"*
+The game keeps the last minute of the player's car, ten lines a second
+(`Game._recordDrive`): position, heading, speed, body slip, yaw rate, throttle,
+brake, steering and handbrake, wheels on road and on pavement — and each police
+car within 200 m at the same moment, so a corner the player took and one the
+police took can be laid over each other. `log` saves it as
+`my-driving-<date>-<time>.json` (`Game._driveReport`). L, O and G do nothing else
+in the game; `drive` would have needed R, which respawns the car.
 
 The other number words: *"when I type in the 1 to level, I want like 4, 1, 2,
 doesn't work."* Only `five` was ever a word; the digit keys did work. Now
@@ -4726,6 +4737,11 @@ the only trigger, and a quick sweeping bend uses it as hard as a junction. Now
 the turn has to be tight as well — the radius being driven, speed over yaw
 rate, under 22 m, all of it by 12 — and the tyre past 60%. Same 110 km/h
 chase: 14% of frames → 9% with the radius alone → **5%**, at most 10°.
+
+And then not enough of it where it did show: *"when they kind of do the slide at
+90 degrees, they need to like actually slide a bit more ... almost sideways ...
+like a real car."* `DRIFT_LOOK_MAX` 0.32 → 0.6 rad, about 35° on the tightest
+turns; the gentler ones still show none.
 
 **The pavement.** *"I basically drive on the pavement half the time ... Why is
 the police car staying in the centre of the road?"* Because the racing line

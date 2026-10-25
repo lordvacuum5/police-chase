@@ -183,7 +183,9 @@ const _drawn = { position: null, quaternion: null, up: _up };
  * where it is full; the speed below which there is none; how fast it eases;
  * and how much of it the front wheels show as opposite lock.
  */
-const DRIFT_LOOK_MAX = 0.32;
+// 0.32 at first; "when they kind of do the slide at 90 degrees, they need to
+// like actually slide a bit more ... almost sideways ... like a real car."
+const DRIFT_LOOK_MAX = 0.6;
 const DRIFT_LOOK_START = 0.6;
 const DRIFT_LOOK_FULL = 0.95;
 const DRIFT_LOOK_FROM = 9;
@@ -1912,6 +1914,68 @@ class Game {
   }
 
   /**
+   * The player's own driving, ten times a second for the last minute, with
+   * where every police car near them was at the same moment. See _driveReport.
+   */
+  _recordDrive(dt) {
+    const p = this.player;
+    if (!p || this.paused) return;
+    this._driveT = (this._driveT || 0) + dt;
+    if (this._driveT < 0.1) return;
+    this._driveT = 0;
+    if (!this._drive) this._drive = [];
+    const r1 = (x) => Math.round(x * 10) / 10;
+    const c = p.controls || {};
+    let road = 0, paved = 0;
+    for (const w of p.wheels || []) { if (w.surface === 1) road++; else if (w.surface === 2) paved++; }
+    const police = [];
+    for (const u of this.dispatcher.units) {
+      const v = u.vehicle;
+      if (!v || dist2(v.position.x, v.position.z, p.position.x, p.position.z) > 200) continue;
+      police.push([u.callsign, r1(v.position.x), r1(v.position.z), Math.round(v.speed * 3.6)]);
+    }
+    this._drive.push({
+      t: r1(this.clock || 0), x: r1(p.position.x), z: r1(p.position.z),
+      head: Math.round(Math.atan2(p.forward.x, p.forward.z) * 57.3),
+      kph: Math.round(p.speed * 3.6), slip: r1(p.slipAngleBody), yaw: r1(p.yawRate),
+      th: r1(c.throttle || 0), br: r1(c.brake || 0), st: r1(c.steer || 0), hb: r1(c.handbrake || 0),
+      road, paved, wanted: this.heat.tier, police,
+    });
+    if (this._drive.length > 600) this._drive.shift();
+  }
+
+  /**
+   * Type `log`: save the last minute of your own driving.
+   *
+   * "Is there any way that I can show you how I drive and you try to make the
+   * police like drive a bit like how I drive?" Where you were, how fast, which
+   * way you were pointing and how sideways, what your hands were doing, how
+   * many wheels were on the road and how many on the pavement -- and where each
+   * police car within 200 m was at the same moment, so a corner you took and a
+   * corner they took can be laid over each other. Saved as
+   * `my-driving-<date>-<time>.json`; nothing is sent anywhere.
+   */
+  _driveReport() {
+    const report = {
+      what: 'police-chase driving log',
+      when: new Date().toISOString(),
+      map: this.mapDef && this.mapDef.id,
+      car: this.player && this.player.spec && this.player.spec.name,
+      samples: this._drive || [],
+    };
+    const blob = new Blob([JSON.stringify(report)], { type: 'application/json' });
+    const a = document.createElement('a');
+    const stamp = report.when.replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+    a.href = URL.createObjectURL(blob);
+    a.download = `my-driving-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    this.hud.toast(`DRIVING LOG SAVED · ${Math.round(report.samples.length / 10)} S`);
+  }
+
+  /**
    * Put a wanted level where it has been asked for, from whichever machine
    * asked. Shared by the typed shortcut and by the H that follows it.
    */
@@ -2008,6 +2072,7 @@ class Game {
     if (!(dt > 0)) dt = 0;
 
     this._trackPerformance(dt);
+    this._recordDrive(dt);
     this._handleKeys();
     this.touch.frame();
     // A paused game runs no frames, so the engine note would otherwise hang on
@@ -2149,6 +2214,10 @@ class Game {
     // "can you make it that I have to type in ST? Because it's easier." T is
     // bound to nothing, so S-then-T only happens on purpose.
     if (i.typed('st')) this._policeReport();
+    // "Is there any way that I can show you how I drive?" L, O and G do
+    // nothing else in the game, and R -- which "drive" would have needed --
+    // respawns the car.
+    if (i.typed('log')) this._driveReport();
     if (i.tapped('KeyR')) {
       // Starting again is the escapee's call: there is one chase, and a police
       // player restarting their own copy of it would only desynchronise them.

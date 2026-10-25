@@ -230,6 +230,10 @@ scoring, deliberately.
   back on average, no more crashes. `__freeLine = false` turns it off. The drift
   look only shows on tight turns (radius < 22 m) -- the user found it weird
   on every turn.
+* **Driving logs**: the player types `log` and `my-driving-*.json` downloads
+  (Game._driveReport): their last 60 s at 10 Hz plus nearby police positions.
+  Use it to compare their junction lines with the police's (the user says
+  police still square off T-junctions in play, which turnin.js does not show).
 * **Police reports**: the player types `st` in game and a
   `police-report-*.json` downloads (Game._policeReport; each Officer keeps a
   12 s `trace`, Officer._record). When they hand one over, read the `still`
