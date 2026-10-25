@@ -1908,9 +1908,12 @@ class Game {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    // Said plainly that the box the browser may put up is ours: "I did see a
+    // save thing pop up, so I pressed cancel, because I thought that was like
+    // a shortcut key ... save the game on my computer."
     this.hud.toast(units.length
-      ? `POLICE REPORT SAVED · ${units.length} CAR${units.length === 1 ? '' : 'S'}`
-      : 'POLICE REPORT SAVED · NO POLICE NEAR');
+      ? `POLICE REPORT · ${units.length} CAR${units.length === 1 ? '' : 'S'} · CLICK SAVE IF ASKED`
+      : 'POLICE REPORT · NO POLICE NEAR · CLICK SAVE IF ASKED');
   }
 
   /**
@@ -1972,7 +1975,7 @@ class Game {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-    this.hud.toast(`DRIVING LOG SAVED · ${Math.round(report.samples.length / 10)} S`);
+    this.hud.toast(`DRIVING LOG · ${Math.round(report.samples.length / 10)} S · CLICK SAVE IF ASKED`);
   }
 
   /**
