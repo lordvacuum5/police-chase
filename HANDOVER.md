@@ -386,6 +386,13 @@ keel catches it and it keeps its speed along the ground when only the keel
 touches** (`Vehicle._hillContact`, `_rideUpHill`). **Every game spawn tests the
 car's outline for room** (`createVehicle` with `spawn: true`). Rigs that make
 cars by hand do not pass `spawn` and are not refused.
+**Traffic** (`game/traffic.js`) is on Haldon Vale only, as a trial the user
+asked for; turning it on elsewhere is adding the map id to `TRAFFIC_MAPS` --
+measure the force with and without first, the city grid will be the hard case.
+Traffic cars have `isTraffic`; dormant ones (`v.dormant`) are out of the
+physics and skip prepare/postStep. `Game.carCount()` is what the police limit
+counts, not `vehicles.length`. A stopped AI car must hold on the handbrake:
+brake at a standstill is reverse.
 **Rig trap:** spawn anything on a hilly map at `groundAt + ...`, never a fixed
 y -- response.js put its cars inside the hill and reported the AI as stuck.
 

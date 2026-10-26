@@ -553,7 +553,7 @@ export class Dispatcher {
         pick = u; pickD = d;
       }
       // One spare car is a straggler; five is a crowd nobody can see anyway.
-      const nearLimit = this.game.vehicles.length >= this.game.vehicleLimit - 4;
+      const nearLimit = this.game.carCount() >= this.game.vehicleLimit - 4;
       const gap = over >= 3 || nearLimit ? 160 : 260;
       const hidden = over >= 3 || nearLimit ? 70 : 110;
       if (pick && !this.game.nearHuman(pick.vehicle.position)

@@ -52,6 +52,11 @@ export const CAR_MODELS = {
   // The Badger. No file yet, which is the ordinary case: the generated body
   // is used until one turns up.
   offroad: { url: 'resources/models/offroad.glb', police: false, yaw: 0, lift: 0, lamps: null },
+  // Traffic (game/traffic.js). Each has a material named "paint" that the
+  // game recolours car by car: see Game.createVehicle, opts.paint.
+  hatchback: { url: 'resources/models/traffic-hatchback.glb', police: false, yaw: 0, lift: 0, lamps: null },
+  estate: { url: 'resources/models/traffic-estate.glb', police: false, yaw: 0, lift: 0, lamps: null },
+  civsuv: { url: 'resources/models/traffic-suv.glb', police: false, yaw: 0, lift: 0, lamps: null },
 };
 
 const _box = new THREE.Box3();

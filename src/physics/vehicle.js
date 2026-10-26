@@ -302,7 +302,13 @@ export class Vehicle {
     // On a hilly map, a keel: a low box under the middle of the car that meets
     // the hill and nothing else, while the bodywork itself does not. See
     // _hillContact.
-    if (this.sim.terrainAt && window.__keel !== false) {
+    // Traffic stays on the roads, where the wheels carry it, and is many:
+    // testing its bodywork against the hill every step was a large share of
+    // what each traffic car cost. It does without -- no keel, and the body
+    // never meets the hill (game/traffic.js removes one that comes to grief).
+    if (this.sim.terrainAt && s.traffic) {
+      this.collider.setCollisionGroups(groups(GROUP.VEHICLE, 0xFFFF & ~GROUP.HILL));
+    } else if (this.sim.terrainAt && window.__keel !== false) {
       const keelY = (s.colliderY === undefined ? 0.1 : s.colliderY) - h * 0.5 + KEEL_H;
       this.keel = this.world.createCollider(
         RAPIER.ColliderDesc.cuboid(w * 0.3, KEEL_H, l * 0.3)

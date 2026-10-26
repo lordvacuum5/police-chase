@@ -80,7 +80,9 @@ const KINDS = ['runner', 'supercar', 'offroad', 'patrol', 'interceptor', 'suv', 
   // wheels, and the receiving end draws it as a model rather than building a
   // vehicle for it. On the wire it is the same sixteen numbers: a position, a
   // rotation and a velocity is all anybody else needs to draw a helicopter.
-  'helicopter'];
+  'helicopter',
+  // Traffic (game/traffic.js).
+  'hatchback', 'estate', 'civsuv'];
 
 export const FLAG = { POLICE: 1, UNMARKED: 2, DISABLED: 4, BLIP: 8 };
 

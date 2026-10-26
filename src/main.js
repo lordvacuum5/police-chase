@@ -19,6 +19,7 @@ import {
   Officer, ROLE, releaseCallsign, reserveCallsigns, HUMAN_CALLSIGNS,
 } from './ai/officer.js';
 import { Driver, SKILL } from './ai/driver.js';
+import { Traffic, trafficPaint } from './game/traffic.js';
 import { Runner, pickRunnerCar } from './ai/runner.js';
 import { warmLocalPlanner, pumpPlanner, boxesNear } from './ai/localplan.js';
 import { Heat } from './game/heat.js';
@@ -373,6 +374,7 @@ class Game {
     this.heat = new Heat(this);
     this.dispatcher = new Dispatcher(this);
     this.roadblocks = new RoadblockManager(this);
+    this.traffic = new Traffic(this);
     this.score = new Score(this);
     this.helicopter = new Helicopter(this);
     /** Set while the wanted level was typed in rather than earned. */
@@ -756,6 +758,15 @@ class Game {
     return this.sim && this.sim.terrainAt ? this.sim.terrainAt(x, z) : 0;
   }
 
+  /**
+   * Cars that count against `vehicleLimit`: everything but traffic, which has
+   * its own small number (game/traffic.js) and must never be why a roadblock
+   * or a pursuit car is refused.
+   */
+  carCount() {
+    return this.vehicles.length - (this.traffic ? this.traffic.cars.length : 0);
+  }
+
   /** Is there room for a car of `spec` at this position and heading? See createVehicle. */
   _footprintFree(spec, pos, heading) {
     const hx = spec.dims.w * 0.5 + SPAWN_MARGIN, hz = spec.dims.l * 0.5 + SPAWN_MARGIN;
@@ -782,6 +793,7 @@ class Game {
   }
 
   createVehicle(specKey, liveryKey, position, heading, opts = {}) {
+    if (!this._paints) this._paints = new Map();
     // `opts.spec` is a car of this kind with something changed -- the police
     // car a person drives. It has to be given here rather than assigned to
     // the vehicle afterwards, because mass and inertia are built into the
@@ -824,6 +836,22 @@ class Game {
     if (model) {
       mesh = model.scene.clone(true);
       mesh.userData.lamps = model.lamps;
+      // A colour of its own, on a model that has a "paint" material (the
+      // traffic models do). One material per model and colour, shared by
+      // every car that ends up that colour.
+      if (opts.paint !== undefined) {
+        mesh.traverse((o) => {
+          if (!o.isMesh || !o.material || o.material.name !== 'paint') return;
+          const key = `${o.material.uuid}|${opts.paint}`;
+          let m = this._paints.get(key);
+          if (!m) {
+            m = o.material.clone();
+            m.color.setHex(opts.paint);
+            this._paints.set(key, m);
+          }
+          o.material = m;
+        });
+      }
     } else {
       const geo = this._geometryFor(specKey, liveryKey, opts.police, opts.unmarked);
       mesh = new THREE.Mesh(geo, carMaterials(geo, shinyVertexMaterial()));
@@ -1143,7 +1171,7 @@ class Game {
     // board on its own -- every block the player beats hands it three more
     // cars -- and when it does, `createVehicle` starts refusing, which shows
     // up as roadblocks that are called on the radio and then are not there.
-    if (this.vehicles.length >= this.vehicleLimit - 4) return null;
+    if (this.carCount() >= this.vehicleLimit - 4) return null;
     const g = this.graph;
     // How far away is far enough, in seconds rather than in metres.
     //
@@ -1291,7 +1319,7 @@ class Game {
    * across a specific carriageway rather than anywhere convenient.
    */
   spawnPoliceAt(position, heading, tier) {
-    if (this.vehicles.length >= this.vehicleLimit) return null;
+    if (this.carCount() >= this.vehicleLimit) return null;
     // Room for it is createVehicle's question now (spawn: true), asked of the
     // car's outline rather than a 4.2 m gap between centres.
     const r = this.rng();
@@ -1317,7 +1345,7 @@ class Game {
    * rolling block is that it is there when you arrive.
    */
   spawnPoliceAhead(target, tier) {
-    if (this.vehicles.length >= this.vehicleLimit) return null;
+    if (this.carCount() >= this.vehicleLimit) return null;
     const g = this.graph;
 
     let dx = target.linvel.x, dz = target.linvel.z;
@@ -1564,7 +1592,7 @@ class Game {
     const mates = [];
     for (let i = 0; i < slots.length; i++) {
       if (i === li) continue;
-      if (this.vehicles.length >= this.vehicleLimit) break;
+      if (this.carCount() >= this.vehicleLimit) break;
       const s = slots[i];
       const pos = { x: snap.x + tz * s * W, y: 0.95, z: snap.z - tx * s * W };
       pos.y += this.groundAt(pos.x, pos.z);
@@ -1599,7 +1627,7 @@ class Game {
    * than a van appearing.
    */
   spawnRhino(target, tier) {
-    if (this.vehicles.length >= this.vehicleLimit) return null;
+    if (this.carCount() >= this.vehicleLimit) return null;
     const g = this.graph;
 
     let dx = target.linvel.x, dz = target.linvel.z;
@@ -2149,6 +2177,7 @@ class Game {
     this.heat.reset();
     this.dispatcher.reset();
     this.roadblocks.reset();
+    this.traffic.clear();
     this.helicopter.reset();
     this.heliGrounded = false;
     this.props.reset();
@@ -2502,6 +2531,8 @@ class Game {
         const police = (car.flags & FLAG.POLICE) !== 0;
         v = this.createVehicle(car.kind, car.kind, { x: car.x, y: car.y, z: car.z }, 0, {
           police, unmarked: (car.flags & FLAG.UNMARKED) !== 0, remote: true,
+          // Traffic: its colour from its id, as on the machine that made it.
+          paint: SPECS[car.kind] && SPECS[car.kind].traffic ? trafficPaint(String(car.id).slice(AI_ID.length)) : undefined,
         });
         v.lampPhase = this.rng();
         v.netId = car.id;
@@ -2825,7 +2856,8 @@ class Game {
       const key = id.slice(1);
       const unit = this.dispatcher.units.find((u) => !u.human && u.vehicle
         && String(u.callsignId || u.vehicle.id) === key);
-      v = unit && unit.vehicle;
+      const car = !unit && this.traffic.cars.find((c) => c.id === key);
+      v = (unit && unit.vehicle) || (car && car.v);
     }
     if (!v) return;
     // Where the car that reported it is now, if this machine knows. A hit that
@@ -2937,6 +2969,10 @@ class Game {
       if (!inSight(u.vehicle)) continue;
       cars.push(packCar(AI_ID + (u.callsignId || u.vehicle.id), u.vehicle));
     }
+    // Traffic, the same way. Its id carries its colour (trafficPaint).
+    for (const c of this.traffic.cars) {
+      if (inSight(c.v)) cars.push(packCar(AI_ID + c.id, c.v));
+    }
     session.sendWorld(cars, this.heat.value, this.dispatcher.inContact, this.heat.bustTimer);
   }
 
@@ -2981,6 +3017,7 @@ class Game {
       pumpPlanner();
       if (this.runner) this._runnerSight(dt);
       this.roadblocks.update(dt, hunted);
+      this.traffic.update(dt);
       this.helicopter.update(dt, hunted);
       this.props.update(dt);
       this.garage.update(dt);
@@ -3026,7 +3063,9 @@ class Game {
         v.prevPos.copy(v.position);
         v.prevQuat.copy(v.quaternion);
       }
-      for (const v of this.vehicles) { if (!v.remote) v.prepare(FIXED); }
+      // Not a dormant car (far-off traffic, game/traffic.js): its body is out
+      // of the simulation and the traffic moves it along its route itself.
+      for (const v of this.vehicles) { if (!v.remote && !v.dormant) v.prepare(FIXED); }
       this.world.step();
       for (const v of this.vehicles) {
         // A car somebody else owns has no engine, tyres or damage of its own
@@ -3045,7 +3084,7 @@ class Game {
             v.forwardSpeed = v.linvel.dot(v.forward);
             v.lateralSpeed = v.linvel.dot(v.left);
           }
-        } else {
+        } else if (!v.dormant) {
           v.postStep(FIXED);
         }
       }

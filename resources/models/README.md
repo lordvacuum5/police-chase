@@ -13,6 +13,7 @@ as before.
 | `supercar.glb` | the Stiletto, the fast one you can drive |
 | `runner.glb` | the Runner, the car the game was built around |
 | `offroad.glb` | the Badger, the 4x4 |
+| `traffic-hatchback.glb`, `traffic-estate.glb`, `traffic-suv.glb` | traffic (`game/traffic.js`); each needs a material named `paint`, which the game recolours per car |
 
 The helicopter is not a car and has its own brief and its own loader: see
 `HELICOPTER.md` here and `src/game/helimodel.js`. It is `police_helicopter.glb`,

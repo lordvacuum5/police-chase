@@ -692,7 +692,14 @@ export class Officer {
     // rather than driving into it -- and after a while, tells them to move.
     // Only on patrol: a unit that is after you has no reason to wait politely.
     const patrolling = this.role === ROLE.PATROL;
-    this.driver.holdBehind(patrolling ? this.game.player : null, dt);
+    // And behind traffic, which it does not tell off for being there.
+    let obstacle = patrolling ? this.game.player : null;
+    if (patrolling && this.game.traffic && this.game.traffic.cars.length) {
+      const ahead = this.driver.carInWay(this.game.vehicles);
+      if (ahead && ahead !== this.game.player && ahead.isTraffic) obstacle = ahead;
+    }
+    this._heldByPlayer = obstacle === this.game.player;
+    this.driver.holdBehind(obstacle, dt);
     this._warnIfBlocked(dt, patrolling);
     this.repathTimer -= dt;
     this._updateAssist(target, dt);
@@ -822,7 +829,7 @@ export class Officer {
     const v = this.vehicle, p = this.game.player;
     if (!p) return;
 
-    const held = patrolling && this.driver.heldBy && !this._queueingAtLights(p);
+    const held = patrolling && this._heldByPlayer && this.driver.heldBy && !this._queueingAtLights(p);
     if (held) {
       this._blockedFor = (this._blockedFor || 0) + dt;
       this._unblockedFor = 0;

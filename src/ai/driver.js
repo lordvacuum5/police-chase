@@ -2498,6 +2498,26 @@ export class Driver {
   }
 
   /**
+   * The nearest of `others` in this car's way along its route, within
+   * `maxAhead` metres, or null. For queueing: traffic (game/traffic.js) and a
+   * patrol car behind traffic.
+   */
+  carInWay(others, maxAhead = 45) {
+    const v = this.v;
+    let best = null, bestAlong = Infinity;
+    for (const o of others) {
+      if (o === v || o.isAircraft) continue;
+      const dx = o.position.x - v.position.x, dz = o.position.z - v.position.z;
+      if (dx * dx + dz * dz > (maxAhead + 5) * (maxAhead + 5)) continue;
+      const rel = this._pathRelative(o.position.x, o.position.z, maxAhead);
+      if (!rel || rel.along <= 0) continue;
+      if (Math.abs(rel.off) > this.halfWidth + o.spec.dims.w * 0.5 + 0.6) continue;
+      if (rel.along < bestAlong) { bestAlong = rel.along; best = o; }
+    }
+    return best;
+  }
+
+  /**
    * Where a point is relative to the route: how far along it from this car
    * (negative behind), how far to its left, and the route's left normal
    * there. Null if the point is not near the route at all. Follows the route
@@ -2832,6 +2852,17 @@ export class Driver {
       if (closing < 1.5) continue;
       const urgency = (1 - ahead / range) * clamp01(closing / 12);
       bias += (side >= 0 ? -1 : 1) * urgency * 0.22;
+      // Squarely in the way, and slow or stopped -- a car pulled over that
+      // has not got far enough over, traffic queueing: steering round it is
+      // not enough on its own, and a unit coming up a single-track lane at
+      // 90 km/h drove into one. It may go no faster than it could still stop
+      // short at, while the bias above takes it round.
+      const overlap = this.halfWidth + (o.spec ? o.spec.dims.w * 0.5 : 0.97);
+      if (o.isTraffic && Math.abs(side) < overlap) {
+        const gap = ahead - ((v.spec.dims.l + (o.spec ? o.spec.dims.l : 4.6)) * 0.5) - 2;
+        const theirs = Math.max(0, o.linvel.dot(v.forward));
+        this.wayCap = Math.min(this.wayCap, theirs + Math.sqrt(2 * 6 * Math.max(0, gap)));
+      }
     }
     // Do not dodge a car into a tree. A positive bias steers left, so it is the
     // room on the left that has to be there for it -- see the abeam sweeps in

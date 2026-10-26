@@ -6704,6 +6704,67 @@ the road you had already left, if you turned out of sight. The heading is now
 kept up to date through the tracking window too, so the prediction starts from
 where you were and which way you were going when the bar ran out.
 
+### Traffic
+
+*"I'm thinking of adding traffic ... I'm worried about how the police are going
+to react ... my ideal thing would be add traffic on every single map."* Started
+on Haldon Vale, where there is room to go round it (`TRAFFIC_MAPS` in
+`game/traffic.js`; adding a map is adding its id).
+
+**The cars.** Three models made for it -- `traffic-hatchback.glb`,
+`traffic-estate.glb`, `traffic-suv.glb` in resources/models, kinds `hatchback`,
+`estate` and `civsuv` -- each with a material named `paint` that the game
+recolours car by car (`Game.createVehicle`, `opts.paint`) from twelve ordinary
+colours. The colour follows from the car's id (`trafficPaint`), so it is the
+same on every screen in a multiplayer game.
+
+**How they drive.** A traffic car is a patrol car without the light bar: the
+same Driver, its own lane, 85% of the road's limit, red lights, and a queue
+behind whatever is in its way on its route (`Driver.carInWay` then
+`holdBehind`). Twelve of them live in a ring 160-460 m round the people
+playing, and only ever appear or go out of everyone's sight
+(`Game.seenByAnyone`); one more than 640 m from everybody, or wrecked, or stuck
+for twenty seconds, is taken away when nobody can see it.
+
+**Blue lights.** Within 70 m of a unit that is not on patrol, while anyone is
+wanted, a traffic car pulls over: its route moved onto the near-side verge, a
+crawl until it is there, then a stop on the handbrake -- the brake held at a
+standstill is reverse in this game, and the first version backed off down the
+lane at 36 km/h. A fresh route when the lights have gone. Traffic is in the
+escapee's way and gets out of the police's.
+
+**The police.** They already steered round every car in the game
+(`Driver.avoid`), so traffic needed nothing new to be avoided -- except one
+thing: a car squarely in a unit's path and slow got a nudge of steering and no
+braking, and a unit coming up a single-track lane at 90 km/h drove into one
+that had stopped. Now a unit may go no faster than it could stop short of a
+traffic car squarely in its way, while the steering takes it round. Measured,
+a unit closing at 93 km/h on a car pulling over: closest 4.5 m, no damage.
+Patrol cars queue behind traffic like traffic does, and only tell *you* off
+for blocking them.
+
+The whole force against a weaving target on Haldon (`tests/force.js`, 110 km/h,
+four runs, fresh page each): without traffic, nearest unit 185 m on average
+and 63 knocks; with twelve cars, 189 m and 67. Traffic costs the chase nothing
+measurable on this map -- the police have room to go round it.
+
+**What it costs the frame.** Each traffic car simulates like a police car,
+about 0.6 ms a frame here. So only those within 150 m of a player are
+simulated; the rest are moved along their routes without physics until
+someone gets near (`SIM_RANGE`, with 40 m of slack so a car at the line does
+not flip in and out of the simulation every frame -- which, before the slack,
+was most of what traffic cost). Traffic bodies also skip the hill heightfield:
+they stay on roads, where the wheels carry them. And traffic uses no
+obstacle-dodging of its own, only the queue. Twelve cars, four awake: 4.2 ->
+7.3 ms a frame on this machine. On a device that has already had to shed
+police cars to hold its frame rate, it runs half as many. `window.__traffic =
+false` turns it off.
+
+**Multiplayer.** Only the machine that runs the AI runs traffic; the others
+are sent the cars like the AI police (`Game._netSend`, id `#t<n>`), and a hit
+on one is applied where it lives (`_netApplyHit`). Traffic does not count
+against the police car limit (`Game.carCount`).
+
 Shared terrain, surfaces, road meshes and scenery live in `world/common.js`; a
 map generator only has to lay out a road graph and decide where buildings go.
 

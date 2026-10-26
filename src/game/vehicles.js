@@ -567,6 +567,53 @@ export const SPECS = {
 };
 
 /**
+ * Traffic: ordinary cars on the road (game/traffic.js). Not driven by anyone
+ * in a hurry, so modest engines, and soft enough that a police car shoving one
+ * aside wins. Sized to their models in resources/models (traffic-*.glb): body
+ * width without the mirrors, the models' own wheelbases, tracks and tyres.
+ * The paint is recoloured per car, so the livery here only matters for the
+ * generated body used when a model is missing.
+ */
+function trafficSpec(o) {
+  return makeSpec(Object.assign({
+    drive: 'fwd',
+    engine: Object.assign({}, baseEngine, { torqueCurve: scaled(0.62, baseEngine.torqueCurve) }),
+    brakes: { maxTorque: 2100, frontBias: 0.64, handbrakeTorque: 2400, abs: 1 },
+    gripScale: 0.92,
+    durability: 1.4,
+    topSpeedHint: 48,
+    traffic: true,
+  }, o));
+}
+Object.assign(SPECS, {
+  hatchback: trafficSpec({
+    name: 'Hatchback',
+    mass: 1180,
+    frontWeight: 0.61,
+    dims: { w: 1.78, h: 1.46, l: 4.37 },
+    colliderY: 0.45,
+    wheelbase: 2.64, trackFront: 1.52, trackRear: 1.52, wheelRadius: 0.32,
+  }),
+  estate: trafficSpec({
+    name: 'Estate',
+    mass: 1420,
+    frontWeight: 0.58,
+    dims: { w: 1.82, h: 1.47, l: 4.56 },
+    colliderY: 0.45,
+    wheelbase: 2.63, trackFront: 1.56, trackRear: 1.56, wheelRadius: 0.32,
+  }),
+  civsuv: trafficSpec({
+    name: 'SUV',
+    mass: 1750,
+    frontWeight: 0.56,
+    dims: { w: 1.90, h: 1.63, l: 4.73 },
+    colliderY: 0.52,
+    wheelbase: 2.89, trackFront: 1.62, trackRear: 1.62, wheelRadius: 0.37,
+    engine: Object.assign({}, baseEngine, { torqueCurve: scaled(0.75, baseEngine.torqueCurve) }),
+  }),
+});
+
+/**
  * The interceptor, as a person has to drive it.
  *
  * Police cars are tuned for the AI, which plans its speed into a corner before
@@ -759,6 +806,9 @@ export const LIVERIES = {
   suv:         { body: 0xf1f4f7, accent: 0x13233f, glass: 0x0b1016, trim: 0x15181c },
   van:         { body: 0xeef1f4, accent: 0x13233f, glass: 0x0b1016, trim: 0x1b1f25 },
   offroad:     { body: 0x4c7a3a, accent: 0xe9e2c8, glass: 0x0e1319, trim: 0x15171a },
+  hatchback:   { body: 0x8a8d90, accent: 0x1a1d21, glass: 0x0e1319, trim: 0x15171a },
+  estate:      { body: 0x7a2a26, accent: 0x1a1d21, glass: 0x0e1319, trim: 0x15171a },
+  civsuv:      { body: 0xd9dbdc, accent: 0x1a1d21, glass: 0x0e1319, trim: 0x15171a },
 };
 
 // ------------------------------------------------------------ body geometry
