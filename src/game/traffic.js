@@ -23,6 +23,7 @@
 // players are sent the cars like the AI police (Game._netSend), and each car's
 // colour follows from its id, so it is the same colour on every screen.
 
+import * as THREE from 'three';
 import { Driver, SKILL } from '../ai/driver.js';
 import { ROLE } from '../ai/officer.js';
 import { dist2 } from '../util/math.js';
@@ -42,14 +43,31 @@ const LANE = 2.4;
 /** Within this of a player, m, a traffic car is simulated; beyond it, moved along its route. */
 const SIM_RANGE = 150;
 const SIM_SLACK = 40;
-/** How far past the edge of the road a car pulls over onto the verge, m. */
-const VERGE = 1.4;
+/**
+ * How far past the edge of the road a car pulls over onto the verge, m: short
+ * of Haldon Vale's hedges, which stand 1.8 m off the tarmac.
+ */
+const VERGE = 0.9;
 /** And how fast it goes on getting there, m/s. */
 const CRAWL = 3;
+/** How long a car stays pulled over once it has started, s. */
+const PULL_HOLD = 4;
 /** Pull over for blue lights within this, m. */
 const PULL_RANGE = 70;
-/** Of the road's speed limit, how much a traffic car drives at. */
-const PACE = 0.85;
+/**
+ * Of the road's speed limit, how much a traffic car drives at, and never more
+ * than TOP_SPEED, m/s. "Sometimes the cars seem to go way too fast": at 85%
+ * of Haldon's country roads they were doing 80-86 km/h between the hedges.
+ */
+const PACE = 0.75;
+const TOP_SPEED = 20;
+
+/** A gliding car re-routes rather than heading for a route point further off than this, m. */
+const GLIDE_GAP = 30;
+/** How high a settled hatchback rides, m, body origin above the ground. */
+const RIDE = 0.46;
+const _e = new THREE.Euler();
+const _q = new THREE.Quaternion();
 
 const KINDS = ['hatchback', 'hatchback', 'estate', 'estate', 'civsuv'];
 /** Ordinary car colours: greys and silvers mostly, a few that are not. */
@@ -143,8 +161,7 @@ export class Traffic {
   }
 
   _sleep(c) {
-    const v = c.v, g = this.game;
-    c.rideY = v.position.y - g.sim.heightAt(v.position.x, v.position.z);
+    const v = c.v;
     c.cruise = Math.max(8, v.speed);
     v.body.setEnabled(false);
     v.dormant = true;
@@ -169,6 +186,9 @@ export class Traffic {
     while (step > 0 && i < pts.length - 1) {
       const q = pts[i + 1];
       const dx = q.x - x, dz = q.z - z, l = Math.hypot(dx, dz);
+      // A route point far off is not one to glide straight at -- that went
+      // across the fields. A fresh route from here instead.
+      if (l > GLIDE_GAP) { this._route(c); return; }
       if (l < 1e-3) { i++; continue; }
       hx = dx / l; hz = dz / l;
       if (l <= step) { x = q.x; z = q.z; step -= l; i++; } else { x += hx * step; z += hz * step; step = 0; }
@@ -176,11 +196,24 @@ export class Traffic {
     d.pathIndex = i;
     // At the road's pace from here on, as it would be driving.
     const at = pts[Math.min(i, pts.length - 1)];
-    c.cruise = ((at && at.speed) || 15) * PACE;
-    const y = g.sim.heightAt(x, z) + c.rideY;
-    const yaw = Math.atan2(hx, hz);
+    // Gives way to blue lights while gliding too: it simply waits.
+    c.cruise = this._sirenNear(v) ? 0 : Math.min(((at && at.speed) || 15) * PACE, TOP_SPEED);
+    // On the ground and with it: at the height a settled car of this kind
+    // rides, tilted to the slope. "A car came down the hill ... almost
+    // floating a few metres above the ground, level instead of going down":
+    // a glide used whatever height the car had when it fell asleep -- most
+    // fell asleep just after appearing, still dropping onto their wheels, and
+    // rode 0.95 m up instead of 0.46 -- and was always level.
+    const h = (px, pz) => g.sim.heightAt(px, pz);
+    const y = h(x, z) + c.rideY;
+    const e = 1.6;
+    const pitch = Math.atan2(h(x + hx * e, z + hz * e) - h(x - hx * e, z - hz * e), 2 * e);
+    // The car's left is (hz, -hx); up on the left is a positive roll about Z.
+    const roll = Math.atan2(h(x + hz * e, z - hx * e) - h(x - hz * e, z + hx * e), 2 * e);
+    _e.set(-pitch, Math.atan2(hx, hz), roll, 'YXZ');
+    _q.setFromEuler(_e);
     v.body.setTranslation({ x, y, z }, false);
-    v.body.setRotation({ x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) }, false);
+    v.body.setRotation({ x: _q.x, y: _q.y, z: _q.z, w: _q.w }, false);
     v._readState();
     v.linvel.set(hx * c.cruise, 0, hz * c.cruise);
     v.speed = c.cruise;
@@ -204,7 +237,11 @@ export class Traffic {
       if (!v) continue;
       v.isTraffic = true;
       v.setVelocity({ x: Math.sin(place.heading) * 9, y: 0, z: Math.cos(place.heading) * 9 });
-      const c = { v, driver: new Driver(v, SKILL.regular), id, stuckFor: 0, pullFor: 0 };
+      // The height it rides at, settled on its wheels: 0.46 m measured for
+      // the hatchback and the estate, a little more on the SUV's bigger
+      // wheels. Kept up to date while it is simulated (see _drive).
+      const rideY = RIDE + (v.spec.wheelRadius - 0.32);
+      const c = { v, driver: new Driver(v, SKILL.regular), id, stuckFor: 0, pullFor: 0, rideY };
       this.cars.push(c);
       this._route(c);
       return;
@@ -231,16 +268,24 @@ export class Traffic {
   _sirenNear(v) {
     const g = this.game;
     if (!(g.heat && g.heat.value > 0)) return false;
+    // Coming at it, not merely near it: a roadblock crew parked by the road,
+    // or a unit going the other way, used to have every car within 70 m
+    // stopped on the verge.
+    const coming = (o) => {
+      const dx = v.position.x - o.position.x, dz = v.position.z - o.position.z;
+      const l = Math.hypot(dx, dz);
+      if (l > PULL_RANGE || o.speed < 5) return false;
+      const theirs = (o.linvel.x * dx + o.linvel.z * dz) / (l || 1);
+      const mine = (v.linvel.x * dx + v.linvel.z * dz) / (l || 1);
+      return theirs - mine > 2;
+    };
     for (const u of g.dispatcher.units) {
       if (u.role === ROLE.PATROL || !u.vehicle || u.vehicle.disabled) continue;
-      const p = u.vehicle.position;
-      if (dist2(p.x, p.z, v.position.x, v.position.z) < PULL_RANGE) return true;
+      if (coming(u.vehicle)) return true;
     }
     // A police player's car, lights on, counts too.
     const me = g.player;
-    if (me && me.isPolice && me !== v
-      && dist2(me.position.x, me.position.z, v.position.x, v.position.z) < PULL_RANGE) return true;
-    return false;
+    return !!(me && me.isPolice && me !== v && coming(me));
   }
 
   _drive(c, dt) {
@@ -249,75 +294,63 @@ export class Traffic {
     if (c.pullFor <= 0 && (!d.hasPath || d.remaining() < 40)) this._route(c);
 
     const was = c.pullFor > 0;
-    c.pullFor = this._sirenNear(v) ? 2.5 : Math.max(0, c.pullFor - dt);
-    // Onto the verge to let them by, the way a driver does, not stopped in the
-    // lane: on a single-track lane a car stopped in it is a wall, and a unit
-    // coming up behind at speed drove into one. The route ahead is moved over
-    // to the near side, past the edge of the road; when the lights have gone
-    // it gets a fresh route back onto it.
-    if (c.pullFor > 0 && !was) this._toVerge(c);
+    // Once it starts, it finishes: a few seconds at least, so a car that
+    // began to pull over is stopped on the verge rather than drifting back
+    // into the lane the moment the police car is past.
+    c.pullFor = this._sirenNear(v) ? Math.max(c.pullFor, PULL_HOLD) : Math.max(0, c.pullFor - dt);
     if (c.pullFor <= 0 && was) this._route(c);
+    if (c.pullFor > 0) { this._pullOver(c, dt); return; }
 
     const here = d.path[d.pathIndex];
-    let cap = ((here && here.speed) || 15) * PACE;
+    let cap = Math.min(((here && here.speed) || 15) * PACE, TOP_SPEED);
     // Red lights, the same way a patrol car stops for them (Officer._signalCap).
     if (g.signals) {
       const s = g.signals.stopDistanceAt(v.position.x, v.position.z, v.forward.x, v.forward.z, v.speed);
       if (Number.isFinite(s)) cap = Math.min(cap, Math.sqrt(2 * 3.4 * Math.max(0, s - 1.0)));
-    }
-    // Pulled over: down to a crawl while it gets onto the verge, then a stop.
-    let onVerge = false;
-    if (c.pullFor > 0) {
-      const sn = g.graph.nearestEdge(v.position.x, v.position.z, 30);
-      onVerge = !sn || sn.dist > sn.edge.width * 0.5 + 0.4;
-      cap = Math.min(cap, Math.max(onVerge ? 0 : CRAWL, v.speed - 4 * dt));
     }
 
     // Queueing behind what is in front, and nothing else: Driver.avoid sweeps
     // for scenery and other cars to dodge, which a car keeping to its lane at
     // the limit does not need, and it was the dearest thing a traffic car did.
     d.holdBehind(d.carInWay(g.vehicles), dt);
-    const out = d.followPath(dt, cap);
-    // Pulled over: the steering from the route, the pedals from here. Asked
-    // for a stop, the driver's own unstick logic would sooner or later push
-    // on through it -- a car told to give way drove off again at 29 km/h with
-    // the police twenty metres behind.
-    // Slowing on the footbrake; stopped, on the handbrake -- the brake held at
-    // a standstill is reverse in this game, and a car "stopped" that way
-    // backed off down the lane at 36 km/h.
-    if (c.pullFor > 0 && (onVerge || v.forwardSpeed > CRAWL + 2)) {
-      out.throttle = 0;
-      if (v.forwardSpeed > 2.5) { out.brake = 0.35; out.handbrake = 0; } else { out.brake = 0; out.handbrake = 1; }
-    }
-    v.setControls(out);
+    v.setControls(d.followPath(dt, cap));
 
     c.stuckFor = v.speed < 0.5 && c.pullFor <= 0 && !d.heldBy ? c.stuckFor + dt : 0;
+    if (v.grounded >= 4 && v.up.y > 0.9) {
+      const up = v.position.y - g.sim.heightAt(v.position.x, v.position.z);
+      if (Math.abs(up - c.rideY) < 0.3) c.rideY += (up - c.rideY) * 0.05;
+    }
   }
 
-  /** Move the next stretch of route over onto the near-side verge. See _drive. */
-  _toVerge(c) {
-    const d = c.driver, pts = d.path, g = this.game;
-    if (!pts || pts.length < 2) return;
-    const here = pts[d.pathIndex] || pts[0];
-    const snap = g.graph.nearestEdge(here.x, here.z, 30);
-    const half = snap ? snap.edge.width * 0.5 : 4;
-    // From the lane (already LANE, or less on a narrow road, to the near side)
-    // to a little past the edge of the tarmac.
-    const shift = Math.max(0.8, half + VERGE - Math.min(LANE, half - 1.6));
-    let acc = 0;
-    const out = pts.map((p) => ({ ...p }));
-    for (let i = d.pathIndex; i < out.length - 1 && acc < 70; i++) {
-      const a = pts[i], b = pts[i + 1];
-      const l = Math.hypot(b.x - a.x, b.z - a.z) || 1;
-      const tx = (b.x - a.x) / l, tz = (b.z - a.z) / l;
-      // Eased in over the first 15 m, so it steers across rather than jumps.
-      const k = Math.min(1, acc / 15);
-      out[i + 1].x = b.x + -tz * shift * k * DRIVE_SIDE;
-      out[i + 1].z = b.z + tx * shift * k * DRIVE_SIDE;
-      acc += l;
+  /**
+   * Off the road for blue lights. "When they pull off the road, they don't
+   * just pull to the side very well." Moving the route over sideways sent one
+   * car eight metres out into a field and left others never stopping. Now it
+   * steers for a point eight metres up the road and just past its near-side
+   * edge -- measured from the road, so it cannot wander further -- at a crawl,
+   * and once it is past the edge it stops, on the handbrake: the brake held
+   * at a standstill is reverse in this game, and the first version backed
+   * off down the lane at 36 km/h.
+   */
+  _pullOver(c, dt) {
+    const g = this.game, v = c.v, d = c.driver;
+    const here = g.graph.nearestEdge(v.position.x, v.position.z, 30);
+    const onVerge = !here || here.dist > here.edge.width * 0.5 + 0.3;
+    if (onVerge || v.forwardSpeed < -0.5) {
+      v.setControls({ throttle: 0, brake: v.forwardSpeed > 2.5 ? 0.5 : 0, steer: 0, handbrake: v.forwardSpeed > 2.5 ? 0 : 1 });
+      return;
     }
-    const keep = d.pathIndex;
-    d.setPath(out.slice(0, Math.min(out.length, keep + 1 + Math.ceil(acc / 4))));
+    const ax = v.position.x + v.forward.x * 8, az = v.position.z + v.forward.z * 8;
+    const snap = g.graph.nearestEdge(ax, az, 30);
+    if (!snap) { v.setControls({ throttle: 0, brake: 0, steer: 0, handbrake: 1 }); return; }
+    const t = g.graph.edgeDirection(snap.edge, snap.along, { x: 0, z: 1 });
+    const s = t.x * v.forward.x + t.z * v.forward.z >= 0 ? 1 : -1;
+    const tx = t.x * s, tz = t.z * s;
+    const off = snap.edge.width * 0.5 + VERGE;
+    const aim = { x: snap.x + -tz * off * DRIVE_SIDE, z: snap.z + tx * off * DRIVE_SIDE };
+    const out = d.driveTo(aim, CRAWL, dt, {});
+    if (v.forwardSpeed > CRAWL + 1.5) { out.throttle = 0; out.brake = 0.4; }
+    v.setControls(out);
   }
 
   _remove(c) {

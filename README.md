@@ -6781,6 +6781,34 @@ than whatever it was doing when it fell asleep -- they had all been gliding at
 No cost to the chase there either, and about 2 ms a frame. The city (Ashfield)
 still has none.
 
+**Traffic, tidied.** *"Sometimes the cars seem to go way too fast ... when
+they pull off the road, they don't just pull to the side very well ... I saw a
+car come down the hill ... almost floating a few metres above the ground,
+level instead of going down ... and one zooming across some fields."*
+
+* **Floating.** A far-off traffic car glides along its route without physics
+  (see above), and a glide used whatever height the car had when it fell
+  asleep -- most fell asleep just after appearing, still dropping onto their
+  wheels, so they rode 0.95 m up instead of the 0.46 a settled hatchback rides
+  at, 80% of the time -- and it was always level. Now a glide uses the car's
+  own ride height (0.46 m, more on the SUV's bigger wheels, kept up to date
+  while it drives) and tilts with the ground: 0.46-0.51 m, within 0.2 degrees
+  of the slope on average.
+* **Across the fields.** A glide went in a straight line to its next route
+  point, however far off that was; now a point more than 30 m away means a new
+  route instead. Measured since: never more than 2 m off the road.
+* **Too fast.** 85% of the limit was 80-86 km/h on Haldon's country roads
+  between the hedges. Now 75%, and never over 72 km/h (`TOP_SPEED`).
+* **Pulling over.** Moving the route sideways sent one car eight metres into a
+  field and left others never stopping. Now a car steers for a point eight
+  metres up the road just past its near-side edge -- measured from the road,
+  so it cannot go further -- at a crawl, stops once it is past the edge, and
+  stays pulled over at least four seconds. It only does it for police coming
+  at it (a roadblock crew parked by the road no longer stops everything for
+  70 m), and a gliding car waits too. Five cars with a unit coming up behind:
+  three stopped 0.8-1.1 m past the edge, never more than 1.2 m out; one gave up
+  as the unit turned off, one was not in its path.
+
 Shared terrain, surfaces, road meshes and scenery live in `world/common.js`; a
 map generator only has to lay out a road graph and decide where buildings go.
 
