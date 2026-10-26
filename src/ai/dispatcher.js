@@ -100,7 +100,7 @@ const SEARCH_FROM = 90;
  * main.js had to grow to hold them -- at 24 the board ran out at about twenty
  * police and then refused to build roadblocks.
  */
-export const PACK_CAP = 30;
+export const PACK_CAP = 25;
 
 /** How many units of each role a given heat tier is allowed to run. */
 const TIER = [
@@ -120,7 +120,10 @@ const TIER = [
   // same point in a queue. Keeping roughly three quarters of the pack assigned
   // -- as 11 of 15 did -- is what spreads them over the junctions instead.
   { units: 14, pursue: 5, intercept: 5, pit: true, box: true },
-  { units: 27, pursue: 8, intercept: 12, pit: true, box: true },
+  // Down from 27 when the cap went from 30 to 25 to make room for traffic:
+  // "make the cap of police cars 25, so that maybe we have five more normal
+  // cars on the road" (game/traffic.js).
+  { units: 22, pursue: 7, intercept: 10, pit: true, box: true },
 ];
 
 /**

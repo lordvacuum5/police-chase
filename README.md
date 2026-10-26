@@ -6765,6 +6765,22 @@ are sent the cars like the AI police (`Game._netSend`, id `#t<n>`), and a hit
 on one is applied where it lives (`_netApplyHit`). Traffic does not count
 against the police car limit (`Game.carCount`).
 
+**Twenty-five police, seventeen cars, and the UK map.** *"Can we make the cap
+of police cars 25, so that maybe we have five more normal cars on the road? And
+put it on the UK map."* `PACK_CAP` 30 -> 25 and five stars sends 22 (was 27;
+pursue 7, intercept 10); traffic 12 -> 17 (`TRAFFIC_COUNT`); Wexbury added to
+`TRAFFIC_MAPS`. A sleeping traffic car now glides at its road's pace rather
+than whatever it was doing when it fell asleep -- they had all been gliding at
+29 km/h. Wexbury, fresh page each:
+
+| | force.js: nearest unit | knocks | frame |
+|---|---|---|---|
+| no traffic | 158 m | 8 | 4.2 ms |
+| 17 traffic cars | 148 m | 6 | 6.5 ms |
+
+No cost to the chase there either, and about 2 ms a frame. The city (Ashfield)
+still has none.
+
 Shared terrain, surfaces, road meshes and scenery live in `world/common.js`; a
 map generator only has to lay out a road graph and decide where buildings go.
 

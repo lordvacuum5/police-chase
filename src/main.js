@@ -84,13 +84,13 @@ const MAX_SUBSTEPS = 5;
 /**
  * Every car in the world at once, the player included.
  *
- * The pursuit is allowed to grow to thirty cars (Dispatcher.PACK_CAP) and is
+ * The pursuit is allowed to grow to twenty-five cars (Dispatcher.PACK_CAP; thirty before traffic) and is
  * trimmed from the back beyond that, so this has to cover those plus the
  * player plus whatever is standing on a roadblock at the time -- otherwise the
  * roadblock is the thing that cannot be built.
  *
  * Hence forty rather than thirty-four. The dispatcher's own ceiling is
- * `vehicleLimit - 6`, so the pack can only reach thirty if this is at least
+ * `vehicleLimit - 6`, so the pack could only reach thirty if this was at least
  * 36; the rest is the four slots spawnPoliceNear holds back for a roadblock,
  * and room for a couple of other players' cars in multiplayer.
  */

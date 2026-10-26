@@ -29,9 +29,11 @@ import { dist2 } from '../util/math.js';
 import { DRIVE_SIDE } from '../world/roadgraph.js';
 
 /** Which maps have traffic. */
-export const TRAFFIC_MAPS = ['haldon'];
+export const TRAFFIC_MAPS = ['haldon', 'wexbury'];
 /** How many cars, and the ring round the players they live in, m. */
-const TRAFFIC_COUNT = 12;
+// Five more than the first trial's twelve, paid for by five fewer police
+// cars at five stars (Dispatcher.PACK_CAP 30 -> 25).
+const TRAFFIC_COUNT = 17;
 const TRAFFIC_NEAR = 160;
 const TRAFFIC_FAR = 460;
 const TRAFFIC_GONE = 640;
@@ -172,6 +174,9 @@ export class Traffic {
       if (l <= step) { x = q.x; z = q.z; step -= l; i++; } else { x += hx * step; z += hz * step; step = 0; }
     }
     d.pathIndex = i;
+    // At the road's pace from here on, as it would be driving.
+    const at = pts[Math.min(i, pts.length - 1)];
+    c.cruise = ((at && at.speed) || 15) * PACE;
     const y = g.sim.heightAt(x, z) + c.rideY;
     const yaw = Math.atan2(hx, hz);
     v.body.setTranslation({ x, y, z }, false);
