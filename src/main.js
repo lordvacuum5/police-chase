@@ -115,6 +115,8 @@ const NET_SPIN = 6;      // rad/s
 const NET_RANGE = 400;   // m
 /** Within this of your own car, a followed car is treated as in contact. */
 const NET_CONTACT = 6;   // m
+/** The clear space kept round a police car's outline when it is made, m. See createVehicle. */
+const SPAWN_MARGIN = 0.6;
 /** How far another player can be taken to see a clear spot, m. See nearHuman. */
 const HUMAN_SIGHT = 600;
 /**
@@ -754,6 +756,31 @@ class Game {
     return this.sim && this.sim.terrainAt ? this.sim.terrainAt(x, z) : 0;
   }
 
+  /** Is there room for a car of `spec` at this position and heading? See createVehicle. */
+  _footprintFree(spec, pos, heading) {
+    const hx = spec.dims.w * 0.5 + SPAWN_MARGIN, hz = spec.dims.l * 0.5 + SPAWN_MARGIN;
+    const ax = Math.sin(heading), az = Math.cos(heading);
+    for (const v of this.vehicles) {
+      if (v.removed) continue;
+      const d = v.spec.dims;
+      const dx = v.position.x - pos.x, dz = v.position.z - pos.z;
+      const reach = Math.hypot(hx, hz) + Math.hypot(d.w * 0.5, d.l * 0.5);
+      if (dx * dx + dz * dz > reach * reach) continue;
+      // Separating axes: the two cars' own along and across, in the ground plane.
+      const fl = Math.hypot(v.forward.x, v.forward.z) || 1;
+      const bx = v.forward.x / fl, bz = v.forward.z / fl;
+      const axes = [[ax, az], [-az, ax], [bx, bz], [-bz, bx]];
+      let apart = false;
+      for (const [ux, uz] of axes) {
+        const ra = hz * Math.abs(ux * ax + uz * az) + hx * Math.abs(ux * -az + uz * ax);
+        const rb = d.l * 0.5 * Math.abs(ux * bx + uz * bz) + d.w * 0.5 * Math.abs(ux * -bz + uz * bx);
+        if (Math.abs(dx * ux + dz * uz) > ra + rb) { apart = true; break; }
+      }
+      if (!apart) return false;
+    }
+    return true;
+  }
+
   createVehicle(specKey, liveryKey, position, heading, opts = {}) {
     // `opts.spec` is a car of this kind with something changed -- the police
     // car a person drives. It has to be given here rather than assigned to
@@ -762,6 +789,17 @@ class Game {
     // works and does nothing at all. The kind still decides the bodywork and
     // the imported model.
     const spec = opts.spec || SPECS[specKey];
+    // Never a police car on top of another car. "Sometimes they spawn on top
+    // of cop cars or each other, when you're playing multiplayer or just in
+    // single player." Every way a unit is made checked the gap between car
+    // centres against a number of its own -- 4.2, 4.5, 7, 8 or 9 m, and the
+    // rolling block's first site nothing at all -- and a car is five metres
+    // long. This tests the new car's actual outline, plus SPAWN_MARGIN, against
+    // the outline of every car there is: the player, other players' cars, the
+    // force. Only for the game's own spawns (`opts.spawn`) -- never the
+    // player's car or another player's -- and a refused spot returns null,
+    // which every one of those callers handles.
+    if (opts.spawn && !this._footprintFree(spec, position, heading)) return null;
     // A car somebody else owns is an ordinary dynamic body, not a kinematic
     // one: it has to be able to take a share of a collision rather than
     // handing all of it to whoever touched it. See _netDriveRemote.
@@ -872,7 +910,7 @@ class Game {
     // Quicker and grippier than anything the force has, and only this car:
     // see getawaySpec.
     const v = this.createVehicle(kind, kind, place.position, place.heading,
-      { spec: getawaySpec(kind) });
+      { spec: getawaySpec(kind), spawn: true });
     if (!v) return;
     this.runner = new Runner(this, v);
     // No heat at all, and nothing told about it. The car pulls away like
@@ -1182,8 +1220,9 @@ class Game {
           : (this.rng() < 0.15 ? SKILL.rookie : SKILL.regular);
 
     const v = this.createVehicle(kind, kind, place.position, place.heading, {
-      police: true, unmarked: kind === 'unmarked',
+      police: true, unmarked: kind === 'unmarked', spawn: true,
     });
+    if (!v) return null;
     v.lampPhase = this.rng();
 
     return new Officer(this, v, { skill, kind });
@@ -1253,16 +1292,16 @@ class Game {
    */
   spawnPoliceAt(position, heading, tier) {
     if (this.vehicles.length >= this.vehicleLimit) return null;
-    for (const other of this.vehicles) {
-      if (dist2(other.position.x, other.position.z, position.x, position.z) < 4.2) return null;
-    }
+    // Room for it is createVehicle's question now (spawn: true), asked of the
+    // car's outline rather than a 4.2 m gap between centres.
     const r = this.rng();
     // SUVs make a good wall: the widest, heaviest thing the fleet has short of
     // the van. No patrol cars on a block at four stars and up, same as the
     // pursuit.
     const kind = tier >= 4 ? (r < 0.45 ? 'interceptor' : 'suv')
       : tier >= 3 && r < 0.4 ? 'suv' : 'patrol';
-    const v = this.createVehicle(kind, kind, position, heading, { police: true });
+    const v = this.createVehicle(kind, kind, position, heading, { police: true, spawn: true });
+    if (!v) return null;
     v.lampPhase = this.rng();
     // Parked, not arriving: no roll-on velocity, and the lights are already
     // going before you come round the corner.
@@ -1290,7 +1329,7 @@ class Game {
       const site = this._siteUpRoad(target, dx, dz);
       if (site) {
         const kind = tier >= 4 ? 'interceptor' : 'patrol';
-        const v = this.createVehicle(kind, kind, site.pos, site.heading, { police: true });
+        const v = this.createVehicle(kind, kind, site.pos, site.heading, { police: true, spawn: true });
         if (v) {
           v.lampPhase = this.rng();
           v.setVelocity({ x: Math.sin(site.heading) * 18, y: 0, z: Math.cos(site.heading) * 18 });
@@ -1376,7 +1415,8 @@ class Game {
       if (occupied) continue;
 
       const kind = tier >= 4 ? 'interceptor' : 'patrol';
-      const v = this.createVehicle(kind, kind, pos, heading, { police: true });
+      const v = this.createVehicle(kind, kind, pos, heading, { police: true, spawn: true });
+      if (!v) continue;
       v.lampPhase = this.rng();
       // Already rolling, so it does not have to accelerate from a standstill in
       // front of a car doing 120.
@@ -1537,7 +1577,7 @@ class Game {
       }
       if (occupied) continue;
       const kind = tier >= 4 ? 'interceptor' : 'patrol';
-      const v = this.createVehicle(kind, kind, pos, heading, { police: true });
+      const v = this.createVehicle(kind, kind, pos, heading, { police: true, spawn: true });
       if (!v) continue;
       v.lampPhase = this.rng();
       v.setVelocity({ x: Math.sin(heading) * speed, y: 0, z: Math.cos(heading) * speed });
@@ -1621,7 +1661,8 @@ class Game {
       }
       if (occupied) continue;
 
-      const v = this.createVehicle('van', 'van', pos, heading, { police: true });
+      const v = this.createVehicle('van', 'van', pos, heading, { police: true, spawn: true });
+      if (!v) continue;
       v.lampPhase = this.rng();
       // Already up to a fair speed at them, so the whole run is spent
       // accelerating rather than pulling away from a standstill: three and a

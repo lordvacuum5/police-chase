@@ -29,6 +29,10 @@ const LANDING_SHARE = 0.35;
 const GROUND_SHARE = 0.35;
 /** The knock below which takeImpact charges nothing; _onlyGround is only asked above it. */
 const IMPACT_FROM = 2.6;
+/** Half the height of the keel under a car on a hilly map, m. See _hillContact. */
+const KEEL_H = 0.08;
+/** The share of its speed along the ground a car keeps when the keel meets the hill. See _rideUpHill. */
+const HILL_KEEP = 0.985;
 import {
   tyreForces, slipRatioOf, slipAngleOf, slipIntensity, loadedMu,
   TYRE_ROAD, TYRE_GRASS, TYRE_PAVED,
@@ -294,6 +298,88 @@ export class Vehicle {
 
     this.collider = this.world.createCollider(colDesc, this.body);
     this.collider.__vehicle = this;
+
+    // On a hilly map, a keel: a low box under the middle of the car that meets
+    // the hill and nothing else, while the bodywork itself does not. See
+    // _hillContact.
+    if (this.sim.terrainAt && window.__keel !== false) {
+      const keelY = (s.colliderY === undefined ? 0.1 : s.colliderY) - h * 0.5 + KEEL_H;
+      this.keel = this.world.createCollider(
+        RAPIER.ColliderDesc.cuboid(w * 0.3, KEEL_H, l * 0.3)
+          .setTranslation(0, keelY, s.colliderZ || 0)
+          .setDensity(0)
+          // Sliding, not gripping: when it touches, it turns the car up the
+          // slope rather than holding it where it is.
+          .setFriction(0)
+          .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min)
+          .setRestitution(0)
+          .setRestitutionCombineRule(RAPIER.CoefficientCombineRule.Min)
+          .setCollisionGroups(groups(GROUP.VEHICLE, GROUP.HILL)),
+        this.body,
+      );
+      this.keel.__vehicle = this;
+      this._hillFree = false;
+    }
+  }
+
+  /**
+   * Turned up the slope, not stopped by it.
+   *
+   * A car bottoming out where a slope steepens has the ground turn its path
+   * upward, and the stop that goes with that took far more speed than turning
+   * should: the nose meets the slope, the solver stops it, "I just hit an
+   * invisible wall". Upright, touching nothing but the hill on the keel, and
+   * not coming down out of the air, the car keeps HILL_KEEP of the speed it
+   * had along the ground; the solver still decides which way it is now going.
+   * The same kind of cheat as _guardSpin and _guardFlip.
+   */
+  _rideUpHill() {
+    if (!this.keel || !this._hillFree || window.__rideUp === false) return;
+    const pv = this._prevVel;
+    if (pv.y < -3) return;                      // a landing, not a slope
+    const before = Math.hypot(pv.x, pv.z);
+    if (before < 8) return;
+    const lv = this.body.linvel();
+    const now = Math.hypot(lv.x, lv.z);
+    const want = before * HILL_KEEP;
+    if (now >= want || now < 0.5) return;
+    let hill = false, other = false;
+    this.world.contactPairsWith(this.keel, (o) => {
+      let t = false;
+      this.world.contactPair(this.keel, o, (m) => { if (m.numContacts() > 0) t = true; });
+      if (t) hill = true;
+    });
+    if (!hill) return;
+    this.world.contactPairsWith(this.collider, (o) => {
+      let t = false;
+      this.world.contactPair(this.collider, o, (m) => { if (m.numContacts() > 0) t = true; });
+      if (t) other = true;
+    });
+    if (other) return;
+    const k = want / now;
+    this.body.setLinvel({ x: lv.x * k, y: lv.y, z: lv.z * k }, true);
+  }
+
+  /**
+   * The bodywork does not hit the hill while the car is the right way up.
+   *
+   * "I was running really fast and tried to go up this really steep hill ...
+   * it almost pushed me into the ground ... I just hit an invisible wall."
+   * The body's box reaches past the front wheels, and at speed into a steep
+   * slope the nose met the heightfield before the front wheels had climbed
+   * it: the solver stopped the car dead -- 40 m/s gone in one frame at
+   * 200 km/h. The wheels already ride the slope (their rays follow the
+   * drawn ground), so upright the body is left out of it and only the keel,
+   * under the middle, stops it sinking in when the springs are through.
+   * On its side or its roof the whole body meets the hill again, or a car
+   * that rolled would fall into it.
+   */
+  _hillContact() {
+    if (!this.keel) return;
+    const free = this.up.y > 0.5;
+    if (free === this._hillFree) return;
+    this._hillFree = free;
+    this.collider.setCollisionGroups(groups(GROUP.VEHICLE, free ? 0xFFFF & ~GROUP.HILL : 0xFFFF));
   }
 
   _buildWheels() {
@@ -366,6 +452,7 @@ export class Vehicle {
     this._readState();
     if (this.assist.noSpin > 0) this._guardSpin(dt);
     if (this.assist.noFlip) this._guardFlip();
+    this._hillContact();
     this._updateSteering(dt);
 
     const driveTorque = this._updateDrivetrain(dt);
@@ -533,6 +620,7 @@ export class Vehicle {
   }
 
   postStep(dt) {
+    this._rideUpHill();
     const lv = this.body.linvel();
     _v1.set(lv.x, lv.y, lv.z);
     // A large velocity change in a single substep can only be a collision.
@@ -632,14 +720,17 @@ export class Vehicle {
   _onlyGround() {
     if (!this.sim.terrainAt) return false;
     let ground = false, other = false;
-    this.world.contactPairsWith(this.collider, (o) => {
-      const m = (o.collisionGroups() >>> 16) & 0xFFFF;
-      let touching = false;
-      this.world.contactPair(this.collider, o, (man) => { if (man.numContacts() > 0) touching = true; });
-      if (!touching) return;
-      if (m & (GROUP.HILL | GROUP.TERRAIN)) ground = true;
-      else other = true;
-    });
+    for (const c of this.keel ? [this.collider, this.keel] : [this.collider]) {
+      this.world.contactPairsWith(c, (o) => {
+        if (o === this.collider || o === this.keel) return;
+        const m = (o.collisionGroups() >>> 16) & 0xFFFF;
+        let touching = false;
+        this.world.contactPair(c, o, (man) => { if (man.numContacts() > 0) touching = true; });
+        if (!touching) return;
+        if (m & (GROUP.HILL | GROUP.TERRAIN)) ground = true;
+        else other = true;
+      });
+    }
     return ground && !other;
   }
 

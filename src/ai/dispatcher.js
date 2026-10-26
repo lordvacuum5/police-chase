@@ -385,7 +385,16 @@ export class Dispatcher {
       // guess at where that road goes -- and only then does it become a
       // search. Ducking behind one building is not an escape; staying out of
       // sight is.
-      if (k.timeSinceSeen < this.trackSeconds) k.position.copy(target.position);
+      // Which way you are going, too, not only where: the unit sent on down
+      // your road when they lose you (_trail) reads it. "When it says tracking
+      // and then it stops saying tracking ... that's when they should look at
+      // my current trajectory." The heading used to be the one from the last
+      // sighting, so a car that turned out of sight was predicted down the
+      // road it had left.
+      if (k.timeSinceSeen < this.trackSeconds) {
+        k.position.copy(target.position);
+        k.velocity.copy(target.linvel);
+      }
       k.confidence = clamp01(1 - k.timeSinceSeen / SEARCH_SECONDS);
     }
   }

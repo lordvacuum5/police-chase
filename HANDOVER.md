@@ -381,6 +381,11 @@ patrol driving; three fixes tried for "they're really bad at driving" changed
 nothing measurable and were reverted -- ask the user what exactly looks wrong
 before trying a fourth. Open: the getaway car "vanishing" at 50 m on Haldon in
 BE THE POLICE (suspect hedges; unconfirmed).
+**On a hilly map a car's body ignores the hill while upright; a frictionless
+keel catches it and it keeps its speed along the ground when only the keel
+touches** (`Vehicle._hillContact`, `_rideUpHill`). **Every game spawn tests the
+car's outline for room** (`createVehicle` with `spawn: true`). Rigs that make
+cars by hand do not pass `spawn` and are not refused.
 **Rig trap:** spawn anything on a hilly map at `groundAt + ...`, never a fixed
 y -- response.js put its cars inside the hill and reported the AI as stuck.
 

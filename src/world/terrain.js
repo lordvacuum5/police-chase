@@ -252,7 +252,9 @@ export function buildHeightGrid(base, { half = 1000, graph = null, flatten = [],
     // bank is a lip, and a car going over a lip leaves the ground however
     // gentle the slopes either side of it are.
     const T = new Float32Array(H.length);
-    for (let pass = 0; pass < BANK_ROUND; pass++) {
+    let rounds = BANK_ROUND;
+    try { const r = sessionStorage.getItem('pc.bankRound'); if (r !== null) rounds = +r; } catch (e) { /* none */ }
+    for (let pass = 0; pass < rounds; pass++) {
       T.set(H);
       for (let j = 1; j < n - 1; j++) {
         for (let i = 1; i < n - 1; i++) {

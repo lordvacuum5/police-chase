@@ -6652,6 +6652,58 @@ speed at one star to 100% at five, and the catch-up boost, which only works
 when a unit is well behind, grows with the level too, up to about two and a
 half times the engine at five stars and long range.
 
+### The invisible wall up a steep hill, spawns on top of cars, and predicting from where tracking ends
+
+**The invisible wall.** *"I was running really fast and tried to go up this
+really steep hill ... it almost pushed me into the ground ... I just hit an
+invisible wall."* Not the downforce -- at 200 km/h that is about 780 N against
+the car's 14,000 N. The suspension has 20 cm of travel, and where a slope
+steepens at that speed no spring can lift the car in time: it bottoms out, the
+body's box -- which reaches past the front wheels -- meets the heightfield,
+and the solver stops it. Measured driving at the steepest slopes on Haldon
+Vale, one car lost 40 m/s (144 km/h) in a single frame.
+
+Two parts. On a hilly map a car now has a **keel** (`_hillContact`): a low,
+frictionless box under its middle that meets the hill and nothing else, while
+the bodywork leaves the hill out for as long as the car is the right way up
+(on its side or roof the whole body meets it again, or a rolled car would
+fall into it). And when the keel touches the hill and nothing else, not on a
+landing, the car keeps 98.5% of its speed along the ground (`_rideUpHill`,
+`HILL_KEEP`): the solver still turns it up the slope, it just does not stop it
+-- the same kind of cheat as the spin and flip guards. Twelve of the steepest
+slopes, flat out at them, speed lost on the hill (sum over the twelve) and
+runs that lost more than 60 km/h in a quarter of a second:
+
+| | 150 km/h | 200 km/h | 250 km/h |
+|---|---|---|---|
+| before | 189, 0 | 473, 1 | 829, 4 |
+| keel alone | 175, 0 | 551, 3 | 584, 2 |
+| keel and keep speed | **86, 0** | **95, 0** | **453, 2** |
+
+Wider rounding of the foot of the banks (12 smoothing passes instead of 3)
+was tried as well and was worse at 250 km/h (1230 against 829); not kept.
+`window.__keel = false` and `window.__rideUp = false` put the old car back.
+
+**Police spawning on top of cars.** *"Sometimes they spawn on top of cop cars
+or each other, when you're playing multiplayer or just in single player."*
+Every way a unit was made checked the gap between car centres against a number
+of its own -- 4.2, 4.5, 7, 8 or 9 m -- and the rolling block's first site
+nothing at all, and a car is five metres long. `createVehicle` now tests the
+new car's outline plus 0.6 m against the outline of every car in the game,
+the player's and other players' included (`Game._footprintFree`), for every
+spawn the game makes itself (`opts.spawn`); the player's own car and other
+players' cars are never refused. Next to a parked car: overlapping by a metre,
+refused; 5.6 m ahead or 2.6 m beside it, made.
+
+**Predicting from where tracking ends.** *"When it says tracking and then it
+stops saying tracking ... that's when they should look at my current
+trajectory."* During the three seconds of TRACKING the force kept your
+position up to date but not your heading, so the car sent on down your road
+(`_trail`) was sent the way you were going when you were last *seen* -- down
+the road you had already left, if you turned out of sight. The heading is now
+kept up to date through the tracking window too, so the prediction starts from
+where you were and which way you were going when the bar ran out.
+
 Shared terrain, surfaces, road meshes and scenery live in `world/common.js`; a
 map generator only has to lay out a road graph and decide where buildings go.
 
