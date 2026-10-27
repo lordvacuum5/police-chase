@@ -34,10 +34,13 @@ export const TRAFFIC_MAPS = ['haldon', 'wexbury'];
 /** How many cars, and the ring round the players they live in, m. */
 // Five more than the first trial's twelve, paid for by five fewer police
 // cars at five stars (Dispatcher.PACK_CAP 30 -> 25).
+// The ring was 160-460 m (gone at 640): "I saw hardly any traffic" -- in
+// Wexbury's streets nobody sees 160 m, and seventeen cars spread to 640 m left
+// under two within 150 m of a driving player. Still only ever out of sight.
 const TRAFFIC_COUNT = 17;
-const TRAFFIC_NEAR = 160;
-const TRAFFIC_FAR = 460;
-const TRAFFIC_GONE = 640;
+const TRAFFIC_NEAR = 70;
+const TRAFFIC_FAR = 260;
+const TRAFFIC_GONE = 360;
 /** Which side of the road, m off the middle (clamped to the road's width). */
 const LANE = 2.4;
 /** Within this of a player, m, a traffic car is simulated; beyond it, moved along its route. */
@@ -151,9 +154,13 @@ export class Traffic {
     // With room between waking and sleeping, or a car hovering at the line
     // flips every frame -- and taking a body in and out of the simulation is
     // dear: it was most of what traffic cost.
+    // Waking does not wait until nobody is looking: a dormant car has no body,
+    // and one that stayed asleep because it was in view was a ghost -- "there
+    // were like two, and I went straight through them." Waking moves nothing
+    // the player can see; only sleeping waits for nobody to be looking.
     for (const c of this.cars) {
       const far = nearest(c.v.position);
-      if (c.v.dormant && far < SIM_RANGE && !g.seenByAnyone(c.v.position)) this._wake(c);
+      if (c.v.dormant && far < SIM_RANGE) this._wake(c);
       else if (!c.v.dormant && far > SIM_RANGE + SIM_SLACK && !g.seenByAnyone(c.v.position)) this._sleep(c);
       if (c.v.dormant) this._glide(c, dt);
       else this._drive(c, dt);

@@ -389,7 +389,10 @@ cars by hand do not pass `spawn` and are not refused.
 **Traffic** (`game/traffic.js`) is on Haldon Vale and Wexbury, 17 cars, with
 the police pack cap down to 25 to pay for it (both asked for). Turning it on
 for the city is adding the map id to `TRAFFIC_MAPS` -- measure the force with
-and without first; the grid will be the hard case.
+and without first; the grid will be the hard case. Cars live 70-260 m from a
+player (gone at 360), spawn only out of sight, and wake within 150 m *even in
+view* -- a dormant car has no body, and one kept asleep because it was seen
+was driven through. `tests/trafficseen.js` measures how many a driver meets.
 Traffic cars have `isTraffic`; dormant ones (`v.dormant`) are out of the
 physics and skip prepare/postStep. `Game.carCount()` is what the police limit
 counts, not `vehicles.length`. A stopped AI car must hold on the handbrake:

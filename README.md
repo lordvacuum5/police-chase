@@ -6809,6 +6809,29 @@ level instead of going down ... and one zooming across some fields."*
   three stopped 0.8-1.1 m past the edge, never more than 1.2 m out; one gave up
   as the unit turned off, one was not in its path.
 
+**Ghosts, and more of them where you are.** *"I saw hardly any traffic. And
+then there were like two, and I went straight through them."* Two faults. A
+dormant car only woke when nobody could see it -- so one you drove up to in
+plain view stayed asleep, with no body, and you went through it. It now wakes
+within 150 m whatever, which moves nothing you can see; only falling asleep
+waits for nobody to be looking. And the ring was 160-460 m, gone at 640:
+seventeen cars spread that thin left under two within 150 m of you, and in
+Wexbury's streets nobody sees 160 m anyway. Now 70-260 m, gone at 360, still
+only ever out of sight. `tests/trafficseen.js` drives the player along the
+roads at 65 km/h for 90 s, fresh page each:
+
+| | within 150 m | within 80 m | a ghost within 100 m | cars | frame |
+|---|---|---|---|---|---|
+| Wexbury, before | 1.75 | 0.47 | 13% of the time | 17 | 4.3 ms |
+| Wexbury, ring 70-340 / 460 | 2.87 | 0.89 | 0 | 17 | 4.3 ms |
+| Wexbury, ring 70-260 / 360 | **4.21** | **1.14** | **0** | 16 | 5.2 ms |
+| Haldon, before | 0.70 | 0.39 | 15.5% | 16 | 5.2 ms |
+| Haldon, after | **2.12** | **0.95** | **0** | 7 | 3.8 ms |
+
+Haldon keeps only seven of its seventeen: in open country there are few places
+inside 260 m that nobody can see, so the rest wait. More would mean a wider
+ring again, which is what made them sparse.
+
 Shared terrain, surfaces, road meshes and scenery live in `world/common.js`; a
 map generator only has to lay out a road graph and decide where buildings go.
 
