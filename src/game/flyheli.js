@@ -333,10 +333,13 @@ export const MARK_RANGE = 180;
 /** The airframe's box: what a landed one collides as, here and on everybody else's screen. */
 export const AIR_DIMS = { l: 12.4, w: 2.5, h: 3.5 };
 const MARK_CONE = 0.95;          // radians off the nose, a generous windscreen
+/** Landed, or no higher than the car: how far the crew can make it out, m -- about a patrol car's sight at three stars. See canSee. */
+const GROUND_SIGHT = 100;
 /** How often the fix is sent to the machine that owns the chase. */
 const REPORT_EVERY = 0.25;
 
 const _v = new THREE.Vector3();
+const _v2 = new THREE.Vector3();
 const _hub = new THREE.Vector3();
 const _up = new THREE.Vector3();
 const _fwd = new THREE.Vector3();
@@ -714,10 +717,22 @@ export class FlyingHelicopter {
     const dx = target.position.x - this.position.x;
     const dz = target.position.z - this.position.z;
     const down = this.position.y - target.position.y;
-    // You have to be above it. A helicopter looking up at a car is not a
-    // situation that needs supporting.
-    if (down < 2) return false;
     const flat = Math.hypot(dx, dz);
+    // Down on the ground, or no higher than the car, the crew see what a
+    // patrol car's crew would: no cone (they have side windows and each
+    // other), out to GROUND_SIGHT, if nothing is in the way. This used to be
+    // a flat no -- "a helicopter looking up at a car is not a situation that
+    // needs supporting" -- until it was one: "I can land right next to my
+    // friend when the police are searching for him, and the helicopter still
+    // can't see."
+    if (down < 2) {
+      if (flat > GROUND_SIGHT) return false;
+      const world = this.game.world;
+      if (!world) return true;
+      _v.copy(this.position); _v.y += 1.2;
+      _v2.copy(target.position); _v2.y += 0.8;
+      return hasLineOfSight(world, _v, _v2, 0.6);
+    }
     if (Math.hypot(flat, down) > MARK_RANGE) return false;
 
     // The cone is a bearing, not a direction in space.

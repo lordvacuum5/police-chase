@@ -23,6 +23,11 @@ const HEDGE_QUERY = groups(0xFFFF, GROUP.HEDGE);
 /** _guardFlip: the tilt it starts at, radians (about 23 degrees), and how hard it rights the car. */
 const FLIP_FROM = 0.4;
 const FLIP_RIGHT = 3.0;
+/** Levelling in the air (_airLevel): after this long, this far up, m, toward upright at this rate per radian of tilt, this quickly. */
+const AIR_AFTER = 0.3;
+const AIR_CLEAR = 1.6;
+const AIR_RIGHT = 2.5;
+const AIR_GRIP = 5;
 /** How much of a landing's vertical stop counts as an impact. See postStep. */
 const LANDING_SHARE = 0.35;
 /** What a hit costs when all the car touched was the ground. See _onlyGround. */
@@ -458,6 +463,7 @@ export class Vehicle {
     this._readState();
     if (this.assist.noSpin > 0) this._guardSpin(dt);
     if (this.assist.noFlip) this._guardFlip();
+    this._airLevel(dt);
     this._hillContact();
     this._updateSteering(dt);
 
@@ -553,6 +559,33 @@ export class Vehicle {
     const want = Math.max(toward, FLIP_RIGHT * (tilt - FLIP_FROM));
     if (want === toward) return;
     this.body.setAngvel({ x: av.x + (want - toward) * nx, y: av.y, z: av.z + (want - toward) * nz }, true);
+  }
+
+  /**
+   * Level in the air: a car off the ground for a while turns gently back
+   * toward upright, as in any arcade driving game. "Just a big drop off
+   * somewhere where you can like have a massive fall down quarry" -- off the
+   * quarry's cliff a car falls for two seconds and more, and whatever pitch it
+   * left the edge with turned it over: every run off the top in tests/quarry.js
+   * landed on its roof. Only well clear of the ground (AIR_CLEAR) and only
+   * after AIR_AFTER in the air, so a car lying on its roof is not stood back
+   * up, and a crest's hop is untouched. The yaw is left alone.
+   */
+  _airLevel(dt) {
+    if (this.grounded > 0) { this._airFor = 0; return; }
+    this._airFor = (this._airFor || 0) + dt;
+    if (this._airFor < AIR_AFTER || window.__airLevel === false) return;
+    const H = this.sim.heightAt;
+    if (H && this.position.y - H(this.position.x, this.position.z) < AIR_CLEAR) return;
+    const u = this.up;
+    const tilt = Math.acos(clamp(u.y, -1, 1));
+    let nx = -u.z, nz = u.x;
+    const nl = Math.hypot(nx, nz);
+    if (nl > 1e-4) { nx /= nl; nz /= nl; } else { nx = 0; nz = 0; }
+    const want = AIR_RIGHT * tilt;
+    const av = this.body.angvel();
+    const k = 1 - Math.exp(-AIR_GRIP * dt);
+    this.body.setAngvel({ x: av.x + (want * nx - av.x) * k, y: av.y, z: av.z + (want * nz - av.z) * k }, true);
   }
 
   /** Called once per physics substep, after world.step(). */
@@ -1109,8 +1142,23 @@ export class Vehicle {
         // suspension ray, a wheel that climbs one gets the bump, the weight
         // transfer and the tyre's answer to both for free.
         const H = this.sim.heightAt;
-        const onPlate = !hit.collider || ((hit.collider.collisionGroups() >>> 16) & GROUP.TERRAIN);
-        if (H && this.sim.terrainAt && onPlate && _v1.y < -0.2) {
+        let onPlate = !hit.collider || ((hit.collider.collisionGroups() >>> 16) & GROUP.TERRAIN);
+        // On the hills, a hit on something standing on the ground -- a jump,
+        // the top of the quarry's rock face, a straw stack -- is where it
+        // is, not lifted by the hill under it as a kerb on the plate is:
+        // lifted, the quarry's jumps read eight metres high to the wheels and
+        // threw a car at 40 km/h seven metres into the air, nose up. Unless the
+        // ground itself is nearer along the ray, which then wins.
+        if (H && this.sim.terrainAt && !onPlate && _v1.y < -0.2) {
+          const o = w.worldPos, dy = -_v1.y;
+          let t = (o.y - H(o.x, o.z)) / dy;
+          for (let it = 0; it < 3; it++) t = (o.y - H(o.x + _v1.x * t, o.z + _v1.z * t)) / dy;
+          if (t < toi) onPlate = true;
+        }
+        const standing = H && this.sim.terrainAt && !onPlate && _v1.y < -0.2;
+        if (standing) {
+          // The hit as the ray found it.
+        } else if (H && this.sim.terrainAt && onPlate && _v1.y < -0.2) {
           // Hills (world/terrain.js): where the ray actually meets the ground.
           // Lifting the plate hit by the height at that point, as below, is
           // right for a kerb a metre under the wheel and wrong for a hill ten

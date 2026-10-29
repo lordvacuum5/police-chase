@@ -1,0 +1,1013 @@
+// Haldon Vale's set pieces: the quarry, the field shortcuts and the railway.
+//
+// "I'd like to do some cool on the new map ... Make it more interesting." Of
+// the ideas put to them they picked three: a railway with a level crossing --
+// "the barriers come down and a train goes through, and if you get across in
+// time the police are stuck behind it" -- farm shortcuts with gates to smash,
+// and a quarry: "just a big drop off somewhere where you can like have a
+// massive fall down quarry. There don't have to be loads and loads of jumps
+// there, but yeah, add some jumps." And the train: "we want a modern train".
+//
+// Planned in two halves round the height grid: where things go (plan*), which
+// the grid needs to know about -- the quarry's floor and cliff, the railway's
+// long section -- and then what is built on the finished ground (build*).
+//
+// `ctx.clearAt(x, z)` says whether a place belongs to one of them, so the
+// hedges, trees, bales and turbines keep off it.
+
+import * as THREE from 'three';
+import { GROUP, groups, addStaticBox, RAPIER } from '../physics/world.js';
+import { rand, randInt, clamp, lerp, TAU } from '../util/math.js';
+import { WORLD_HALF, GRID_N, CELL, MeshBuilder, vertexColorMaterial } from './common.js';
+import { HILL_SINK } from './terrain.js';
+import { spline, segX, pointOn, roadDistance, inVillage } from './countrygen.js';
+
+/** Bits in the clear mask. */
+const CLEAR = { RAIL: 1, SHORTCUT: 2, QUARRY: 4 };
+
+/** The quarry floor's radius, m -- the biggest of these that fits -- and the least cliff worth the name. */
+const QUARRY_SIZES = [75, 68, 60, 55];
+const QUARRY_MIN_CLIFF = 14;
+/** How far the floor is dug below the lowest ground round it, m: the way in is a ramp down. */
+const QUARRY_DIG = 10;
+const RAMP_LEN = 60;
+/** The rock face, from inside the floor's edge to beyond it, m: thick enough to hide the grid's own slope, which on a 4 m lattice reaches up to a diagonal (5.7 m) either side of the edge. */
+const FACE_IN = 6, FACE_OUT = 7;
+
+/** How many shortcuts across the fields, and how much shorter than the road they must be. */
+const SHORTCUTS = 8;
+const SHORTCUT_GAIN = 1.8;
+
+/** The railway: its bed's width, its steepest grade, where it ends (just inside the world's edge). */
+const RAIL_BED = 6;
+const RAIL_GRADE = 0.035;
+/** How many lines that pass to choose the best of. */
+const RAIL_CHOICES = 6;
+const RAIL_END = 1185;
+const GAUGE = 1.435;
+/** The train: how fast, how many cars, how long each, how long between runs, s. */
+const TRAIN_SPEED = 33;
+const CARS = 5;
+const CAR_LEN = 23;
+const CAR_GAP = 1;
+const TRAIN_WAIT = 30;
+/** Lights flash this long before the train is on the crossing, s, and the barriers are down for the last DOWN_AT. */
+const LIGHTS_AT = 14;
+const DOWN_AT = 10;
+
+// =====================================================================
+//  The mask
+// =====================================================================
+
+export function makeClearMask(ctx) {
+  const mask = new Uint8Array(GRID_N * GRID_N);
+  ctx.clearMask = mask;
+  ctx.clearAt = (x, z, bits = 0xFF) => {
+    const cx = ((x + WORLD_HALF) / CELL) | 0, cz = ((z + WORLD_HALF) / CELL) | 0;
+    if (cx < 0 || cz < 0 || cx >= GRID_N || cz >= GRID_N) return false;
+    return (mask[cz * GRID_N + cx] & bits) !== 0;
+  };
+}
+
+function markDisc(ctx, x, z, r, bit) {
+  const m = ctx.clearMask;
+  const cx = (x + WORLD_HALF) / CELL, cz = (z + WORLD_HALF) / CELL, cr = r / CELL;
+  const x0 = Math.max(0, Math.floor(cx - cr)), x1 = Math.min(GRID_N - 1, Math.ceil(cx + cr));
+  const z0 = Math.max(0, Math.floor(cz - cr)), z1 = Math.min(GRID_N - 1, Math.ceil(cz + cr));
+  for (let j = z0; j <= z1; j++) {
+    for (let i = x0; i <= x1; i++) {
+      if ((i + 0.5 - cx) ** 2 + (j + 0.5 - cz) ** 2 <= cr * cr) m[j * GRID_N + i] |= bit;
+    }
+  }
+}
+
+function markLine(ctx, pts, r, bit) {
+  for (let k = 0; k < pts.length - 1; k++) {
+    const a = pts[k], b = pts[k + 1];
+    const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / (r * 0.5)));
+    for (let t = 0; t <= n; t++) markDisc(ctx, lerp(a.x, b.x, t / n), lerp(a.z, b.z, t / n), r, bit);
+  }
+}
+
+/**
+ * The nearest road within `r`, or null. RoadGraph.nearestEdge falls back to
+ * scanning every road when its cells are empty, which across open country is
+ * most of the time and far too slow to ask a few hundred thousand times.
+ */
+function roadNear(graph, x, z, r) {
+  const cs = graph.cellSize;
+  let best = null, bd = r;
+  for (let cx = Math.floor((x - r) / cs); cx <= Math.floor((x + r) / cs); cx++) {
+    for (let cz = Math.floor((z - r) / cs); cz <= Math.floor((z + r) / cs); cz++) {
+      const list = graph.cells.get(cx * 73856093 ^ cz * 19349663);
+      if (!list) continue;
+      for (const id of list) {
+        const e = graph.edges[id];
+        // Most roads in a cell run nowhere near the point: their bounds say so
+        // without walking every few-metre segment of them.
+        const bb = e._bb || (e._bb = edgeBounds(e));
+        if (x < bb.x0 - bd || x > bb.x1 + bd || z < bb.z0 - bd || z > bb.z1 + bd) continue;
+        for (const s of e.segs) {
+          const sx = s.b.x - s.a.x, sz = s.b.z - s.a.z;
+          const t = clamp(((x - s.a.x) * sx + (z - s.a.z) * sz) / ((sx * sx + sz * sz) || 1), 0, 1);
+          const d = Math.hypot(x - s.a.x - sx * t, z - s.a.z - sz * t);
+          if (d < bd) { bd = d; best = { edge: e, dist: d, along: s.start + t * s.len }; }
+        }
+      }
+    }
+  }
+  return best;
+}
+
+function edgeBounds(e) {
+  const bb = { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity };
+  for (const s of e.segs) {
+    for (const p of [s.a, s.b]) {
+      bb.x0 = Math.min(bb.x0, p.x); bb.x1 = Math.max(bb.x1, p.x);
+      bb.z0 = Math.min(bb.z0, p.z); bb.z1 = Math.max(bb.z1, p.z);
+    }
+  }
+  return bb;
+}
+
+// =====================================================================
+//  The quarry
+// =====================================================================
+
+/**
+ * Where: cut into the flank of one of the named hills, away from every road,
+ * village and farm, where the hill stands highest over the low side -- the
+ * floor is at the level of the lowest point round it, so it opens onto the
+ * fields there and is a cliff on the uphill side.
+ */
+export function planQuarry(ctx, base, hills) {
+  let best = null;
+  for (const R of QUARRY_SIZES) {
+    if (best) break;
+    for (const h of hills) quarrySites(ctx, base, h, R, (q) => { if (!best || q.score > best.score) best = q; });
+  }
+  if (!best) return null;
+  markDisc(ctx, best.x, best.z, best.r + 12, CLEAR.QUARRY);
+  // And the ramp in, so no hedge or tree stands across it.
+  const ox = Math.cos(best.open), oz = Math.sin(best.open);
+  markLine(ctx, [{ x: best.x + ox * best.r, z: best.z + oz * best.r }, { x: best.x + ox * (best.r + RAMP_LEN + 6), z: best.z + oz * (best.r + RAMP_LEN + 6) }], 10, CLEAR.QUARRY);
+  return best;
+}
+
+function quarrySites(ctx, base, h, R, take) {
+  const { graph } = ctx;
+  {
+    for (let k = 0; k < 24; k++) {
+      const a = (k / 24) * TAU;
+      for (const f of [0.3, 0.45, 0.6, 0.75, 0.9]) {
+        const x = h.x + Math.cos(a) * h.r * f, z = h.z + Math.sin(a) * h.r * f;
+        if (Math.abs(x) > WORLD_HALF - 220 || Math.abs(z) > WORLD_HALF - 220) continue;
+        if (roadNear(graph, x, z, R + 45)) continue;
+        if (ctx.villages.some((v) => Math.hypot(v.x - x, v.z - z) < v.r + R + 60)) continue;
+        if (ctx.farms.some((fm) => Math.hypot(fm.x - x, fm.z - z) < R + 80)) continue;
+        let lo = Infinity, hi = -Infinity, loA = 0, hiA = 0;
+        for (let m = 0; m < 48; m++) {
+          const b = (m / 48) * TAU;
+          const y = base(x + Math.cos(b) * (R + 6), z + Math.sin(b) * (R + 6));
+          if (y < lo) { lo = y; loA = b; }
+          if (y > hi) { hi = y; hiA = b; }
+        }
+        // Dug down below the lowest point round it, as far as QUARRY_DIG and
+        // never under the world: "make sure the quarry really drops down. A
+        // massive cliff." Opened up at its own level, the deepest face was
+        // twenty-five metres and the way off the top eighteen.
+        const floor = Math.max(0.5, lo - QUARRY_DIG);
+        const cliff = hi - floor;
+        if (cliff < QUARRY_MIN_CLIFF) continue;
+        // As deep as it can be, short of the cliff being all there is.
+        const score = -Math.abs(cliff - 40);
+        take({ x, z, r: R, floor, lo, open: loA, high: hiA, cliff, score });
+      }
+    }
+  }
+}
+
+/**
+ * What the height grid needs: the floor held level, the rim held exactly as it
+ * is wherever it stands over the low side, and on the open side a ramp down
+ * to the floor -- QUARRY_DIG over RAMP_LEN, gentle enough to drive out of.
+ */
+export function quarryGround(q, base) {
+  const flatten = [{ x: q.x, z: q.z, r: q.r, fade: 0.01, h: q.floor }];
+  const ox = Math.cos(q.open), oz = Math.sin(q.open);
+  const ex = q.x + ox * (q.r + RAMP_LEN), ez = q.z + oz * (q.r + RAMP_LEN);
+  const top = base(ex, ez);
+  for (let d = q.r - 6; d <= q.r + RAMP_LEN; d += 4) {
+    const t = clamp((d - (q.r - 6)) / (RAMP_LEN + 6), 0, 1);
+    flatten.push({ x: q.x + ox * d, z: q.z + oz * d, r: 8, fade: 10, h: lerp(q.floor, top, t) });
+  }
+  return { flatten, pin: { x: q.x, z: q.z, r0: q.r + 0.01, r1: q.r + 9, above: q.lo + 2.5 } };
+}
+
+/** The square the quarry's fine ground mesh covers, on the coarse mesh's 8 m lattice. */
+export function quarryPatch(q) {
+  const x0 = Math.floor((q.x - q.r - 26) / 8) * 8, z0 = Math.floor((q.z - q.r - 26) / 8) * 8;
+  const size = Math.ceil((q.r * 2 + 52) / 8) * 8 + 8;
+  return { x0, z0, size };
+}
+
+/** Eight corners -> a closed prism, flat-shaded, into `b`. Corners: bottom 0-3, top 4-7, same order. */
+function addPrism(b, c, colour) {
+  const tri = [
+    [0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7],
+    [0, 1, 5], [0, 5, 4], [1, 2, 6], [1, 6, 5],
+    [2, 3, 7], [2, 7, 6], [3, 0, 4], [3, 4, 7],
+  ];
+  const pos = [];
+  for (const t of tri) for (const k of t) pos.push(c[k][0], c[k][1], c[k][2]);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.computeVertexNormals();
+  b.addGeometry(g, new THREE.Matrix4(), colour);
+  g.dispose();
+}
+
+/** The same eight corners as a fixed convex collider. */
+function addHull(world, c, group = GROUP.BUILDING) {
+  const pts = new Float32Array(c.length * 3);
+  c.forEach((p, k) => { pts[k * 3] = p[0]; pts[k * 3 + 1] = p[1]; pts[k * 3 + 2] = p[2]; });
+  const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
+  const desc = RAPIER.ColliderDesc.convexHull(pts);
+  if (!desc) return null;
+  world.createCollider(desc.setFriction(0.9).setCollisionGroups(groups(group, 0xFFFF)), body);
+  return body;
+}
+
+/**
+ * A jump: a kicker curving up from the ground to `height` over `len`, `width`
+ * wide, its lip at (x, z) and its run-up behind it along -heading. Built of
+ * convex slices so the face is curved -- flat at the foot, so a car rolls onto
+ * it rather than into it, and steep at the lip. Each slice stands on the
+ * ground under it, so it works on a slope.
+ */
+function addKicker(ctx, b, x, z, heading, len, width, height, colour) {
+  const at = ctx.at;
+  const fx = Math.sin(heading), fz = Math.cos(heading);      // toward the lip
+  const sx = fz, sz = -fx;                                     // across
+  const N = 6;
+  const P = (s, side) => ({ x: x - fx * (len - s) + sx * side * width * 0.5, z: z - fz * (len - s) + sz * side * width * 0.5 });
+  const y = (s) => height * Math.pow(s / len, 1.7);
+  for (let k = 0; k < N; k++) {
+    const s0 = (k / N) * len, s1 = ((k + 1) / N) * len;
+    const c = [];
+    const corners = [P(s0, -1), P(s1, -1), P(s1, 1), P(s0, 1)];
+    const ss = [s0, s1, s1, s0];
+    for (let m = 0; m < 4; m++) c.push([corners[m].x, at(corners[m].x, corners[m].z) - 0.6, corners[m].z]);
+    for (let m = 0; m < 4; m++) c.push([corners[m].x, at(corners[m].x, corners[m].z) + y(ss[m]) - (k === 0 && m % 3 === 0 ? 0.05 : 0), corners[m].z]);
+    addHull(ctx.sim.world, c, GROUP.HILL | GROUP.RAMP);
+    addPrism(b, c, colour);
+  }
+}
+
+/** A table: up, a flat top, down. One convex piece. */
+function addTable(ctx, b, x, z, heading, up, top, down, width, height, colour) {
+  const at = ctx.at;
+  const fx = Math.sin(heading), fz = Math.cos(heading), sx = fz, sz = -fx;
+  const ground = at(x, z);
+  const along = [-(top * 0.5 + up), -top * 0.5, top * 0.5, top * 0.5 + down];
+  const hts = [0, height, height, 0];
+  // Two hulls -- the up ramp and flat top, then the down ramp -- each convex.
+  for (const [i0, i1, i2] of [[0, 1, 2], [1, 2, 3]]) {
+    const c = [];
+    const bottom = [], tops = [];
+    for (const side of [-1, 1]) {
+      for (const i of [i0, i1, i2]) {
+        const px = x + fx * along[i] + sx * side * width * 0.5, pz = z + fz * along[i] + sz * side * width * 0.5;
+        bottom.push([px, ground - 0.6, pz]);
+        tops.push([px, ground + hts[i] - (hts[i] === 0 ? 0.05 : 0), pz]);
+      }
+    }
+    for (const p of bottom) c.push(p);
+    for (const p of tops) c.push(p);
+    addHull(ctx.sim.world, c, GROUP.HILL | GROUP.RAMP);
+    // Drawn as two prisms per hull: the slope and the flat.
+    for (const [a, bb] of [[0, 1], [1, 2]]) {
+      addPrism(b, [bottom[a], bottom[bb], bottom[bb + 3], bottom[a + 3], tops[a], tops[bb], tops[bb + 3], tops[a + 3]], colour);
+    }
+  }
+}
+
+/**
+ * The quarry, on the finished ground: the rock face round the uphill side of
+ * the floor -- solid, the grid's own cliff hidden behind it -- the jumps, and
+ * the bales to aim at. Returns the meshes.
+ */
+const STEPS = 64;
+
+/** The rim's height all the way round, STEPS + 1 of them: level with the ground behind the face, so a car comes onto it without a step. */
+function quarryRims(ctx, q) {
+  const rims = [];
+  for (let m = 0; m <= STEPS; m++) {
+    const a = (m / STEPS) * TAU;
+    rims.push(ctx.at(q.x + Math.cos(a) * (q.r + FACE_OUT + 0.3), q.z + Math.sin(a) * (q.r + FACE_OUT + 0.3)));
+  }
+  return rims;
+}
+
+/**
+ * On the finished ground, before the hedges and trees: the way off the top,
+ * kept clear of them, and the bales on the floor. `q.edge` is where.
+ *
+ * Where the drop is deep and the ground up to the edge is smooth. At the
+ * deepest point the way up came over the top of the hill, and a car doing
+ * 100 km/h left the ground on the crest and was on its roof before it reached
+ * the edge. A kicker at the edge was tried too: the ground climbs to the rim,
+ * and a car on the grass at 40-60 km/h stalled on the kicker and rolled back
+ * down it. Driving off the edge is the jump.
+ */
+export function planQuarryEdge(ctx, q) {
+  const rims = quarryRims(ctx, q);
+  const lipR = q.r + FACE_OUT + 0.5;
+  let pick = q.high, pickScore = -Infinity, drop = 0;
+  for (let m = 0; m < STEPS; m++) {
+    const a = (m / STEPS) * TAU;
+    const d = rims[m] - q.floor;
+    if (d < 12) continue;
+    let rough = 0, rise = 0, prev = rims[m];
+    for (let r = lipR + 4; r <= lipR + 80; r += 4) {
+      const h = ctx.at(q.x + Math.cos(a) * r, q.z + Math.sin(a) * r);
+      rough = Math.max(rough, Math.abs(h - prev) / 4);
+      rise = Math.max(rise, h - rims[m]);
+      prev = h;
+    }
+    const score = d - 60 * Math.max(0, rough - 0.1) - 2 * Math.max(0, rise - 2);
+    if (score > pickScore) { pickScore = score; pick = a; drop = d; }
+  }
+  const hx = Math.cos(pick), hz = Math.sin(pick);
+  markLine(ctx, [{ x: q.x + hx * lipR, z: q.z + hz * lipR }, { x: q.x + hx * (lipR + 90), z: q.z + hz * (lipR + 90) }], 12, CLEAR.QUARRY);
+  q.edge = { x: q.x + hx * lipR, z: q.z + hz * lipR, heading: Math.atan2(-hx, -hz), drop };
+  // Bales lined up past the floor kicker's landing, to be scattered.
+  const ox = Math.cos(q.open), oz = Math.sin(q.open), tx = -oz, tz = ox;
+  const bales = [];
+  for (let k = 0; k < 6; k++) {
+    const a = 22 + (k % 3) * 2.2, c = 30 + Math.floor(k / 3) * 2.2;
+    bales.push({ x: q.x + ox * a + tx * c, z: q.z + oz * a + tz * c, rot: 0 });
+  }
+  return bales;
+}
+
+export function buildQuarry(ctx, q) {
+  const rng = ctx.xrng;
+  const W = ctx.sim.world;
+  const b = new MeshBuilder();
+  const rims = quarryRims(ctx, q);
+  // The face, in slices round the circle. Each slice's top runs from one
+  // angle's rim height to the next, so the top of the cliff is one surface you
+  // can drive along rather than a row of steps.
+  for (let m = 0; m < STEPS; m++) {
+    const a0 = (m / STEPS) * TAU, a1 = ((m + 1) / STEPS) * TAU;
+    const h0 = rims[m], h1 = rims[m + 1];
+    // Only where it stands over the lowest ground round it: the open side is
+    // the ramp in, and a wall there would shut it.
+    if (Math.max(h0, h1) - q.lo < 2.5) continue;
+    const r0 = q.r - FACE_IN, r1 = q.r + FACE_OUT;
+    const P = (a, r) => [q.x + Math.cos(a) * r, q.z + Math.sin(a) * r];
+    const [ax, az] = P(a0, r0), [bx, bz] = P(a1, r0), [cx, cz] = P(a1, r1), [dx, dz] = P(a0, r1);
+    const lo = q.floor - 1.5;
+    const c = [
+      [ax, lo, az], [bx, lo, bz], [cx, lo, cz], [dx, lo, dz],
+      [ax, h0, az], [bx, h1, bz], [cx, h1, cz], [dx, h0, dz],
+    ];
+    addHull(W, c);
+    const col = new THREE.Color().setHSL(rand(rng, 0.07, 0.10), rand(rng, 0.08, 0.16), rand(rng, 0.46, 0.58));
+    addPrism(b, c, col);
+    // Bands of strata across the face, a little proud of it.
+    for (let lvl = q.floor + 4; lvl < Math.min(h0, h1) - 1; lvl += rand(rng, 3.5, 6)) {
+      const r = r0 - 0.08;
+      const [ex, ez] = P(a0, r), [fx2, fz2] = P(a1, r);
+      b.addWall([{ x: ex, z: ez }, { x: fx2, z: fz2 }], lvl, lvl + 0.5, new THREE.Color().setHSL(0.08, 0.1, 0.38));
+    }
+  }
+
+  // The jumps. "There don't have to be loads and loads of jumps."
+  const ox = Math.cos(q.open), oz = Math.sin(q.open);          // toward the open side
+  const tx = -oz, tz = ox;                                      // across the floor
+  const ramp = 0x8c8070;
+  // On the floor: a kicker across it, and a table to clear.
+  const kx = q.x + ox * 22 - tx * 12, kz = q.z + oz * 22 - tz * 12;
+  addKicker(ctx, b, kx, kz, Math.atan2(tx, tz), 10, 5, 2.2, ramp);
+  addTable(ctx, b, q.x - ox * 22, q.z - oz * 22, Math.atan2(-tx, -tz), 9, 7, 9, 6, 1.8, ramp);
+
+  const mesh = new THREE.Mesh(b.build(), vertexColorMaterial());
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.name = 'quarry';
+  return [mesh];
+}
+
+/** The quarry floor's colour, or null outside it. */
+export function quarryColour(q, x, z, y, c) {
+  if (!q) return false;
+  const d = Math.hypot(x - q.x, z - q.z);
+  if (d > q.r + FACE_OUT + 2) return false;
+  if (d <= q.r) {
+    c.setHSL(0.09, 0.12, 0.52);
+    const n = Math.sin(x * 0.7 + z * 0.3) * Math.cos(z * 0.5 - x * 0.2);
+    c.offsetHSL(0, 0, n * 0.03);
+    return true;
+  }
+  if (y > q.floor + 2.5) { c.setHSL(0.08, 0.12, 0.48); return true; }
+  return false;
+}
+
+// =====================================================================
+//  Shortcuts across the fields
+// =====================================================================
+
+/**
+ * Tracks across the fields between two roads that are a long way apart by
+ * road: a gate at each end to smash, the hedges open along it, and a muddy
+ * pair of ruts to show the way. Not roads -- no police unit plans along one --
+ * so taking one is a choice the police have to make after you.
+ */
+export function planShortcuts(ctx, fields, q) {
+  const { graph } = ctx;
+  const rng = ctx.xrng;
+  const ok = graph.edges.filter((e) => !e.cut && !e.turningHead && !e.village && !e.farm && e.length > 90);
+  const out = [];
+  for (let t = 0; t < 8000 && out.length < SHORTCUTS; t++) {
+    const e1 = ok[randInt(rng, 0, ok.length - 1)], e2 = ok[randInt(rng, 0, ok.length - 1)];
+    if (e1 === e2) continue;
+    const s1 = rand(rng, 30, e1.length - 30), s2 = rand(rng, 30, e2.length - 30);
+    const a = pointOn(e1, s1), b = pointOn(e2, s2);
+    if (!a || !b) continue;
+    const L = Math.hypot(b.x - a.x, b.z - a.z);
+    if (L < 100 || L > 380) continue;
+    const ux = (b.x - a.x) / L, uz = (b.z - a.z) / L;
+    // Leaving each road squarely, through a gate in the hedge.
+    if (Math.abs(ux * a.tx + uz * a.tz) > 0.7 || Math.abs(ux * b.tx + uz * b.tz) > 0.7) continue;
+    const mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
+    if (out.some((o) => Math.hypot(o.mx - mx, o.mz - mz) < 170)) continue;
+    let bad = false;
+    let prev = ctx.at(a.x, a.z);
+    for (let s = 4; s < L && !bad; s += 4) {
+      const x = a.x + ux * s, z = a.z + uz * s;
+      const y = ctx.at(x, z);
+      if (Math.abs(y - prev) > 4 * 0.4) bad = true;
+      prev = y;
+      if (s < 10 || s > L - 10) continue;
+      const n = roadNear(graph, x, z, 12);
+      if (n && n.dist < n.edge.width * 0.5 + 5) bad = true;
+      const f = fields.nearest(x, z).s;
+      if (f && f.wood) bad = true;
+      if (inVillage(ctx, x, z, 30) || ctx.farms.some((fm) => Math.hypot(fm.x - x, fm.z - z) < 55)) bad = true;
+      if (ctx.clearAt(x, z, CLEAR.RAIL | CLEAR.QUARRY)) bad = true;
+      if (q && Math.hypot(q.x - x, q.z - z) < q.r + 30) bad = true;
+    }
+    if (bad) continue;
+    // Worth it only where the road round is a long way round.
+    let route = Infinity;
+    for (const [na, da] of [[e1.a, s1], [e1.b, e1.length - s1]]) {
+      for (const [nb, db] of [[e2.a, s2], [e2.b, e2.length - s2]]) {
+        const r = roadDistance(graph, graph.nodes[na], graph.nodes[nb], L * 6);
+        route = Math.min(route, da + r + db);
+      }
+    }
+    if (route < L * SHORTCUT_GAIN) continue;
+    out.push({ a, b, e1, e2, L, ux, uz, mx, mz, route });
+  }
+  for (const o of out) markLine(ctx, [o.a, o.b], 3.5, CLEAR.SHORTCUT);
+  return out;
+}
+
+/** A five-bar gate in local space: 4.2 m long along x, 1.2 m tall, centred. */
+function gateGeometry() {
+  const b = new MeshBuilder();
+  const wood = 0x9a8466;
+  for (let k = 0; k < 5; k++) b.addBox(4.2, 0.1, 0.07, 0, -0.5 + k * 0.25, 0, wood);
+  for (const x of [-2.05, 0, 2.05]) b.addBox(0.12, 1.2, 0.09, x, 0, 0, wood);
+  // The brace.
+  const g = new THREE.BoxGeometry(2.3, 0.09, 0.07);
+  b.addGeometry(g, new THREE.Matrix4().makeRotationZ(Math.atan2(1.0, 2.0)).setPosition(-1.0, 0, 0), wood);
+  g.dispose();
+  return b.build();
+}
+
+/**
+ * The shortcuts, on the finished ground: the ruts, the gateposts and the
+ * gates. Each gate is a loose body like a bale (GROUP.DEBRIS, asleep until
+ * hit), so it goes flying and costs a car nothing.
+ */
+export function buildShortcuts(ctx, list) {
+  const W = ctx.sim.world;
+  const b = new MeshBuilder();
+  const posts = new MeshBuilder();
+  const spots = [];
+  const drawn = ctx.drawnAt || ctx.at;
+  for (const o of list) {
+    const ends = [[o.a, o.e1, 1], [o.b, o.e2, -1]];
+    // The track, from hedge to hedge.
+    const off0 = o.e1.width * 0.5 + 0.5, off1 = o.L - (o.e2.width * 0.5 + 0.5);
+    const pts = [];
+    for (let s = off0; s <= off1; s += 3) pts.push({ x: o.a.x + o.ux * s, z: o.a.z + o.uz * s });
+    pts.push({ x: o.a.x + o.ux * off1, z: o.a.z + o.uz * off1 });
+    b.addRibbon(pts, 3.4, 0, 0x5b4632);
+    b.addRibbon(pts, 0.55, 0.01, 0x3e2f21, 0.85);
+    b.addRibbon(pts, 0.55, 0.01, 0x3e2f21, -0.85);
+    for (const [p, e, dir] of ends) {
+      const off = e.width * 0.5 + 1.8;
+      const gx = p.x + o.ux * dir * off, gz = p.z + o.uz * dir * off;
+      const rot = Math.atan2(o.ux, o.uz);
+      spots.push({ x: gx, z: gz, rot });
+      // The posts either side, solid.
+      for (const side of [-1, 1]) {
+        const px = gx + Math.cos(rot) * side * 2.3, pz = gz - Math.sin(rot) * side * 2.3;
+        posts.addBox(0.22, 1.6, 0.22, px, 0.8, pz, 0x6e5a42);
+        // Street furniture to the AI: a post at the roadside that the sweeps
+        // saw would have a patrol car steering round every gateway.
+        addStaticBox(W, px, ctx.at(px, pz) + 0.8, pz, 0.11, 0.8, 0.11, GROUP.STREET);
+      }
+    }
+  }
+  const ruts = new THREE.Mesh(b.build(), vertexColorMaterial({ polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }));
+  // On the ground as drawn, not the ground the wheels feel: the drawn mesh is
+  // coarser, and ruts lifted by the fine grid float over its hollows.
+  const p = ruts.geometry.attributes.position;
+  for (let k = 0; k < p.count; k++) p.setY(k, p.getY(k) + drawn(p.getX(k), p.getZ(k)) + 0.06);
+  p.needsUpdate = true;
+  ruts.geometry.computeBoundingSphere();
+  ruts.receiveShadow = true;
+  ruts.name = 'shortcuts';
+  const postMesh = new THREE.Mesh(posts.build(), vertexColorMaterial());
+  const pp = postMesh.geometry.attributes.position;
+  for (let k = 0; k < pp.count; k++) pp.setY(k, pp.getY(k) + ctx.at(pp.getX(k), pp.getZ(k)));
+  pp.needsUpdate = true;
+  postMesh.geometry.computeBoundingSphere();
+  postMesh.castShadow = true;
+  postMesh.name = 'gateposts';
+
+  // The gates.
+  const geo = gateGeometry();
+  const mesh = new THREE.InstancedMesh(geo, vertexColorMaterial(), Math.max(1, spots.length));
+  mesh.count = spots.length;
+  mesh.castShadow = true;
+  mesh.name = 'gates';
+  mesh.frustumCulled = false;
+  const bodies = [];
+  for (const { x, z, rot } of spots) {
+    const body = W.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic()
+        .setTranslation(x, ctx.at(x, z) + 0.65, z)
+        .setRotation({ x: 0, y: Math.sin(rot / 2), z: 0, w: Math.cos(rot / 2) })
+        .setLinearDamping(0.3)
+        .setAngularDamping(0.6)
+        .setCcdEnabled(true),
+    );
+    W.createCollider(
+      RAPIER.ColliderDesc.cuboid(2.1, 0.6, 0.06)
+        .setMass(45)
+        .setFriction(0.7)
+        .setRestitution(0.15)
+        .setCollisionGroups(groups(GROUP.DEBRIS, GROUP.TERRAIN | GROUP.HILL | GROUP.VEHICLE | GROUP.DEBRIS)),
+      body,
+    );
+    body.sleep();
+    bodies.push(body);
+  }
+  const m = new THREE.Matrix4(), qq = new THREE.Quaternion(), pv = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
+  const update = () => {
+    for (let i = 0; i < bodies.length; i++) {
+      const t = bodies[i].translation(), r = bodies[i].rotation();
+      const h = ctx.at(t.x, t.z);
+      pv.set(t.x, t.y + (h - Math.max(0, h - HILL_SINK)) * (bodies[i].isSleeping() && t.y > h ? 0 : 1), t.z);
+      qq.set(r.x, r.y, r.z, r.w);
+      m.compose(pv, qq, one);
+      mesh.setMatrixAt(i, m);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  };
+  update();
+  return { meshes: [ruts, postMesh, mesh], update };
+}
+
+// =====================================================================
+//  The railway
+// =====================================================================
+
+/**
+ * The line: right across the map from one edge to the other, a long gentle
+ * curve, through the low ground as far as it can, over a few roads at level
+ * crossings -- never at a junction, never too slantwise, never running along
+ * beside a road -- and well clear of the villages, farms and the quarry.
+ */
+export function planRailway(ctx, base, q) {
+  const rng = ctx.xrng;
+  let best = null, found = 0;
+  // The best of the first RAIL_CHOICES lines that pass, out of up to 1500:
+  // judging every candidate took three seconds of the map's build.
+  for (let t = 0; t < 1500 && found < RAIL_CHOICES; t++) {
+    const a = rng() * Math.PI, ux = Math.cos(a), uz = Math.sin(a), nx = -uz, nz = ux;
+    const off = rand(rng, -520, 520);
+    const ctrl = [];
+    for (let k = 0; k <= 6; k++) {
+      const s = -1800 + (3600 * k) / 6;
+      const w = k === 0 || k === 6 ? 0 : rand(rng, -110, 110);
+      ctrl.push({ x: ux * s + nx * (off + w), z: uz * s + nz * (off + w) });
+    }
+    const all = spline(ctrl, 6);
+    const inside = (p) => Math.abs(p.x) < RAIL_END && Math.abs(p.z) < RAIL_END;
+    const i0 = all.findIndex(inside);
+    if (i0 < 0) continue;
+    let i1 = i0;
+    while (i1 + 1 < all.length && inside(all[i1 + 1])) i1++;
+    if (all.slice(i1 + 1).some(inside)) continue;
+    const pts = all.slice(Math.max(0, i0 - 1), Math.min(all.length, i1 + 2));
+    const r = judgeRail(ctx, base, q, pts);
+    if (r) found++;
+    if (r && (!best || r.score < best.score)) best = { ...r, points: pts };
+  }
+  if (!best) return null;
+  markLine(ctx, best.points, RAIL_BED * 0.5 + 5, CLEAR.RAIL);
+  return best;
+}
+
+function judgeRail(ctx, base, q, pts) {
+  const { graph } = ctx;
+  const sAt = [0];
+  for (let i = 1; i < pts.length; i++) sAt.push(sAt[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z));
+  let sum = 0, n = 0;
+  const near = new Map();       // edge id -> rail point indices near it
+  const close = [];
+  // The cheap refusals for the whole line before the dear road lookups.
+  for (const p of pts) {
+    if (Math.abs(p.x) > WORLD_HALF || Math.abs(p.z) > WORLD_HALF) continue;
+    if (ctx.villages.some((v) => Math.hypot(v.x - p.x, v.z - p.z) < v.r + 45)) return null;
+    if (ctx.farms.some((f) => Math.hypot(f.x - p.x, f.z - p.z) < 75)) return null;
+    if (q && Math.hypot(q.x - p.x, q.z - p.z) < q.r + 60) return null;
+  }
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    if (Math.abs(p.x) > WORLD_HALF || Math.abs(p.z) > WORLD_HALF) continue;
+    sum += base(p.x, p.z); n++;
+    const r = roadNear(graph, p.x, p.z, 22);
+    if (!r) continue;
+    if (!near.has(r.edge.id)) near.set(r.edge.id, []);
+    near.get(r.edge.id).push(i);
+    if (r.dist < r.edge.width * 0.5 + 10) close.push({ i, edge: r.edge.id });
+  }
+  const cross = [];
+  for (const [id, idxs] of near) {
+    const e = graph.edges[id];
+    const i0 = Math.max(0, Math.min(...idxs) - 2), i1 = Math.min(pts.length - 2, Math.max(...idxs) + 2);
+    for (let i = i0; i <= i1; i++) {
+      const p = pts[i], pq = pts[i + 1];
+      for (const sg of e.segs) {
+        if (!segX(p, pq, sg.a, sg.b)) continue;
+        // Where, along both.
+        const rx = pq.x - p.x, rz = pq.z - p.z, sx = sg.b.x - sg.a.x, sz = sg.b.z - sg.a.z;
+        const den = rx * sz - rz * sx;
+        const tt = ((sg.a.x - p.x) * sz - (sg.a.z - p.z) * sx) / den;
+        const uu = ((sg.a.x - p.x) * rz - (sg.a.z - p.z) * rx) / den;
+        const x = p.x + rx * tt, z = p.z + rz * tt;
+        if (e.village || e.farm || e.turningHead) return null;
+        const rl = Math.hypot(rx, rz), sl = Math.hypot(sx, sz);
+        const cos = (rx * sx + rz * sz) / (rl * sl);
+        if (Math.abs(cos) > 0.77) return null;
+        const na = graph.nodes[e.a], nb = graph.nodes[e.b];
+        if (Math.hypot(na.x - x, na.z - z) < 40 || Math.hypot(nb.x - x, nb.z - z) < 40) return null;
+        cross.push({
+          s: sAt[i] + rl * tt, edge: e.id, along: sg.start + uu * sg.len, x, z,
+          rdx: sx / sl, rdz: sz / sl, qx: rx / rl, qz: rz / rl, width: e.width, sin: Math.sqrt(1 - cos * cos),
+        });
+      }
+    }
+  }
+  // Near a road only where it crosses it.
+  for (const c of close) {
+    if (!cross.some((x) => x.edge === c.edge && Math.abs(x.s - sAt[c.i]) < 30)) return null;
+  }
+  if (cross.length < 2 || cross.length > 8 || !n) return null;
+  cross.sort((a, b) => a.s - b.s);
+  for (let k = 1; k < cross.length; k++) if (cross[k].s - cross[k - 1].s < 60) return null;
+  return { score: sum / n + Math.abs(cross.length - 5) * 6, cross, sAt };
+}
+
+/** What the height grid needs: the line, its bed and its crossings. */
+export function railGround(rail) {
+  return { points: rail.points, width: RAIL_BED, grade: RAIL_GRADE, cross: rail.cross };
+}
+
+/** The track, drawn: ballast, sleepers and rails, and at the crossings the rails let into the road. */
+export function buildRailTrack(ctx, rail) {
+  const b = new MeshBuilder();
+  const cross = rail.cross;
+  // Every 3 m along the line, with its distance from the start.
+  const L = rail.sAt[rail.sAt.length - 1];
+  const at = (s) => railPoint(rail, s);
+  const zone = (s) => cross.find((c) => Math.abs(s - c.s) < (c.width * 0.5) / c.sin + 1.5);
+  const verge = new THREE.Color().setHSL(0.25, 0.38, 0.27);
+  let run = [];
+  const flush = () => {
+    if (run.length > 1) {
+      // A strip of verge either side: the ground drawn under the line is let
+      // down below the bed (see nearRoad in countrygen.js), like a road's.
+      b.addRibbon(run, 16, -0.02, verge);
+      b.addRibbon(run, 4.2, 0.32, 0x6f685e);
+      b.addWall(run, -0.5, 0.32, 0x5f5850, 2.1);
+      b.addWall(run, -0.5, 0.32, 0x5f5850, -2.1);
+      for (const side of [-1, 1]) {
+        b.addRibbon(run, 0.09, 0.52, 0xa4a6a8, side * GAUGE * 0.5);
+        b.addWall(run, 0.36, 0.52, 0x5c5450, side * GAUGE * 0.5 + 0.045);
+      }
+    }
+    run = [];
+  };
+  for (let s = 0; s <= L; s += 3) {
+    const p = at(s);
+    const c = zone(s);
+    if (c) {
+      flush();
+      continue;
+    }
+    run.push(p);
+    // A concrete sleeper every metre and a half.
+    for (let k = 0; k < 2; k++) {
+      const q = at(s + k * 1.5);
+      if (zone(s + k * 1.5)) continue;
+      b.addBox(2.5, 0.14, 0.26, q.x, 0.38, q.z, 0x8d8a84, Math.atan2(q.dx, q.dz));
+    }
+  }
+  flush();
+  // The crossings: the rails flush with the road, in a rubber panel.
+  for (const c of cross) {
+    const half = (c.width * 0.5) / c.sin + 1.5;
+    const pts = [];
+    for (let s = c.s - half; s <= c.s + half + 0.01; s += 1) pts.push(at(s));
+    b.addRibbon(pts, 3.0, 0.08, 0x2b2b2b);
+    for (const side of [-1, 1]) b.addRibbon(pts, 0.09, 0.1, 0xa4a6a8, side * GAUGE * 0.5);
+  }
+  const mesh = new THREE.Mesh(b.build(), vertexColorMaterial({ polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6 }));
+  const p = mesh.geometry.attributes.position;
+  for (let k = 0; k < p.count; k++) p.setY(k, p.getY(k) + ctx.at(p.getX(k), p.getZ(k)) + 0.04);
+  p.needsUpdate = true;
+  mesh.geometry.computeBoundingSphere();
+  mesh.receiveShadow = true;
+  mesh.name = 'railway';
+  return mesh;
+}
+
+/** A point `s` along the line with its heading -- carried on straight past either end. */
+function railPoint(rail, s) {
+  const P = rail.points, S = rail.sAt;
+  let i;
+  if (s <= 0) i = 0;
+  else if (s >= S[S.length - 1]) i = P.length - 2;
+  else {
+    let lo = 0, hi = S.length - 1;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (S[mid] <= s) lo = mid; else hi = mid; }
+    i = lo;
+  }
+  const a = P[i], b = P[i + 1];
+  const len = S[i + 1] - S[i] || 1;
+  const t = (s - S[i]) / len;
+  return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t, dx: (b.x - a.x) / len, dz: (b.z - a.z) / len };
+}
+
+/** One carriage, in local space: centred, nose (if any) toward +z, 2.8 x 3.7 x CAR_LEN. */
+function carriageGeometry(cab) {
+  const b = new MeshBuilder();
+  const white = 0xe9ecef, band = 0x1d2733, stripe = 0x1f5aa6, roof = 0xb9bfc5, under = 0x2a2c2f, yellow = 0xf2c200;
+  const L = CAR_LEN, nose = cab ? 4.2 : 0;
+  const bodyL = L - nose, zc = -nose * 0.5;
+  b.addBox(2.8, 3.0, bodyL, 0, 0.35, zc, white);
+  b.addBox(2.84, 0.72, bodyL - 1.2, 0, 0.85, zc, band);
+  b.addBox(2.84, 0.3, bodyL, 0, -0.55, zc, stripe);
+  b.addTaperedBox(2.8, 0.3, bodyL, 0, 2.0, zc, roof, 0.8, 1);
+  // Doors: a darker panel each end of each side.
+  for (const dz of [-bodyL * 0.5 + 2.2, bodyL * 0.5 - 2.2]) b.addBox(2.86, 2.1, 1.3, 0, 0.05, zc + dz, 0xc9ced3);
+  // Underframe and bogies.
+  b.addBox(2.4, 0.5, L - 3, 0, -1.4, 0, under);
+  for (const bz of [-L * 0.5 + 4, L * 0.5 - 4]) b.addBox(2.5, 0.75, 3.2, 0, -1.5, bz, 0x1a1a1a);
+  if (cab) {
+    // The nose: raked back over the cab, yellow below, a wide dark screen.
+    const nz = L * 0.5 - nose * 0.5;
+    b.addTaperedBox(2.8, 3.0, nose, 0, 0.35, nz, white, 0.92, 0.3, 0, -1.3);
+    b.addTaperedBox(2.82, 1.5, nose, 0, -0.45, nz, yellow, 1, 0.8, 0, -0.3);
+    b.addTaperedBox(2.5, 1.0, nose * 0.6, 0, 1.15, nz - 0.6, 0x10161d, 0.9, 0.4, 0, -0.5);
+    for (const x of [-0.9, 0.9]) b.addBox(0.4, 0.18, 0.1, x, -0.65, L * 0.5 - 0.02, 0xfff8e0);
+  }
+  return b.build();
+}
+
+/**
+ * The train and the crossings, run every physics step.
+ *
+ * A train of CARS carriages, each a kinematic box (GROUP.BUILDING: the AI's
+ * sweeps see it as a wall, so a police car brakes for it, and anything in its
+ * way is shoved aside), runs the line one way, waits off the end of the map,
+ * and comes back. Its timetable is a clock that starts from the wall clock, so
+ * every machine in a game sees the same train without being told.
+ *
+ * At each crossing the lights flash LIGHTS_AT seconds before the train is
+ * there and the barriers are down for the last DOWN_AT. The barriers are only
+ * drawn -- a car can go straight through them -- but everything the AI drives
+ * stops for the lights like a red signal (stopDistanceAt).
+ */
+export class Railway {
+  constructor(ctx, rail, scene) {
+    this.rail = rail;
+    this.world = ctx.sim.world;
+    this.len = rail.sAt[rail.sAt.length - 1];
+    this.trainLen = CARS * (CAR_LEN + CAR_GAP);
+    this.runTime = (this.len + this.trainLen + 120) / TRAIN_SPEED;
+    this.period = 2 * (this.runTime + TRAIN_WAIT);
+    this.clock = (Date.now() / 1000) % this.period;
+    this.at = ctx.at;
+    this.cars = [];
+    const mat = vertexColorMaterial();
+    const cabGeo = carriageGeometry(true), midGeo = carriageGeometry(false);
+    for (let i = 0; i < CARS; i++) {
+      const cab = i === 0 || i === CARS - 1;
+      const mesh = new THREE.Mesh(cab ? cabGeo : midGeo, mat);
+      mesh.castShadow = true;
+      mesh.name = 'train';
+      mesh.visible = false;
+      scene.add(mesh);
+      const body = this.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(0, -60, 0));
+      // A cab's box stops short of its nose, which is a wedge: a car on the
+      // line is thrown off to one side. Square-fronted, the train picked a
+      // car up off a crossing and carried it along the line at 120 km/h.
+      const nose = cab ? 3 : 0;
+      this.world.createCollider(
+        RAPIER.ColliderDesc.cuboid(1.4, 1.85, (CAR_LEN - nose) * 0.5).setTranslation(0, 0, -nose * 0.5)
+          .setFriction(0.1).setCollisionGroups(groups(GROUP.BUILDING, 0xFFFF)),
+        body,
+      );
+      if (cab) {
+        const z0 = CAR_LEN * 0.5 - nose, z1 = CAR_LEN * 0.5 + 0.6;
+        const pts = new Float32Array([
+          -1.4, -1.85, z0, 1.4, -1.85, z0, -1.4, 1.85, z0, 1.4, 1.85, z0,
+          0, -1.85, z1, 0, 1.0, z1,
+        ]);
+        this.world.createCollider(
+          RAPIER.ColliderDesc.convexHull(pts).setFriction(0.05).setCollisionGroups(groups(GROUP.BUILDING, 0xFFFF)),
+          body,
+        );
+      }
+      // The last car runs backwards, so its cab faces the other way.
+      this.cars.push({ mesh, body, flip: i === CARS - 1, away: true });
+    }
+    this.crossings = rail.cross.map((c) => this._buildCrossing(c, scene));
+    this.meshes = [];
+  }
+
+  /** The front of the train at time t: { s, dir }, or null while it waits off the map. */
+  frontAt(t) {
+    const P = this.period, p = ((t % P) + P) % P, half = this.runTime + TRAIN_WAIT;
+    const dir = p < half ? 1 : -1;
+    const q = p < half ? p : p - half;
+    if (q > this.runTime) return null;
+    const d = q * TRAIN_SPEED - 60;
+    return dir > 0 ? { s: d, dir } : { s: this.len - d, dir };
+  }
+
+  /** Is any of the train within `pad` of `s` at time t? */
+  _occupies(t, s, pad) {
+    const f = this.frontAt(t);
+    if (!f) return false;
+    const tail = f.s - f.dir * this.trainLen;
+    const lo = Math.min(f.s, tail) - pad, hi = Math.max(f.s, tail) + pad;
+    return s >= lo && s <= hi;
+  }
+
+  _pose(s) {
+    const p = railPoint(this.rail, s);
+    const y = (Math.abs(p.x) <= WORLD_HALF && Math.abs(p.z) <= WORLD_HALF ? this.at(p.x, p.z) : 0) + 0.56;
+    return { x: p.x, z: p.z, y };
+  }
+
+  step(dt) {
+    this.clock += dt;
+    const f = this.frontAt(this.clock);
+    for (let i = 0; i < this.cars.length; i++) {
+      const car = this.cars[i];
+      if (!f) {
+        if (!car.away) { car.body.setTranslation({ x: 0, y: -60, z: 0 }, false); car.away = true; }
+        continue;
+      }
+      const sc = f.s - f.dir * (i * (CAR_LEN + CAR_GAP) + CAR_LEN * 0.5);
+      const a = this._pose(sc + f.dir * 8), b = this._pose(sc - f.dir * 8);
+      const dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
+      const yaw = Math.atan2(dx, dz) + (car.flip ? Math.PI : 0);
+      const pitch = Math.atan2(dy, Math.hypot(dx, dz)) * (car.flip ? -1 : 1);
+      _e.set(-pitch, yaw, 0, 'YXZ');
+      _q.setFromEuler(_e);
+      const pos = { x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5 + 1.88, z: (a.z + b.z) * 0.5 };
+      const rot = { x: _q.x, y: _q.y, z: _q.z, w: _q.w };
+      if (car.away) {
+        car.body.setTranslation(pos, true);
+        car.body.setRotation(rot, true);
+        car.away = false;
+      } else {
+        car.body.setNextKinematicTranslation(pos);
+        car.body.setNextKinematicRotation(rot);
+      }
+    }
+  }
+
+  /** Drawn: the train where its bodies are, and the crossings. */
+  update() {
+    for (const car of this.cars) {
+      car.mesh.visible = !car.away;
+      if (car.away) continue;
+      const t = car.body.translation(), r = car.body.rotation();
+      car.mesh.position.set(t.x, t.y, t.z);
+      car.mesh.quaternion.set(r.x, r.y, r.z, r.w);
+    }
+    const flash = Math.floor(this.clock * 3) % 2;
+    for (const c of this.crossings) {
+      let lit = false, down = false;
+      for (let k = 0; k <= LIGHTS_AT && !lit; k += 0.5) {
+        if (this._occupies(this.clock + k, c.s, 8)) { lit = true; down = k <= DOWN_AT; }
+      }
+      c.lit = lit;
+      c.down = down;
+      // Arms swing over three seconds, up or down.
+      const target = down ? 0 : Math.PI * 0.5;
+      const dt = Math.max(0, this.clock - (c.last || this.clock));
+      c.last = this.clock;
+      const stepA = dt * (Math.PI * 0.5) / 3;
+      c.arm = c.arm === undefined ? target : c.arm + clamp(target - c.arm, -stepA, stepA);
+      for (const side of c.sides) {
+        side.pivot.rotation.z = c.arm;
+        side.lampA.visible = lit && flash === 0;
+        side.lampB.visible = lit && flash === 1;
+      }
+    }
+  }
+
+  _buildCrossing(c, scene) {
+    const at = this.at;
+    const halfRail = 3 / Math.max(0.4, c.sin);
+    const out = { s: c.s, x: c.x, z: c.z, rdx: c.rdx, rdz: c.rdz, width: c.width, halfRail, sides: [] };
+    // Four meshes a barrier -- the post and its board, the arm, two lamps --
+    // each built in one piece: drawn part by part, the six crossings were a
+    // hundred draw calls.
+    const mat = this._crossMat || (this._crossMat = vertexColorMaterial());
+    const lampOn = this._lampMat || (this._lampMat = new THREE.MeshBasicMaterial({ color: 0xff2a1a }));
+    const lampGeo = this._lampGeo || (this._lampGeo = new THREE.SphereGeometry(0.13, 10, 8));
+    const postGeo = this._postGeo || (this._postGeo = new MeshBuilder()
+      .addBox(0.25, 2.6, 0.25, 0, 1.3, 0, 0xdddddd)
+      .addBox(1.1, 0.5, 0.06, 0, 2.25, -0.16, 0x111111)
+      .build());
+    for (const sg of [1, -1]) {
+      // Traffic coming at the line from this side travels -sg along the road,
+      // and the barrier stands on its left, across its own half of the road.
+      const hx = -sg * c.rdx, hz = -sg * c.rdz;
+      const lx = -hz, lz = hx;
+      const bx = c.x + sg * c.rdx * (halfRail + 2.5) + lx * (c.width * 0.5 + 0.8);
+      const bz = c.z + sg * c.rdz * (halfRail + 2.5) + lz * (c.width * 0.5 + 0.8);
+      const g = new THREE.Group();
+      g.position.set(bx, at(bx, bz), bz);
+      // Local +x across the road toward its middle, local +z along the travel.
+      g.rotation.y = Math.atan2(lz, -lx);
+      // The board faces the traffic coming, which is behind: local -z.
+      g.add(new THREE.Mesh(postGeo, mat));
+      const armLen = c.width * 0.5 + 0.4;
+      const ab = new MeshBuilder().addBox(armLen, 0.14, 0.1, armLen * 0.5 + 0.2, 0, 0, 0xf4f4f4);
+      for (let k = 0; k < 3; k++) ab.addBox(0.5, 0.15, 0.11, 0.8 + k * (armLen / 3), 0, 0, 0xc8202a);
+      const pivot = new THREE.Mesh(ab.build(), mat);
+      pivot.position.y = 1.05;
+      g.add(pivot);
+      const lampA = new THREE.Mesh(lampGeo, lampOn);
+      const lampB = new THREE.Mesh(lampGeo, lampOn);
+      lampA.position.set(-0.32, 2.25, -0.22);
+      lampB.position.set(0.32, 2.25, -0.22);
+      lampA.visible = lampB.visible = false;
+      g.add(lampA, lampB);
+      scene.add(g);
+      out.sides.push({ group: g, pivot, lampA, lampB, hx, hz });
+    }
+    return out;
+  }
+
+  /**
+   * How far a car at (x, z) heading (dx, dz) must stop short of a crossing
+   * whose lights are flashing, or Infinity. Matched to the road by heading:
+   * the car is going along the road, toward the line, and not already on it.
+   */
+  stopDistanceAt(x, z, dx, dz, speed) {
+    let best = Infinity;
+    for (const c of this.crossings) {
+      if (!c.lit) continue;
+      const vx = c.x - x, vz = c.z - z;
+      const along = vx * dx + vz * dz;
+      if (along < 0 || along > 160) continue;
+      if (Math.abs(vx * dz - vz * dx) > 10) continue;
+      if (Math.abs(dx * c.rdx + dz * c.rdz) < 0.6) continue;
+      const d = along - c.halfRail - 3.5;
+      if (d < -1) continue;                                     // on it already: clear it
+      if (!c.down && d < speed * speed / 9) continue;           // too late to stop kindly: go
+      best = Math.min(best, Math.max(0, d));
+    }
+    return best;
+  }
+}
+
+const _e = new THREE.Euler();
+const _q = new THREE.Quaternion();

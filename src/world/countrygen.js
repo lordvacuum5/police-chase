@@ -32,7 +32,11 @@ import {
   paintDisc, rasteriseRoads, makeSurfaceAt, makeHeightAt, DRAW_ORDER,
   buildGround, buildRoadMeshes, MeshBuilder, vertexColorMaterial,
 } from './common.js';
-import { baseRelief, buildHeightGrid, addHeightfield, buildTerrainMesh, liftMesh, liftPieces, HILL_SINK } from './terrain.js';
+import { baseRelief, buildHeightGrid, addHeightfield, buildTerrainMesh, liftMesh, liftPieces, HILL_SINK, H_STEP } from './terrain.js';
+import {
+  makeClearMask, planQuarry, quarryGround, quarryPatch, planQuarryEdge, buildQuarry, quarryColour,
+  planShortcuts, buildShortcuts, planRailway, railGround, buildRailTrack, Railway,
+} from './countryextras.js';
 
 const RIDGEWAY_R = 800;
 /**
@@ -102,8 +106,25 @@ export function buildCountry(sim, scene, seed = 4417) {
   const flatten = [];
   for (const v of villages) flatten.push({ x: v.x, z: v.z, r: v.r, fade: 60 });
   for (const f of farms) flatten.push({ x: f.x, z: f.z, r: 36, fade: 30 });
+  // The set pieces the ground has to be shaped for (world/countryextras.js):
+  // the quarry's floor and cliff, and the railway's long section.
+  // With a random stream of their own: drawing on the map's put every field,
+  // wood, hedge gap and crest after them somewhere else, and the vale is
+  // liked the way it is.
+  ctx.xrng = makeRng(seed + 7919);
+  makeClearMask(ctx);
+  const quarry = planQuarry(ctx, base, hills);
+  ctx.quarry = quarry;
+  const rail = planRailway(ctx, base, quarry);
+  ctx.rail = rail;
+  const pins = [];
+  if (quarry) {
+    const qg = quarryGround(quarry, base);
+    flatten.push(...qg.flatten);
+    pins.push(qg.pin);
+  }
   const crests = pickCrests(ctx);
-  const grid = buildHeightGrid(base, { half: WORLD_HALF, graph, flatten, crests });
+  const grid = buildHeightGrid(base, { half: WORLD_HALF, graph, flatten, crests, pins, lines: rail ? [railGround(rail)] : [] });
   ctx.grid = grid;
   ctx.at = grid.at;
   ctx.crests = crests;
@@ -122,17 +143,42 @@ export function buildCountry(sim, scene, seed = 4417) {
   // have their own.
   buildGround(ctx);
   const fields = planFields(ctx, farms);
+  ctx.shortcuts = planShortcuts(ctx, fields, quarry);
   const meshes = [];
   const nearRoad = (x, z) => {
+    // Under the railway's ballast too, which stands on the bed like a road.
+    if (ctx.clearAt(x, z, 1)) return 0.45;
     for (const [ox, oz] of [[0, 0], [5, 0], [-5, 0], [0, 5], [0, -5], [4, 4], [-4, 4], [4, -4], [-4, -4]]) {
       if (ctx.surfAt(x + ox, z + oz) === SURF_ROAD) return 0.45;
     }
     return 0;
   };
-  const terrain = buildTerrainMesh(grid, (x, z, y, c) => groundColour(ctx, fields, x, z, y, c), 8, nearRoad);
+  // The ground as drawn, which is coarser than the ground the wheels feel:
+  // for things laid on it, like the shortcuts' ruts.
+  const DS = 8;
+  const drawnV = (i, j) => { const px = i * DS - WORLD_HALF, pz = j * DS - WORLD_HALF; return grid.at(px, pz) - 0.04 - nearRoad(px, pz); };
+  ctx.drawnAt = (x, z) => {
+    const fi = (x + WORLD_HALF) / DS, fj = (z + WORLD_HALF) / DS;
+    const i = Math.floor(fi), j = Math.floor(fj), tx = fi - i, tz = fj - j;
+    if (tx + tz <= 1) return drawnV(i, j) + (drawnV(i + 1, j) - drawnV(i, j)) * tx + (drawnV(i, j + 1) - drawnV(i, j)) * tz;
+    const e = drawnV(i + 1, j + 1);
+    return e + (drawnV(i, j + 1) - e) * (1 - tx) + (drawnV(i + 1, j) - e) * (1 - tz);
+  };
+  const colour = (x, z, y, c) => groundColour(ctx, fields, x, z, y, c);
+  // The quarry gets ground of its own at the height grid's full resolution:
+  // at 8 m the cliff was a slope drawn out over the floor in front of it.
+  const patch = quarry ? quarryPatch(quarry) : null;
+  const inPatch = patch ? (x0, z0, x1, z1) => x0 >= patch.x0 && z0 >= patch.z0 && x1 <= patch.x0 + patch.size && z1 <= patch.z0 + patch.size : null;
+  const terrain = buildTerrainMesh(grid, colour, 8, nearRoad, 0, null, inPatch);
   // Before the pavements, which write no depth: see buildVillagePavements.
   terrain.renderOrder = DRAW_ORDER.ground;
   meshes.push(terrain);
+  if (patch) {
+    const fine = buildTerrainMesh(grid, colour, H_STEP, nearRoad, 0, patch);
+    fine.renderOrder = DRAW_ORDER.ground;
+    fine.name = 'terrain-quarry';
+    meshes.push(fine);
+  }
   // And the fields on out to the edge of the plate, which is 200 m wider than
   // the hills on every side. Without it that strip was drivable and not
   // drawn: sky under the wheels, and the field hedges running on across it.
@@ -149,11 +195,20 @@ export function buildCountry(sim, scene, seed = 4417) {
   meshes.push(buildVillagePavements(ctx));
   meshes.push(...buildVillageBuildings(ctx));
   meshes.push(...buildFarms(ctx, farms));
+  if (quarry) ctx.extraBales = planQuarryEdge(ctx, quarry);
   meshes.push(buildHedges(ctx, fields));
   meshes.push(buildWoods(ctx, fields));
   meshes.push(buildBalesAndTurbines(ctx, fields, hills));
   meshes.push(ctx.bales.mesh);
+  // After the trees: a tree keeps clear of anything solid already standing
+  // (nearBuilding), and the rock face put up first moved the trees round it,
+  // and every one after them.
+  if (quarry) meshes.push(...buildQuarry(ctx, quarry));
+  const shortcuts = buildShortcuts(ctx, ctx.shortcuts);
+  meshes.push(...shortcuts.meshes);
+  if (rail) meshes.push(buildRailTrack(ctx, rail));
   for (const m of meshes) if (m) scene.add(m);
+  const railway = rail ? new Railway(ctx, rail, scene) : null;
 
   return {
     graph,
@@ -167,8 +222,17 @@ export function buildCountry(sim, scene, seed = 4417) {
     villages,
     farms,
     hills,
-    // Called every frame by the game: the bales follow their bodies.
-    update: ctx.bales.update,
+    quarry,
+    rail,
+    shortcuts: ctx.shortcuts,
+    railway,
+    // Called every frame by the game: the bales and gates follow their
+    // bodies, the train and the crossings are drawn.
+    update: () => { ctx.bales.update(); shortcuts.update(); if (railway) railway.update(); },
+    // Called every physics substep: the train moves.
+    step: railway ? (dt) => railway.step(dt) : null,
+    // The crossings, to everything the AI drives (TrafficLights.stopDistanceAt).
+    stopDistanceAt: railway ? (x, z, dx, dz, v) => railway.stopDistanceAt(x, z, dx, dz, v) : null,
   };
 }
 
@@ -183,7 +247,7 @@ function polar(rng, a, r0, r1) {
 // =====================================================================
 
 /** Catmull-Rom through the control points, every `step` metres. */
-function spline(ctrl, step = 5) {
+export function spline(ctrl, step = 5) {
   const out = [];
   for (let i = 0; i < ctrl.length - 1; i++) {
     const p0 = ctrl[Math.max(0, i - 1)], p1 = ctrl[i], p2 = ctrl[i + 1], p3 = ctrl[Math.min(ctrl.length - 1, i + 2)];
@@ -200,7 +264,7 @@ function spline(ctrl, step = 5) {
 }
 
 /** Do two segments cross (properly, not at a shared end)? */
-function segX(a, b, c, d) {
+export function segX(a, b, c, d) {
   const d1 = (b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x);
   const d2 = (b.x - a.x) * (d.z - a.z) - (b.z - a.z) * (d.x - a.x);
   const d3 = (d.x - c.x) * (a.z - c.z) - (d.z - c.z) * (a.x - c.x);
@@ -474,7 +538,7 @@ function buildLanes(ctx) {
  * Length of the shortest road route from a to b over what has been built so
  * far, giving up past `cap`. Plain Dijkstra on the unfinished graph.
  */
-function roadDistance(graph, a, b, cap) {
+export function roadDistance(graph, a, b, cap) {
   const dist = new Map([[a.id, 0]]);
   const open = [[0, a.id]];
   while (open.length) {
@@ -643,11 +707,12 @@ function planFields(ctx, farms) {
   return { seeds, woods, nearest };
 }
 
-function inVillage(ctx, x, z, pad = 0) {
+export function inVillage(ctx, x, z, pad = 0) {
   return ctx.villages.some((v) => Math.hypot(v.x - x, v.z - z) < v.r + pad);
 }
 
 function groundColour(ctx, fields, x, z, y, c) {
+  if (quarryColour(ctx.quarry, x, z, y, c)) return;
   const { s, edge } = fields.nearest(x, z);
   // A grass verge either side of every road, whatever the field behind it.
   const sf = ctx.surfAt;
@@ -821,7 +886,7 @@ function buildVillageBuildings(ctx) {
 }
 
 /** Position, tangent and normal a distance along an edge. */
-function pointOn(e, s) {
+export function pointOn(e, s) {
   for (const sg of e.segs) {
     if (s <= sg.start + sg.len || sg === e.segs[e.segs.length - 1]) {
       const t = clamp((s - sg.start) / Math.max(1e-6, sg.len), 0, 1);
@@ -935,6 +1000,9 @@ function buildHedges(ctx, fields) {
     const rot = Math.atan2(-dz, dx);
     const h = rand(rng, 1.6, 2.3);
     const c = new THREE.Color().setHSL(rand(rng, 0.25, 0.30), rand(rng, 0.35, 0.5), rand(rng, 0.13, 0.19));
+    // Not across the railway, a shortcut or the quarry -- left out after the
+    // draws, so every hedge after it is the same as before they were there.
+    if (ctx.clearAt(mx, mz) || ctx.clearAt(x0, z0) || ctx.clearAt(x1, z1)) return;
     // Down into the ground a little, so the hedges by a lane -- where the
     // drawn ground is dropped under the tarmac -- do not float.
     b.addTaperedBox(len + 0.6, h + 0.8, 1.5, mx, h * 0.5 - 0.4, mz, c, 1, 0.75, rot);
@@ -1025,12 +1093,15 @@ function addTreeT(ctx, b, pieces, x, z, scale = 1) {
   const h = rand(rng, 8, 15) * scale;
   // Not through a barn roof or a cottage wall, crown and all. See nearBuilding.
   if (nearBuilding(ctx.sim.world, x, z, h * 0.4)) return false;
+  const crown = new THREE.Color().setHSL(rand(rng, 0.22, 0.31), rand(rng, 0.30, 0.48), rand(rng, 0.12, 0.21));
+  const turn = rand(rng, 0, TAU);
+  // Not on the railway, a shortcut or in the quarry: after the draws, as with
+  // the hedges, so the woods are the woods they were.
+  if (ctx.clearAt(x, z)) return false;
   const trunk = 0.55 + h * 0.035;
   const s = b.vertexCount;
   b.addBox(trunk, h * 0.5, trunk, x, h * 0.25, z, 0x463726);
-  b.addTaperedBox(h * 0.8, h * 0.72, h * 0.8, x, h * 0.66, z,
-    new THREE.Color().setHSL(rand(rng, 0.22, 0.31), rand(rng, 0.30, 0.48), rand(rng, 0.12, 0.21)),
-    0.22, 0.22, rand(rng, 0, TAU));
+  b.addTaperedBox(h * 0.8, h * 0.72, h * 0.8, x, h * 0.66, z, crown, 0.22, 0.22, turn);
   pieces.push([s, b.vertexCount, x, z]);
   addStaticBox(ctx.sim.world, x, ctx.at(x, z) + 2.6, z, 0.65, 2.6, 0.65, GROUP.PROP);
   // From the highest ground under the crown, not the foot of the trunk: on a
@@ -1169,17 +1240,19 @@ function buildBalesAndTurbines(ctx, fields, hills) {
       const row = k < BALE_ROW ? -1 : 1, i = (k % BALE_ROW) - (BALE_ROW - 1) / 2;
       const ox = Math.cos(rot) * i * 8 - Math.sin(rot) * row * 6, oz = Math.sin(rot) * i * 8 + Math.cos(rot) * row * 6;
       const x = s.x + ox + rand(rng, -1, 1), z = s.z + oz + rand(rng, -1, 1);
-      if (graph.overlapsRoad(x, z, 2, 2, 0, 3) || inVillage(ctx, x, z, 0) || nearBuilding(ctx.sim.world, x, z, 1.2)) continue;
+      if (graph.overlapsRoad(x, z, 2, 2, 0, 3) || inVillage(ctx, x, z, 0) || nearBuilding(ctx.sim.world, x, z, 1.2) || ctx.clearAt(x, z)) continue;
       bales.push({ x, z, rot });
     }
   }
-  ctx.bales = buildBales(ctx, bales);
+  ctx.bales = buildBales(ctx, bales.concat(ctx.extraBales || []));
   // Wind turbines along the tops of the big hills.
   for (const h of hills) {
     for (let k = 0; k < 3; k++) {
       const a = rng() * TAU, r = rand(rng, 0, h.r * 0.35);
       const x = h.x + Math.cos(a) * r, z = h.z + Math.sin(a) * r;
       if (graph.overlapsRoad(x, z, 6, 6, 0, 8)) continue;
+      // Off the quarry and the railway, its blades' draws taken all the same.
+      if (ctx.clearAt(x, z)) { rng(); rng(); rng(); continue; }
       const p0 = b.vertexCount;
       b.addTaperedBox(2.2, 48, 2.2, x, 24, z, 0xdfe3e6, 0.55, 0.55);
       b.addBox(2.4, 2.4, 5, x, 49, z, 0xdfe3e6, a);

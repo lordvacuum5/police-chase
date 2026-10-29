@@ -399,6 +399,22 @@ counts, not `vehicles.length`. A stopped AI car must hold on the handbrake:
 brake at a standstill is reverse.
 **Rig trap:** spawn anything on a hilly map at `groundAt + ...`, never a fixed
 y -- response.js put its cars inside the hill and reported the AI as stuck.
+**Haldon Vale's set pieces** (`world/countryextras.js`, all asked for): a
+quarry dug into a hillside with a 35 m cliff (the user: "a massive cliff"), a
+floor kicker and a table; a railway edge to edge with level crossings and a
+modern five-car train; eight field shortcuts with smashable gates. Three
+things not to undo: (1) they use their **own random stream** (`ctx.xrng`) and
+skipped hedges/trees still take their draws -- on the map's stream they
+re-rolled every field, wood and crest after them, and the vale is liked as it
+is; (2) a wheel hit on a solid object on a hilly map is taken **as found**, not
+lifted by the hill (`standing` in `Vehicle._suspensionPass`) -- lifted, ramps
+read 8 m high; (3) jumps are `GROUP.HILL | GROUP.RAMP` so the body of an
+upright car does not catch them. Crossings stop AI drivers through
+`TrafficLights.stopDistanceAt`. The train's timetable follows the wall clock
+(same train on every machine), so set `railway.clock` in a rig for repeatable
+runs. `tests/quarry.js`, `tests/railway.js`. A player's helicopter **landed or
+no higher than the car** sees like a patrol crew (100 m, any direction, line of
+sight) -- it used to see nothing below 2 m of height difference.
 
 The flyable helicopter tilts to a full **180 degrees** in pitch and roll, which
 was asked for twice; the things that stop it being twitchy are `CYCLIC_RATE`

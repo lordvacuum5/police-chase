@@ -6875,6 +6875,127 @@ that a given bearing points up the screen, and north is simply `PI` where the
 car's heading used to go — so the markers, the police tails, the sight ring and
 the `N` itself all follow a north-up map without a single special case.
 
+### Haldon Vale: the quarry, the railway and the shortcuts
+
+*"I'd like to do some cool on the new map ... Make it more interesting."* Of
+the ideas put to them they picked three: a railway with a level crossing, farm
+shortcuts with gates to smash, and a quarry -- *"just a big drop off somewhere
+where you can like have a massive fall down quarry. There don't have to be
+loads and loads of jumps there, but yeah, add some jumps."* Then, before it
+went up: *"Make sure the quarry really drops down. A massive cliff."* And of
+the train: *"we want a modern train."* All in `world/countryextras.js`.
+
+**The quarry** is cut into the flank of a hill, 75 m across the floor, the
+floor dug 10 m under the lowest ground round it (never under the world), with
+a ramp in on the open side. The rim is pinned in the height grid
+(`buildHeightGrid` `pins`) so it stays a cliff instead of being graded into a
+bank, and a rock face of convex slices stands in front of the grid's own slope,
+which on a 4 m lattice reaches a cell's diagonal either side of the edge
+(that showed as pale spikes at the foot of the face until the rock was made 13
+m thick). The quarry has its own 4 m terrain mesh; at 8 m the cliff was drawn as
+a slope out over the floor. Deepest face 35 m, 33 m at the way off the top
+(the first version, opened at its own level, was 25 and 18). On the floor a
+kicker and a table, and six bales past the kicker's landing.
+
+`tests/quarry.js`, holding speed and heading on each run-up:
+
+| | air | lands | damage |
+|---|---|---|---|
+| off the top, 60 / 80 km/h | 4.3 / 3.0 s | upright | 0 / 0 |
+| floor kicker, 40 / 60 / 80 | 1.6 / 2.0 / 2.3 s | upright | 0 / 0.23 / 0.30 |
+| table, 40 / 60 / 80 | 0.3 / 1.4 / 1.7 s | upright | 0 / 0.22 / 0.30 |
+
+What it took, including what did not work:
+
+* **A kicker on the cliff top** was built and taken out. At the deepest point
+  the run-up came over the top of the hill and a car at 100 km/h was on its roof
+  before the edge; moved to a smooth run-up, the ground still climbs to the rim
+  and a car on the grass at 40-60 km/h stalled on the kicker and rolled back.
+  Driving off the edge is the jump.
+* **The wheels lifted every solid object by the hill under it.** On the plate
+  maps a non-ground hit is lifted by the kerb height; on Haldon that added the
+  terrain height to a ramp already standing on it, and a 2.2 m kicker read 8 m
+  to the springs: a car at 40 km/h went 7 m up, nose high. A hit on an object
+  is now taken as found, unless the ground is nearer along the ray. (Before the
+  fix, moving the ramps out of the body's way changed nothing -- the numbers
+  were identical -- which is how the real cause was found.)
+* **Jumps are in GROUP.HILL | GROUP.RAMP**: the upright body passes over them
+  like a hill and only the keel meets them; the wheels' mask has RAMP.
+* **Levelling in the air** (`Vehicle._airLevel`): off a 33 m drop a car falls
+  for over two seconds and whatever pitch it left with turned it over; every
+  run off the top landed on its roof. After 0.3 s in the air and 1.6 m clear of
+  the ground a car turns gently back toward upright (yaw untouched). Not for a
+  car lying on its roof: it has to be well clear of the ground.
+* Rig traps: a test car given speed at a standstill in first gear, or left
+  without steering on a cross-slope, drifted round and stalled -- the rig holds
+  the heading as a driver would; and `repair()` between runs, or one run's
+  damage slowed the next.
+
+**The railway** runs edge to edge, 2.4 km, chosen from candidate curves for low
+ground and three to eight square crossings (five, as built) away from junctions, never beside a
+road, clear of villages, farms and the quarry. Its long section is its own (3.5%
+at most) and pinned to the road's level at every crossing. A five-car train --
+white, a blue stripe, raked yellow noses -- runs it at 120 km/h, waits off the
+map and comes back; its clock starts from the wall clock, so every machine in a
+game sees the same train. Each carriage is a kinematic box in GROUP.BUILDING,
+so the AI's sweeps see it and brake. Lights flash 14 s before it reaches a
+crossing and the barriers are down for the last 10; the barriers are only
+drawn, but every AI driver stops for the lights like a red signal
+(`TrafficLights.stopDistanceAt` asks the map). `tests/railway.js`: AI cars are
+stopped 33 m short on both approaches of every crossing and nothing going away
+from the line is stopped. Parked on a crossing, a car is hit for 0.32-0.44
+damage and thrown clear, 80-110 m on (once, 0.97 and carried 150 m). The cab
+ends are wedges: square-fronted, the train picked a car up and carried it along
+the line at 120 km/h.
+
+**The shortcuts**: eight tracks across the fields between two roads at least
+1.8 times as far apart by road, a five-bar gate at each end (a loose body like
+a bale -- driven through at 50 km/h it cost nothing and took 2 km/h), muddy
+ruts, and the hedges open along them. Not roads: no police unit plans along
+one.
+
+**Keeping the vale as it was.** The new pieces first drew on the map's own
+random stream, which re-rolled every field, wood, hedge gap and crest after
+them -- the patrol rig measured lane error 0.51 -> 0.92 m before that was found.
+They have a stream of their own now, and a hedge, tree or turbine left out for
+them takes its draws all the same. The railway's bed is claimed as a place, not
+a road, so a road over a crossing keeps its own surface; and the gateposts are
+street furniture, invisible to the AI's sweeps. `tests/patrol.js`, Haldon, 90 s,
+fresh page:
+
+| | lane error | off lane | wrong side | off road | knocks |
+|---|---|---|---|---|---|
+| before | 0.51 m | 9% | 1% | 4% | 4 |
+| with all three, first | 0.92 m | 16% | 7% | 6% | 3 |
+| own random stream | 0.79 m | 16% | 2% | 6% | 11 |
+| bed as a place | 0.76 m | 11% | 4% | 5% | 4 |
+| posts as street furniture | 0.62 m | 11% | 3% | 3% | 3 |
+| as pushed: deeper quarry, a different railway line | **0.75 m** | 13% | 4% | 4% | 3 |
+
+With the train and the crossings switched off the numbers are identical, so
+what is left is the map and the physics changes, not the railway -- and it moves
+between 0.62 and 0.75 m with where the line and the quarry land, against 0.51.
+Worse than before, by a quarter of a metre at most; not chased further.
+
+**Cost.** Building the map: the railway's search 0.9 s (3.1 s before it judged
+cheap refusals first, skipped roads by their bounds and stopped after six good
+lines), the rest about 0.7 s, on a 10 s build. 37k more triangles, about 50
+more meshes (the barriers were 100 draw calls before each was built in one
+piece). Frame update unchanged (5.2 vs 5.5 ms). `tests/trafficseen.js` over
+180 s met fewer traffic cars (2.1 within 150 m against 3.0); the same number
+were made (87 against 88) and every one went for being left behind, but lived
+16 s against 20 -- where they happened to be put, as far as could be found.
+
+### A helicopter on the ground can see
+
+*"With the helicopter, I literally can land right next to my friend when the
+police are searching for him. And the helicopter still can't see."*
+`FlyHeli.canSee` refused anything less than 2 m below the aircraft. Landed, or
+no higher than the car, it now sees as a patrol crew does: any direction, out
+to 100 m, if nothing is in the way. Checked: landed 30 m off, in front or
+behind -- seen (was not); 150 m off -- not; hovering above -- seen as before;
+up on the quarry rim over a car tucked under the face -- not.
+
 ### The edge of the map
 
 The ground is a plate 2.4 km square, 200 m of open field wider than the road

@@ -30,6 +30,11 @@ export const GROUP = {
   // it starts well above a car on the ground, so the AI never needs it, and a
   // wheel must not land on it.
   CANOPY: 0x0100,
+  // A jump (Haldon Vale's quarry, world/countryextras.js). Always with HILL as
+  // well, so the bodywork of an upright car passes over it and only the keel
+  // meets it, as on a hill; but in the wheels' mask, so they ride up it. In
+  // the body's way, a ramp caught the nose and flicked the car onto its tail.
+  RAMP: 0x0200,
 };
 
 export const groups = (membership, filter) => ((membership << 16) | filter) >>> 0;
@@ -54,7 +59,7 @@ export const RAY_GROUNDS = groups(0xFFFF, GROUP.TERRAIN | GROUP.BUILDING | GROUP
  * and eye in the game and something a car drives through -- and a wheel that
  * found the top of one would climb it.
  */
-export const RAY_WHEELS = groups(GROUP.VEHICLE, GROUP.TERRAIN | GROUP.BUILDING | GROUP.PROP);
+export const RAY_WHEELS = groups(GROUP.VEHICLE, GROUP.TERRAIN | GROUP.BUILDING | GROUP.PROP | GROUP.RAMP);
 
 /**
  * What is worth *braking* for, as opposed to steering around.

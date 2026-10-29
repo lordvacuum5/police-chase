@@ -288,12 +288,16 @@ export class TrafficLights {
    * pointing -- which is all a patrolling unit has to hand.
    */
   stopDistanceAt(x, z, dirX, dirZ, speed) {
+    // A level crossing with its lights going is a red light too (Haldon
+    // Vale's railway, world/countryextras.js).
+    const map = this.game.world && this.game.world.__map;
+    const rail = map && map.stopDistanceAt ? map.stopDistanceAt(x, z, dirX, dirZ, speed) : Infinity;
     const g = this.game.graph;
     const snap = g.nearestEdge(x, z, 40);
-    if (!snap) return Infinity;
+    if (!snap) return rail;
     const d = g.edgeDirection(snap.edge, snap.along, _dir);
     const node = g.nodes[(d.x * dirX + d.z * dirZ) >= 0 ? snap.edge.b : snap.edge.a];
-    return this.stopDistance(snap.edge, node, x, z, speed);
+    return Math.min(rail, this.stopDistance(snap.edge, node, x, z, speed));
   }
 
   /** The colour a driver on this approach is looking at. */

@@ -72,7 +72,7 @@ export function baseRelief(rng, opts = {}) {
  * it is pulled to that. `crests` are added to the road long sections after the
  * smoothing, so they survive it.
  */
-export function buildHeightGrid(base, { half = 1000, graph = null, flatten = [], crests = [], roadFade = 16 } = {}) {
+export function buildHeightGrid(base, { half = 1000, graph = null, flatten = [], crests = [], roadFade = 16, pins = [], lines = [] } = {}) {
   const n = Math.round((half * 2) / H_STEP) + 1;
   const H = new Float32Array(n * n);
   const W = new Float32Array(n * n);      // how strongly a place has claimed the cell
@@ -118,6 +118,8 @@ export function buildHeightGrid(base, { half = 1000, graph = null, flatten = [],
     }
   };
 
+  // Each road's finished long section, for the lines that cross it.
+  const roadProf = new Map();
   // Places first, so a road through a village rides at the village's level.
   for (const f of flatten) claim(f.x, f.z, f.h !== undefined ? f.h : base(f.x, f.z), f.r, f.r + (f.fade || 30));
 
@@ -204,9 +206,60 @@ export function buildHeightGrid(base, { half = 1000, graph = null, flatten = [],
           const u = (q.s - c.s) / c.len;
           if (Math.abs(u) < 1) h += c.h * 0.5 * (1 + Math.cos(u * Math.PI));
         }
+        prof[k] = h;
         claim(q.x, q.z, h, e.width * 0.5 + 3, e.width * 0.5 + 3 + roadFade, true);
       }
+      roadProf.set(e.id, { S, prof });
     }
+  }
+
+  // Lines that are not roads -- the railway (world/countryextras.js): a long
+  // section of their own at their own grade, pinned to the road's level
+  // wherever they cross one, so a level crossing is level.
+  for (const ln of lines) {
+    const S = [];
+    let acc = 0;
+    for (let k = 0; k < ln.points.length; k++) {
+      if (k) acc += Math.hypot(ln.points[k].x - ln.points[k - 1].x, ln.points[k].z - ln.points[k - 1].z);
+      S.push({ x: ln.points[k].x, z: ln.points[k].z, s: acc });
+    }
+    const raw = S.map((q) => levelAt(q.x, q.z));
+    const sm = raw.map((_, k) => {
+      let s = 0, c = 0;
+      for (let m = Math.max(0, k - 12); m <= Math.min(raw.length - 1, k + 12); m++) { s += raw[m]; c++; }
+      return s / c;
+    });
+    const pinsAt = [{ s: 0, h: sm[0] }, { s: acc, h: sm[sm.length - 1] }];
+    for (const c of ln.cross || []) {
+      const rp = roadProf.get(c.edge);
+      if (!rp) continue;
+      let kk = 0;
+      while (kk < rp.S.length - 1 && rp.S[kk + 1].s < c.along) kk++;
+      pinsAt.push({ s: c.s, h: rp.prof[kk] });
+    }
+    pinsAt.sort((a, b) => a.s - b.s);
+    const g = ln.grade;
+    const prof = new Float32Array(S.length);
+    for (let k = 0; k < S.length; k++) {
+      const s = S[k].s;
+      let lo = -Infinity, hi = Infinity;
+      for (const p of pinsAt) {
+        lo = Math.max(lo, p.h - g * Math.abs(s - p.s));
+        hi = Math.min(hi, p.h + g * Math.abs(s - p.s));
+      }
+      if (lo <= hi) prof[k] = clamp(sm[k], lo, hi);
+      else {
+        // Two pins too far apart in height for the grade: straight between them.
+        let a = pinsAt[0], b = pinsAt[pinsAt.length - 1];
+        for (let m = 0; m < pinsAt.length - 1; m++) if (pinsAt[m].s <= s && pinsAt[m + 1].s >= s) { a = pinsAt[m]; b = pinsAt[m + 1]; }
+        prof[k] = lerp(a.h, b.h, (s - a.s) / Math.max(1, b.s - a.s));
+      }
+    }
+    ln.profile = { S, prof };
+    // As a place, not a road: a road's own cells stay the road's, so a lane
+    // over a crossing is the lane it was. Blended in with the roads, the bed
+    // was bending them either side of every crossing.
+    for (let k = 0; k < S.length; k++) claim(S[k].x, S[k].z, prof[k], ln.width * 0.5 + 2, ln.width * 0.5 + 2 + roadFade);
   }
 
   for (let k = 0; k < H.length; k++) {
@@ -226,6 +279,23 @@ export function buildHeightGrid(base, { half = 1000, graph = null, flatten = [],
   // by sweeping the grid forward and back.
   const pinned = new Uint8Array(n * n);
   for (let k = 0; k < H.length; k++) if (RW[k] >= 0.999 || W[k] >= 0.999) pinned[k] = 1;
+  // And whatever the map wants left exactly as it is, however steep: the
+  // quarry's rim, so its face stays a cliff rather than being graded into a
+  // bank. Each pin is a ring { x, z, r0, r1 }, holding the cells in it that
+  // stand above `above`.
+  for (const p of pins) {
+    for (let j = 0; j < n; j++) {
+      const pz = j * H_STEP - half;
+      if (Math.abs(pz - p.z) > p.r1) continue;
+      for (let i = 0; i < n; i++) {
+        const px = i * H_STEP - half;
+        const d = Math.hypot(px - p.x, pz - p.z);
+        if (d < p.r0 || d > p.r1) continue;
+        const k = idx(i, j);
+        if (H[k] > p.above) pinned[k] = 1;
+      }
+    }
+  }
   let bank = BANK_GRADE;
   try { const r = sessionStorage.getItem('pc.bankGrade'); if (r !== null) bank = +r; } catch (e) { /* none */ }
   const d1 = bank * H_STEP, d2 = bank * H_STEP * Math.SQRT2;
@@ -329,15 +399,20 @@ export function addHeightfield(world, grid, sink = HILL_SINK) {
  * The visible ground: a grid mesh `step` metres apart, coloured by `colourAt`
  * (which gets the height too, so slopes and tops can be shaded).
  */
-export function buildTerrainMesh(grid, colourAt, step = 8, dropAt = null, hole = 0) {
-  const { half, at } = grid;
+export function buildTerrainMesh(grid, colourAt, step = 8, dropAt = null, hole = 0, patch = null, skip = null) {
+  const { at } = grid;
+  // `patch`: only the square { x0, z0, size } of it, at its own step -- finer
+  // ground where the coarse mesh cannot follow the shape (the quarry's cliff).
+  // `skip`: leave out the cells a patch covers.
+  const half = patch ? patch.size * 0.5 : grid.half;
+  const ox = patch ? patch.x0 + half : 0, oz = patch ? patch.z0 + half : 0;
   const m = Math.round((half * 2) / step) + 1;
   const pos = new Float32Array(m * m * 3);
   const col = new Float32Array(m * m * 3);
   const c = new THREE.Color();
   for (let j = 0; j < m; j++) {
     for (let i = 0; i < m; i++) {
-      const x = i * step - half, z = j * step - half;
+      const x = i * step - half + ox, z = j * step - half + oz;
       const y = at(x, z);
       const k = (j * m + i) * 3;
       // `dropAt` lowers the drawn ground where something lies on it: the
@@ -348,6 +423,21 @@ export function buildTerrainMesh(grid, colourAt, step = 8, dropAt = null, hole =
       col[k] = c.r; col[k + 1] = c.g; col[k + 2] = c.b;
     }
   }
+  // A patch's edge meets the coarse mesh round it, whose edge runs straight
+  // between every other vertex of the patch's: the ones in between are put
+  // on that line, or the two leave a crack of sky.
+  if (patch) {
+    for (let k = 1; k < m - 1; k += 2) {
+      for (const [a, b, c2] of [
+        [k, k - 1, k + 1].map((i) => i),                                  // top row, j = 0
+        [k, k - 1, k + 1].map((i) => (m - 1) * m + i),                    // bottom row
+        [k, k - 1, k + 1].map((j) => j * m),                              // left column
+        [k, k - 1, k + 1].map((j) => j * m + m - 1),                      // right column
+      ]) {
+        pos[a * 3 + 1] = (pos[b * 3 + 1] + pos[c2 * 3 + 1]) * 0.5;
+      }
+    }
+  }
   const index = new Uint32Array((m - 1) * (m - 1) * 6);
   let q = 0;
   for (let j = 0; j < m - 1; j++) {
@@ -355,6 +445,7 @@ export function buildTerrainMesh(grid, colourAt, step = 8, dropAt = null, hole =
       // `hole`: leave out the middle, for a ring drawn round another mesh.
       if (hole && Math.max(Math.abs(i * step - half), Math.abs((i + 1) * step - half)) <= hole
         && Math.max(Math.abs(j * step - half), Math.abs((j + 1) * step - half)) <= hole) continue;
+      if (skip && skip(i * step - half + ox, j * step - half + oz, (i + 1) * step - half + ox, (j + 1) * step - half + oz)) continue;
       const a = j * m + i, b = a + 1, d = a + m, e = d + 1;
       index[q++] = a; index[q++] = d; index[q++] = b;
       index[q++] = b; index[q++] = d; index[q++] = e;

@@ -3066,6 +3066,8 @@ class Game {
       // Not a dormant car (far-off traffic, game/traffic.js): its body is out
       // of the simulation and the traffic moves it along its route itself.
       for (const v of this.vehicles) { if (!v.remote && !v.dormant) v.prepare(FIXED); }
+      // Anything the map moves itself: Haldon Vale's train (world/countryextras.js).
+      if (this.world.__map && this.world.__map.step) this.world.__map.step(FIXED);
       this.world.step();
       for (const v of this.vehicles) {
         // A car somebody else owns has no engine, tyres or damage of its own
