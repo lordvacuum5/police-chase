@@ -40,11 +40,14 @@ const SHORTCUT_GAIN = 1.8;
 
 /** The railway: its bed's width, its steepest grade, where it ends (just inside the world's edge). */
 const RAIL_BED = 6;
-const RAIL_GRADE = 0.035;
+const RAIL_GRADE = 0.07;
 /** How many lines that pass to choose the best of. */
 const RAIL_CHOICES = 6;
 const RAIL_END = 1185;
 const GAUGE = 1.435;
+/** How high the rails stand off the bed, m, and how far the drawn bed reaches either side of the line. */
+const RAIL_TOP = 0.14;
+const BED_HALF = 9;
 /** The train: how fast, how many cars, how long each, how long between runs, s. */
 const TRAIN_SPEED = 33;
 const CARS = 5;
@@ -704,15 +707,21 @@ export function buildRailTrack(ctx, rail) {
   let run = [];
   const flush = () => {
     if (run.length > 1) {
-      // A strip of verge either side: the ground drawn under the line is let
-      // down below the bed (see nearRoad in countrygen.js), like a road's.
-      b.addRibbon(run, 16, -0.02, verge);
-      b.addRibbon(run, 4.2, 0.32, 0x6f685e);
-      b.addWall(run, -0.5, 0.32, 0x5f5850, 2.1);
-      b.addWall(run, -0.5, 0.32, 0x5f5850, -2.1);
+      // The bed, ballast in the middle and verge either side, over the ground
+      // drawn under the line, which is let down below it (see nearRoad in
+      // countrygen.js) like a road's. In two-metre strips, each lifted onto
+      // the ground where it lies: one sheet sixteen metres wide is flat
+      // between its edges, and on a slope it cut into the ground on one side
+      // and stood over it on the other -- "lots of different levels and I
+      // keep on going through the floor".
+      for (let o = -BED_HALF + 1; o < BED_HALF; o += 2) {
+        b.addRibbon(run, 2.02, 0, Math.abs(o) < 2.5 ? 0x6f685e : verge, o);
+      }
+      // Rails and sleepers barely proud of it, where the wheels are: the
+      // ballast stood 0.3 m up on walls, a step the cars drove through.
       for (const side of [-1, 1]) {
-        b.addRibbon(run, 0.09, 0.52, 0xa4a6a8, side * GAUGE * 0.5);
-        b.addWall(run, 0.36, 0.52, 0x5c5450, side * GAUGE * 0.5 + 0.045);
+        b.addRibbon(run, 0.09, RAIL_TOP, 0xa4a6a8, side * GAUGE * 0.5);
+        b.addWall(run, 0.02, RAIL_TOP, 0x5c5450, side * GAUGE * 0.5 + 0.045);
       }
     }
     run = [];
@@ -729,7 +738,7 @@ export function buildRailTrack(ctx, rail) {
     for (let k = 0; k < 2; k++) {
       const q = at(s + k * 1.5);
       if (zone(s + k * 1.5)) continue;
-      b.addBox(2.5, 0.14, 0.26, q.x, 0.38, q.z, 0x8d8a84, Math.atan2(q.dx, q.dz));
+      b.addBox(2.5, 0.08, 0.26, q.x, 0.04, q.z, 0x8d8a84, Math.atan2(q.dx, q.dz));
     }
   }
   flush();
@@ -877,7 +886,7 @@ export class Railway {
 
   _pose(s) {
     const p = railPoint(this.rail, s);
-    const y = (Math.abs(p.x) <= WORLD_HALF && Math.abs(p.z) <= WORLD_HALF ? this.at(p.x, p.z) : 0) + 0.56;
+    const y = (Math.abs(p.x) <= WORLD_HALF && Math.abs(p.z) <= WORLD_HALF ? this.at(p.x, p.z) : 0) + 0.04 + RAIL_TOP;
     return { x: p.x, z: p.z, y };
   }
 

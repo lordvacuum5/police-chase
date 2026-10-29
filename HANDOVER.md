@@ -412,7 +412,9 @@ read 8 m high; (3) jumps are `GROUP.HILL | GROUP.RAMP` so the body of an
 upright car does not catch them. Crossings stop AI drivers through
 `TrafficLights.stopDistanceAt`. The train's timetable follows the wall clock
 (same train on every machine), so set `railway.clock` in a rig for repeatable
-runs. `tests/quarry.js`, `tests/railway.js`. A player's helicopter **landed or
+runs. `tests/quarry.js`, `tests/railway.js`, `tests/railbed.js`. The bed has a **blended
+layer of its own** in `buildHeightGrid` (`LW`) under the roads' -- as a place
+claim it was a flight of steps. A player's helicopter **landed or
 no higher than the car** sees like a patrol crew (100 m, any direction, line of
 sight) -- it used to see nothing below 2 m of height difference.
 

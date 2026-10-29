@@ -133,6 +133,37 @@ export class Hud {
       }
     }
 
+    // Haldon Vale's set pieces (world/countryextras.js), which are not roads:
+    // the quarry, the railway, and the shortcuts across the fields -- "can't
+    // see the gates": nothing said where they were.
+    const map = this.game.world && this.game.world.__map;
+    const line = (pts) => {
+      ctx.beginPath();
+      ctx.moveTo(toPx(pts[0].x), toPx(pts[0].z));
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(toPx(pts[i].x), toPx(pts[i].z));
+      ctx.stroke();
+    };
+    if (map && map.quarry) {
+      const q = map.quarry;
+      ctx.fillStyle = '#4b4740';
+      ctx.beginPath();
+      ctx.arc(toPx(q.x), toPx(q.z), q.r * scale, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (map && map.rail) {
+      ctx.strokeStyle = '#6a6a72';
+      ctx.lineWidth = Math.max(1.6, 3 * scale);
+      ctx.setLineDash([Math.max(2, 6 * scale), Math.max(2, 6 * scale)]);
+      line(map.rail.points);
+    }
+    if (map && map.shortcuts) {
+      ctx.strokeStyle = '#6b5638';
+      ctx.lineWidth = Math.max(1.2, 2.5 * scale);
+      ctx.setLineDash([Math.max(1.5, 4 * scale), Math.max(1.5, 4 * scale)]);
+      for (const s of map.shortcuts) line([s.a, s.b]);
+    }
+    ctx.setLineDash([]);
+
     this.mapCanvas = c;
     this.mapScale = scale;
   }

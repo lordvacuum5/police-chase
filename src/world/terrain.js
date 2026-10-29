@@ -97,7 +97,10 @@ export function buildHeightGrid(base, { half = 1000, graph = null, flatten = [],
     }
   }
 
-  const claim = (x, z, level, r0, r1, road = false) => {
+  // Lines (the railway) blend among themselves like roads, on a layer of
+  // their own under the roads'.
+  const LW = new Float32Array(n * n), LS = new Float32Array(n * n), LN = new Float32Array(n * n);
+  const claim = (x, z, level, r0, r1, road = false, line = false) => {
     const i0 = Math.max(0, Math.floor(toI(x - r1))), i1 = Math.min(n - 1, Math.ceil(toI(x + r1)));
     const j0 = Math.max(0, Math.floor(toI(z - r1))), j1 = Math.min(n - 1, Math.ceil(toI(z + r1)));
     for (let j = j0; j <= j1; j++) {
@@ -107,7 +110,11 @@ export function buildHeightGrid(base, { half = 1000, graph = null, flatten = [],
         if (d > r1) continue;
         const w = d <= r0 ? 1 : 1 - smoothstep(r0, r1, d);
         const k = idx(i, j);
-        if (road) {
+        if (line) {
+          const ww = w * w;
+          LS[k] += ww * level; LN[k] += ww;
+          if (w > LW[k]) LW[k] = w;
+        } else if (road) {
           // Squared, so the road a cell is actually on outweighs one whose
           // fringe merely reaches it.
           const ww = w * w;
@@ -226,7 +233,10 @@ export function buildHeightGrid(base, { half = 1000, graph = null, flatten = [],
     const raw = S.map((q) => levelAt(q.x, q.z));
     const sm = raw.map((_, k) => {
       let s = 0, c = 0;
-      for (let m = Math.max(0, k - 12); m <= Math.min(raw.length - 1, k + 12); m++) { s += raw[m]; c++; }
+      // Over about 50 m (points 6 m apart): smoothed over 150 m, the line
+      // stood on banks and sat in cuttings -- "the train tracks need to be less
+      // raised up on the ground because there's like a different level".
+      for (let m = Math.max(0, k - 4); m <= Math.min(raw.length - 1, k + 4); m++) { s += raw[m]; c++; }
       return s / c;
     });
     const pinsAt = [{ s: 0, h: sm[0] }, { s: acc, h: sm[sm.length - 1] }];
@@ -256,14 +266,27 @@ export function buildHeightGrid(base, { half = 1000, graph = null, flatten = [],
       }
     }
     ln.profile = { S, prof };
-    // As a place, not a road: a road's own cells stay the road's, so a lane
-    // over a crossing is the lane it was. Blended in with the roads, the bed
-    // was bending them either side of every crossing.
-    for (let k = 0; k < S.length; k++) claim(S[k].x, S[k].z, prof[k], ln.width * 0.5 + 2, ln.width * 0.5 + 2 + roadFade);
+    // On a layer of its own, blended along its length like a road's, under
+    // the roads': a road's own cells stay the road's, so a lane over a
+    // crossing is the lane it was (blended in with the roads, the bed bent
+    // them either side of every crossing). As a place instead -- the strongest
+    // claim on a cell wins outright -- each sample six metres apart held its
+    // own level, and the bed was a flight of steps up to 0.4 m high: "lots of
+    // different levels and I keep on going through the floor". Claimed every
+    // 1.5 m, between the samples too.
+    for (let k = 0; k < S.length - 1; k++) {
+      const len = S[k + 1].s - S[k].s, steps = Math.max(1, Math.ceil(len / 1.5));
+      for (let m = 0; m < steps; m++) {
+        const t = m / steps;
+        claim(lerp(S[k].x, S[k + 1].x, t), lerp(S[k].z, S[k + 1].z, t), lerp(prof[k], prof[k + 1], t),
+          ln.width * 0.5 + 2, ln.width * 0.5 + 2 + roadFade, false, true);
+      }
+    }
   }
 
   for (let k = 0; k < H.length; k++) {
     if (W[k] > 0) H[k] = lerp(H[k], L[k], W[k]);
+    if (LW[k] > 0) H[k] = lerp(H[k], LS[k] / LN[k], LW[k]);
     if (RW[k] > 0) H[k] = lerp(H[k], RS[k] / RN[k], RW[k]);
     if (H[k] < 0) H[k] = 0;
   }
@@ -278,7 +301,7 @@ export function buildHeightGrid(base, { half = 1000, graph = null, flatten = [],
   // neighbours, cut down where it stands too high and filled where too low,
   // by sweeping the grid forward and back.
   const pinned = new Uint8Array(n * n);
-  for (let k = 0; k < H.length; k++) if (RW[k] >= 0.999 || W[k] >= 0.999) pinned[k] = 1;
+  for (let k = 0; k < H.length; k++) if (RW[k] >= 0.999 || W[k] >= 0.999 || LW[k] >= 0.999) pinned[k] = 1;
   // And whatever the map wants left exactly as it is, however steep: the
   // quarry's rim, so its face stays a cliff rather than being graded into a
   // bank. Each pin is a ring { x, z, r0, r1 }, holding the cells in it that

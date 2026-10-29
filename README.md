@@ -6986,6 +6986,41 @@ piece). Frame update unchanged (5.2 vs 5.5 ms). `tests/trafficseen.js` over
 were made (87 against 88) and every one went for being left behind, but lived
 16 s against 20 -- where they happened to be put, as far as could be found.
 
+### The railway, laid again
+
+*"Train track is really messed up. It's like lots of different levels and I
+keep on going through the floor ... the train tracks need to be less raised up
+on the ground because there's like a different level almost."* And *"can't see
+the gates"*. Four things, all real:
+
+* **The bed was a flight of steps.** Claimed as a place, where the strongest
+  claim on a cell wins outright, each sample along the line (six metres apart)
+  held its own level. The line now has a blended layer of its own under the
+  roads', like a road's own, claimed every 1.5 m -- and the roads still win
+  their own cells, so a lane over a crossing is unchanged.
+* **The verge was one sheet 16 m wide**, flat between its two edges: on any
+  slope it cut into the ground one side and stood over it on the other, and the
+  ground showed through in patches. Now two-metre strips, each on the ground
+  where it lies.
+* **The ballast stood 0.3 m up on walls**, which the wheels never felt -- cars
+  sank into it. Now the bed is flush and the rails stand 0.14 m.
+* **It stood on banks and sat in cuttings**: its long section was smoothed over
+  150 m and held to 3.5%. Now over about 50 m, and 7%, like a road.
+
+`tests/railbed.js`, the ground 12 m either side of the bed, and the player
+driven down the whole line at 60 km/h:
+
+| | beside the bed: mean / worst tenth | drive | lowest the car came to the ground | frames under 0.3 m |
+|---|---|---|---|---|
+| before | 1.77 / 4.00 m | stuck at 1.82 of 2.03 km | **-0.07 m** (under it) | 44 |
+| after | 1.05 / 2.86 m | all of it | 0.43 m (a car sitting level) | 0 |
+
+Crossings unchanged (stopped 33 m short both ways; a car on the line thrown
+clear, 0.32-0.49 damage). Patrols 90 s: lane error 0.72 m (0.75 before this).
+
+The gates were there; nothing showed where. The minimap now draws the quarry,
+the railway (dashed grey) and the shortcuts (dashed brown).
+
 ### A helicopter on the ground can see
 
 *"With the helicopter, I literally can land right next to my friend when the
