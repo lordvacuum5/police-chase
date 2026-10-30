@@ -7327,6 +7327,36 @@ to self-right in midair."*
   the floor table at 120-140 km/h ended on their roofs some seconds after
   landing upright, having driven on into something.
 
+### Police down the railway, not into the trees
+
+*"Whenever the police cars go near trees or an obstacle, they just slow down so
+much ... the train track ... runs through a bunch of trees. And they sort of
+keep up most of the time ... And for some reason, they decide to go inside the
+trees ... They should just stay on the train track, because it's the fastest
+route to me ... And they also slow down loads."*
+
+The ordinary chase aims at where the car will be in about a second. Down a
+railway curving through woods that point is out among the trunks, and the
+planner then threads them at a crawl. Now, with the target on the line (within
+5 m, and not on a level crossing) and a unit on it or beside it (12 m), the
+unit drives down the line toward it -- aiming 20-60 m ahead along it -- until
+it is 12 m behind, where the ordinary chase takes over for the contact
+(`Officer._railFollow`, `Railway.nearestOnLine`). Handing back at the ordinary
+chase's own close range (24-40 m) was tried first: the second unit, hanging
+back that far, was in the trees on the next bend.
+
+`tests/railchase.js`, a ghost down the line at 100 km/h with the force told
+where it is, two interceptors from behind, 20 s from four places, fresh page
+each way (the train kept away for every run -- three runs once outlasted the
+first clearance and the third met the train):
+
+| from | gap, before / after | off the line | by a tree | under 40 km/h |
+|---|---|---|---|---|
+| 300 m | 24 / 19 m | 4% / 0 | 0 / 0 | 0 / 0 |
+| 900 m | 39 / 28 m | 14% / 0 | 8% / 0 | 10% / 2% |
+| 1500 m | 25 / 23 m | 8% / 0 | 0 / 0 | 0 / 0 |
+| 2000 m | 28 / 22 m | 8% / 0 | 0 / 0 | 0 / 0 |
+
 ### Hedges, gates and fences
 
 *"Make it so the hedges are one big sort of line instead of lots of multiple

@@ -1343,6 +1343,36 @@ export class Railway {
     });
   }
 
+  /** Where the line is `s` along it: { x, y, z }. For the police following it (Officer._railFollow). */
+  pointAt(s) {
+    return this._pose(clamp(s, 0, this.len));
+  }
+
+  /**
+   * The nearest point of the line to (x, z): { s, d }. Searched near `hint`
+   * (an earlier answer) when given, which is all a car following it needs.
+   */
+  nearestOnLine(x, z, hint = null) {
+    if (!this._line) {
+      this._line = [];
+      for (let s = 0; s <= this.len; s += 4) { const p = railPoint(this.rail, s); this._line.push({ s, x: p.x, z: p.z }); }
+    }
+    const L = this._line;
+    let lo = 0, hi = L.length - 1;
+    if (hint !== null) { const k = Math.round(hint / 4); lo = Math.max(0, k - 12); hi = Math.min(L.length - 1, k + 12); }
+    let best = lo, bd = Infinity;
+    for (let i = lo; i <= hi; i++) {
+      const d = (L[i].x - x) ** 2 + (L[i].z - z) ** 2;
+      if (d < bd) { bd = d; best = i; }
+    }
+    // Between the sample and its better neighbour.
+    const a = L[best], nb = L[best + 1] && (!L[best - 1] || (L[best + 1].x - x) ** 2 + (L[best + 1].z - z) ** 2 < (L[best - 1].x - x) ** 2 + (L[best - 1].z - z) ** 2) ? L[best + 1] : L[best - 1] || a;
+    const ex = nb.x - a.x, ez = nb.z - a.z, el = ex * ex + ez * ez || 1;
+    const t = clamp(((x - a.x) * ex + (z - a.z) * ez) / el, 0, 1);
+    const px = a.x + ex * t, pz = a.z + ez * t;
+    return { s: a.s + (nb.s - a.s) * t, d: Math.hypot(x - px, z - pz) };
+  }
+
   /** The front of the train at time t: { s, dir }, or null while it waits off the map. */
   frontAt(t) {
     const P = this.period, p = ((t % P) + P) % P, half = this.runTime + TRAIN_WAIT;

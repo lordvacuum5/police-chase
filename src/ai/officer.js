@@ -36,6 +36,13 @@ const LP_TAIL = 20;
 const LP_MAXAGE = 6;
 /** Inside this, metres from the target, the chase is for contact, not planning. */
 const LP_NEAR = 25;
+/** The railway (_railFollow): how near the line the target must be, and this unit, m. */
+const RAIL_ON = 5;
+const RAIL_NEAR = 12;
+/** ...and how close behind it hands over to the ordinary chase, m. */
+const RAIL_CONTACT = 12;
+/** ...and how far either side of a level crossing it leaves to the roads, m. */
+const RAIL_CROSSING = 15;
 
 /**
  * The open-ground racing line (ai/freeline.js): whether a unit in a hurry
@@ -1756,6 +1763,40 @@ export class Officer {
     return cap;
   }
 
+  /**
+   * Along the railway, when the target is on it and this unit is on it or
+   * beside it: aim down the line toward them rather than at where they will
+   * be. "They start trying to go inside the trees and crash in. And they also
+   * slow down loads ... They should just stay on the train track, because
+   * it's the fastest route to me." The line runs through woods, and on a bend
+   * the lead aim is out among the trunks, which the planner then threads at a
+   * crawl. Null when it does not apply; then the ordinary chase.
+   */
+  _railFollow(dt, target, d, contact) {
+    const map = this.game.world && this.game.world.__map, rw = map && map.railway;
+    if (!rw || !rw.nearestOnLine || window.__railFollow === false || d < contact) { this._rail = null; return null; }
+    const v = this.vehicle;
+    this._railFor = (this._railFor || 0) - dt;
+    if (this._railFor <= 0 || !this._rail) {
+      this._railFor = 0.25;
+      const them = rw.nearestOnLine(target.position.x, target.position.z, this._rail ? this._rail.them : null);
+      // Not a car going over a level crossing on the road: that is on the
+      // line for a moment, and the chase is the road's.
+      const crossing = rw.crossings.some((c) => Math.abs(c.s - them.s) < RAIL_CROSSING);
+      const me = them.d < RAIL_ON && !crossing ? rw.nearestOnLine(v.position.x, v.position.z, this._rail ? this._rail.me : null) : null;
+      this._rail = me && me.d < RAIL_NEAR ? { me: me.s, them: them.s } : null;
+    } else {
+      this._rail.me = rw.nearestOnLine(v.position.x, v.position.z, this._rail.me).s;
+    }
+    if (!this._rail) return null;
+    const gap = this._rail.them - this._rail.me;
+    const ahead = Math.min(Math.abs(gap), clamp(14 + v.speed * 1.2, 20, 60));
+    const aim = rw.pointAt(this._rail.me + Math.sign(gap || 1) * ahead);
+    _aim.set(aim.x, target.position.y, aim.z);
+    this._mode = 'rail';
+    return this.driver.driveTo(_aim, this._chaseSpeed(), dt);
+  }
+
   _pursue(dt, target) {
     if (!target) return this._patrol(dt);
     const v = this.vehicle;
@@ -1763,6 +1804,12 @@ export class Officer {
     const ram = this.ramAggression;
 
     const ramRange = lerp(10, 26, ram);
+
+    // Down the railway after a target on it, until right behind it. Handed
+    // back at the ordinary chase's own close range (ramRange + 14, 24-40 m),
+    // a second unit hanging back that far was in the trees on the next bend.
+    const rail = this._railFollow(dt, target, d, RAIL_CONTACT);
+    if (rail) return rail;
 
     // Only chase the target's position directly when there is actually a clear
     // line to it. Driving at a car you cannot see means driving at whatever is

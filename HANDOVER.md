@@ -436,6 +436,8 @@ the player's word -- "I want the old one back in": the box train is what they
 want; do not put a model back unasked. Anything static whose top is at the drawn
 ground's height stands **HILL_SINK proud of the collider a car's body rests on**
 -- the quarry's rim was an invisible kerb for that reason; let such edges down.
+A target on the railway is followed **down the line** (`Officer._railFollow`,
+`tests/railchase.js`), not by the lead aim, which put units in the woods.
 Level-crossing arms break (`Railway._hitArm`, needs `game` passed to
 `railway.update`). The chase camera springs its **offset from the car**, not
 its position (`ChaseCamera.update`): a spring on a moving point judders with
