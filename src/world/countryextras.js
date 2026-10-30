@@ -183,6 +183,16 @@ export function planQuarry(ctx, base, hills) {
   let node = null, nd = 450;
   for (const n of ctx.graph.nodes) {
     if (!n.edges.length || ctx.villages.some((v) => Math.hypot(v.x - n.x, v.z - n.z) < v.r)) continue;
+    // Not a farmyard, nor across one: the track ran straight to the nearest
+    // junction, which could be a yard, and the dump truck on it drove through a
+    // barn -- "I noticed it going through a building, like a farm building".
+    if (n.edges.every((id) => ctx.graph.edges[id].farm)) continue;
+    let nearFarm = false;
+    for (let t = 0; t <= 1; t += 0.05) {
+      const px = lerp(end.x, n.x, t), pz = lerp(end.z, n.z, t);
+      if (ctx.farms.some((fm) => Math.hypot(fm.x - px, fm.z - pz) < 50)) { nearFarm = true; break; }
+    }
+    if (nearFarm) continue;
     const d = Math.hypot(n.x - end.x, n.z - end.z);
     if (d < nd) { nd = d; node = n; }
   }

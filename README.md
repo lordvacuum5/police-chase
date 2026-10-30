@@ -7159,6 +7159,34 @@ traffic identical (5.6 cars, 1.43 within 150 m). `tests/patrol.js`: no knocks,
 on the work vehicles or anywhere; wrong side 8% against 7% before -- going
 round a tractor.
 
+### The player's tractor, trailer and dump truck; turning round properly
+
+The player made the models (`farm-tractor.glb`, `farm-trailer.glb`,
+`quarry-dump-truck.glb`, to briefs written for another Claude). They replace the
+boxes once loaded -- the three lane tractors each in its own paint (the `paint`
+material recoloured), the two dump trucks, and the parked tractor (now hitched
+at the trailer's drawbar eye) and trailer, its bales kept as a mesh of their own
+so they stay on the new deck. Wheels found by name turn with the distance
+driven. If a file is missing, its boxes stay.
+
+*"Make it ... return ... instead of being weird"*: at the end of its route each
+vehicle used to spin round on the spot. Now it drives a half circle (6 m for a
+tractor, 10 for a dump truck, 8 for the combine), swung out to whichever side
+has room -- not into the quarry's rock or off a ledge, not into a farmyard or a
+village, on a lane to the right other things equal -- and eases back to its
+own side over a stretch long for how far it swung. The combine turns into each
+next row on a half circle on the headland. Stepping each through a whole
+cycle, the fastest any turns: tractors 40 deg/s, the dump trucks 74 and 28, the
+combine 85 (spinning on the spot was a half turn in four seconds; the first
+ease-back, over a fixed 14 m, had a truck at 177).
+
+*"I noticed it going through a building, like a farm building"*: the quarry
+track ran straight to the nearest junction, which could be a farmyard's, and the
+combine's rows were kept from roads and hedges but not farms. The track now
+takes the nearest junction that is not a yard and whose line passes no farm
+within 50 m, and the combine, the parked trailer and every turn keep 48 m from
+a farm and clear of the villages.
+
 ### Roads in the quarry, the police off the edge, the helicopters over it
 
 *"The police helicopter acts weird on the terracing of the quarry. Also, the

@@ -27,6 +27,7 @@ import * as THREE from 'three';
 import { GROUP, groups, RAPIER, addStaticBox } from '../physics/world.js';
 import { rand, randInt, clamp, lerp, TAU } from '../util/math.js';
 import { MeshBuilder, vertexColorMaterial } from './common.js';
+import { GLTFLoader } from '../../vendor/addons/loaders/GLTFLoader.js';
 
 /** How many tractors on the lanes, how fast, m/s. */
 const TRACTORS = 3;
@@ -34,8 +35,12 @@ const TRACTOR_SPEED = 7;
 /** Dump trucks, m/s; the combine, m/s. */
 const TRUCK_SPEED = 6;
 const COMBINE_SPEED = 2.5;
-/** Seconds to turn round at the end of a route. */
-const TURN_TIME = 4;
+/** How tight each turns round at the end of its route, m: a radius, swung out to the side with room. */
+const TURN_TRACTOR = 6;
+const TURN_TRUCK = 10;
+const TURN_COMBINE = 8;
+/** Where the parked tractor stands ahead of its trailer's middle, m: hitched. */
+const HITCH = 6.85;
 /** Birds: how many flocks, how many to a flock, and what puts them up, m. */
 const FLOCKS = 10;
 const FLOCK_SIZE = 14;
@@ -87,14 +92,20 @@ class Route {
  * spec.dims.
  */
 class Mover {
-  constructor(ctx, scene, { route, speed, lane = 0, geo, dims, colliders, offset = 0, name }) {
+  constructor(ctx, scene, { route, speed, lane = 0, geo, dims, colliders, offset = 0, name, turnR = 6, avoid = null, model = null, paint = null }) {
+    this.model = model;
+    this.paint = paint;
     this.ctx = ctx;
     this.route = route;
     this.speed0 = speed;
     this.lane = lane;
     this.offset = offset;
     this.leg = route.len / speed;
-    this.cycle = 2 * (this.leg + TURN_TIME);
+    // Turning round at each end: half a circle of turnR, at a little over half speed.
+    this.turnR = turnR;
+    this.turnTime = (Math.PI * turnR) / (speed * 0.6);
+    this.cycle = 2 * (this.leg + this.turnTime);
+    this._planTurns(avoid);
     this.position = new THREE.Vector3(0, -60, 0);
     this.linvel = new THREE.Vector3();
     this.forward = new THREE.Vector3(0, 0, 1);
@@ -117,32 +128,97 @@ class Mover {
   }
 
   /** Where it is at time t: { x, y, z, heading }. */
+  /**
+   * How it turns round at each end: which way it swings (+1 right, -1 left),
+   * and where it starts the turn. It swings to whichever side has the room --
+   * not into the quarry's rock, not off a ledge, not into the drop -- and on a
+   * lane, other things equal, to the right, as a driver does.
+   */
+  _planTurns(avoid) {
+    const r = this.route, R = this.turnR;
+    this.ends = [r.len, 0].map((s, k) => {
+      const dir = k === 0 ? 1 : -1;
+      const S = this._laneAt(s, dir, this.lane);
+      const f = this._fwd(s, dir), rt = { x: f.z, z: -f.x };
+      const yEnd = r.at(s).y !== undefined ? r.at(s).y : this.ctx.at(S.x, S.z);
+      let best = 1, bestScore = Infinity;
+      for (const side of [1, -1]) {
+        let score = side > 0 ? 0 : 0.5;
+        for (const [u, v] of [[1, 1], [0, 2], [0.7, 1.7]]) {
+          const x = S.x + f.x * R * u + rt.x * side * R * v, z = S.z + f.z * R * u + rt.z * side * R * v;
+          if (avoid && avoid(x, z)) score += 100;
+          score += Math.abs(this.ctx.at(x, z) - yEnd);
+        }
+        if (score < bestScore) { bestScore = score; best = side; }
+      }
+      return { s, dir, side: best, y: r.at(s).y };
+    });
+  }
+
+  /** The route's forward at `s`, the way `dir` goes. */
+  _fwd(s, dir) {
+    const h = this.route.heading(s);
+    return { x: Math.sin(h) * dir, z: Math.cos(h) * dir };
+  }
+
+  /** `off` metres to the left of the route at `s`, going `dir`. */
+  _laneAt(s, dir, off) {
+    const at = this.route.at(s), f = this._fwd(s, dir);
+    return { x: at.x - f.z * off, z: at.z + f.x * off, y: at.y };
+  }
+
   pose(t) {
-    const r = this.route;
+    // Easing back from the swing over a stretch long for how far it swung:
+    // over a fixed 14 m a truck swung twenty metres wide came back nearly
+    // sideways, turning at 177 degrees a second.
+    const r = this.route, R = this.turnR, B = Math.max(14, 2.5 * (2 * R + 2 * this.lane));
     const p = (((t + this.offset) % this.cycle) + this.cycle) % this.cycle;
-    let s, dir, turn = 0;
-    if (p < this.leg) { s = p * this.speed0; dir = 1; }
-    else if (p < this.leg + TURN_TIME) { s = r.len; dir = 1; turn = (p - this.leg) / TURN_TIME; }
-    else if (p < 2 * this.leg + TURN_TIME) { s = r.len - (p - this.leg - TURN_TIME) * this.speed0; dir = -1; }
-    else { s = 0; dir = -1; turn = (p - 2 * this.leg - TURN_TIME) / TURN_TIME; }
-    const at = r.at(s);
-    let h = r.heading(s);
-    if (dir < 0) h += Math.PI;
-    // Turning round: through half a circle, and across to the other side.
-    if (turn > 0) h += Math.PI * smooth(turn);
-    const side = turn > 0 ? lerp(dir, -dir, smooth(turn)) : dir;
-    // On its own side of the road: to the left of where it is going.
-    const lx = Math.cos(r.heading(s)), lz = -Math.sin(r.heading(s));
-    const x = at.x - lx * this.lane * side, z = at.z - lz * this.lane * side;
-    const y = at.y !== undefined ? at.y : this.ctx.at(x, z);
-    // How steep it is underfoot, the way it is going, where the route knows
-    // its own heights (the haul road, up rock the height grid knows nothing of).
-    let slope = null;
-    if (at.y !== undefined) {
-      const ahead = r.at(s + 3), behind = r.at(s - 3);
-      slope = ((ahead.y - behind.y) / 6) * (turn > 0 ? 0 : dir);
+    const legs = [
+      { from: 0, end: this.ends[1] },               // out, after turning at the start
+      { from: this.leg + this.turnTime, end: this.ends[0] },
+    ];
+    let leg = -1, turn = -1, tau = 0;
+    if (p < this.leg) { leg = 0; tau = p; }
+    else if (p < this.leg + this.turnTime) { turn = 0; tau = (p - this.leg) / this.turnTime; }
+    else if (p < 2 * this.leg + this.turnTime) { leg = 1; tau = p - this.leg - this.turnTime; }
+    else { turn = 1; tau = (p - 2 * this.leg - this.turnTime) / this.turnTime; }
+    if (leg >= 0) {
+      const dir = leg === 0 ? 1 : -1;
+      const travelled = tau * this.speed0;
+      const s = leg === 0 ? travelled : r.len - travelled;
+      // Coming out of the last turn swung wide, and easing back to its own
+      // side of the road over the first B metres.
+      const prev = legs[leg].end;
+      const swung = prev.side * 2 * R - this.lane;
+      const u = smooth(clamp(travelled / B, 0, 1));
+      const off = lerp(swung, this.lane, u);
+      const at = this._laneAt(s, dir, off);
+      let h = r.heading(s) + (dir < 0 ? Math.PI : 0);
+      // Turned a little toward where it is easing to.
+      if (u < 1) h -= Math.atan(((this.lane - swung) * 6 * (travelled / B) * (1 - travelled / B)) / B);
+      const y = at.y !== undefined ? at.y : this.ctx.at(at.x, at.z);
+      let slope = null;
+      if (at.y !== undefined) {
+        const ahead = r.at(s + 3), behind = r.at(s - 3);
+        slope = ((ahead.y - behind.y) / 6) * dir;
+      }
+      return { x: at.x, y, z: at.z, heading: h, moving: true, slope };
     }
-    return { x, y, z, heading: h, moving: turn === 0, slope };
+    // Turning round: half a circle of radius R, swung out to the side with
+    // room, from its own side of the road to facing back the way it came.
+    const e = this.ends[turn];
+    const S = this._laneAt(e.s, e.dir, this.lane);
+    const f = this._fwd(e.s, e.dir), rt = { x: f.z, z: -f.x };
+    const phi = Math.PI * tau;
+    const cx = S.x + rt.x * e.side * R, cz = S.z + rt.z * e.side * R;
+    const x = cx - rt.x * e.side * R * Math.cos(phi) + f.x * R * Math.sin(phi);
+    const z = cz - rt.z * e.side * R * Math.cos(phi) + f.z * R * Math.sin(phi);
+    const dx = rt.x * e.side * Math.sin(phi) + f.x * Math.cos(phi), dz = rt.z * e.side * Math.sin(phi) + f.z * Math.cos(phi);
+    // On a route that knows its heights (the haul road), level at the height
+    // of its end: at the top that is the rim, over rock the height grid has
+    // as the floor far below.
+    const y = e.y !== undefined ? e.y : this.ctx.at(x, z);
+    return { x, y, z, heading: Math.atan2(dx, dz), moving: true, slope: null };
   }
 
   step(t, dt) {
@@ -162,6 +238,7 @@ class Mover {
       this.body.setNextKinematicTranslation(pos);
       this.body.setNextKinematicRotation(rot);
     }
+    this.dist = (this.dist || 0) + this.speed0 * dt;
     if (dt > 0) this.linvel.set((a.x - this.position.x) / dt, (a.y - this.position.y) / dt, (a.z - this.position.z) / dt);
     if (this.linvel.length() > 40) this.linvel.set(0, 0, 0);
     this.position.set(a.x, a.y, a.z);
@@ -173,7 +250,56 @@ class Mover {
     const t = this.body.translation(), r = this.body.rotation();
     this.mesh.position.set(t.x, t.y, t.z);
     this.mesh.quaternion.set(r.x, r.y, r.z, r.w);
+    // Wheels turning with the distance driven: modelled nose to -Z, so
+    // rolling forward is a negative turn about x.
+    for (const w of this.wheels || []) w.node.rotation.x = -this.dist / w.r;
   }
+
+  /**
+   * The player's own model in place of the boxes: hung under the body, turned
+   * (modelled nose to -Z; bodies run nose to +Z), its paint the colour this
+   * one was given, its wheels found by name to turn.
+   */
+  useModel(scene, paint) {
+    const model = dressModel(scene, paint);
+    this.mesh.geometry = new THREE.BufferGeometry();
+    this.mesh.add(model);
+    this.wheels = [];
+    model.traverse((o) => {
+      if (/^wheel_/.test(o.name)) this.wheels.push({ node: o, r: Math.max(0.3, o.position.y) });
+    });
+  }
+}
+
+/** A clone of a loaded model, turned nose to +Z, shadows on, `paint` recoloured if given. */
+function dressModel(scene, paint) {
+  const model = scene.clone(true);
+  model.rotation.y = Math.PI;
+  model.traverse((o) => {
+    if (!o.isMesh) return;
+    o.castShadow = true;
+    if (paint === undefined || paint === null) return;
+    const swap = (m) => {
+      if (!m || m.name !== 'paint') return m;
+      const c = m.clone();
+      c.color = new THREE.Color(paint);
+      return c;
+    };
+    o.material = Array.isArray(o.material) ? o.material.map(swap) : swap(o.material);
+  });
+  return model;
+}
+
+/**
+ * The player's models (resources/models): "I'm gonna make the tractor now
+ * with the trailer", then "the dump truck is in". { tractor, trailer, truck }
+ * scenes, any of them null if missing -- the boxes stay for that one.
+ */
+async function loadLifeModels() {
+  const loader = new GLTFLoader();
+  const one = (n) => loader.loadAsync(`resources/models/${n}.glb`).then((g) => g.scene, () => null);
+  const [tractor, trailer, truck] = await Promise.all(['farm-tractor', 'farm-trailer', 'quarry-dump-truck'].map(one));
+  return { tractor, trailer, truck };
 }
 
 const smooth = (t) => t * t * (3 - 2 * t);
@@ -268,6 +394,9 @@ export function buildLife(ctx, scene, { fields, quarry, rail, combineField, bale
   const { graph } = ctx;
   const meshes = [];
   const movers = [];
+  // Nowhere a vehicle may swing out to turn round, or a combine work: the
+  // farmyards and villages (their buildings), and the quarry's rock.
+  const avoid = (x, z) => nearBuildings(ctx, x, z) || (quarry && inQuarryRock(quarry, x, z));
 
   // ---- tractors on the lanes ----
   // Lanes and B-roads well away from the villages, the farms' own tracks, the
@@ -291,8 +420,8 @@ export function buildLife(ctx, scene, { fields, quarry, rail, combineField, bale
     for (let s = 14; s <= full.len - 14; s += 4) trimmed.push(full.at(s));
     const lane = Math.min(2.2, e.width * 0.5 - 1.3);
     movers.push(new Mover(ctx, scene, {
-      route: new Route(trimmed), speed: TRACTOR_SPEED, lane, offset: rand(rng, 0, 500), name: 'tractor',
-      geo: tractorGeometry(paints[taken.length - 1]), dims: { l: 4.2, w: 2.3 },
+      route: new Route(trimmed), speed: TRACTOR_SPEED, lane, offset: rand(rng, 0, 500), name: 'tractor', turnR: TURN_TRACTOR, avoid,
+      geo: tractorGeometry(paints[taken.length - 1]), dims: { l: 4.2, w: 2.3 }, model: 'tractor', paint: paints[taken.length - 1],
       colliders: [{ hx: 1.1, hy: 1.3, hz: 2.0, y: 1.35 }],
     }));
   }
@@ -300,13 +429,13 @@ export function buildLife(ctx, scene, { fields, quarry, rail, combineField, bale
   // ---- dump trucks in the quarry ----
   if (quarry && quarry.track && quarry.haulPath) {
     movers.push(new Mover(ctx, scene, {
-      route: new Route(quarry.track.slice().reverse()), speed: TRUCK_SPEED, offset: rand(rng, 0, 300), name: 'dump-truck',
-      geo: truckGeometry(), dims: { l: 9, w: 3.4 },
+      route: new Route(quarry.track.slice().reverse()), speed: TRUCK_SPEED, offset: rand(rng, 0, 300), name: 'dump-truck', turnR: TURN_TRUCK, avoid,
+      geo: truckGeometry(), dims: { l: 9, w: 3.4 }, model: 'truck',
       colliders: [{ hx: 1.7, hy: 2.1, hz: 4.4, y: 2.1 }],
     }));
     movers.push(new Mover(ctx, scene, {
-      route: new Route(quarry.haulPath), speed: TRUCK_SPEED * 0.8, offset: rand(rng, 0, 300), name: 'dump-truck',
-      geo: truckGeometry(), dims: { l: 9, w: 3.4 },
+      route: new Route(quarry.haulPath), speed: TRUCK_SPEED * 0.8, offset: rand(rng, 0, 300), name: 'dump-truck', turnR: TURN_TRUCK, avoid,
+      geo: truckGeometry(), dims: { l: 9, w: 3.4 }, model: 'truck',
       colliders: [{ hx: 1.7, hy: 2.1, hz: 4.4, y: 2.1 }],
     }));
   }
@@ -316,13 +445,23 @@ export function buildLife(ctx, scene, { fields, quarry, rail, combineField, bale
     const route = combineRoute(ctx, fields, combineField, rng);
     if (route) {
       movers.push(new Mover(ctx, scene, {
-        route, speed: COMBINE_SPEED, offset: rand(rng, 0, 300), name: 'combine',
+        route, speed: COMBINE_SPEED, offset: rand(rng, 0, 300), name: 'combine', turnR: TURN_COMBINE, avoid,
         geo: combineGeometry(), dims: { l: 10, w: 7.6 },
         colliders: [{ hx: 1.5, hy: 2.2, hz: 3.4, y: 2.3, z: -0.6 }, { hx: 3.8, hy: 0.6, hz: 0.8, y: 0.9, z: 4.6 }],
       }));
     }
   }
-  if (baleField) meshes.push(baleTrailer(ctx, baleField, fields));
+  const parked = baleField ? baleTrailer(ctx, baleField, fields) : null;
+  if (parked) meshes.push(parked);
+  // The player's models, when they load, in place of the boxes.
+  loadLifeModels().then((m) => {
+    for (const v of movers) if (v.model && m[v.model]) v.useModel(m[v.model], v.paint);
+    if (parked) {
+      const { trailer, tractor } = parked.userData;
+      if (m.trailer) { trailer.geometry = new THREE.BufferGeometry(); trailer.add(dressModel(m.trailer)); }
+      if (m.tractor) { tractor.geometry = new THREE.BufferGeometry(); tractor.add(dressModel(m.tractor, 0x2f6e2a)); }
+    }
+  });
 
   // ---- birds ----
   const birds = buildBirds(ctx, scene, fields, rng);
@@ -361,6 +500,7 @@ function combineRoute(ctx, fields, seed, rng) {
   const ok = (x, z) => {
     const n = fields.nearest(x, z);
     if (n.s !== seed || n.edge < 7) return false;
+    if (nearBuildings(ctx, x, z)) return false;
     if (ctx.clearAt && ctx.clearAt(x, z)) return false;
     const r = ctx.graph.nearestEdge(x, z, 20);
     return !r || r.dist > r.edge.width * 0.5 + 8;
@@ -378,6 +518,20 @@ function combineRoute(ctx, fields, seed, rng) {
     if (best.length < 9) continue;
     if (flip) best.reverse();
     flip = !flip;
+    // Round from the end of one row into the next on a half circle, ahead of
+    // the row's end, as a combine turns on the headland -- joined straight,
+    // it snapped round at 229 degrees a second.
+    if (pts.length) {
+      const e = pts[pts.length - 1], s = best[0];
+      const mx = (e.x + s.x) / 2, mz = (e.z + s.z) / 2, half = Math.hypot(s.x - e.x, s.z - e.z) / 2;
+      const p0 = pts[Math.max(0, pts.length - 2)];
+      const fl = Math.hypot(e.x - p0.x, e.z - p0.z) || 1;
+      const fx = (e.x - p0.x) / fl, fz = (e.z - p0.z) / fl;
+      for (let k = 1; k < 8; k++) {
+        const th = (Math.PI * k) / 8;
+        pts.push({ x: mx + (e.x - mx) * Math.cos(th) + fx * half * Math.sin(th), z: mz + (e.z - mz) * Math.cos(th) + fz * half * Math.sin(th) });
+      }
+    }
     pts.push(...best);
   }
   return pts.length > 10 ? new Route(pts) : null;
@@ -393,7 +547,7 @@ function baleTrailer(ctx, seed, fields) {
     const a = (k / 12) * TAU;
     const px = seed.x + Math.cos(a) * 20, pz = seed.z + Math.sin(a) * 20;
     const n = fields.nearest(px, pz);
-    if (n.s === seed && n.edge > 8 && !ctx.graph.overlapsRoad(px, pz, 4, 12, a, 4)) { x = px; z = pz; rot = a + Math.PI / 2; break; }
+    if (n.s === seed && n.edge > 8 && !nearBuildings(ctx, px, pz) && !ctx.graph.overlapsRoad(px, pz, 4, 12, a, 4)) { x = px; z = pz; rot = a + Math.PI / 2; break; }
   }
   const fx = Math.sin(rot), fz = Math.cos(rot);
   const g = ctx.at(x, z);
@@ -401,23 +555,30 @@ function baleTrailer(ctx, seed, fields) {
   b.addBox(2.4, 0.3, 6.4, 0, 1.05, 0, 0x6e5a42);
   b.addBox(0.15, 0.15, 1.6, 0, 0.95, 3.6, 0x333333);
   for (const sx of [-1.25, 1.25]) for (const sz of [-1.0, 1.0]) wheel(b, 0.45, 0.3, sx, 0.45, sz);
+  // The bales, apart from the trailer, so the trailer can be swapped for the
+  // player's model and they stay on it.
+  const bb = new MeshBuilder();
   const bale = new THREE.CylinderGeometry(0.8, 0.8, 1.5, 14);
   for (let i = 0; i < 3; i++) {
     for (const s of [-0.75, 0.75]) {
-      b.addGeometry(bale, new THREE.Matrix4().makeRotationZ(Math.PI / 2).setPosition(s, 2.0, (i - 1) * 1.8), 0xb79a52);
+      bb.addGeometry(bale, new THREE.Matrix4().makeRotationZ(Math.PI / 2).setPosition(s, 2.0, (i - 1) * 1.8), 0xb79a52);
     }
   }
   bale.dispose();
   const group = new THREE.Group();
   const trailer = new THREE.Mesh(b.build(), vertexColorMaterial());
+  const bales = new THREE.Mesh(bb.build(), vertexColorMaterial());
   const tractor = new THREE.Mesh(tractorGeometry(0x2f6e2a), vertexColorMaterial());
-  tractor.position.z = 5.4;
-  for (const m of [trailer, tractor]) { m.castShadow = true; group.add(m); }
+  // Hitched: its tow bar at the trailer's drawbar eye, 4.8 m ahead of the deck's middle.
+  tractor.position.z = HITCH;
+  for (const m of [trailer, bales, tractor]) { m.castShadow = true; group.add(m); }
   group.position.set(x, g, z);
   group.rotation.y = rot;
   group.name = 'bale-trailer';
   addStaticBox(W, x, g + 1.4, z, 1.3, 1.4, 3.2, GROUP.BUILDING, rot);
-  addStaticBox(W, x + fx * 5.4, g + 1.4, z + fz * 5.4, 1.1, 1.4, 2.0, GROUP.BUILDING, rot);
+  addStaticBox(W, x + fx * HITCH, g + 1.4, z + fz * HITCH, 1.1, 1.4, 2.0, GROUP.BUILDING, rot);
+  group.userData.trailer = trailer;
+  group.userData.tractor = tractor;
   return group;
 }
 
@@ -548,4 +709,20 @@ function buildWindows(ctx) {
     mesh.material = on ? night : day;
   };
   return { mesh, setNight };
+}
+
+/**
+ * Near a farmyard's or a village's buildings. Something drove through a farm
+ * building: "I noticed it going through a building, like a farm building, at
+ * one point". Nothing that moves here may come near one.
+ */
+function nearBuildings(ctx, x, z) {
+  if (ctx.farms.some((f) => Math.hypot(f.x - x, f.z - z) < 48)) return true;
+  return ctx.villages.some((v) => Math.hypot(v.x - x, v.z - z) < v.r + 15);
+}
+
+/** In the quarry's rock: between the floor and the outside of the face. */
+function inQuarryRock(q, x, z) {
+  const d = Math.hypot(x - q.x, z - q.z);
+  return d > (q.inner || q.r * 0.6) - 3 && d < q.r + 10;
 }
