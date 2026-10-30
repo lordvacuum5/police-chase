@@ -2502,10 +2502,13 @@ export class Driver {
    * `maxAhead` metres, or null. For queueing: traffic (game/traffic.js) and a
    * patrol car behind traffic.
    */
-  carInWay(others, maxAhead = 45) {
+  carInWay(others, maxAhead = 45, more = null) {
     const v = this.v;
     let best = null, bestAlong = Infinity;
-    for (const o of others) {
+    // `more`: things on the road that are not cars in the game's list --
+    // Haldon Vale's tractors (world/countrylife.js) -- shaped like one where it
+    // matters here: position, linvel, speed, forward, spec.dims.
+    for (const o of more ? others.concat(more) : others) {
       if (o === v || o.isAircraft) continue;
       const dx = o.position.x - v.position.x, dz = o.position.z - v.position.z;
       if (dx * dx + dz * dz > (maxAhead + 5) * (maxAhead + 5)) continue;

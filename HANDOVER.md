@@ -416,7 +416,11 @@ runs. `tests/quarry.js`, `tests/railway.js`, `tests/railbed.js`, `tests/spawnsig
 The quarry floor is **below zero**, through a hole in the floor plate
 (`plateHole` in `buildGround`); anything that assumes the ground is never under
 zero is wrong on Haldon now (the searchlight and the skid marks both were). The
-quarry has a **haul road** (`q.haul`) up its ledges; `tests/haulroad.js`. **Hedges do not hide a spawn** (`SPAWN_SIGHT`): the
+quarry has a **haul road** (`q.haul`) up its ledges; `tests/haulroad.js`.
+`world/countrylife.js` puts tractors, dump trucks, a combine, birds and lit
+windows on the map: kinematic, moved by the wall clock, **not cars** -- not
+counted as police or traffic (the player asked that the police numbers never
+change for them); the AI queues behind them via `map.movers`. **Hedges do not hide a spawn** (`SPAWN_SIGHT`): the
 player sees over them, though the police do not. The roadside hedges are
 almost all refused by `overlapsRoad` -- the vale's hedges are field
 boundaries, and that is how the chases are tuned; gates (`buildGates`) stand

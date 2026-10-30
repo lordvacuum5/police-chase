@@ -521,7 +521,7 @@ export function buildQuarry(ctx, q) {
     need += (ledgeAt(a, k) - ledgeAt(a, k - 1)) / (rAt(a, k) - HAUL_WIDE * 0.5);
   }
   const grade = Math.max(HAUL_GRADE, need / (room - tiers * HAUL_LANDING));
-  const haul = [];
+  const haul = [], haulPath = [];
   let a = q.open + gap + 0.2;
   for (let k = 0; k < tiers; k++) {
     const rise = ledgeAt(a, k) - ledgeAt(a, k - 1);
@@ -544,9 +544,19 @@ export function buildQuarry(ctx, q) {
       addPrism(b, c, new THREE.Color().setHSL(0.08, 0.12, 0.5 + (s % 2) * 0.015));
     }
     haul.push({ from: a, to: a + total, tier: k });
+    // The middle of the road, with its height, for the dump truck that works
+    // it (countrylife.js): up the rise, then easing out across the landing
+    // to the middle of the next rise's lane.
+    for (let aa = a; aa <= a + total + 1e-6; aa += 0.02) {
+      const u = clamp((aa - a - span) / HAUL_LANDING, 0, 1);
+      const out = k < tiers - 1 ? rAt(aa, k + 1) - HAUL_WIDE * 0.5 : rAt(aa, k) - HAUL_WIDE * 0.5;
+      const [px, pz] = P(aa, lerp(rAt(aa, k) - HAUL_WIDE * 0.5, out, u));
+      haulPath.push({ x: px, z: pz, y: lerp(ledgeAt(aa, k - 1), ledgeAt(aa, k), Math.min(1, (aa - a) / span)) });
+    }
     a += total;
   }
   q.haul = haul;
+  q.haulPath = haulPath;
   q.haulGrade = grade;
   // Scree heaps at the foot of the deepest faces, pale, to drive up -- not on
   // the haul road's first rise, which runs along the foot of the first face.
@@ -1215,6 +1225,32 @@ export class Railway {
     }
     this.crossings = rail.cross.map((c) => this._buildCrossing(c, scene));
     this.meshes = [];
+  }
+
+  /**
+   * At night the carriages are lit inside: a band of warm light along the
+   * windows of each, lit whatever the light round it ("the train has lit
+   * carriages"), and the front cab's lamps.
+   */
+  setNight(on) {
+    if (!on || this._lit) return;
+    this._lit = true;
+    const warm = new THREE.MeshBasicMaterial({ color: 0xffe2a8, fog: true });
+    const lamp = new THREE.MeshBasicMaterial({ color: 0xfff6dc, fog: true });
+    this.cars.forEach((car, i) => {
+      const cab = i === 0 || i === CARS - 1, nose = cab ? 4.2 : 0;
+      const bodyL = CAR_LEN - nose;
+      const band = new THREE.Mesh(new THREE.BoxGeometry(2.86, 0.6, bodyL - 1.6), warm);
+      band.position.set(0, 0.85, -nose * 0.5);
+      car.mesh.add(band);
+      if (cab) {
+        for (const x of [-0.9, 0.9]) {
+          const l = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.2, 0.1), lamp);
+          l.position.set(x, -0.65, CAR_LEN * 0.5 + 0.02);
+          car.mesh.add(l);
+        }
+      }
+    });
   }
 
   /** The front of the train at time t: { s, dir }, or null while it waits off the map. */

@@ -7125,6 +7125,40 @@ normal ground level, so they're basically floating in the air"*: skid marks
 were laid 4.5 cm above zero -- under the hills all over the vale, in the air in
 the quarry. Now at the tyre's contact.
 
+### Haldon Vale lived in: work, a harvest, birds, and the evening
+
+*"I just want to add a bit more life to the map."* Picked from a list: work
+vehicles, a harvest, birds, and lights at night. All in `world/countrylife.js`.
+
+* **Tractors** -- three, red, green and blue, on lanes and B-roads away from
+  the villages, the railway's crossings and the quarry, at 25 km/h on their
+  own side, turning round at each end.
+* **Dump trucks** -- one up and down the quarry's dirt track, one up and down
+  the haul road from the floor to the rim, loaded with the quarry's own stone.
+* **A harvest** -- a combine working a wheat field in rows nine metres apart,
+  clear of its hedges, and a green tractor and trailer stacked with round bales
+  standing by a field of them.
+* **Birds** -- ten flocks of fourteen in the woods, unseen until a car comes
+  within 40 m or the helicopter within 80 m; then up, wheeling over the trees,
+  and down again fourteen seconds after the last fright.
+* **The evening** -- at night (the menu's NIGHT) about two windows in three of
+  every village and farm house are lit, and the train's carriages and lamps.
+
+*"Will this decrease the amount of traffic vehicles ... how will it affect how
+many police cars there are? Because I don't want it to."* It touches neither.
+None of these are cars to the game: no engine, tyres, AI or network traffic, not
+counted against the police limit (`Game.carCount`) or the traffic's seventeen.
+Each is a kinematic body moved along a fixed route by the wall clock, as the
+train is, so every machine in a game sees the same tractor in the same place.
+They are solid, and the AI's drivers queue behind them like any slow car
+(`movers`, handed to `Driver.carInWay`).
+
+Measured on Haldon, `tests/trafficseen.js` for 60 s, fresh pages: frame update
+5.2 ms with them, 5.5 ms with them switched off (no measurable cost); the
+traffic identical (5.6 cars, 1.43 within 150 m). `tests/patrol.js`: no knocks,
+on the work vehicles or anywhere; wrong side 8% against 7% before -- going
+round a tractor.
+
 ### Hedges, gates and fences
 
 *"Make it so the hedges are one big sort of line instead of lots of multiple

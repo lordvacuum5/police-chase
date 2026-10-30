@@ -695,7 +695,7 @@ export class Officer {
     // And behind traffic, which it does not tell off for being there.
     let obstacle = patrolling ? this.game.player : null;
     if (patrolling && this.game.traffic && this.game.traffic.cars.length) {
-      const ahead = this.driver.carInWay(this.game.vehicles);
+      const ahead = this.driver.carInWay(this.game.vehicles, 45, this.game.world.__map && this.game.world.__map.movers);
       if (ahead && ahead !== this.game.player && ahead.isTraffic) obstacle = ahead;
     }
     this._heldByPlayer = obstacle === this.game.player;

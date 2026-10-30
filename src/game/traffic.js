@@ -319,7 +319,7 @@ export class Traffic {
     // Queueing behind what is in front, and nothing else: Driver.avoid sweeps
     // for scenery and other cars to dodge, which a car keeping to its lane at
     // the limit does not need, and it was the dearest thing a traffic car did.
-    d.holdBehind(d.carInWay(g.vehicles), dt);
+    d.holdBehind(d.carInWay(g.vehicles, 45, g.world.__map && g.world.__map.movers), dt);
     v.setControls(d.followPath(dt, cap));
 
     c.stuckFor = v.speed < 0.5 && c.pullFor <= 0 && !d.heldBy ? c.stuckFor + dt : 0;

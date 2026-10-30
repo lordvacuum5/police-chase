@@ -402,6 +402,8 @@ class Game {
     // the player: rain changes grip, so two people in different weather are
     // not driving on the same roads. After the props, whose lamp posts it lights.
     this.weather = new Weather(this, session.conditions || undefined);
+    // Night on the map itself: Haldon Vale's windows and the train's.
+    if (this.world.__map && this.world.__map.setNight) this.world.__map.setNight(this.weather.night);
     this.weather.lightStreets(this.props);
     // The police talking about what is going on. Reads everything above; decides nothing.
     this.commentary = new Commentary(this);
@@ -3306,7 +3308,7 @@ class Game {
     // Cones are dynamic bodies, so their meshes have to follow them.
     this.roadblocks.syncVisuals();
     // And anything loose the map put down: the bales on Haldon Vale.
-    if (this.world.__map && this.world.__map.update) this.world.__map.update();
+    if (this.world.__map && this.world.__map.update) this.world.__map.update(this);
 
     // ---- car transforms ----
     //

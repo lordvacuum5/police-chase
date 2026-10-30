@@ -37,6 +37,7 @@ import {
   makeClearMask, planQuarry, quarryGround, quarryHole, planQuarryEdge, buildQuarry, quarryColour,
   planShortcuts, buildShortcuts, buildGates, planRailway, railGround, buildRailTrack, Railway,
 } from './countryextras.js';
+import { buildLife } from './countrylife.js';
 
 const RIDGEWAY_R = 800;
 /**
@@ -114,6 +115,7 @@ export function buildCountry(sim, scene, seed = 4417) {
   // wood, hedge gap and crest after them somewhere else, and the vale is
   // liked the way it is.
   ctx.xrng = makeRng(seed + 7919);
+  ctx.lrng = makeRng(seed + 15485);
   makeClearMask(ctx);
   const quarry = planQuarry(ctx, base, hills);
   ctx.quarry = quarry;
@@ -209,6 +211,8 @@ export function buildCountry(sim, scene, seed = 4417) {
   if (rail) meshes.push(buildRailTrack(ctx, rail));
   for (const m of meshes) if (m) scene.add(m);
   const railway = rail ? new Railway(ctx, rail, scene) : null;
+  // Work going on, birds, lights at night (world/countrylife.js).
+  const life = buildLife(ctx, scene, { fields, quarry, rail, combineField: ctx.combineField, baleField: ctx.baleField });
 
   return {
     graph,
@@ -229,11 +233,16 @@ export function buildCountry(sim, scene, seed = 4417) {
     shortcuts: ctx.shortcuts,
     railway,
     // Called every frame by the game: the bales and gates follow their
-    // bodies, the train and the crossings are drawn.
-    update: () => { ctx.bales.update(); gates.update(); if (railway) railway.update(); },
+    // bodies, the train, the crossings, the tractors and the birds are drawn.
+    update: (game) => { ctx.bales.update(); gates.update(); if (railway) railway.update(); life.update(game); },
     gates,
-    // Called every physics substep: the train moves.
-    step: railway ? (dt) => railway.step(dt) : null,
+    // The tractors, trucks and combine, to the AI's queueing (Driver.carInWay).
+    movers: life.movers,
+    life,
+    // Called every physics substep: the train and the work vehicles move.
+    step: (dt) => { if (railway) railway.step(dt); life.step(dt); },
+    // Day or night, once the weather is known: windows and the train's lights.
+    setNight: (on) => { life.setNight(on); if (railway) railway.setNight(on); },
     // The crossings, to everything the AI drives (TrafficLights.stopDistanceAt).
     stopDistanceAt: railway ? (x, z, dx, dz, v) => railway.stopDistanceAt(x, z, dx, dz, v) : null,
   };
@@ -810,6 +819,8 @@ function addHouse(ctx, b, pieces, x, z, w, h, d, rot, colour, roof) {
   b.addBox(w * 1.02, 0.8, d * 1.02, x, 0.1, z, 0x2b2724, rot);
   pieces.push([s, b.vertexCount, x, z]);
   addStaticBox(ctx.sim.world, x, at + h * 0.5, z, w * 0.5, h * 0.5, d * 0.5, GROUP.BUILDING, rot);
+  // Kept, for its windows to light at night (countrylife.js).
+  (ctx.houses || (ctx.houses = [])).push({ x, z, w, h, d, rot, at });
 }
 
 function buildVillageBuildings(ctx) {
@@ -1265,6 +1276,10 @@ function buildBalesAndTurbines(ctx, fields, hills) {
   const W = ctx.sim.world;
   // Round bales, in rows in a few of the stubble fields. Loose: see buildBales.
   const stubble = fields.seeds.filter((s) => !s.wood && (s.crop === CROPS[4] || s.crop === CROPS[5]));
+  // Where the harvest is (countrylife.js): a trailer of bales by the first
+  // field of bales, and a combine in the first wheat field without any.
+  ctx.baleField = stubble[0] || null;
+  ctx.combineField = stubble[BALE_FIELDS] || null;
   const bales = [];
   // More of them, two rows to a field: "can you add a few more bales on the
   // new map? Because I love them." 14 fields of 6 was 78 bales.
