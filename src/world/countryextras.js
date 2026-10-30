@@ -21,7 +21,6 @@ import { rand, randInt, clamp, lerp, TAU } from '../util/math.js';
 import { WORLD_HALF, GRID_N, CELL, MeshBuilder, vertexColorMaterial } from './common.js';
 import { HILL_SINK } from './terrain.js';
 import { spline, segX, pointOn, roadDistance, inVillage } from './countrygen.js';
-import { GLTFLoader } from '../../vendor/addons/loaders/GLTFLoader.js';
 
 /** Bits in the clear mask. */
 const CLEAR = { RAIL: 1, SHORTCUT: 2, QUARRY: 4 };
@@ -66,8 +65,6 @@ const CARS = 5;
 const CAR_LEN = 23;
 const CAR_GAP = 1;
 const TRAIN_WAIT = 30;
-/** The modelled bogie's wheels, radius m. */
-const WHEEL_R = 0.425;
 /** Lights flash this long before the train is on the crossing, s, and the barriers are down for the last DOWN_AT. */
 const LIGHTS_AT = 14;
 const DOWN_AT = 10;
@@ -1142,54 +1139,10 @@ export class Railway {
         );
       }
       // The last car runs backwards, so its cab faces the other way.
-      this.cars.push({ mesh, body, flip: i === CARS - 1, away: true, cab, sc: 0, dir: 1, bogies: [] });
+      this.cars.push({ mesh, body, flip: i === CARS - 1, away: true });
     }
     this.crossings = rail.cross.map((c) => this._buildCrossing(c, scene));
     this.meshes = [];
-    this.scene = scene;
-    // The player's own models, when they load: the box carriages until then,
-    // and for good if they are not there.
-    loadTrainModels().then((m) => { if (m) this._useModels(m); });
-  }
-
-  /**
-   * Put the modelled train on: "I've put the models in". Each carriage's
-   * model hangs under its body, turned (modelled nose to -Z, the bodies run
-   * nose to +Z) and dropped to the rails (modelled from rail height; the body
-   * is a box 1.88 m up). Under each, two bogies of their own -- "shouldn't
-   * each part of the train be movable?" -- placed on the track 8 m either side
-   * of the carriage's middle, turned to the rails there, wheels turning.
-   */
-  _useModels({ cab, coach, bogie }) {
-    for (const car of this.cars) {
-      const model = (car.cab ? cab : coach).clone(true);
-      model.rotation.y = Math.PI;
-      model.position.y = -1.88;
-      if (car.cab) {
-        // Headlights at the front, tail lights at the back.
-        model.traverse((o) => {
-          if (!o.isMesh) return;
-          const swap = (m) => {
-            if (!m || m.name !== 'lights') return m;
-            const lit = m.clone();
-            lit.emissive = new THREE.Color(car.flip ? 0xff2020 : 0xfff4dc);
-            lit.emissiveIntensity = 1.5;
-            return lit;
-          };
-          o.material = Array.isArray(o.material) ? o.material.map(swap) : swap(o.material);
-        });
-      }
-      model.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-      car.mesh.geometry = new THREE.BufferGeometry();
-      car.mesh.add(model);
-      for (let k = 0; k < 2; k++) {
-        const b = bogie.clone(true);
-        b.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-        b.visible = false;
-        this.scene.add(b);
-        car.bogies.push({ view: b, axles: ['axle_front', 'axle_rear'].map((n) => b.getObjectByName(n)).filter(Boolean) });
-      }
-    }
   }
 
   /** The front of the train at time t: { s, dir }, or null while it waits off the map. */
@@ -1227,7 +1180,6 @@ export class Railway {
         continue;
       }
       const sc = f.s - f.dir * (i * (CAR_LEN + CAR_GAP) + CAR_LEN * 0.5);
-      car.sc = sc; car.dir = f.dir;
       const a = this._pose(sc + f.dir * 8), b = this._pose(sc - f.dir * 8);
       const dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
       const yaw = Math.atan2(dx, dz) + (car.flip ? Math.PI : 0);
@@ -1251,21 +1203,10 @@ export class Railway {
   update() {
     for (const car of this.cars) {
       car.mesh.visible = !car.away;
-      for (const bg of car.bogies) bg.view.visible = !car.away;
       if (car.away) continue;
       const t = car.body.translation(), r = car.body.rotation();
       car.mesh.position.set(t.x, t.y, t.z);
       car.mesh.quaternion.set(r.x, r.y, r.z, r.w);
-      // The bogies: each on the rails under its end of the carriage, turned
-      // to the track there, its wheels rolled by how far it has come.
-      car.bogies.forEach((bg, k) => {
-        const s = car.sc + (k ? -8 : 8) * car.dir;
-        const a = this._pose(s + car.dir * 1.3), b = this._pose(s - car.dir * 1.3);
-        const dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
-        bg.view.position.set((a.x + b.x) * 0.5, (a.y + b.y) * 0.5, (a.z + b.z) * 0.5);
-        bg.view.rotation.set(-Math.atan2(dy, Math.hypot(dx, dz)), Math.atan2(dx, dz), 0, 'YXZ');
-        for (const ax of bg.axles) ax.rotation.x = (s * car.dir) / WHEEL_R;
-      });
     }
     const flash = Math.floor(this.clock * 3) % 2;
     for (const c of this.crossings) {
@@ -1359,18 +1300,3 @@ export class Railway {
 
 const _e = new THREE.Euler();
 const _q = new THREE.Quaternion();
-
-/**
- * The player's train models (resources/models/TRAIN.md is the brief they were
- * made to): { cab, coach, bogie } scenes, or null if any is missing.
- */
-async function loadTrainModels() {
-  try {
-    const loader = new GLTFLoader();
-    const [cab, coach, bogie] = await Promise.all(['train-cab', 'train-middle', 'train-bogie']
-      .map((n) => loader.loadAsync(`resources/models/${n}.glb`)));
-    return { cab: cab.scene, coach: coach.scene, bogie: bogie.scene };
-  } catch (e) {
-    return null;
-  }
-}

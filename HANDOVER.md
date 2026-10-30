@@ -421,8 +421,9 @@ almost all refused by `overlapsRoad` -- the vale's hedges are field
 boundaries, and that is how the chases are tuned; gates (`buildGates`) stand
 in the field gateways and break in four; their posts are loose and take their
 bit of fence with them. The train model brief is
-`resources/models/TRAIN.md`; the models (`train-cab`, `train-middle`, `train-bogie`) are
-in and loaded by `loadTrainModels`, boxes until then. **Haldon's ground is
+`resources/models/TRAIN.md`. Models made to it went in and were taken out at
+the player's word -- "I want the old one back in": the box train is what they
+want; do not put a model back unasked. **Haldon's ground is
 drawn at 4 m**, the height grid's own spacing, so it is the surface things rest
 on (at 8 m cars and bales floated over it, seen from below). The bed has a **blended
 layer of its own** in `buildHeightGrid` (`LW`) under the roads' -- as a place

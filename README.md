@@ -7079,12 +7079,13 @@ and more than 15 cm over 1.2% of the vale; drawn at the grid's own 4 m, 2 mm and
 none. The cost: the ground is four times the triangles, about 986k drawn in all
 against 480k. The quarry's separate fine patch is no longer needed.
 
-The player's train models are in (`train-cab.glb`, `train-middle.glb`,
-`train-bogie.glb`, made to `resources/models/TRAIN.md`): each carriage hangs its
-model under its body, turned and dropped to the rails; each has two bogies of
-its own on the track under its ends, turned to the rails there, wheels rolling;
-the front cab's lights lit white, the back's red. Until they load, and if they
-are ever missing, the box train runs.
+The player's train models went in (`train-cab.glb`, `train-middle.glb`,
+`train-bogie.glb`, made to `resources/models/TRAIN.md`): each carriage hung its
+model under its body, with two bogies of its own on the track, wheels rolling,
+lights white at the front and red at the back. Then they came out again: *"get
+rid of that ... model. I hate it ... I want the old one back in."* The box
+train (`carriageGeometry`) runs; the models and the code that hung them are in
+the history (commit 2720170) if they are ever wanted.
 
 ### Hedges, gates and fences
 
