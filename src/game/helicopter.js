@@ -14,6 +14,12 @@ import * as THREE from 'three';
 import { clamp, clamp01, lerp, damp } from '../util/math.js';
 import { MeshBuilder, vertexColorMaterial } from '../util/meshbuild.js';
 import { loadHelicopterModel, buildImportedHelicopter } from './helimodel.js';
+import { raycast, groups, GROUP } from '../physics/world.js';
+
+/** What the searchlight lands on besides the ground: rock, walls, roofs. See _surfaceAt. */
+const SURFACE_RAYS = groups(0xFFFF, GROUP.BUILDING);
+const DOWN = { x: 0, y: -1, z: 0 };
+const _down = { x: 0, y: 0, z: 0 };
 
 /** Cruise height above the ground. */
 const ALTITUDE = 62;
@@ -283,6 +289,17 @@ export class Helicopter {
    * direction genuinely slips out of it -- which is the whole point of making
    * the light the thing that sees you rather than a radius round the aircraft.
    */
+  /** The top of whatever is at (x, z): the ground, or something solid standing on it. */
+  _surfaceAt(x, z) {
+    const sim = this.game.sim;
+    const ground = sim && sim.heightAt ? sim.heightAt(x, z) || 0 : 0;
+    const world = this.game.world;
+    if (!world) return ground;
+    _down.x = x; _down.y = this.pos.y + 5; _down.z = z;
+    const hit = raycast(world, _down, DOWN, this.pos.y + 80, SURFACE_RAYS);
+    return hit ? Math.max(ground, hit.point.y) : ground;
+  }
+
   _updateBeam(dt, target) {
     const reach = this.distanceTo(target.position);
     const k = this.game.dispatcher ? this.game.dispatcher.knowledge : null;
@@ -401,12 +418,18 @@ export class Helicopter {
     // where the crew aim it rather than where the aircraft happens to be
     // facing. Stretch a cone from the aircraft down to wherever the light is
     // actually landing.
+    // Where the light lands: the ground, or whatever stands on it -- the
+    // quarry's ledges, a roof. "The helicopter spotlight is a bit messed up
+    // because of the quarry, because of its different levels." The cone ran
+    // down to sea level whatever was under it, so over the quarry it stopped
+    // in mid air and on a hill it went into it.
+    const landsAt = this.spotlight > 0.05 ? this._surfaceAt(this.beam.x, this.beam.z) : 0;
     if (beam) {
       const on = this.spotlight > 0.05;
       beam.visible = on;
       if (on) {
         _from.copy(this.pos);
-        _to.set(this.beam.x, 0.06, this.beam.z);
+        _to.set(this.beam.x, landsAt + 0.06, this.beam.z);
         const mid = _mid.addVectors(_from, _to).multiplyScalar(0.5);
         const len = _from.distanceTo(_to);
         beam.position.copy(mid);
@@ -419,7 +442,11 @@ export class Helicopter {
       }
     }
     if (pool) {
-      const on = this.spotlight > 0.05;
+      // Not on the hills. The disc is flat, laid at the height of the ground
+      // under its middle: across the quarry's terraces it was buried under
+      // one ledge and hanging in the air off the next. The spot light lights
+      // whatever it falls on, ledge by ledge, and is the pool there.
+      const on = this.spotlight > 0.05 && !(this.game.sim && this.game.sim.terrainAt);
       pool.visible = on;
       if (on) {
         // Above the kerb, or the footway hides it. Additive and not writing depth,
@@ -429,9 +456,7 @@ export class Helicopter {
         // is only the bright edge that makes it read as a searchlight. At its old
         // strength the two added together and blew a night-time junction out
         // to flat white.
-        const ground = this.game.sim && this.game.sim.heightAt
-          ? this.game.sim.heightAt(this.beam.x, this.beam.z) || 0 : 0;
-        pool.position.set(this.beam.x, ground + 0.4, this.beam.z);
+        pool.position.set(this.beam.x, landsAt + 0.4, this.beam.z);
         pool.material.opacity = Math.min(0.2, this.spotlight * 0.075 * (this.game.weather ? this.game.weather.lightBoost : 1));
       }
     }
@@ -442,9 +467,7 @@ export class Helicopter {
       const on = this.active && this.spotlight > 0.05;
       if (on) {
         this.light.position.copy(this.pos);
-        this.lightTarget.position.set(this.beam.x,
-          this.game.sim && this.game.sim.heightAt ? this.game.sim.heightAt(this.beam.x, this.beam.z) || 0 : 0,
-          this.beam.z);
+        this.lightTarget.position.set(this.beam.x, landsAt, this.beam.z);
         this.lightTarget.updateMatrixWorld();
         const len = this.pos.distanceTo(this.lightTarget.position) || 1;
         this.light.angle = Math.atan(BEAM_RADIUS / len) * 1.08;

@@ -70,8 +70,12 @@ export class SkidMarks {
 
     const i = this.head * 18;
     const p = this.positions;
-    const y = 0.045;
-    const write = (o, v) => { p[o] = v.x; p[o + 1] = y; p[o + 2] = v.z; };
+    // At the tyre's contact, just above it. These were laid at a fixed
+    // 4.5 cm over sea level, which is the road on the flat maps -- and on
+    // Haldon Vale's hills was under the ground, and down in the quarry, whose
+    // floor is below zero, was a set of marks in the air: "all the tyre tracks
+    // ... are at the normal ground level, so they're basically floating".
+    const write = (o, v) => { p[o] = v.x; p[o + 1] = v.y + 0.045; p[o + 2] = v.z; };
 
     // Two triangles: (fromL, fromR, toR) and (fromL, toR, toL).
     _a.copy(from).add(_n); write(i + 0, _a); write(i + 9, _a);   // fromL

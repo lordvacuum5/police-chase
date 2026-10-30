@@ -26,7 +26,7 @@ import { spline, segX, pointOn, roadDistance, inVillage } from './countrygen.js'
 const CLEAR = { RAIL: 1, SHORTCUT: 2, QUARRY: 4 };
 
 /** The quarry floor's radius, m -- the biggest of these that fits -- and the least cliff worth the name. */
-const QUARRY_SIZES = [75, 68, 60, 55];
+const QUARRY_SIZES = [110, 100, 90, 80, 75];
 const QUARRY_MIN_CLIFF = 14;
 /** How far the floor is dug below the lowest ground round it, m: the way in is a ramp down. */
 const QUARRY_DIG = 16;
@@ -35,9 +35,15 @@ const RAMP_LEN = 100;
 const FACE_IN = 6, FACE_OUT = 7;
 /** The terraces: how tall each face is meant to be, m, and how wide each ledge. See buildQuarry. */
 const BENCH_RISE = 8;
+/** The narrowest the floor may be left by the terraces, m: room for the jumps. */
+const FLOOR_MIN = 45;
+/** The haul road up the terraces: how wide, its least grade, and the level stretch at the top of each rise, rad. */
+const HAUL_WIDE = 7;
+const HAUL_GRADE = 0.15;
+const HAUL_LANDING = 0.3;
 /** How far a jump's side runs out for every metre it stands up. */
 const SIDE_RUN = 1.6;
-const BENCH_WIDE = 5;
+const BENCH_WIDE = 10;
 
 /** How many shortcuts across the fields, and how much shorter than the road they must be. */
 const SHORTCUTS = 8;
@@ -190,9 +196,11 @@ function quarrySites(ctx, base, h, R, take) {
       for (const f of [0.3, 0.45, 0.6, 0.75, 0.9]) {
         const x = h.x + Math.cos(a) * h.r * f, z = h.z + Math.sin(a) * h.r * f;
         if (Math.abs(x) > WORLD_HALF - 220 || Math.abs(z) > WORLD_HALF - 220) continue;
-        if (roadNear(graph, x, z, R + 45)) continue;
-        if (ctx.villages.some((v) => Math.hypot(v.x - x, v.z - z) < v.r + R + 60)) continue;
-        if (ctx.farms.some((fm) => Math.hypot(fm.x - x, fm.z - z) < R + 80)) continue;
+        // Room round it: the rock goes out FACE_OUT past the floor, and the rim
+        // beyond that is ground a car can reach the edge over.
+        if (roadNear(graph, x, z, R + FACE_OUT + 18)) continue;
+        if (ctx.villages.some((v) => Math.hypot(v.x - x, v.z - z) < v.r + R + 35)) continue;
+        if (ctx.farms.some((fm) => Math.hypot(fm.x - x, fm.z - z) < R + 50)) continue;
         let lo = Infinity, hi = -Infinity, loA = 0, hiA = 0;
         for (let m = 0; m < 48; m++) {
           const b = (m / 48) * TAU;
@@ -425,8 +433,25 @@ export function buildQuarry(ctx, q) {
   for (const h of rims) tallest = Math.max(tallest, h - q.floor);
   const tiers = clamp(Math.round(tallest / BENCH_RISE), 2, 5);
   q.tiers = tiers;
-  q.inner = q.r - FACE_IN - (tiers - 1) * BENCH_WIDE;
+  // Ledges a car can be on: "the terracing on the quarry, you can't actually
+  // go on individual ones ... I seem to just kind of slide off". They were 5 m
+  // and wandered 30% either way: 3 m in places, under a car's length. Now
+  // BENCH_WIDE where the quarry has room for it, keeping a floor of FLOOR_MIN
+  // for the jumps, and wandering a tenth.
+  const bench = Math.min(BENCH_WIDE, (q.r - FACE_IN - FLOOR_MIN) / Math.max(1, tiers - 1));
+  q.bench = bench;
+  q.inner = q.r - FACE_IN - (tiers - 1) * bench;
   const P = (a, r) => [q.x + Math.cos(a) * r, q.z + Math.sin(a) * r];
+  // Not a stadium: each ledge wanders in and out, and each face is a little
+  // taller or shorter, smoothly round the circle so neighbouring slices meet.
+  const rAt = (a, j) => q.r - FACE_IN - (tiers - 1 - j) * bench
+    + (j < tiers - 1 ? Math.sin(a * 5 + j * 2.1) * bench * 0.1 : 0);
+  const tAt = (a, h, j) => q.floor + (h - q.floor) * Math.min(1, (j + 1) / tiers
+    + (j < tiers - 1 ? Math.sin(a * 3 + j * 1.3) * 0.04 : 0));
+  const rimAt = (a) => {
+    const f = ((((a % TAU) + TAU) % TAU) / TAU) * STEPS, m = Math.min(STEPS - 1, Math.floor(f));
+    return lerp(rims[m], rims[m + 1], f - m);
+  };
   const ledge = (s) => new THREE.Color().setHSL(rand(rng, 0.22, 0.27), rand(rng, 0.25, 0.4), rand(rng, 0.22, 0.3) + s);
   // Half the angle of the cutting the ramp comes in through.
   const gap = 13 / q.inner;
@@ -445,13 +470,6 @@ export function buildQuarry(ctx, q) {
     if (Math.max(h0, h1) - q.floor < 2.5) continue;
     const lo = q.floor - 1.5, r1 = q.r + FACE_OUT;
     for (let i = 0; i < tiers; i++) {
-      // Not a stadium: each ledge wanders in and out, and each face is a
-      // little taller or shorter, smoothly round the circle so neighbouring
-      // slices still meet.
-      const rAt = (a, j) => q.r - FACE_IN - (tiers - 1 - j) * BENCH_WIDE
-        + (j < tiers - 1 ? Math.sin(a * 5 + j * 2.1) * BENCH_WIDE * 0.3 : 0);
-      const tAt = (a, h, j) => q.floor + (h - q.floor) * Math.min(1, (j + 1) / tiers
-        + (j < tiers - 1 ? Math.sin(a * 3 + j * 1.3) * 0.06 : 0));
       const ra = rAt(a0, i), rb = rAt(a1, i);
       const t0 = tAt(a0, h0, i), t1 = tAt(a1, h1, i);
       const [ax, az] = P(a0, ra), [bx, bz] = P(a1, rb), [cx, cz] = P(a1, r1), [dx, dz] = P(a0, r1);
@@ -483,9 +501,63 @@ export function buildQuarry(ctx, q) {
       }
     }
   }
-  // Scree heaps at the foot of the deepest faces, pale, to drive up.
+  // The haul road, as in any working quarry: a ramp up the foot of each face
+  // in turn, from the floor to the first ledge, ledge to ledge, and from the
+  // last to the rim, each starting where the one below came out, round the
+  // quarry from just past the cutting. Without it a ledge could only be
+  // reached by falling onto it. Each rise runs along the foot of the face it
+  // climbs, HAUL_WIDE across, then levels off for a landing flush with the
+  // ledge above, long enough to ease out onto it -- a short one ended with the
+  // ledge below straight ahead, and the test car went off the end of it and
+  // down a level. As steep as it has to be to go round once in the room
+  // there is, and no less steep than HAUL_GRADE.
+  const ledgeAt = (a, k) => (k < 0 ? q.floor : tAt(a, rimAt(a), k));
+  const room = TAU - 2 * gap - 0.4;
+  // The angle all the rises would take at a grade of one, against the angle
+  // left once the landings are taken out.
+  let need = 0;
+  for (let k = 0; k < tiers; k++) {
+    const a = q.open + gap + 0.2 + (k * room) / tiers;
+    need += (ledgeAt(a, k) - ledgeAt(a, k - 1)) / (rAt(a, k) - HAUL_WIDE * 0.5);
+  }
+  const grade = Math.max(HAUL_GRADE, need / (room - tiers * HAUL_LANDING));
+  const haul = [];
+  let a = q.open + gap + 0.2;
+  for (let k = 0; k < tiers; k++) {
+    const rise = ledgeAt(a, k) - ledgeAt(a, k - 1);
+    const span = rise / grade / (rAt(a, k) - HAUL_WIDE * 0.5);
+    const N = Math.max(2, Math.ceil((span + HAUL_LANDING) / 0.04));
+    const total = span + HAUL_LANDING;
+    for (let s = 0; s < N; s++) {
+      const s0 = a + (total * s) / N, s1 = a + (total * (s + 1)) / N;
+      // Up the slope, then level at the ledge above.
+      const y = (aa) => lerp(ledgeAt(aa, k - 1), ledgeAt(aa, k), Math.min(1, (aa - a) / span));
+      const out0 = rAt(s0, k), out1 = rAt(s1, k);
+      const in0 = out0 - HAUL_WIDE, in1 = out1 - HAUL_WIDE;
+      const base0 = ledgeAt(s0, k - 1) - 0.6, base1 = ledgeAt(s1, k - 1) - 0.6;
+      const [ax, az] = P(s0, in0), [bx, bz] = P(s1, in1), [cx, cz] = P(s1, out1 + 0.3), [dx, dz] = P(s0, out0 + 0.3);
+      const c = [
+        [ax, base0, az], [bx, base1, bz], [cx, base1, cz], [dx, base0, dz],
+        [ax, y(s0), az], [bx, y(s1), bz], [cx, y(s1), cz], [dx, y(s0), dz],
+      ];
+      addHull(W, c);
+      addPrism(b, c, new THREE.Color().setHSL(0.08, 0.12, 0.5 + (s % 2) * 0.015));
+    }
+    haul.push({ from: a, to: a + total, tier: k });
+    a += total;
+  }
+  q.haul = haul;
+  q.haulGrade = grade;
+  // Scree heaps at the foot of the deepest faces, pale, to drive up -- not on
+  // the haul road's first rise, which runs along the foot of the first face.
+  const onRoad = (aa) => {
+    const h0 = haul[0];
+    const d = Math.atan2(Math.sin(aa - h0.from), Math.cos(aa - h0.from));
+    return d >= -0.15 && d <= h0.to - h0.from + 0.15;
+  };
   for (let k = 0; k < 4; k++) {
     const a = q.high + (k - 1.5) * 0.45;
+    if (onRoad(a)) continue;
     const r = q.inner - 5;
     const [sx, sz] = P(a, r);
     const g = ctx.at(sx, sz);

@@ -7087,6 +7087,44 @@ rid of that ... model. I hate it ... I want the old one back in."* The box
 train (`carriageGeometry`) runs; the models and the code that hung them are in
 the history (commit 2720170) if they are ever wanted.
 
+### A bigger quarry, ledges you can drive, and a haul road
+
+*"The terracing on the quarry, you can't actually go on individual ones. I
+think the police cars can, but I can't. I seem to just kind of slide off all of
+them."* The ledges were 5 m wide and wandered 30% either way: measured down
+the deepest side they were 3, 5, 7 and 3 m -- under a car's length in places --
+and there was no way onto one but falling. Now:
+
+* **Bigger:** *"making the actual quarry diameter and everything bigger"*. Sizes
+  tried 110, 100, 90, 80, 75 m in radius; the room kept round it from roads,
+  villages and farms trimmed to what it needs (the rock and a rim), and it is
+  110 -- 220 m across, from 150.
+* **Ledges 10 m wide** (less where the quarry is small, keeping a 45 m floor for
+  the jumps), wandering a tenth, not three.
+* **A haul road**, as in a working quarry: a 7 m ramp up the foot of each face in
+  turn, from the floor round to the rim, at 15% (steeper only if it would not
+  otherwise fit once round), each ending in a level landing flush with the ledge
+  above. The first version's landings were 10 m and a car going straight on
+  went off the end and down a level; now 0.3 rad, about 20 m, to ease out
+  onto the ledge.
+
+`tests/haulroad.js`, the player driven up the road at 35 km/h: floor to rim
+(32 m up on that side) in 30 s, never more than 0.2 m down in half a second, no
+damage. Parked on ledges 0-2, 6-7 cm of creep in five seconds (ledge 3's spot
+was on the road's slope). `tests/quarry.js`: off the top 41 m, upright.
+
+**Things that took the ground to be at zero.** *"The helicopter spotlight is
+a bit messed up because of the quarry"*: the beam's cone ran down to sea level
+whatever was under it, so over the quarry it stopped in mid-air and on a hill
+went into it, and the pool was a flat disc at the height of the ground under
+its middle, buried under one ledge and hanging off the next. The beam now ends
+on whatever it lands on -- ground, ledge or roof (`Helicopter._surfaceAt`) --
+the light is aimed there, and on the hills the disc is not drawn: the spot
+light lights each ledge it falls on. *"All the tyre tracks ... are at the
+normal ground level, so they're basically floating in the air"*: skid marks
+were laid 4.5 cm above zero -- under the hills all over the vale, in the air in
+the quarry. Now at the tyre's contact.
+
 ### Hedges, gates and fences
 
 *"Make it so the hedges are one big sort of line instead of lots of multiple

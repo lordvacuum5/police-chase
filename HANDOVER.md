@@ -415,7 +415,8 @@ upright car does not catch them. Crossings stop AI drivers through
 runs. `tests/quarry.js`, `tests/railway.js`, `tests/railbed.js`, `tests/spawnsight.js`.
 The quarry floor is **below zero**, through a hole in the floor plate
 (`plateHole` in `buildGround`); anything that assumes the ground is never under
-zero is wrong on Haldon now. **Hedges do not hide a spawn** (`SPAWN_SIGHT`): the
+zero is wrong on Haldon now (the searchlight and the skid marks both were). The
+quarry has a **haul road** (`q.haul`) up its ledges; `tests/haulroad.js`. **Hedges do not hide a spawn** (`SPAWN_SIGHT`): the
 player sees over them, though the police do not. The roadside hedges are
 almost all refused by `overlapsRoad` -- the vale's hedges are field
 boundaries, and that is how the chases are tuned; gates (`buildGates`) stand
