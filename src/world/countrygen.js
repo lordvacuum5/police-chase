@@ -34,7 +34,7 @@ import {
 } from './common.js';
 import { baseRelief, buildHeightGrid, addHeightfield, buildTerrainMesh, liftMesh, liftPieces, HILL_SINK, H_STEP } from './terrain.js';
 import {
-  makeClearMask, planQuarry, quarryGround, quarryHole, planQuarryEdge, buildQuarry, quarryColour,
+  makeClearMask, planQuarry, quarryGround, quarryHole, planQuarryEdge, buildQuarry, quarryColour, addQuarryRoads, quarryTopAt,
   planShortcuts, buildShortcuts, buildGates, planRailway, railGround, buildRailTrack, Railway,
 } from './countryextras.js';
 import { buildLife } from './countrylife.js';
@@ -213,6 +213,9 @@ export function buildCountry(sim, scene, seed = 4417) {
   const railway = rail ? new Railway(ctx, rail, scene) : null;
   // Work going on, birds, lights at night (world/countrylife.js).
   const life = buildLife(ctx, scene, { fields, quarry, rail, combineField: ctx.combineField, baleField: ctx.baleField });
+  // And the quarry's track and haul road, to the police's planner (after the
+  // tractors have chosen their lanes, so none is sent down it).
+  addQuarryRoads(graph, quarry);
 
   return {
     graph,
@@ -239,6 +242,8 @@ export function buildCountry(sim, scene, seed = 4417) {
     // The tractors, trucks and combine, to the AI's queueing (Driver.carInWay).
     movers: life.movers,
     life,
+    // The quarry's rock, for what lands by asking the height (FlyHeli.groundY).
+    solidTopAt: quarry ? (x, z) => quarryTopAt(sim.world, quarry, x, z) : null,
     // Called every physics substep: the train and the work vehicles move.
     step: (dt) => { if (railway) railway.step(dt); life.step(dt); },
     // Day or night, once the weather is known: windows and the train's lights.

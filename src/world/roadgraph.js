@@ -808,6 +808,22 @@ export class RoadGraph {
     return this;
   }
 
+  /**
+   * After finalise(): roads laid once the rest of the map is built -- Haldon
+   * Vale's quarry track and haul road (world/countryextras.js), which follow
+   * rock that does not exist until then. The index and the routing scratch
+   * are made again to take them; nothing else is (no smoothing, no junction
+   * plan): they are dirt tracks to a dead end.
+   */
+  reindex() {
+    this._buildIndex();
+    this._gScore = new Float64Array(this.nodes.length);
+    this._fScore = new Float64Array(this.nodes.length);
+    this._cameFrom = new Int32Array(this.nodes.length);
+    this._visitStamp = new Int32Array(this.nodes.length);
+    return this;
+  }
+
   _buildIndex() {
     this.cells.clear();
     const cs = this.cellSize;
@@ -896,11 +912,17 @@ export class RoadGraph {
   }
 
   /** Nearest node by straight-line distance. Isolated nodes are never chosen. */
-  nearestNode(x, z) {
+  nearestNode(x, z, y = null) {
     let best = null, bestD = Infinity;
     for (const n of this.nodes) {
       if (n.edges.length === 0) continue;
-      const d = (n.x - x) * (n.x - x) + (n.z - z) * (n.z - z);
+      let d = (n.x - x) * (n.x - x) + (n.z - z) * (n.z - z);
+      // A junction that knows its own height (Haldon Vale's quarry: the floor,
+      // and where the haul road comes out on each ledge), asked about a point
+      // that has one: a metre up or down counts as five across, so a car on a
+      // ledge is near the junction on that ledge, not the one on the floor
+      // under it.
+      if (y !== null && n.y !== undefined) d += (n.y - y) * (n.y - y) * 25;
       if (d < bestD) { bestD = d; best = n; }
     }
     return best;
@@ -1578,7 +1600,9 @@ export class RoadGraph {
 
   /** A random node, weighted toward a given road kind. Used to seed patrols. */
   randomNode(rng, kindFilter = null) {
-    const live = this.nodes.filter((n) => n.edges.length > 0);
+    // Not in the quarry: somewhere to send traffic or a patrol at random is
+    // not down a haul road to a dead end.
+    const live = this.nodes.filter((n) => n.edges.length > 0 && !n.quarry);
     const pool = kindFilter
       ? live.filter((n) => n.edges.some((i) => this.edges[i].kind === kindFilter))
       : live;

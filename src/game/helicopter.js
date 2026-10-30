@@ -261,11 +261,22 @@ export class Helicopter {
     // Above the ground under it, not above sea level: on Haldon Vale the
     // hills stand forty metres up and the turbines on them seventy more.
     // Looked for a little ahead too, so it climbs before a hill, not into it.
+    // And round it, the highest of two rings of ground, 45 and 130 m out: over
+    // Haldon Vale's quarry the ground under it fell fifty metres in a few, and
+    // it dropped into the pit and climbed out over the rim, down among the
+    // terraces -- "the police helicopter acts weird on the terracing". The
+    // outer ring spans the quarry, so it crosses it at the rim's height.
     const ga = this.game.groundAt ? this.game.groundAt.bind(this.game) : () => 0;
-    const ground = Math.max(
+    let ground = Math.max(
       ga(this.pos.x, this.pos.z),
       ga(this.pos.x + this.vel.x * 3, this.pos.z + this.vel.z * 3),
     );
+    for (const r of [45, 130]) {
+      for (let k = 0; k < 6; k++) {
+        const a = (k / 6) * Math.PI * 2;
+        ground = Math.max(ground, ga(this.pos.x + Math.cos(a) * r, this.pos.z + Math.sin(a) * r));
+      }
+    }
     const tall = this.game.world && this.game.world.__map && this.game.world.__map.hills ? 15 : 0;
     this.pos.y = damp(this.pos.y, ALTITUDE + ground + tall, 1.4, dt);
 

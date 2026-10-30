@@ -7159,6 +7159,52 @@ traffic identical (5.6 cars, 1.43 within 150 m). `tests/patrol.js`: no knocks,
 on the work vehicles or anywhere; wrong side 8% against 7% before -- going
 round a tractor.
 
+### Roads in the quarry, the police off the edge, the helicopters over it
+
+*"The police helicopter acts weird on the terracing of the quarry. Also, the
+routing system by the quarry is messed up in the quarry. So make sure it has a
+routing system in there. And also, when the police tries to get stuff on the
+terraces, just tell them to basically just drive off the edge and get down to
+the quarry."*
+
+* **Roads.** The quarry had none in the road graph: a car in it was nowhere to
+  the planner, whose nearest junction was up on the lanes. Now the dirt track
+  (which runs to the nearest junction, not just the nearest bit of road), a
+  link across the floor, and the haul road with a junction where each rise
+  comes out on its ledge are roads, laid on the graph after the map is built
+  (`addQuarryRoads`, `RoadGraph.reindex`) so they are neither drawn as tarmac
+  nor levelled into the ground. They are on the minimap. Their junctions are
+  kept out of `randomNode`, so traffic and patrols are not sent down them.
+* **Heights.** A quarry junction knows its height, and `nearestNode` given a
+  height counts a metre up or down as five across: a car on a ledge is nearest
+  that ledge's junction, not the floor under it.
+* **Off the edge.** Already the police's rule: a pursuing unit drives straight
+  at the car when the line is open and the road round is much longer (`_cross
+  Country`). From the rim or a ledge the line runs out over the drop, so with
+  the haul road the long way round, a unit above a car on the floor drives off.
+
+`tests/quarrychase.js`, you parked in the quarry, three stars, the force told
+where you are (as by the helicopter), 60 s, distances in three dimensions:
+
+| | nearest | within 25 m | ended on the floor | stuck 10 s+ |
+|---|---|---|---|---|
+| you on the floor, before | 4 m at 42 s | 3 | 3, all off the top | 0 |
+| you on the floor, after | 4 m at 28-33 s | 3 | 3, all off the top | 0 |
+| you on a ledge 15 m up, before | 16 m | 2 | 3 | 1 |
+| you on a ledge, roads only | 17 m | 2 | 3 | 1 |
+| you on a ledge, roads and heights | **2 m** at 30 s | **3** | 1 | **0** |
+
+* **The AI helicopter** flew at a height over the ground directly under it,
+  and over the quarry that fell fifty metres in a few: it dropped into the pit
+  and climbed out over the rim. It now takes the highest ground in two rings
+  round it, 45 and 130 m out, and so crosses the quarry at the rim's height.
+  (Not measured in flight: in a staged test the helicopter's update returns
+  before its height is set unless a chase has launched it.)
+* **The flyable helicopter** landed by asking the height grid, which under the
+  rock is the floor: over a ledge it read forty metres of air and could not set
+  down. It now also asks the quarry's rock (`map.solidTopAt`): over three ledges
+  at 65, 85 and 105 m from the middle it lands at 10, 24 and 43 m up (was 0).
+
 ### Hedges, gates and fences
 
 *"Make it so the hedges are one big sort of line instead of lots of multiple

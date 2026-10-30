@@ -1264,7 +1264,7 @@ export class Officer {
   _goTo(dt, point, speedFactor = 1) {
     if (!point) return this._patrol(dt);
     const g = this.game.graph;
-    const goal = g.nearestNode(point.x, point.z);
+    const goal = g.nearestNode(point.x, point.z, point.y !== undefined ? point.y : null);
 
     // The point is usually the last place the target was seen, which moves --
     // so the nearest junction to it changes every few seconds, and a unit that

@@ -16,7 +16,7 @@
 // hedges, trees, bales and turbines keep off it.
 
 import * as THREE from 'three';
-import { GROUP, groups, addStaticBox, RAPIER } from '../physics/world.js';
+import { GROUP, groups, addStaticBox, RAPIER, raycast } from '../physics/world.js';
 import { rand, randInt, clamp, lerp, TAU } from '../util/math.js';
 import { WORLD_HALF, GRID_N, CELL, MeshBuilder, vertexColorMaterial } from './common.js';
 import { HILL_SINK } from './terrain.js';
@@ -173,16 +173,22 @@ export function planQuarry(ctx, base, hills) {
   // kept clear of hedges and trees, and drawn as ruts (buildQuarry).
   const ox = Math.cos(best.open), oz = Math.sin(best.open);
   const end = { x: best.x + ox * (best.r + RAMP_LEN), z: best.z + oz * (best.r + RAMP_LEN) };
-  const road = ctx.graph.nearestEdge(end.x, end.z, 400);
   best.track = [
-    { x: best.x + ox * (best.r - FACE_IN - 22), z: best.z + oz * (best.r - FACE_IN - 22) },
+    { x: best.x + ox * best.r * 0.45, z: best.z + oz * best.r * 0.45 },
     end,
   ];
-  if (road && road.dist < 400) {
-    // To the road's edge, not its middle.
-    const ux = road.x - end.x, uz = road.z - end.z, ul = Math.hypot(ux, uz) || 1;
-    const stop = Math.max(0, ul - road.edge.width * 0.5);
-    best.track.push({ x: end.x + (ux / ul) * stop, z: end.z + (uz / ul) * stop });
+  // On to the nearest junction, not the nearest bit of road: the track is a
+  // road to the police (addQuarryRoads), and a road has to meet another at a
+  // junction. Within reach, and not in a village.
+  let node = null, nd = 450;
+  for (const n of ctx.graph.nodes) {
+    if (!n.edges.length || ctx.villages.some((v) => Math.hypot(v.x - n.x, v.z - n.z) < v.r)) continue;
+    const d = Math.hypot(n.x - end.x, n.z - end.z);
+    if (d < nd) { nd = d; node = n; }
+  }
+  if (node) {
+    best.track.push({ x: node.x, z: node.z });
+    best.trackNode = node.id;
   }
   markLine(ctx, [{ x: best.x + ox * best.r, z: best.z + oz * best.r }, ...best.track.slice(1)], 10, CLEAR.QUARRY);
   return best;
@@ -521,7 +527,7 @@ export function buildQuarry(ctx, q) {
     need += (ledgeAt(a, k) - ledgeAt(a, k - 1)) / (rAt(a, k) - HAUL_WIDE * 0.5);
   }
   const grade = Math.max(HAUL_GRADE, need / (room - tiers * HAUL_LANDING));
-  const haul = [], haulPath = [];
+  const haul = [], haulPath = [], haulBreaks = [];
   let a = q.open + gap + 0.2;
   for (let k = 0; k < tiers; k++) {
     const rise = ledgeAt(a, k) - ledgeAt(a, k - 1);
@@ -553,10 +559,13 @@ export function buildQuarry(ctx, q) {
       const [px, pz] = P(aa, lerp(rAt(aa, k) - HAUL_WIDE * 0.5, out, u));
       haulPath.push({ x: px, z: pz, y: lerp(ledgeAt(aa, k - 1), ledgeAt(aa, k), Math.min(1, (aa - a) / span)) });
     }
+    // Where this rise comes out onto its ledge: a junction, to the police.
+    haulBreaks.push(haulPath.length - 1);
     a += total;
   }
   q.haul = haul;
   q.haulPath = haulPath;
+  q.haulBreaks = haulBreaks;
   q.haulGrade = grade;
   // Scree heaps at the foot of the deepest faces, pale, to drive up -- not on
   // the haul road's first rise, which runs along the foot of the first face.
@@ -616,6 +625,60 @@ export function buildQuarry(ctx, q) {
   ruts.name = 'quarry-track';
   return [mesh, ruts];
 }
+
+/**
+ * The quarry's ways in and up, as roads the police can plan along. "The
+ * routing system by the quarry is messed up in the quarry. So make sure it has
+ * a routing system in there." With no road in it, a car down in the quarry was
+ * nowhere to the planner: the nearest junction was up on the lanes, and the
+ * police tried to get to the car from there, into the rock. Now: the dirt
+ * track from its junction to the ramp's top and down onto the floor, across
+ * the floor to the foot of the haul road, and up the haul road with a junction
+ * where each rise comes out on its ledge, so a car on a ledge is near a
+ * junction on that ledge. Dirt tracks to a dead end; laid on the graph after
+ * everything else (RoadGraph.reindex), so they are not drawn as tarmac or
+ * levelled into the ground. Their nodes are kept out of RoadGraph.randomNode,
+ * so traffic and patrols are not sent down them at random.
+ */
+export function addQuarryRoads(graph, q) {
+  if (!q || !q.track || q.trackNode === undefined || !q.haulPath) return;
+  const node = (p) => { const n = graph.addNode(p.x, p.z, 'lane'); n.quarry = true; if (p.y !== undefined) n.y = p.y; return n; };
+  const road = (a, b, pts, name) => {
+    const e = graph.addEdge(a, b, 'track', pts, { width: HAUL_WIDE, speed: 12 });
+    e.quarry = true;
+    e.name = name;
+    return e;
+  };
+  const top = graph.nodes[q.trackNode];
+  const rampTop = node(q.track[1]);
+  const floor = node({ ...q.track[0], y: q.floor });
+  road(top, rampTop, null, 'the quarry track');
+  road(rampTop, floor, null, 'the quarry track');
+  const H = q.haulPath;
+  let prev = node(H[0]);
+  road(floor, prev, null, 'the quarry floor');
+  let from = 0;
+  for (const k of q.haulBreaks) {
+    const next = node(H[k]);
+    road(prev, next, H.slice(from + 1, k), 'the haul road');
+    prev = next;
+    from = k;
+  }
+  graph.reindex();
+}
+
+/**
+ * The top of the quarry's rock at (x, z) -- a ledge, the haul road, a jump --
+ * or null outside the quarry or where there is none. For what lands by asking
+ * how high the ground is (the flyable helicopter): the height grid under the
+ * rock is the floor.
+ */
+export function quarryTopAt(world, q, x, z) {
+  if (!q || Math.hypot(x - q.x, z - q.z) > q.r + FACE_OUT + 1) return null;
+  const hit = raycast(world, { x, y: q.floor + 120, z }, { x: 0, y: -1, z: 0 }, 160, QUARRY_ROCK);
+  return hit ? hit.point.y : null;
+}
+const QUARRY_ROCK = groups(0xFFFF, GROUP.BUILDING | GROUP.RAMP);
 
 /** The quarry floor's colour, or null outside it. */
 export function quarryColour(q, x, z, y, c) {

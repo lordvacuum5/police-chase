@@ -420,7 +420,9 @@ quarry has a **haul road** (`q.haul`) up its ledges; `tests/haulroad.js`.
 `world/countrylife.js` puts tractors, dump trucks, a combine, birds and lit
 windows on the map: kinematic, moved by the wall clock, **not cars** -- not
 counted as police or traffic (the player asked that the police numbers never
-change for them); the AI queues behind them via `map.movers`. **Hedges do not hide a spawn** (`SPAWN_SIGHT`): the
+change for them); the AI queues behind them via `map.movers`. The quarry's track and haul road
+are **roads in the graph**, added late (`addQuarryRoads`, `RoadGraph.reindex`),
+with heights on their junctions (`nearestNode(x, z, y)`); `tests/quarrychase.js`. **Hedges do not hide a spawn** (`SPAWN_SIGHT`): the
 player sees over them, though the police do not. The roadside hedges are
 almost all refused by `overlapsRoad` -- the vale's hedges are field
 boundaries, and that is how the chases are tuned; gates (`buildGates`) stand
