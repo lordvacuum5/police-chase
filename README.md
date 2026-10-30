@@ -7317,8 +7317,11 @@ to self-right in midair."*
   full throttle from a standstill for 2 s: the Runner gets 2.9 m (was 2.4;
   3.6 with nobody there); 0.1 would give 3.3. The supercar, 7.3 m (6.9; 7.9).
   A patrol car parked against the door does not hold either car back at all,
-  before or after. Not measured: what it does to boxing and arrests in a
-  whole chase.
+  before or after. Over whole chases (`tests/arrests.js`: the getaway AI
+  driving the player's car at four stars, the chase restarted after each
+  arrest, eight minutes each way on fresh pages): 5 arrests at 0.35, 4 at 0.2
+  -- within the noise of so few -- and 53 s spent pinned against 31. The
+  force still gets its arrests; the car gets out of more of the boxes.
 * **No righting in the air.** Off the ground long enough, a car used to turn
   back toward upright. Now its pitch and roll spin is only damped, so it holds
   the angle it left at. `tests/quarry.js` off the top at 60/90/120 km/h:
@@ -7326,6 +7329,25 @@ to self-right in midair."*
   its roof; damped, all six runs (60-140 km/h) landed upright. Two runs over
   the floor table at 120-140 km/h ended on their roofs some seconds after
   landing upright, having driven on into something.
+
+### The parked tractor, steering wheels, and the quarry's bales
+
+* **The tractor parked with the bale trailer** was two static boxes, still a
+  wall after the working ones were given weight. Now tractor and trailer are
+  one loose body on its brakes (3.4 t and 3 t, friction 0.9, turning about the
+  upright only, asleep until hit). `tests/workhit.js` with `which = 'parked'`,
+  into the tractor's side at 30/50/80 km/h: damage 8.6/16.2/28.3% before,
+  5.0/11.0/20.4% after; the car went from a dead stop (0-1 km/h half a second
+  on) to 6-7 km/h at 30-50; the rig shoved 1-1.9 m.
+* **Steered wheels.** *"On the quarry vehicle, the wheels don't actually turn,
+  so it turns really weird."* The working vehicles' front wheels (a combine's
+  rears, the other way, as on a real one) now turn by the angle the wheelbase
+  needs for the rate it is turning: up to 34 degrees on a dump truck's U-turn.
+* **The quarry's bales.** *"It goes straight through the bales of hay, so just
+  move the bales of hay somewhere else."* Any bale on the floor within 8 m of
+  anywhere a truck drives, turns and swings included, is moved to the nearest
+  clear spot on the floor (`clearQuarryBales`). Nearest truck path to each of
+  the six: 4.4, 2.9, 1.4, 2.8, 1.3, 0.2 m before; 8.1-9.8 m after.
 
 ### Police down the railway, not into the trees
 

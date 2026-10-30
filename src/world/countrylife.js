@@ -27,6 +27,7 @@ import * as THREE from 'three';
 import { GROUP, groups, RAPIER, addStaticBox } from '../physics/world.js';
 import { rand, randInt, clamp, lerp, TAU } from '../util/math.js';
 import { MeshBuilder, vertexColorMaterial } from './common.js';
+import { HILL_SINK } from './terrain.js';
 import { GLTFLoader } from '../../vendor/addons/loaders/GLTFLoader.js';
 
 /** How many tractors on the lanes, how fast, m/s. */
@@ -41,6 +42,8 @@ const TURN_TRUCK = 10;
 const TURN_COMBINE = 8;
 /** A working vehicle's weight, kg: the police van's (game/vehicles.js). */
 const VAN_MASS = 3400;
+/** The parked trailer with its bales, kg. */
+const PARKED_TRAILER_MASS = 3000;
 /** The dump trucks and the combine: heavier, still not walls. */
 const TRUCK_MASS = 9000;
 const COMBINE_MASS = 7000;
@@ -49,6 +52,10 @@ const RECOVER = 3;
 /** The most its tyres can change its speed across the ground, m/s^2: about 1 g. */
 const GRIP_ACCEL = 10;
 const ADRIFT = 12;
+/** The most a working vehicle's wheels steer, radians. */
+const STEER_MAX = 0.6;
+/** How far a quarry bale is kept from anywhere a truck drives, m. */
+const BALE_CLEAR = 8;
 /** Where the parked tractor stands ahead of its trailer's middle, m: hitched. */
 const HITCH = 6.85;
 /** Birds: how many flocks, how many to a flock, and what puts them up, m. */
@@ -294,6 +301,16 @@ class Mover {
       this.body.setLinvel({ x: now.x + dx, y: vy, z: now.z + dz }, true);
     }
     this.body.setRotation(rot, true);
+    // How hard it is turning, for the steered wheels (draw): the angle a
+    // wheelbase needs to turn at this rate at this speed, eased in.
+    if (dt > 0 && this._heading !== undefined) {
+      let dh = a.heading - this._heading;
+      dh = Math.atan2(Math.sin(dh), Math.cos(dh));
+      const v = Math.hypot(this.linvel.x, this.linvel.z);
+      const want = v > 0.3 ? clamp(Math.atan((this.wheelbase || 3) * (dh / dt) / v), -STEER_MAX, STEER_MAX) : this.steer || 0;
+      this.steer = lerp(this.steer || 0, want, 1 - Math.exp(-8 * dt));
+    }
+    this._heading = a.heading;
     this.position.set(a.x, a.y, a.z);
     this.forward.set(fx, 0, fz);
     this.speed = a.moving ? this.speed0 : 0;
@@ -305,7 +322,12 @@ class Mover {
     this.mesh.quaternion.set(r.x, r.y, r.z, r.w);
     // Wheels turning with the distance driven: modelled nose to -Z, so
     // rolling forward is a negative turn about x.
-    for (const w of this.wheels || []) w.node.rotation.x = -this.dist / w.r;
+    // Steered ones turned as well: "the wheels don't actually turn, so it
+    // turns really weird." The fronts, or a combine's rears, the other way.
+    for (const w of this.wheels || []) {
+      w.node.rotation.x = -this.dist / w.r;
+      if (w.steer) w.node.rotation.y = w.steer * (this.steer || 0);
+    }
   }
 
   /**
@@ -319,10 +341,18 @@ class Mover {
     this.mesh.add(model);
     this.wheels = [];
     model.traverse((o) => {
-      if (/^wheel_/.test(o.name)) this.wheels.push({ node: o, r: Math.max(0.3, o.position.y) });
+      if (/^wheel_/.test(o.name)) {
+        // Steered about the upright outside the roll: YXZ.
+        const rear = this.model === 'combine';
+        const steer = /front/.test(o.name) ? (rear ? 0 : 1) : (rear ? -1 : 0);
+        if (steer) o.rotation.order = 'YXZ';
+        this.wheels.push({ node: o, r: Math.max(0.3, o.position.y), steer, z: o.position.z });
+      }
       // A combine's reel, which turns faster than its wheels, pulling the crop in.
       if (o.name === 'reel') this.wheels.push({ node: o, r: 0.35 });
     });
+    const zs = this.wheels.filter((w) => w.z !== undefined).map((w) => w.z);
+    if (zs.length) this.wheelbase = Math.max(1.5, Math.max(...zs) - Math.min(...zs));
   }
 }
 
@@ -513,6 +543,7 @@ export function buildLife(ctx, scene, { fields, quarry, rail, combineField, bale
       }));
     }
   }
+  if (quarry) clearQuarryBales(ctx, quarry, movers);
   const parked = baleField ? baleTrailer(ctx, baleField, fields) : null;
   if (parked) meshes.push(parked);
   // The player's models, when they load, in place of the boxes.
@@ -544,10 +575,12 @@ export function buildLife(ctx, scene, { fields, quarry, rail, combineField, bale
     },
     update(game) {
       for (const m of movers) m.draw();
+      if (parked) parked.userData.update();
       birds.update(game, clock);
     },
     setNight(on) { windows.setNight(on); },
     birds: birds.spots,
+    parked,
   };
 }
 
@@ -637,10 +670,43 @@ function baleTrailer(ctx, seed, fields) {
   group.position.set(x, g, z);
   group.rotation.y = rot;
   group.name = 'bale-trailer';
-  addStaticBox(W, x, g + 1.4, z, 1.3, 1.4, 3.2, GROUP.BUILDING, rot);
-  addStaticBox(W, x + fx * HITCH, g + 1.4, z + fz * HITCH, 1.1, 1.4, 2.0, GROUP.BUILDING, rot);
+  // One loose body, tractor and trailer together, on its brakes: a car shoves
+  // it rather than stopping dead against it. "The tractor ... is more like a
+  // police van" was said of the ones driving about; this one was two static
+  // boxes and still a wall. The weight of the van for the tractor and as much
+  // again for the loaded trailer, turning about the upright only (it does not
+  // tip), asleep until hit. It rests on the hills' collider, sunk HILL_SINK
+  // under the drawn ground, so it is drawn lifted by that (see update).
+  const lift = (px, pz) => { const h = ctx.at(px, pz); return h < 0 ? HILL_SINK : h - Math.max(0, h - HILL_SINK); };
+  const body = W.createRigidBody(RAPIER.RigidBodyDesc.dynamic()
+    .setTranslation(x, g - lift(x, z) + 1.45, z)
+    .setRotation({ x: 0, y: Math.sin(rot / 2), z: 0, w: Math.cos(rot / 2) })
+    .enabledRotations(false, true, false)
+    .setLinearDamping(0.5).setAngularDamping(1.5));
+  const parts = [
+    { hx: 1.3, hy: 1.4, hz: 3.2, z: 0, mass: PARKED_TRAILER_MASS },
+    { hx: 1.1, hy: 1.4, hz: 2.0, z: HITCH, mass: VAN_MASS },
+  ];
+  for (const c of parts) {
+    W.createCollider(
+      RAPIER.ColliderDesc.cuboid(c.hx, c.hy, c.hz).setTranslation(0, 0, c.z).setMass(c.mass)
+        // Its brakes on: hard to push, and it stops when you stop.
+        .setFriction(0.9).setRestitution(0.05)
+        .setCollisionGroups(groups(GROUP.BUILDING, GROUP.TERRAIN | GROUP.HILL | GROUP.STREET | GROUP.VEHICLE | GROUP.DEBRIS)),
+      body,
+    );
+  }
+  body.sleep();
   group.userData.trailer = trailer;
   group.userData.tractor = tractor;
+  const q = new THREE.Quaternion();
+  group.userData.update = () => {
+    if (body.isSleeping()) return;
+    const t = body.translation(), r = body.rotation();
+    group.position.set(t.x, t.y - 1.45 + lift(t.x, t.z), t.z);
+    group.quaternion.copy(q.set(r.x, r.y, r.z, r.w));
+  };
+  group.userData.body = body;
   return group;
 }
 
@@ -784,6 +850,45 @@ function nearBuildings(ctx, x, z) {
 }
 
 /** In the quarry's rock: between the floor and the outside of the face. */
+/**
+ * The bales on the quarry floor, moved off the trucks' way: "it goes straight
+ * through the bales of hay, so just move the bales of hay somewhere else where
+ * it won't go through them." Each one within BALE_CLEAR of anywhere a truck
+ * goes -- its turns and swings included -- is moved to the nearest spot on
+ * the floor that is clear of them all and of the other bales. They are the
+ * last of `ctx.bales` (planQuarryEdge's, appended in countrygen.js).
+ */
+function clearQuarryBales(ctx, q, movers) {
+  const extra = ctx.extraBales, bales = ctx.bales;
+  if (!extra || !extra.length || !bales) return;
+  const path = [];
+  for (const m of movers) {
+    for (let i = 0; i < 1200; i++) {
+      const a = m.pose((i / 1200) * m.cycle);
+      if (Math.hypot(a.x - q.x, a.z - q.z) < q.r) path.push(a);
+    }
+  }
+  const clearOf = (x, z, others) => path.every((a) => (a.x - x) ** 2 + (a.z - z) ** 2 > BALE_CLEAR * BALE_CLEAR)
+    && others.every((o) => (o.x - x) ** 2 + (o.z - z) ** 2 > 3.5 * 3.5)
+    && Math.hypot(x - q.x, z - q.z) < (q.inner || q.r * 0.6) - 8;
+  const bodies = bales.bodies.slice(bales.bodies.length - extra.length);
+  const placed = bodies.map((b) => { const t = b.translation(); return { x: t.x, z: t.z }; });
+  bodies.forEach((body, k) => {
+    const t = body.translation(), others = placed.filter((_, j) => j !== k);
+    if (clearOf(t.x, t.z, others)) return;
+    for (let r = 3; r <= 40; r += 3) {
+      for (let j = 0; j < 16; j++) {
+        const a = (j / 16) * TAU, x = t.x + Math.cos(a) * r, z = t.z + Math.sin(a) * r;
+        if (!clearOf(x, z, others)) continue;
+        body.setTranslation({ x, y: t.y, z }, false);
+        placed[k] = { x, z };
+        return;
+      }
+    }
+  });
+  bales.update();
+}
+
 /**
  * On the haul road's ramps, above the floor: no place to swing out and turn
  * round on the flat. The track's truck turned at the floor into the foot of the

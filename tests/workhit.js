@@ -12,7 +12,8 @@
 //   after   the car's speed half a second after the touch, km/h
 //   dmg     damage the car took, %
 //   shoved  how far the tractor was pushed off its line at most, m
-window.__runWorkHit = async function (kph = 50, gap = 16) {
+// `which` 'parked': the tractor standing hitched to the bale trailer instead.
+window.__runWorkHit = async function (kph = 50, gap = 16, which = 'tractor') {
   window.__res = null;
   try {
     for (let i = 0; i < 200 && !(window.__game && window.__game.world && window.__game.world.__map); i++) {
@@ -76,11 +77,27 @@ window.__runWorkHit = async function (kph = 50, gap = 16) {
     g.stepHeadless(1);
     const out = {};
     // From its right-hand side, where it is now: the homing above follows it.
-    out.tractor = runInto(m, () => {
-      const t = m.body.translation();
-      const fx = m.forward.x, fz = m.forward.z;
-      return { x: t.x, z: t.z, sx: -fz, sz: fx };
-    });
+    if (which === 'parked') {
+      // The tractor parked with the bale trailer, into the tractor's side.
+      // `position` stays where it stood, so `shoved` is how far it went.
+      // (Before it had a body it was two static boxes: found by name, never moved.)
+      const pk = (map.life && map.life.parked) || g.scene.getObjectByName('bale-trailer');
+      const still = { translation: () => pk.position, rotation: () => pk.quaternion };
+      const body = pk.userData.body || still;
+      const r = body.rotation(), h = 2 * Math.atan2(r.y, r.w);
+      const fx = Math.sin(h), fz = Math.cos(h), t = body.translation();
+      const home = { x: t.x + fx * 6.85, y: t.y, z: t.z + fz * 6.85 };
+      out.parked = runInto({ position: home, body: { translation: () => {
+        const b = body.translation(), q = body.rotation(), hh = 2 * Math.atan2(q.y, q.w);
+        return { x: b.x + Math.sin(hh) * 6.85, y: b.y, z: b.z + Math.cos(hh) * 6.85 };
+      } } }, () => ({ x: home.x, z: home.z, sx: -fz, sz: fx }));
+    } else {
+      out.tractor = runInto(m, () => {
+        const t = m.body.translation();
+        const fx = m.forward.x, fz = m.forward.z;
+        return { x: t.x, z: t.z, sx: -fz, sz: fx };
+      });
+    }
     g._update = origU;
     window.__res = JSON.stringify(out);
   } catch (e) {
