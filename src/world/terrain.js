@@ -288,7 +288,9 @@ export function buildHeightGrid(base, { half = 1000, graph = null, flatten = [],
     if (W[k] > 0) H[k] = lerp(H[k], L[k], W[k]);
     if (LW[k] > 0) H[k] = lerp(H[k], LS[k] / LN[k], LW[k]);
     if (RW[k] > 0) H[k] = lerp(H[k], RS[k] / RN[k], RW[k]);
-    if (H[k] < 0) H[k] = 0;
+    // Never below zero, but where a place asks for it: the quarry is dug
+    // under the world's floor, which has a hole cut in it there (buildGround).
+    if (H[k] < 0 && !(W[k] > 0 && L[k] < 0)) H[k] = 0;
   }
 
   // No bank steeper than BANK_GRADE. A road held to its grade through the
@@ -379,9 +381,9 @@ export function buildHeightGrid(base, { half = 1000, graph = null, flatten = [],
     const c = H[idx(i, j + 1)], d = H[idx(i + 1, j + 1)];
     return (a + (b - a) * tx) * (1 - tz) + (c + (d - c) * tx) * tz;
   };
-  let max = 0;
-  for (let k = 0; k < H.length; k++) if (H[k] > max) max = H[k];
-  return { n, half, step: H_STEP, H, at, max };
+  let max = 0, min = 0;
+  for (let k = 0; k < H.length; k++) { if (H[k] > max) max = H[k]; if (H[k] < min) min = H[k]; }
+  return { n, half, step: H_STEP, H, at, max, min };
 }
 
 /**

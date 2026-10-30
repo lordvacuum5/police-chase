@@ -412,7 +412,15 @@ read 8 m high; (3) jumps are `GROUP.HILL | GROUP.RAMP` so the body of an
 upright car does not catch them. Crossings stop AI drivers through
 `TrafficLights.stopDistanceAt`. The train's timetable follows the wall clock
 (same train on every machine), so set `railway.clock` in a rig for repeatable
-runs. `tests/quarry.js`, `tests/railway.js`, `tests/railbed.js`. The bed has a **blended
+runs. `tests/quarry.js`, `tests/railway.js`, `tests/railbed.js`, `tests/spawnsight.js`.
+The quarry floor is **below zero**, through a hole in the floor plate
+(`plateHole` in `buildGround`); anything that assumes the ground is never under
+zero is wrong on Haldon now. **Hedges do not hide a spawn** (`SPAWN_SIGHT`): the
+player sees over them, though the police do not. The roadside hedges are
+almost all refused by `overlapsRoad` -- the vale's hedges are field
+boundaries, and that is how the chases are tuned; gates (`buildGates`) stand
+in the field gateways and break in four. The train model brief is
+`resources/models/TRAIN.md`. The bed has a **blended
 layer of its own** in `buildHeightGrid` (`LW`) under the roads' -- as a place
 claim it was a flight of steps. A player's helicopter **landed or
 no higher than the car** sees like a patrol crew (100 m, any direction, line of

@@ -29,9 +29,9 @@ window.__runQuarry = async function (speeds = [60, 90, 120]) {
     // grass, and nobody arrives at the top much faster than this.
     rim: { x: k.x - Math.sin(k.heading) * 30, z: k.z - Math.cos(k.heading) * 30, h: k.heading },
     // The floor kicker's lip is at centre + o*22 - t*12, facing +t.
-    kick: { x: q.x + ox * 22 - tx * (q.r - 18), z: q.z + oz * 22 - tz * (q.r - 18), h: Math.atan2(tx, tz) },
+    kick: { x: q.x + ox * 22 - tx * (q.inner - 12), z: q.z + oz * 22 - tz * (q.inner - 12), h: Math.atan2(tx, tz) },
     // The table is at centre - o*22, crossed along -t.
-    table: { x: q.x - ox * 22 + tx * (q.r - 18), z: q.z - oz * 22 + tz * (q.r - 18), h: Math.atan2(-tx, -tz) },
+    table: { x: q.x - ox * 22 + tx * (q.inner - 12), z: q.z - oz * 22 + tz * (q.inner - 12), h: Math.atan2(-tx, -tz) },
   };
   const out = [];
   // Three seconds of game first: on a page just loaded the first run's car

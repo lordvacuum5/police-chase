@@ -34,8 +34,8 @@ import {
 } from './common.js';
 import { baseRelief, buildHeightGrid, addHeightfield, buildTerrainMesh, liftMesh, liftPieces, HILL_SINK, H_STEP } from './terrain.js';
 import {
-  makeClearMask, planQuarry, quarryGround, quarryPatch, planQuarryEdge, buildQuarry, quarryColour,
-  planShortcuts, buildShortcuts, planRailway, railGround, buildRailTrack, Railway,
+  makeClearMask, planQuarry, quarryGround, quarryPatch, quarryHole, planQuarryEdge, buildQuarry, quarryColour,
+  planShortcuts, buildShortcuts, buildGates, planRailway, railGround, buildRailTrack, Railway,
 } from './countryextras.js';
 
 const RIDGEWAY_R = 800;
@@ -53,6 +53,8 @@ const hedgeWall = () => {
 };
 /** How tall a hedge is to the physics and the AI's sweeps -- see buildHedges. */
 const HEDGE_SOLID = 6;
+/** How far each 8 m piece of hedge runs on into the next, m, so a run reads as one hedge. */
+const HEDGE_LAP = 1.4;
 /** How many single-track lanes to try to fit -- see buildLanes. */
 const LANE_COUNT = 34;
 /** How far a village centre keeps from a road laid before it: the green, its loop and a margin. */
@@ -141,6 +143,8 @@ export function buildCountry(sim, scene, seed = 4417) {
   // ---------------------------------------------------------------- visuals
   // The plate and the world edge, but not the flat ground mesh: the hills
   // have their own.
+  // With a hole in it under the quarry, which is dug below zero.
+  if (quarry) ctx.plateHole = quarryHole(quarry);
   buildGround(ctx);
   const fields = planFields(ctx, farms);
   ctx.shortcuts = planShortcuts(ctx, fields, quarry);
@@ -206,6 +210,8 @@ export function buildCountry(sim, scene, seed = 4417) {
   if (quarry) meshes.push(...buildQuarry(ctx, quarry));
   const shortcuts = buildShortcuts(ctx, ctx.shortcuts);
   meshes.push(...shortcuts.meshes);
+  const gates = buildGates(ctx, ctx.gateSpots.concat(shortcuts.gateSpots));
+  meshes.push(...gates.meshes);
   if (rail) meshes.push(buildRailTrack(ctx, rail));
   for (const m of meshes) if (m) scene.add(m);
   const railway = rail ? new Railway(ctx, rail, scene) : null;
@@ -216,7 +222,9 @@ export function buildCountry(sim, scene, seed = 4417) {
     surfaceAt: makeSurfaceAt(surface),
     heightAt,
     terrainAt: grid.at,
-    relief: grid.max + 2,
+    // From the highest ground down to the lowest, the quarry floor under zero
+    // included: how far a wheel's ray must reach (see Vehicle).
+    relief: grid.max - Math.min(0, grid.min - 4) + 2,
     meshes,
     bounds: WORLD_HALF,
     villages,
@@ -228,7 +236,8 @@ export function buildCountry(sim, scene, seed = 4417) {
     railway,
     // Called every frame by the game: the bales and gates follow their
     // bodies, the train and the crossings are drawn.
-    update: () => { ctx.bales.update(); shortcuts.update(); if (railway) railway.update(); },
+    update: () => { ctx.bales.update(); gates.update(); if (railway) railway.update(); },
+    gates,
     // Called every physics substep: the train moves.
     step: railway ? (dt) => railway.step(dt) : null,
     // The crossings, to everything the AI drives (TrafficLights.stopDistanceAt).
@@ -990,22 +999,33 @@ function buildHedges(ctx, fields) {
   const b = new MeshBuilder();
   const W = ctx.sim.world;
   ctx.sim.hedges = new Set();
-  const hedge = (x0, z0, x1, z1) => {
+  // One hedge, one look: every piece of a run between two gaps takes the
+  // height and colour of its first. Each 8 m piece used to draw its own, and
+  // a hedge read as a row of separate bushes of different heights -- "make it
+  // so the hedges are one big sort of line instead of lots of multiple
+  // different sections". The draws are still taken piece by piece, so
+  // everything drawn after the hedges is where it was.
+  const hedge = (x0, z0, x1, z1, run) => {
     const len = Math.hypot(x1 - x0, z1 - z0);
-    if (len < 1.5) return;
+    if (len < 1.5) return false;
     const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
-    if (inVillage(ctx, mx, mz, 5) || ctx.farms.some((f) => Math.hypot(f.x - mx, f.z - mz) < 42)) return;
-    if (graph.overlapsRoad(mx, mz, len, 1.4, Math.atan2(x1 - x0, z1 - z0), 1.0)) return;
+    if (inVillage(ctx, mx, mz, 5) || ctx.farms.some((f) => Math.hypot(f.x - mx, f.z - mz) < 42)) return false;
+    if (graph.overlapsRoad(mx, mz, len, 1.4, Math.atan2(x1 - x0, z1 - z0), 1.0)) return false;
     const dx = (x1 - x0) / len, dz = (z1 - z0) / len;
     const rot = Math.atan2(-dz, dx);
-    const h = rand(rng, 1.6, 2.3);
-    const c = new THREE.Color().setHSL(rand(rng, 0.25, 0.30), rand(rng, 0.35, 0.5), rand(rng, 0.13, 0.19));
+    let h = rand(rng, 1.6, 2.3);
+    let c = new THREE.Color().setHSL(rand(rng, 0.25, 0.30), rand(rng, 0.35, 0.5), rand(rng, 0.13, 0.19));
     // Not across the railway, a shortcut or the quarry -- left out after the
     // draws, so every hedge after it is the same as before they were there.
-    if (ctx.clearAt(mx, mz) || ctx.clearAt(x0, z0) || ctx.clearAt(x1, z1)) return;
+    if (ctx.clearAt(mx, mz) || ctx.clearAt(x0, z0) || ctx.clearAt(x1, z1)) return false;
+    if (run) {
+      if (!run.c) { run.h = h; run.c = c; }
+      h = run.h; c = run.c;
+    }
     // Down into the ground a little, so the hedges by a lane -- where the
-    // drawn ground is dropped under the tarmac -- do not float.
-    b.addTaperedBox(len + 0.6, h + 0.8, 1.5, mx, h * 0.5 - 0.4, mz, c, 1, 0.75, rot);
+    // drawn ground is dropped under the tarmac -- do not float. Overlapping
+    // its neighbours by HEDGE_LAP, so a run is joined up round a bend too.
+    b.addTaperedBox(len + HEDGE_LAP, h + 0.8, 1.5, mx, h * 0.5 - 0.4, mz, c, 1, 0.75, rot);
     // Solid well above what is drawn. The AI's tests for "is there a clear
     // line to the target" sweep level from the car, and from a car on a
     // slope that line passed over a two-metre hedge further down: police took
@@ -1022,25 +1042,32 @@ function buildHedges(ctx, fields) {
     const body = addStaticBox(W, mx, ctx.at(mx, mz) + HEDGE_SOLID * 0.5, mz, len * 0.5, HEDGE_SOLID * 0.5, 0.7,
       hedgeWall() ? GROUP.BUILDING | GROUP.HEDGE : GROUP.HEDGE, rot, 0xFFFF & ~GROUP.VEHICLE);
     ctx.sim.hedges.add(body.collider(0).handle);
+    return true;
   };
 
   // Along the roads, in runs of up to 8 m, with gaps near junctions and gates.
+  // (Almost none of these stand: 1.8 m off the tarmac, overlapsRoad turns
+  // down all but nine of some 3,300. The hedges of the vale are the field
+  // boundaries below. Left as it is -- the lanes are open, and the chases and
+  // the sight lines are tuned to that.)
   for (const e of graph.edges) {
     if (e.cut || e.turningHead || e.village || e.farm) continue;
     const off = e.width * 0.5 + 1.8;
     for (const side of [1, -1]) {
       let s = 16;
       let gate = rand(rng, 40, 140);
+      let run = {};
       while (s < e.length - 16) {
-        if (s > gate) { s += 7; gate = s + rand(rng, 60, 180); continue; }
+        if (s > gate) { s += 7; gate = s + rand(rng, 60, 180); run = {}; continue; }
         const p = pointOn(e, s), q = pointOn(e, Math.min(e.length - 16, s + 8));
-        hedge(p.x + p.nx * off * side, p.z + p.nz * off * side, q.x + q.nx * off * side, q.z + q.nz * off * side);
+        hedge(p.x + p.nx * off * side, p.z + p.nz * off * side, q.x + q.nx * off * side, q.z + q.nz * off * side, run);
         s += 8;
       }
     }
   }
 
   // Between fields: walk each seed's neighbours' bisectors.
+  ctx.gateSpots = [];
   const { seeds, nearest } = fields;
   for (let i = 0; i < seeds.length; i++) {
     for (let j = i + 1; j < seeds.length; j++) {
@@ -1067,10 +1094,22 @@ function buildHedges(ctx, fields) {
       }
       run.sort((p, q) => p.t - q.t);
       // In 8 m pieces, with a gateway somewhere along it.
+      // In 8 m pieces, with a gateway somewhere along it -- and in the
+      // gateway a field gate between two posts, fenced across to the hedge
+      // either side (buildGates in countryextras.js): "occasionally have
+      // gaps, and that's where I want the fence, and ... the gates". Only
+      // where there is hedge on both sides of the gap: a gate standing alone
+      // in the open is nothing.
       const gate = randInt(rng, 1, Math.max(1, Math.floor(run.length / 2) - 1));
+      const look = {};
+      const placed = [];
       for (let k = 0; k + 2 < run.length; k += 2) {
         if (Math.abs(k / 2 - gate) < 1) continue;
-        hedge(run[k].x, run[k].z, run[k + 2].x, run[k + 2].z);
+        placed[k / 2] = hedge(run[k].x, run[k].z, run[k + 2].x, run[k + 2].z, look);
+      }
+      const g0 = run[gate * 2], g1 = run[gate * 2 + 2];
+      if (g0 && g1 && placed[gate - 1] && placed[gate + 1]) {
+        ctx.gateSpots.push({ x: (g0.x + g1.x) / 2, z: (g0.z + g1.z) / 2, rot: Math.atan2(B.x - A.x, B.z - A.z) });
       }
     }
   }
@@ -1205,7 +1244,8 @@ function buildBales(ctx, spots) {
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
   const lift = (x, z) => {
     const h = ctx.at(x, z);
-    return h - Math.max(0, h - HILL_SINK);
+    // (Below zero there is no plate: the quarry's hole. The heightfield it is.)
+    return h < 0 ? HILL_SINK : h - Math.max(0, h - HILL_SINK);
   };
   const update = () => {
     for (let i = 0; i < bodies.length; i++) {

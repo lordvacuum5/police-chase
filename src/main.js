@@ -121,10 +121,16 @@ const SPAWN_MARGIN = 0.6;
 /** How far another player can be taken to see a clear spot, m. See nearHuman. */
 const HUMAN_SIGHT = 600;
 /**
- * What hides a spawn: buildings, trees, hedges and the hills themselves. A car
+ * What hides a spawn: buildings, trees and the hills themselves. A car
  * appearing behind the brow of a hill has appeared out of sight.
+ *
+ * Not hedges. A hedge is six metres tall to every ray in the game (see
+ * HEDGE_SOLID in world/countrygen.js), so the police cannot see you behind
+ * one -- but the player's camera is up behind the car and sees straight over
+ * a two-metre hedge: "you keep on spawning cars almost right in front of me,
+ * but I can just see over the hedge".
  */
-const SPAWN_SIGHT = groups(0xFFFF, GROUP.BUILDING | GROUP.PROP | GROUP.HEDGE | GROUP.HILL);
+const SPAWN_SIGHT = groups(0xFFFF, GROUP.BUILDING | GROUP.PROP | GROUP.HILL);
 /** How long another player's helicopter sits still before it is solid. See _netAirParked. */
 const AIR_PARK_AFTER = 0.6;   // s
 
@@ -2748,10 +2754,13 @@ class Game {
    * turns either into a moment's recovery.
    */
   _catchFallen() {
-    if (this.player.position.y < FALL_FLOOR) this._recoverPlayer();
+    // Under the ground where it is, not under zero: Haldon Vale's quarry floor
+    // is itself below zero.
+    const below = (v) => v.position.y < FALL_FLOOR + (this.sim.terrainAt ? Math.min(0, this.sim.terrainAt(v.position.x, v.position.z)) : 0);
+    if (below(this.player)) this._recoverPlayer();
     for (const v of this.vehicles) {
       if (v === this.player || v.remote) continue;
-      if (v.position.y >= FALL_FLOOR) continue;
+      if (!below(v)) continue;
       // Somebody else's problem to replace: the roster sends another car.
       const unit = this.dispatcher.units.find((u) => u.vehicle === v);
       if (unit) this.dispatcher.retire(unit);

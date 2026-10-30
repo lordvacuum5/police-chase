@@ -174,7 +174,24 @@ export function buildGround(ctx) {
   mesh.renderOrder = DRAW_ORDER.ground;
 
   // One big static box under everything gives the wheels something to hit.
-  addStaticBox(ctx.sim.world, 0, -2, 0, PLATE_HALF, 2, PLATE_HALF, GROUP.TERRAIN);
+  // Unless the map has dug below it (Haldon Vale's quarry): then the plate is
+  // four boxes round a hole, and a deeper one under the hole, its top at
+  // `plateHole.deep`, for the wheels' rays to find.
+  const hole = ctx.plateHole;
+  if (!hole) {
+    addStaticBox(ctx.sim.world, 0, -2, 0, PLATE_HALF, 2, PLATE_HALF, GROUP.TERRAIN);
+  } else {
+    const W = ctx.sim.world, P = PLATE_HALF;
+    const box = (x0, x1, z0, z1, top) => {
+      if (x1 - x0 < 0.01 || z1 - z0 < 0.01) return;
+      addStaticBox(W, (x0 + x1) / 2, top - 2, (z0 + z1) / 2, (x1 - x0) / 2, 2, (z1 - z0) / 2, GROUP.TERRAIN);
+    };
+    box(-P, P, -P, hole.z0, 0);
+    box(-P, P, hole.z1, P, 0);
+    box(-P, hole.x0, hole.z0, hole.z1, 0);
+    box(hole.x1, P, hole.z0, hole.z1, 0);
+    box(hole.x0, hole.x1, hole.z0, hole.z1, hole.deep);
+  }
   buildWorldEdge(ctx.sim.world);
   return mesh;
 }

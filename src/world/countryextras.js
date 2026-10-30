@@ -29,14 +29,23 @@ const CLEAR = { RAIL: 1, SHORTCUT: 2, QUARRY: 4 };
 const QUARRY_SIZES = [75, 68, 60, 55];
 const QUARRY_MIN_CLIFF = 14;
 /** How far the floor is dug below the lowest ground round it, m: the way in is a ramp down. */
-const QUARRY_DIG = 10;
-const RAMP_LEN = 60;
+const QUARRY_DIG = 16;
+const RAMP_LEN = 100;
 /** The rock face, from inside the floor's edge to beyond it, m: thick enough to hide the grid's own slope, which on a 4 m lattice reaches up to a diagonal (5.7 m) either side of the edge. */
 const FACE_IN = 6, FACE_OUT = 7;
+/** The terraces: how tall each face is meant to be, m, and how wide each ledge. See buildQuarry. */
+const BENCH_RISE = 8;
+/** How far a jump's side runs out for every metre it stands up. */
+const SIDE_RUN = 1.6;
+const BENCH_WIDE = 5;
 
 /** How many shortcuts across the fields, and how much shorter than the road they must be. */
 const SHORTCUTS = 8;
 const SHORTCUT_GAIN = 1.8;
+/** Gates: how fast one must be going to break, m/s; how long each of its four pieces is, m; how many pieces at most. */
+const GATE_BREAK = 1.5;
+const GATE_PART = 1.05;
+const GATE_PIECES = 160;
 
 /** The railway: its bed's width, its steepest grade, where it ends (just inside the world's edge). */
 const RAIL_BED = 6;
@@ -175,15 +184,24 @@ function quarrySites(ctx, base, h, R, take) {
           if (y < lo) { lo = y; loA = b; }
           if (y > hi) { hi = y; hiA = b; }
         }
-        // Dug down below the lowest point round it, as far as QUARRY_DIG and
-        // never under the world: "make sure the quarry really drops down. A
-        // massive cliff." Opened up at its own level, the deepest face was
-        // twenty-five metres and the way off the top eighteen.
-        const floor = Math.max(0.5, lo - QUARRY_DIG);
+        // Dug QUARRY_DIG below the lowest point round it: "make sure the
+        // quarry really drops down. A massive cliff." Opened up at its own
+        // level the deepest face was 25 m; held above the world's floor, 35.
+        // Then: "you can make the quarry go beneath the normal floor of the
+        // map ... make it lower, because that's how it would look better."
+        // So it goes under zero, through a hole in the floor (buildGround).
+        const floor = lo - QUARRY_DIG;
         const cliff = hi - floor;
         if (cliff < QUARRY_MIN_CLIFF) continue;
+        // The ramp in has to reach the fields without crossing a road.
+        const ox = Math.cos(loA), oz = Math.sin(loA);
+        let blocked = false;
+        for (let d = R; d < R + RAMP_LEN - 20 && !blocked; d += 10) {
+          if (roadNear(graph, x + ox * d, z + oz * d, 14)) blocked = true;
+        }
+        if (blocked) continue;
         // As deep as it can be, short of the cliff being all there is.
-        const score = -Math.abs(cliff - 40);
+        const score = -Math.abs(cliff - 50);
         take({ x, z, r: R, floor, lo, open: loA, high: hiA, cliff, score });
       }
     }
@@ -208,6 +226,22 @@ export function quarryGround(q, base) {
 }
 
 /** The square the quarry's fine ground mesh covers, on the coarse mesh's 8 m lattice. */
+/**
+ * The hole in the world's floor plate the quarry needs, since its floor and
+ * the bottom of its ramp are under zero: the quarry and the ramp, with room
+ * round them, and the depth of the plate under it. See buildGround.
+ */
+export function quarryHole(q) {
+  const ox = Math.cos(q.open), oz = Math.sin(q.open);
+  const ex = q.x + ox * (q.r + RAMP_LEN), ez = q.z + oz * (q.r + RAMP_LEN);
+  const pad = q.r + FACE_OUT + 20;
+  return {
+    x0: Math.min(q.x - pad, ex - 30), x1: Math.max(q.x + pad, ex + 30),
+    z0: Math.min(q.z - pad, ez - 30), z1: Math.max(q.z + pad, ez + 30),
+    deep: q.floor - 4,
+  };
+}
+
 export function quarryPatch(q) {
   const x0 = Math.floor((q.x - q.r - 26) / 8) * 8, z0 = Math.floor((q.z - q.r - 26) / 8) * 8;
   const size = Math.ceil((q.r * 2 + 52) / 8) * 8 + 8;
@@ -253,14 +287,22 @@ function addKicker(ctx, b, x, z, heading, len, width, height, colour) {
   const fx = Math.sin(heading), fz = Math.cos(heading);      // toward the lip
   const sx = fz, sz = -fx;                                     // across
   const N = 6;
-  const P = (s, side) => ({ x: x - fx * (len - s) + sx * side * width * 0.5, z: z - fz * (len - s) + sz * side * width * 0.5 });
+  const P = (s, side, out = 0) => ({ x: x - fx * (len - s) + sx * side * (width * 0.5 + out), z: z - fz * (len - s) + sz * side * (width * 0.5 + out) });
   const y = (s) => height * Math.pow(s / len, 1.7);
   for (let k = 0; k < N; k++) {
     const s0 = (k / N) * len, s1 = ((k + 1) / N) * len;
     const c = [];
+    // Sloped sides, and at the lip a sloped back: a car that comes at it
+    // from the side or from behind rides up it. With straight sides, one
+    // driven into the side was shoved down through the floor.
     const corners = [P(s0, -1), P(s1, -1), P(s1, 1), P(s0, 1)];
     const ss = [s0, s1, s1, s0];
-    for (let m = 0; m < 4; m++) c.push([corners[m].x, at(corners[m].x, corners[m].z) - 0.6, corners[m].z]);
+    for (let m = 0; m < 4; m++) {
+      const sl = (y(ss[m]) + 0.6) * SIDE_RUN;
+      let q = P(ss[m], m === 0 || m === 1 ? -1 : 1, sl);
+      if (k === N - 1 && (m === 1 || m === 2)) q = { x: q.x + fx * (height + 0.6) * SIDE_RUN, z: q.z + fz * (height + 0.6) * SIDE_RUN };
+      c.push([q.x, at(q.x, q.z) - 0.6, q.z]);
+    }
     for (let m = 0; m < 4; m++) c.push([corners[m].x, at(corners[m].x, corners[m].z) + y(ss[m]) - (k === 0 && m % 3 === 0 ? 0.05 : 0), corners[m].z]);
     addHull(ctx.sim.world, c, GROUP.HILL | GROUP.RAMP);
     addPrism(b, c, colour);
@@ -281,7 +323,9 @@ function addTable(ctx, b, x, z, heading, up, top, down, width, height, colour) {
     for (const side of [-1, 1]) {
       for (const i of [i0, i1, i2]) {
         const px = x + fx * along[i] + sx * side * width * 0.5, pz = z + fz * along[i] + sz * side * width * 0.5;
-        bottom.push([px, ground - 0.6, pz]);
+        // Sloped sides, as on the kicker.
+        const out = (hts[i] + 0.6) * SIDE_RUN;
+        bottom.push([px + sx * side * out, ground - 0.6, pz + sz * side * out]);
         tops.push([px, ground + hts[i] - (hts[i] === 0 ? 0.05 : 0), pz]);
       }
     }
@@ -359,32 +403,85 @@ export function buildQuarry(ctx, q) {
   const W = ctx.sim.world;
   const b = new MeshBuilder();
   const rims = quarryRims(ctx, q);
-  // The face, in slices round the circle. Each slice's top runs from one
-  // angle's rim height to the next, so the top of the cliff is one surface you
-  // can drive along rather than a row of steps.
+  // Terraced. "The quarry needs terracing ... have a look at a proper quarry
+  // photo." The one looked at, Stoneycombe in Devon, is five or six benches of
+  // near-sheer pink-grey limestone, each face six to ten metres, the ledges
+  // grassed over and pale scree at the foot. One wall from floor to rim, ours
+  // read as a concrete dam. So: two to five faces of about BENCH_RISE each, every
+  // one set back BENCH_WIDE from the one below, the top one where the single
+  // face was (so the way off the top is the same drop, onto a ledge if you go
+  // over it slowly), the ledges green. The benches go into the floor, which is
+  // why it is as wide as it is.
+  let tallest = 0;
+  for (const h of rims) tallest = Math.max(tallest, h - q.floor);
+  const tiers = clamp(Math.round(tallest / BENCH_RISE), 2, 5);
+  q.tiers = tiers;
+  q.inner = q.r - FACE_IN - (tiers - 1) * BENCH_WIDE;
+  const P = (a, r) => [q.x + Math.cos(a) * r, q.z + Math.sin(a) * r];
+  const ledge = (s) => new THREE.Color().setHSL(rand(rng, 0.22, 0.27), rand(rng, 0.25, 0.4), rand(rng, 0.22, 0.3) + s);
+  // The face, in slices round the circle. Each slice's tops run from one
+  // angle's height to the next, so a ledge is one surface you can drive along
+  // rather than a row of steps.
   for (let m = 0; m < STEPS; m++) {
     const a0 = (m / STEPS) * TAU, a1 = ((m + 1) / STEPS) * TAU;
     const h0 = rims[m], h1 = rims[m + 1];
     // Only where it stands over the lowest ground round it: the open side is
     // the ramp in, and a wall there would shut it.
     if (Math.max(h0, h1) - q.lo < 2.5) continue;
-    const r0 = q.r - FACE_IN, r1 = q.r + FACE_OUT;
-    const P = (a, r) => [q.x + Math.cos(a) * r, q.z + Math.sin(a) * r];
-    const [ax, az] = P(a0, r0), [bx, bz] = P(a1, r0), [cx, cz] = P(a1, r1), [dx, dz] = P(a0, r1);
-    const lo = q.floor - 1.5;
-    const c = [
-      [ax, lo, az], [bx, lo, bz], [cx, lo, cz], [dx, lo, dz],
-      [ax, h0, az], [bx, h1, bz], [cx, h1, cz], [dx, h0, dz],
-    ];
-    addHull(W, c);
-    const col = new THREE.Color().setHSL(rand(rng, 0.07, 0.10), rand(rng, 0.08, 0.16), rand(rng, 0.46, 0.58));
-    addPrism(b, c, col);
-    // Bands of strata across the face, a little proud of it.
-    for (let lvl = q.floor + 4; lvl < Math.min(h0, h1) - 1; lvl += rand(rng, 3.5, 6)) {
-      const r = r0 - 0.08;
-      const [ex, ez] = P(a0, r), [fx2, fz2] = P(a1, r);
-      b.addWall([{ x: ex, z: ez }, { x: fx2, z: fz2 }], lvl, lvl + 0.5, new THREE.Color().setHSL(0.08, 0.1, 0.38));
+    const lo = q.floor - 1.5, r1 = q.r + FACE_OUT;
+    for (let i = 0; i < tiers; i++) {
+      // Not a stadium: each ledge wanders in and out, and each face is a
+      // little taller or shorter, smoothly round the circle so neighbouring
+      // slices still meet.
+      const rAt = (a, j) => q.r - FACE_IN - (tiers - 1 - j) * BENCH_WIDE
+        + (j < tiers - 1 ? Math.sin(a * 5 + j * 2.1) * BENCH_WIDE * 0.3 : 0);
+      const tAt = (a, h, j) => q.floor + (h - q.floor) * Math.min(1, (j + 1) / tiers
+        + (j < tiers - 1 ? Math.sin(a * 3 + j * 1.3) * 0.06 : 0));
+      const ra = rAt(a0, i), rb = rAt(a1, i);
+      const t0 = tAt(a0, h0, i), t1 = tAt(a1, h1, i);
+      const [ax, az] = P(a0, ra), [bx, bz] = P(a1, rb), [cx, cz] = P(a1, r1), [dx, dz] = P(a0, r1);
+      const c = [
+        [ax, lo, az], [bx, lo, bz], [cx, lo, cz], [dx, lo, dz],
+        [ax, t0, az], [bx, t1, bz], [cx, t1, cz], [dx, t0, dz],
+      ];
+      addHull(W, c);
+      // Pink-grey limestone, a little different face by face.
+      addPrism(b, c, new THREE.Color().setHSL(rand(rng, 0.02, 0.07), rand(rng, 0.14, 0.32), rand(rng, 0.46, 0.62)));
+      // A band of darker bedding across the face, a little proud of it.
+      const b0 = q.floor + (Math.min(h0, h1) - q.floor) * (i + 0.45) / tiers;
+      const [ex, ez] = P(a0, ra - 0.08), [fx2, fz2] = P(a1, rb - 0.08);
+      b.addWall([{ x: ex, z: ez }, { x: fx2, z: fz2 }], b0, b0 + 0.6, new THREE.Color().setHSL(0.05, 0.12, 0.4));
+      // The ledge on top, grassed, up to the foot of the face above, with
+      // scrub growing on it.
+      if (i < tiers - 1) {
+        const na = rAt(a0, i + 1), nb = rAt(a1, i + 1);
+        const [gx, gz] = P(a1, nb), [hx2, hz2] = P(a0, na);
+        addPrism(b, [
+          [ax, t0 - 0.05, az], [bx, t1 - 0.05, bz], [gx, t1 - 0.05, gz], [hx2, t0 - 0.05, hz2],
+          [ax, t0 + 0.06, az], [bx, t1 + 0.06, bz], [gx, t1 + 0.06, gz], [hx2, t0 + 0.06, hz2],
+        ], ledge(rand(rng, -0.04, 0.06)));
+        if (rng() < 0.55) {
+          const u = rng(), am = lerp(a0, a1, u), rm = lerp(lerp(ra, rb, u), lerp(na, nb, u), rand(rng, 0.3, 0.7));
+          const [bx2, bz2] = P(am, rm), s = rand(rng, 0.8, 1.8);
+          b.addTaperedBox(s * 1.6, s, s * 1.6, bx2, lerp(t0, t1, u) + s * 0.5, bz2, ledge(-0.05), 0.4, 0.4, rng() * TAU);
+        }
+      }
     }
+  }
+  // Scree heaps at the foot of the deepest faces, pale, to drive up.
+  for (let k = 0; k < 4; k++) {
+    const a = q.high + (k - 1.5) * 0.45;
+    const r = q.inner - 5;
+    const [sx, sz] = P(a, r);
+    const g = ctx.at(sx, sz);
+    const w = rand(rng, 5, 7), top = rand(rng, 1.2, 2), h = rand(rng, 2, 3.2);
+    const fx = Math.cos(a), fz = Math.sin(a), px = -fz, pz = fx;
+    const c = [];
+    for (const [half, y] of [[w, g - 0.5], [top, g + h]]) {
+      for (const [u, v] of [[-1, -1], [-1, 1], [1, 1], [1, -1]]) c.push([sx + fx * u * half + px * v * half, y, sz + fz * u * half + pz * v * half]);
+    }
+    addHull(W, c, GROUP.HILL | GROUP.RAMP);
+    addPrism(b, c, new THREE.Color().setHSL(0.07, 0.06, rand(rng, 0.66, 0.74)));
   }
 
   // The jumps. "There don't have to be loads and loads of jumps."
@@ -478,28 +575,31 @@ export function planShortcuts(ctx, fields, q) {
   return out;
 }
 
-/** A five-bar gate in local space: 4.2 m long along x, 1.2 m tall, centred. */
-function gateGeometry() {
+/** A five-bar gate in local space: 4.2 m long along x, 1.2 m tall, centred. Or a quarter of one, `part` 0-1, for when it breaks. */
+function gateGeometry(part = -1) {
   const b = new MeshBuilder();
   const wood = 0x9a8466;
-  for (let k = 0; k < 5; k++) b.addBox(4.2, 0.1, 0.07, 0, -0.5 + k * 0.25, 0, wood);
-  for (const x of [-2.05, 0, 2.05]) b.addBox(0.12, 1.2, 0.09, x, 0, 0, wood);
-  // The brace.
-  const g = new THREE.BoxGeometry(2.3, 0.09, 0.07);
-  b.addGeometry(g, new THREE.Matrix4().makeRotationZ(Math.atan2(1.0, 2.0)).setPosition(-1.0, 0, 0), wood);
-  g.dispose();
+  const len = part < 0 ? 4.2 : GATE_PART;
+  for (let k = 0; k < 5; k++) b.addBox(len, 0.1, 0.07, 0, -0.5 + k * 0.25, 0, wood);
+  if (part < 0) {
+    for (const x of [-2.05, 0, 2.05]) b.addBox(0.12, 1.2, 0.09, x, 0, 0, wood);
+    // The brace.
+    const g = new THREE.BoxGeometry(2.3, 0.09, 0.07);
+    b.addGeometry(g, new THREE.Matrix4().makeRotationZ(Math.atan2(1.0, 2.0)).setPosition(-1.0, 0, 0), wood);
+    g.dispose();
+  } else {
+    // Each piece keeps an upright, splintered off at one end or the other.
+    b.addBox(0.12, 1.2, 0.09, (part ? 1 : -1) * (GATE_PART * 0.5 - 0.06), 0, 0, wood);
+  }
   return b.build();
 }
 
 /**
- * The shortcuts, on the finished ground: the ruts, the gateposts and the
- * gates. Each gate is a loose body like a bale (GROUP.DEBRIS, asleep until
- * hit), so it goes flying and costs a car nothing.
+ * The shortcuts, on the finished ground: the ruts. Their gates go in with the
+ * rest (buildGates), returned as `gateSpots`.
  */
 export function buildShortcuts(ctx, list) {
-  const W = ctx.sim.world;
   const b = new MeshBuilder();
-  const posts = new MeshBuilder();
   const spots = [];
   const drawn = ctx.drawnAt || ctx.at;
   for (const o of list) {
@@ -514,17 +614,7 @@ export function buildShortcuts(ctx, list) {
     b.addRibbon(pts, 0.55, 0.01, 0x3e2f21, -0.85);
     for (const [p, e, dir] of ends) {
       const off = e.width * 0.5 + 1.8;
-      const gx = p.x + o.ux * dir * off, gz = p.z + o.uz * dir * off;
-      const rot = Math.atan2(o.ux, o.uz);
-      spots.push({ x: gx, z: gz, rot });
-      // The posts either side, solid.
-      for (const side of [-1, 1]) {
-        const px = gx + Math.cos(rot) * side * 2.3, pz = gz - Math.sin(rot) * side * 2.3;
-        posts.addBox(0.22, 1.6, 0.22, px, 0.8, pz, 0x6e5a42);
-        // Street furniture to the AI: a post at the roadside that the sweeps
-        // saw would have a patrol car steering round every gateway.
-        addStaticBox(W, px, ctx.at(px, pz) + 0.8, pz, 0.11, 0.8, 0.11, GROUP.STREET);
-      }
+      spots.push({ x: p.x + o.ux * dir * off, z: p.z + o.uz * dir * off, rot: Math.atan2(o.ux, o.uz) });
     }
   }
   const ruts = new THREE.Mesh(b.build(), vertexColorMaterial({ polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }));
@@ -536,6 +626,40 @@ export function buildShortcuts(ctx, list) {
   ruts.geometry.computeBoundingSphere();
   ruts.receiveShadow = true;
   ruts.name = 'shortcuts';
+  return { meshes: [ruts], gateSpots: spots };
+}
+
+/**
+ * Field gates, in the gaps in the roadside hedges and at the ends of the
+ * shortcuts: two posts, a short run of fence from each post into the hedge,
+ * and the gate between them. Each spot is { x, z, rot }, `rot` the heading
+ * through the gateway.
+ *
+ * The posts are solid street furniture (GROUP.STREET: a post at the roadside
+ * that the AI's sweeps saw would have a patrol car steering round every
+ * gateway). The gate is a loose body like a bale (GROUP.DEBRIS, asleep until
+ * hit), and hit hard enough it breaks: "I want the gates to smash into four
+ * different sections when you hit them." The gate goes, and four pieces, each
+ * a quarter of it, carry on with its speed and a kick of their own. Pieces
+ * are pooled, GATE_PIECES at most; past that the oldest go.
+ */
+export function buildGates(ctx, spots) {
+  const W = ctx.sim.world;
+  const posts = new MeshBuilder();
+  const wood = 0x6e5a42, rail = 0x8a7558;
+  for (const { x, z, rot } of spots) {
+    const ax = Math.cos(rot), az = -Math.sin(rot);      // along the hedge
+    for (const side of [-1, 1]) {
+      const px = x + ax * side * 2.35, pz = z + az * side * 2.35;
+      posts.addBox(0.22, 1.6, 0.22, px, 0.8, pz, wood, rot);
+      addStaticBox(W, px, ctx.at(px, pz) + 0.8, pz, 0.11, 0.8, 0.11, GROUP.STREET);
+      // The fence: two rails from the post on into the hedge, and a post at
+      // the end of them.
+      const fx = x + ax * side * 2.95, fz = z + az * side * 2.95;
+      for (const y of [0.45, 0.95]) posts.addBox(1.2, 0.09, 0.06, fx, y, fz, rail, rot);
+      posts.addBox(0.14, 1.2, 0.14, x + ax * side * 3.5, 0.6, z + az * side * 3.5, wood, rot);
+    }
+  }
   const postMesh = new THREE.Mesh(posts.build(), vertexColorMaterial());
   const pp = postMesh.geometry.attributes.position;
   for (let k = 0; k < pp.count; k++) pp.setY(k, pp.getY(k) + ctx.at(pp.getX(k), pp.getZ(k)));
@@ -544,18 +668,27 @@ export function buildShortcuts(ctx, list) {
   postMesh.castShadow = true;
   postMesh.name = 'gateposts';
 
-  // The gates.
-  const geo = gateGeometry();
-  const mesh = new THREE.InstancedMesh(geo, vertexColorMaterial(), Math.max(1, spots.length));
+  const mat = vertexColorMaterial();
+  const mesh = new THREE.InstancedMesh(gateGeometry(), mat, Math.max(1, spots.length));
   mesh.count = spots.length;
   mesh.castShadow = true;
   mesh.name = 'gates';
   mesh.frustumCulled = false;
-  const bodies = [];
-  for (const { x, z, rot } of spots) {
+  // Two shapes of piece, alternating: the upright at its left end, or its right.
+  const pieceMesh = [0, 1].map((k) => {
+    const pm = new THREE.InstancedMesh(gateGeometry(k), mat, GATE_PIECES / 2);
+    pm.count = 0;
+    pm.castShadow = true;
+    pm.frustumCulled = false;
+    pm.name = 'gate-pieces';
+    return pm;
+  });
+  const gates = spots.map(({ x, z, rot }) => {
     const body = W.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
-        .setTranslation(x, ctx.at(x, z) + 0.65, z)
+        // Clear of the ground along its whole length: on a slope the low end
+        // of a gate stood in the hill, was pushed out, and broke on its own.
+        .setTranslation(x, Math.max(ctx.at(x, z), ctx.at(x + Math.cos(rot) * 2.1, z - Math.sin(rot) * 2.1), ctx.at(x - Math.cos(rot) * 2.1, z + Math.sin(rot) * 2.1)) + 0.65, z)
         .setRotation({ x: 0, y: Math.sin(rot / 2), z: 0, w: Math.cos(rot / 2) })
         .setLinearDamping(0.3)
         .setAngularDamping(0.6)
@@ -570,22 +703,89 @@ export function buildShortcuts(ctx, list) {
       body,
     );
     body.sleep();
-    bodies.push(body);
-  }
+    return { body, drawn: false, hit: false };
+  });
+  const pieces = [];        // { body, which, slot, drawn }
+  const slots = [0, 0];
   const m = new THREE.Matrix4(), qq = new THREE.Quaternion(), pv = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
+  const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+  const draw = (target, i, body) => {
+    const t = body.translation(), r = body.rotation();
+    const h = ctx.at(t.x, t.z);
+    // The bodies rest on the heightfield, sunk HILL_SINK under the drawn
+    // ground; a gate still standing has not been near it.
+    pv.set(t.x, t.y + (h < 0 ? HILL_SINK : h - Math.max(0, h - HILL_SINK)) * (body.isSleeping() && t.y > h ? 0 : 1), t.z);
+    qq.set(r.x, r.y, r.z, r.w);
+    m.compose(pv, qq, one);
+    target.setMatrixAt(i, m);
+  };
+  const smash = (g, i) => {
+    const t = g.body.translation(), r = g.body.rotation(), lv = g.body.linvel();
+    qq.set(r.x, r.y, r.z, r.w);
+    W.removeRigidBody(g.body);
+    g.body = null;
+    mesh.setMatrixAt(i, zero);
+    for (let k = 0; k < 4; k++) {
+      pv.set((k - 1.5) * GATE_PART, 0, 0).applyQuaternion(qq);
+      const body = W.createRigidBody(
+        RAPIER.RigidBodyDesc.dynamic()
+          .setTranslation(t.x + pv.x, t.y + pv.y, t.z + pv.z)
+          .setRotation(r)
+          .setLinvel(lv.x + rand(Math.random, -2, 2), lv.y + rand(Math.random, 1, 3), lv.z + rand(Math.random, -2, 2))
+          .setAngvel({ x: rand(Math.random, -5, 5), y: rand(Math.random, -5, 5), z: rand(Math.random, -5, 5) })
+          .setLinearDamping(0.3)
+          .setAngularDamping(0.4),
+      );
+      W.createCollider(
+        RAPIER.ColliderDesc.cuboid(GATE_PART * 0.5, 0.6, 0.05)
+          .setMass(11)
+          .setFriction(0.7)
+          .setRestitution(0.2)
+          .setCollisionGroups(groups(GROUP.DEBRIS, GROUP.TERRAIN | GROUP.HILL | GROUP.VEHICLE | GROUP.DEBRIS)),
+        body,
+      );
+      const which = k % 2;
+      let slot;
+      if (slots[which] < GATE_PIECES / 2) {
+        slot = slots[which]++;
+        pieceMesh[which].count = slots[which];
+      } else {
+        // The pool is full: the oldest piece of this shape goes.
+        const old = pieces.findIndex((pc) => pc.which === which);
+        slot = pieces[old].slot;
+        W.removeRigidBody(pieces[old].body);
+        pieces.splice(old, 1);
+      }
+      pieces.push({ body, which, slot, drawn: false });
+    }
+  };
   const update = () => {
-    for (let i = 0; i < bodies.length; i++) {
-      const t = bodies[i].translation(), r = bodies[i].rotation();
-      const h = ctx.at(t.x, t.z);
-      pv.set(t.x, t.y + (h - Math.max(0, h - HILL_SINK)) * (bodies[i].isSleeping() && t.y > h ? 0 : 1), t.z);
-      qq.set(r.x, r.y, r.z, r.w);
-      m.compose(pv, qq, one);
-      mesh.setMatrixAt(i, m);
+    for (let i = 0; i < gates.length; i++) {
+      const g = gates[i];
+      if (!g.body) continue;
+      // Only what moves needs drawing again.
+      if (g.drawn && g.body.isSleeping()) continue;
+      const lv = g.body.linvel();
+      // Broken by a car, and nothing else: hit hard enough, by something that
+      // drives, it goes to pieces.
+      if (!g.hit) W.contactPairsWith(g.body.collider(0), (o) => { if (o.__vehicle) g.hit = true; });
+      // (Or flying faster than any gate only settling would: a car past in the
+      // frame between contact and this look.)
+      const v = Math.hypot(lv.x, lv.y, lv.z);
+      if ((g.hit && v > GATE_BREAK) || v > 6) { smash(g, i); continue; }
+      draw(mesh, i, g.body);
+      g.drawn = true;
+    }
+    for (const pc of pieces) {
+      if (pc.drawn && pc.body.isSleeping()) continue;
+      draw(pieceMesh[pc.which], pc.slot, pc.body);
+      pc.drawn = true;
     }
     mesh.instanceMatrix.needsUpdate = true;
+    for (const pm of pieceMesh) pm.instanceMatrix.needsUpdate = true;
   };
   update();
-  return { meshes: [ruts, postMesh, mesh], update };
+  return { meshes: [postMesh, mesh, ...pieceMesh], update, count: spots.length, gates, pieces };
 }
 
 // =====================================================================

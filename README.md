@@ -7021,6 +7021,87 @@ clear, 0.32-0.49 damage). Patrols 90 s: lane error 0.72 m (0.75 before this).
 The gates were there; nothing showed where. The minimap now draws the quarry,
 the railway (dashed grey) and the shortcuts (dashed brown).
 
+### The quarry terraced, and dug under the world
+
+*"The quarry needs terracing. And can you have a look at a proper quarry
+photo, like a nice deep quarry photo, and compare it?"* The one looked at was
+Stoneycombe Quarry in Devon (Wikimedia Commons, geograph 1228727): five or six
+benches of near-sheer pink-grey limestone, faces six to ten metres, the ledges
+grassed and scrubby, pale scree at the foot. Ours was one grey wall and read as
+a dam. Now two to five faces of about 8 m (five, as built), each set back 5 m
+from the one below, the ledges green with scrub on them, wandering in and out
+and up and down a little round the circle so it is not a stadium; bands of
+darker bedding across each face; four scree heaps at the foot, solid, to drive
+up. The top face is where the single face was, so the way off the top is the
+same edge; go over slowly and you land on a ledge.
+
+*"You can make the quarry go beneath ... the normal floor of the map. Make it
+lower."* The world's floor is a plate at zero and the ground was never allowed
+under it. The floor is now dug 16 m under the lowest ground round the quarry
+(12 m under zero), with a hole cut in the plate (`buildGround`, `plateHole`: the
+plate becomes four boxes round the hole and a deeper one under it), the
+height grid allowed below zero where a place asks for it, the wheels' rays
+reaching from the highest ground to the lowest (`relief`), the fallen-car check
+measured from the ground (`_catchFallen`), and bales and gates drawn on the
+heightfield there. A 100 m ramp leads in from the open side, and a quarry site
+is only taken if the ramp crosses no road. Deepest face 48 m; the way off the
+top 47 m.
+
+The jumps had straight sides 2 m tall: a car driven into one from the side was
+shoved by its keel down through the floor and stayed there, wheels fully
+compressed, 0.23 m low. Their sides and the kicker's back now slope (1.6 m out
+for every metre up). Into the table from the side at 60 km/h: up, over and
+down, sitting at 0.47-0.53 m after.
+
+`tests/quarry.js`: off the top at 40/60/80 km/h, 3.2/3.1/3.5 s in the air from
+47 m, upright, 0.00-0.01 damage. Floor kicker and table land upright, 0-0.31.
+
+### Hedges, gates and fences
+
+*"Make it so the hedges are one big sort of line instead of lots of multiple
+different sections ... more joined together. And then occasionally ... gaps,
+and that's where I want ... the fence, and ... the gates. I also want the
+gates to smash into ... four different sections."*
+
+* **One look per hedge.** Every 8 m piece drew its own height and colour, so a
+  hedge read as a row of bushes. A run now takes its first piece's, and pieces
+  overlap their neighbours by 1.4 m (was 0.6) so it is joined up round a bend.
+  The draws are still taken piece by piece: nothing after the hedges moves.
+* **The roadside hedges were never there.** 1.8 m off the tarmac, `overlapsRoad`
+  turns down all but 9 of 3,315 pieces; the vale's hedges are the field
+  boundaries. Left so -- the lanes are open, and the chases and sight lines are
+  tuned to that -- and written down.
+* **A gate in every gateway** with hedge both sides of it: 392 in the field
+  hedges, 16 at the ends of the shortcuts. Two solid posts (street furniture,
+  invisible to the AI), two rails of fence from each post into the hedge, and
+  the gate. `buildGates` in `world/countryextras.js`.
+* **Gates break in four.** Touched by a car and moving faster than 1.5 m/s (or
+  faster than 6 m/s whatever moved it), the gate goes and four quarter-gates
+  carry on with its speed and a kick of their own, pooled at 160 pieces. The
+  first version broke nine gates with nobody near: on a slope the low end of a
+  4.2 m gate stood in the hill, was pushed out, and that counted. Now gates
+  stand clear of the ground along their length and only a vehicle breaks one.
+  Three driven through at 50 km/h: each broke into four, no damage to the car.
+
+### Cars appearing where you can see them over a hedge
+
+*"I think you think that I can't see over hedges. And I can. So you just keep
+on spawning cars almost right in front of me ... there's a hedge in between
+me and the cars."* A hedge is six metres tall to every ray in the game, so the
+police cannot see you behind one, and the spawn check (`SPAWN_SIGHT`) counted it
+as hiding the spot. The player's camera sees straight over. Hedges no longer
+hide a spawn. `tests/spawnsight.js`, Haldon, 120 s, each traffic car checked
+the moment it is made, from the camera and the driving seat:
+
+| | traffic made | in plain sight when made |
+|---|---|---|
+| hedges hide (before) | 57 | 17 (30%) |
+| hedges do not | 48 | **0** |
+
+The price is fewer places to put a car out of sight in open country: a sixth
+fewer traffic cars made. Patrols 90 s: lane error 0.78 m (0.72 before), within
+what this rig has wandered over (0.62-0.79).
+
 ### A helicopter on the ground can see
 
 *"With the helicopter, I literally can land right next to my friend when the
