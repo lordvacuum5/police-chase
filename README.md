@@ -7113,6 +7113,15 @@ gates to smash into ... four different sections."*
   stand clear of the ground along their length and only a vehicle breaks one.
   Three driven through at 50 km/h: each broke into four, no damage to the car.
 
+**The posts go over too.** *"The two edge posts, they're solid. Make sure
+that you knock them over. And then when you knock them over ... the two bits
+connecting the hedge to the fence posts, you can just make them vanish."*
+Each gatepost is a loose body now (60 kg, GROUP.DEBRIS, asleep until hit, so
+still nothing the AI steers round), and the bit of fence from it into the hedge
+is one instanced piece that disappears once its post has moved a quarter of a
+metre. 816 posts, none over on its own in five seconds settling; three hit at
+40 km/h went 7.6-9.6 m, took their fences with them, and cost the car nothing.
+
 ### Cars appearing where you can see them over a hedge
 
 *"I think you think that I can't see over hedges. And I can. So you just keep

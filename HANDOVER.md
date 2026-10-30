@@ -419,7 +419,8 @@ zero is wrong on Haldon now. **Hedges do not hide a spawn** (`SPAWN_SIGHT`): the
 player sees over them, though the police do not. The roadside hedges are
 almost all refused by `overlapsRoad` -- the vale's hedges are field
 boundaries, and that is how the chases are tuned; gates (`buildGates`) stand
-in the field gateways and break in four. The train model brief is
+in the field gateways and break in four; their posts are loose and take their
+bit of fence with them. The train model brief is
 `resources/models/TRAIN.md`; the models (`train-cab`, `train-middle`, `train-bogie`) are
 in and loaded by `loadTrainModels`, boxes until then. **Haldon's ground is
 drawn at 4 m**, the height grid's own spacing, so it is the surface things rest

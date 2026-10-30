@@ -47,6 +47,8 @@ const SHORTCUT_GAIN = 1.8;
 const GATE_BREAK = 1.5;
 const GATE_PART = 1.05;
 const GATE_PIECES = 160;
+/** A gatepost, kg: heavier than the gate, light enough to go over. */
+const POST_MASS = 60;
 
 /** The railway: its bed's width, its steepest grade, where it ends (just inside the world's edge). */
 const RAIL_BED = 6;
@@ -672,9 +674,8 @@ export function buildShortcuts(ctx, list) {
  * and the gate between them. Each spot is { x, z, rot }, `rot` the heading
  * through the gateway.
  *
- * The posts are solid street furniture (GROUP.STREET: a post at the roadside
- * that the AI's sweeps saw would have a patrol car steering round every
- * gateway). The gate is a loose body like a bale (GROUP.DEBRIS, asleep until
+ * The posts go over when hit, and take their bit of fence with them (see
+ * below). The gate is a loose body like a bale (GROUP.DEBRIS, asleep until
  * hit), and hit hard enough it breaks: "I want the gates to smash into four
  * different sections when you hit them." The gate goes, and four pieces, each
  * a quarter of it, carry on with its speed and a kick of their own. Pieces
@@ -682,28 +683,57 @@ export function buildShortcuts(ctx, list) {
  */
 export function buildGates(ctx, spots) {
   const W = ctx.sim.world;
-  const posts = new MeshBuilder();
   const wood = 0x6e5a42, rail = 0x8a7558;
+  // The posts go over too: "the two edge posts, they're solid. Make sure that
+  // you knock them over. And then when you knock them over ... the two bits
+  // connecting the hedge to the fence posts, you can just make them vanish."
+  // Each post a loose body, heavier than the gate (GROUP.DEBRIS, so still
+  // nothing the AI steers round), and the bit of fence from it into the hedge
+  // -- two rails and a short post -- one piece that goes when its post does.
+  const postGeo = new MeshBuilder().addBox(0.22, 1.6, 0.22, 0, 0, 0, wood).build();
+  // The fence piece in the post's frame: +x away from the gate, from the post
+  // on into the hedge; y from the ground.
+  const fenceGeo = new MeshBuilder()
+    .addBox(1.2, 0.09, 0.06, 0.6, 0.45, 0, rail)
+    .addBox(1.2, 0.09, 0.06, 0.6, 0.95, 0, rail)
+    .addBox(0.14, 1.2, 0.14, 1.15, 0.6, 0, wood)
+    .build();
+  const n = spots.length * 2;
+  const postMesh = new THREE.InstancedMesh(postGeo, vertexColorMaterial(), Math.max(1, n));
+  const fenceMesh = new THREE.InstancedMesh(fenceGeo, vertexColorMaterial(), Math.max(1, n));
+  for (const im of [postMesh, fenceMesh]) { im.count = n; im.castShadow = true; im.frustumCulled = false; }
+  postMesh.name = 'gateposts';
+  fenceMesh.name = 'gate-fences';
+  const posts = [];
+  const fm = new THREE.Matrix4(), fq = new THREE.Quaternion(), fp = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
   for (const { x, z, rot } of spots) {
     const ax = Math.cos(rot), az = -Math.sin(rot);      // along the hedge
     for (const side of [-1, 1]) {
       const px = x + ax * side * 2.35, pz = z + az * side * 2.35;
-      posts.addBox(0.22, 1.6, 0.22, px, 0.8, pz, wood, rot);
-      addStaticBox(W, px, ctx.at(px, pz) + 0.8, pz, 0.11, 0.8, 0.11, GROUP.STREET);
-      // The fence: two rails from the post on into the hedge, and a post at
-      // the end of them.
-      const fx = x + ax * side * 2.95, fz = z + az * side * 2.95;
-      for (const y of [0.45, 0.95]) posts.addBox(1.2, 0.09, 0.06, fx, y, fz, rail, rot);
-      posts.addBox(0.14, 1.2, 0.14, x + ax * side * 3.5, 0.6, z + az * side * 3.5, wood, rot);
+      const g = ctx.at(px, pz);
+      const body = W.createRigidBody(
+        RAPIER.RigidBodyDesc.dynamic()
+          .setTranslation(px, g + 0.82, pz)
+          .setRotation({ x: 0, y: Math.sin(rot / 2), z: 0, w: Math.cos(rot / 2) })
+          .setLinearDamping(0.3)
+          .setAngularDamping(0.5),
+      );
+      W.createCollider(
+        RAPIER.ColliderDesc.cuboid(0.11, 0.8, 0.11)
+          .setMass(POST_MASS)
+          .setFriction(0.7)
+          .setRestitution(0.1)
+          .setCollisionGroups(groups(GROUP.DEBRIS, GROUP.TERRAIN | GROUP.HILL | GROUP.VEHICLE | GROUP.DEBRIS)),
+        body,
+      );
+      body.sleep();
+      const k = posts.length;
+      fq.setFromAxisAngle(up, rot + (side < 0 ? Math.PI : 0));
+      fm.compose(fp.set(px, g, pz), fq, new THREE.Vector3(1, 1, 1));
+      fenceMesh.setMatrixAt(k, fm);
+      posts.push({ body, home: { x: px, y: g + 0.82, z: pz }, drawn: false, down: false });
     }
   }
-  const postMesh = new THREE.Mesh(posts.build(), vertexColorMaterial());
-  const pp = postMesh.geometry.attributes.position;
-  for (let k = 0; k < pp.count; k++) pp.setY(k, pp.getY(k) + ctx.at(pp.getX(k), pp.getZ(k)));
-  pp.needsUpdate = true;
-  postMesh.geometry.computeBoundingSphere();
-  postMesh.castShadow = true;
-  postMesh.name = 'gateposts';
 
   const mat = vertexColorMaterial();
   const mesh = new THREE.InstancedMesh(gateGeometry(), mat, Math.max(1, spots.length));
@@ -818,11 +848,27 @@ export function buildGates(ctx, spots) {
       draw(pieceMesh[pc.which], pc.slot, pc.body);
       pc.drawn = true;
     }
+    // The posts, and the fence that goes with each once it has been moved.
+    for (let k = 0; k < posts.length; k++) {
+      const pt = posts[k];
+      if (pt.drawn && pt.body.isSleeping()) continue;
+      draw(postMesh, k, pt.body);
+      pt.drawn = true;
+      if (!pt.down) {
+        const t = pt.body.translation();
+        if (Math.hypot(t.x - pt.home.x, t.y - pt.home.y, t.z - pt.home.z) > 0.25) {
+          pt.down = true;
+          fenceMesh.setMatrixAt(k, zero);
+          fenceMesh.instanceMatrix.needsUpdate = true;
+        }
+      }
+    }
     mesh.instanceMatrix.needsUpdate = true;
+    postMesh.instanceMatrix.needsUpdate = true;
     for (const pm of pieceMesh) pm.instanceMatrix.needsUpdate = true;
   };
   update();
-  return { meshes: [postMesh, mesh, ...pieceMesh], update, count: spots.length, gates, pieces };
+  return { meshes: [postMesh, fenceMesh, mesh, ...pieceMesh], update, count: spots.length, gates, pieces, posts };
 }
 
 // =====================================================================
