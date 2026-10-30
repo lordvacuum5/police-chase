@@ -7161,13 +7161,14 @@ round a tractor.
 
 ### The player's tractor, trailer and dump truck; turning round properly
 
-The player made the models (`farm-tractor.glb`, `farm-trailer.glb`,
+The player made the models (`farm-tractor.glb`, `farm-trailer.glb`, `combine-harvester.glb`,
 `quarry-dump-truck.glb`, to briefs written for another Claude). They replace the
 boxes once loaded -- the three lane tractors each in its own paint (the `paint`
 material recoloured), the two dump trucks, and the parked tractor (now hitched
 at the trailer's drawbar eye) and trailer, its bales kept as a mesh of their own
 so they stay on the new deck. Wheels found by name turn with the distance
-driven. If a file is missing, its boxes stay.
+driven, and the combine's reel turns faster than its wheels; its colliders are
+the model's body and the header out in front. If a file is missing, its boxes stay.
 
 *"Make it ... return ... instead of being weird"*: at the end of its route each
 vehicle used to spin round on the spot. Now it drives a half circle (6 m for a

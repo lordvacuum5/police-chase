@@ -267,6 +267,8 @@ class Mover {
     this.wheels = [];
     model.traverse((o) => {
       if (/^wheel_/.test(o.name)) this.wheels.push({ node: o, r: Math.max(0.3, o.position.y) });
+      // A combine's reel, which turns faster than its wheels, pulling the crop in.
+      if (o.name === 'reel') this.wheels.push({ node: o, r: 0.35 });
     });
   }
 }
@@ -292,14 +294,14 @@ function dressModel(scene, paint) {
 
 /**
  * The player's models (resources/models): "I'm gonna make the tractor now
- * with the trailer", then "the dump truck is in". { tractor, trailer, truck }
+ * with the trailer", then "the dump truck is in", then the combine. { tractor, trailer, truck, combine }
  * scenes, any of them null if missing -- the boxes stay for that one.
  */
 async function loadLifeModels() {
   const loader = new GLTFLoader();
   const one = (n) => loader.loadAsync(`resources/models/${n}.glb`).then((g) => g.scene, () => null);
-  const [tractor, trailer, truck] = await Promise.all(['farm-tractor', 'farm-trailer', 'quarry-dump-truck'].map(one));
-  return { tractor, trailer, truck };
+  const [tractor, trailer, truck, combine] = await Promise.all(['farm-tractor', 'farm-trailer', 'quarry-dump-truck', 'combine-harvester'].map(one));
+  return { tractor, trailer, truck, combine };
 }
 
 const smooth = (t) => t * t * (3 - 2 * t);
@@ -446,8 +448,9 @@ export function buildLife(ctx, scene, { fields, quarry, rail, combineField, bale
     if (route) {
       movers.push(new Mover(ctx, scene, {
         route, speed: COMBINE_SPEED, offset: rand(rng, 0, 300), name: 'combine', turnR: TURN_COMBINE, avoid,
-        geo: combineGeometry(), dims: { l: 10, w: 7.6 },
-        colliders: [{ hx: 1.5, hy: 2.2, hz: 3.4, y: 2.3, z: -0.6 }, { hx: 3.8, hy: 0.6, hz: 0.8, y: 0.9, z: 4.6 }],
+        geo: combineGeometry(), dims: { l: 11.5, w: 7.5 }, model: 'combine',
+        // Shaped to the player's model: the body, and the header out in front.
+        colliders: [{ hx: 1.75, hy: 2.1, hz: 4.85, y: 2.1, z: 0.25 }, { hx: 3.75, hy: 0.6, hz: 0.6, y: 0.9, z: 5.65 }],
       }));
     }
   }
