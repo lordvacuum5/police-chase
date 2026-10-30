@@ -50,6 +50,10 @@ const SHORTCUTS = 8;
 const SHORTCUT_GAIN = 1.8;
 /** Gates: how fast one must be going to break, m/s; how long each of its four pieces is, m; how many pieces at most. */
 const GATE_BREAK = 1.5;
+/** Level-crossing arms: pieces one breaks into, seconds they lie there, seconds until a new arm. */
+const BARRIER_BITS = 4;
+const BARRIER_BITS_LAST = 25;
+const BARRIER_BACK = 20;
 const GATE_PART = 1.05;
 const GATE_PIECES = 160;
 /** A gatepost, kg: heavier than the gate, light enough to go over. */
@@ -468,6 +472,10 @@ export function buildQuarry(ctx, q) {
     const f = ((((a % TAU) + TAU) % TAU) / TAU) * STEPS, m = Math.min(STEPS - 1, Math.floor(f));
     return lerp(rims[m], rims[m + 1], f - m);
   };
+  // The top of the rock at an angle, for the haul truck's way out (countrylife.js).
+  q.rimAt = rimAt;
+  q.rimOut = q.r + FACE_OUT;
+  q.rimIn = q.r - FACE_IN;
   const ledge = (s) => new THREE.Color().setHSL(rand(rng, 0.22, 0.27), rand(rng, 0.25, 0.4), rand(rng, 0.22, 0.3) + s);
   // Half the angle of the cutting the ramp comes in through.
   const gap = 13 / q.inner;
@@ -489,9 +497,16 @@ export function buildQuarry(ctx, q) {
       const ra = rAt(a0, i), rb = rAt(a1, i);
       const t0 = tAt(a0, h0, i), t1 = tAt(a1, h1, i);
       const [ax, az] = P(a0, ra), [bx, bz] = P(a1, rb), [cx, cz] = P(a1, r1), [dx, dz] = P(a0, r1);
+      // The top one's outer edge let down under the hills' collider, which is
+      // sunk HILL_SINK under the drawn ground: level with the drawn ground, it
+      // stood up out of the collider a car's body rests on as a kerb all the
+      // way round, 0.3-0.7 m. "When I kept on coming to the edge of the
+      // quarry, I kept on hitting an invisible barrier. At least the police
+      // cars did."
+      const lip = i === tiers - 1 ? HILL_SINK + 0.15 : 0;
       const c = [
         [ax, lo, az], [bx, lo, bz], [cx, lo, cz], [dx, lo, dz],
-        [ax, t0, az], [bx, t1, bz], [cx, t1, cz], [dx, t0, dz],
+        [ax, t0, az], [bx, t1, bz], [cx, t1 - lip, cz], [dx, t0 - lip, dz],
       ];
       addHull(W, c);
       // Pink-grey limestone, a little different face by face.
@@ -1262,6 +1277,8 @@ export class Railway {
     this.period = 2 * (this.runTime + TRAIN_WAIT);
     this.clock = (Date.now() / 1000) % this.period;
     this.at = ctx.at;
+    this.scene = scene;
+    this.bits = [];          // pieces of broken barrier arms: { body, mesh, until }
     this.cars = [];
     const mat = vertexColorMaterial();
     const cabGeo = carriageGeometry(true), midGeo = carriageGeometry(false);
@@ -1381,7 +1398,7 @@ export class Railway {
   }
 
   /** Drawn: the train where its bodies are, and the crossings. */
-  update() {
+  update(game) {
     for (const car of this.cars) {
       car.mesh.visible = !car.away;
       if (car.away) continue;
@@ -1407,7 +1424,99 @@ export class Railway {
         side.pivot.rotation.z = c.arm;
         side.lampA.visible = lit && flash === 0;
         side.lampB.visible = lit && flash === 1;
+        // A new arm once the crossing is clear and nobody is watching it go up.
+        if (side.broken && !lit && this.clock - side.broken > BARRIER_BACK) {
+          side.broken = 0;
+          side.pivot.visible = true;
+        }
+        if (!side.broken && c.arm < 0.6 && game) this._hitArm(c, side, game);
       }
+    }
+    this._drawBits();
+  }
+
+  /**
+   * Barrier arms break. "Make the level crossing barriers clippable and make
+   * them break into multiple pieces when you hit them." An arm was only drawn,
+   * and cars went through it; now a car that meets one lowered, at more than a
+   * walk, snaps it into BARRIER_BITS pieces that fly on with the car's speed,
+   * like the gates. Nothing stops the car -- an arm is a strip of aluminium --
+   * and a new one is up BARRIER_BACK seconds after the crossing clears.
+   */
+  _hitArm(c, side, game) {
+    const g = side.group, ry = g.rotation.y;
+    const ax = Math.cos(ry), az = -Math.sin(ry);   // local +x, across the road
+    const len = c.width * 0.5 + 0.4;
+    const x0 = g.position.x + ax * 0.2, z0 = g.position.z + az * 0.2;
+    const y = g.position.y + 1.05;
+    for (const v of game.vehicles) {
+      if (v.removed || v.dormant || v.isAircraft) continue;
+      const dx = v.position.x - x0, dz = v.position.z - z0;
+      if (dx * dx + dz * dz > (len + 4) * (len + 4)) continue;
+      if (Math.abs(v.position.y + 0.6 - y) > 1.6 || v.speed < 1.5) continue;
+      const u = clamp(dx * ax + dz * az, 0, len);
+      const ox = dx - ax * u, oz = dz - az * u;
+      // About the car's half width, plus however far it went in one frame.
+      if (Math.hypot(ox, oz) > 1.1 + v.speed * 0.03) continue;
+      this._breakArm(c, side, v, { ax, az, x0, z0, y, len });
+      return;
+    }
+  }
+
+  _breakArm(c, side, v, { ax, az, x0, z0, y, len }) {
+    side.broken = this.clock || 1e-6;
+    side.pivot.visible = false;
+    const part = len / BARRIER_BITS;
+    if (!this._bitGeo || this._bitLen !== part) {
+      this._bitLen = part;
+      this._bitGeo = new MeshBuilder().addBox(part, 0.14, 0.1, 0, 0, 0, 0xf4f4f4)
+        .addBox(Math.min(0.5, part * 0.45), 0.15, 0.11, 0, 0, 0, 0xc8202a).build();
+    }
+    const lv = v.linvel;
+    for (let k = 0; k < BARRIER_BITS; k++) {
+      const s = (k + 0.5) * part + 0.2;
+      const half = Math.sin(-Math.atan2(az, ax) / 2), full = Math.cos(-Math.atan2(az, ax) / 2);
+      const body = this.world.createRigidBody(
+        RAPIER.RigidBodyDesc.dynamic()
+          .setTranslation(x0 + ax * (s - 0.2), y, z0 + az * (s - 0.2))
+          .setRotation({ x: 0, y: half, z: 0, w: full })
+          .setLinvel(lv.x * rand(Math.random, 0.6, 0.95) + rand(Math.random, -2, 2), rand(Math.random, 1.5, 4),
+            lv.z * rand(Math.random, 0.6, 0.95) + rand(Math.random, -2, 2))
+          .setAngvel({ x: rand(Math.random, -8, 8), y: rand(Math.random, -8, 8), z: rand(Math.random, -8, 8) })
+          .setLinearDamping(0.4)
+          .setAngularDamping(0.4),
+      );
+      this.world.createCollider(
+        RAPIER.ColliderDesc.cuboid(part * 0.5, 0.07, 0.05)
+          .setMass(2)
+          .setFriction(0.7)
+          .setRestitution(0.25)
+          // Two kilos: a car kicks one along, it does not feel it.
+          .setCollisionGroups(groups(GROUP.DEBRIS, GROUP.TERRAIN | GROUP.HILL | GROUP.STREET | GROUP.VEHICLE | GROUP.DEBRIS)),
+        body,
+      );
+      const mesh = new THREE.Mesh(this._bitGeo, this._crossMat);
+      mesh.castShadow = true;
+      this.scene.add(mesh);
+      this.bits.push({ body, mesh, until: this.clock + BARRIER_BITS_LAST });
+    }
+  }
+
+  _drawBits() {
+    for (let i = this.bits.length - 1; i >= 0; i--) {
+      const b = this.bits[i];
+      if (this.clock > b.until || this.clock < b.until - BARRIER_BITS_LAST - 1) {
+        this.world.removeRigidBody(b.body);
+        this.scene.remove(b.mesh);
+        this.bits.splice(i, 1);
+        continue;
+      }
+      if (b.body.isSleeping()) continue;
+      const t = b.body.translation(), r = b.body.rotation();
+      // Resting on the heightfield, sunk HILL_SINK under the drawn ground.
+      const h = this.at(t.x, t.z);
+      b.mesh.position.set(t.x, t.y + (h < 0 ? HILL_SINK : h - Math.max(0, h - HILL_SINK)), t.z);
+      b.mesh.quaternion.set(r.x, r.y, r.z, r.w);
     }
   }
 

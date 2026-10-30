@@ -298,7 +298,7 @@ export const SPECS = {
     gripScale: 1.12,
     // Wider rears carry the traction; the fronts are trimmed to match, so the
     // extra grip does not simply turn into extra understeer.
-    gripBias: { front: 1.10, rear: 1.13 },
+    gripBias: { front: 1.10, rear: 1.20 },
     // Low, on wide summer tyres: the verge is genuinely bad news. Grass mu
     // 0.62 comes up to only about 0.74, against the Runner's 0.96.
     offRoadGrip: 1.20,
@@ -319,10 +319,16 @@ export const SPECS = {
     // 180 km/h, 14 at worst, shedding speed, and straight again within a
     // fraction of a second of letting go. It does not spin. A gentle input
     // still holds its line (tests/highspeed.js; README, "Grip at speed").
+    //
+    // Then the rears went up again for the spoiler (rear 0.97 -> 1.06 here,
+    // gripBias rear 1.13 -> 1.20): "on the fast car, increase the grip
+    // particuarly at the rear because it has a rear spoiler." Full lock at
+    // 180 km/h: 2.7 degrees mean, 5.9 worst (was 6.9, 14.2), 1.54 g (1.43).
+    // Still not the dead-straight 0.4 of the first setting.
     highSpeedTyre: {
       from: 20, to: 42,
       stiffness: { front: 1.2, rear: 1.05 },
-      grip: { front: 1.05, rear: 0.97 },
+      grip: { front: 1.05, rear: 1.06 },
     },
   }),
 

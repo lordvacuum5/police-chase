@@ -39,6 +39,16 @@ const COMBINE_SPEED = 2.5;
 const TURN_TRACTOR = 6;
 const TURN_TRUCK = 10;
 const TURN_COMBINE = 8;
+/** A working vehicle's weight, kg: the police van's (game/vehicles.js). */
+const VAN_MASS = 3400;
+/** The dump trucks and the combine: heavier, still not walls. */
+const TRUCK_MASS = 9000;
+const COMBINE_MASS = 7000;
+/** How fast one knocked off its line gets back on it, m/s; how far off it is simply put back, m. */
+const RECOVER = 3;
+/** The most its tyres can change its speed across the ground, m/s^2: about 1 g. */
+const GRIP_ACCEL = 10;
+const ADRIFT = 12;
 /** Where the parked tractor stands ahead of its trailer's middle, m: hitched. */
 const HITCH = 6.85;
 /** Birds: how many flocks, how many to a flock, and what puts them up, m. */
@@ -92,7 +102,7 @@ class Route {
  * spec.dims.
  */
 class Mover {
-  constructor(ctx, scene, { route, speed, lane = 0, geo, dims, colliders, offset = 0, name, turnR = 6, avoid = null, model = null, paint = null }) {
+  constructor(ctx, scene, { route, speed, lane = 0, geo, dims, colliders, offset = 0, name, turnR = 6, avoid = null, model = null, paint = null, turnY = null, mass = VAN_MASS }) {
     this.model = model;
     this.paint = paint;
     this.ctx = ctx;
@@ -103,6 +113,7 @@ class Mover {
     this.leg = route.len / speed;
     // Turning round at each end: half a circle of turnR, at a little over half speed.
     this.turnR = turnR;
+    this.turnY = turnY;
     this.turnTime = (Math.PI * turnR) / (speed * 0.6);
     this.cycle = 2 * (this.leg + this.turnTime);
     this._planTurns(avoid);
@@ -116,11 +127,24 @@ class Mover {
     this.mesh.name = name;
     scene.add(this.mesh);
     const W = ctx.sim.world;
-    this.body = W.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(0, -60, 0));
+    // Heavy, not immovable. "It's more like a the resistance and how it acts
+    // when you hit it is more like a police van." It was a kinematic body --
+    // infinite mass, so a car met it like a wall and stopped dead. Now it has
+    // a weight, the police van's for a tractor, and is steered along its
+    // route by its velocity (see step): hit, it gives, and gets back on line
+    // at no more than RECOVER. It meets only what moves -- cars and loose
+    // things -- so the ground and the quarry's rock it drives on cannot push it
+    // about, and nothing else changes: it is still GROUP.BUILDING to the AI's
+    // eyes and sweeps.
+    this.body = W.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(0, -60, 0)
+      .setGravityScale(0).lockRotations().setCanSleep(false).setLinearDamping(0));
     for (const c of colliders) {
       W.createCollider(
         RAPIER.ColliderDesc.cuboid(c.hx, c.hy, c.hz).setTranslation(c.x || 0, c.y, c.z || 0)
-          .setFriction(0.5).setCollisionGroups(groups(GROUP.BUILDING, 0xFFFF)),
+          .setMass(mass / colliders.length)
+          // Slippery enough to get out from: "the combine harvester ... was
+          // pushing me and I couldn't actually get free of it."
+          .setFriction(0.25).setCollisionGroups(groups(GROUP.BUILDING, GROUP.VEHICLE | GROUP.DEBRIS)),
         this.body,
       );
     }
@@ -144,7 +168,10 @@ class Mover {
       let best = 1, bestScore = Infinity;
       for (const side of [1, -1]) {
         let score = side > 0 ? 0 : 0.5;
-        for (const [u, v] of [[1, 1], [0, 2], [0.7, 1.7]]) {
+        // The half circle, and the way back after it while still swung out
+        // and easing in: the quarry's truck turned clear of the haul road
+        // and then drove back up through the foot of it.
+        for (const [u, v] of [[1, 1], [0, 2], [0.7, 1.7], [-1, 1.9], [-2, 1.6], [-3, 1.2]]) {
           const x = S.x + f.x * R * u + rt.x * side * R * v, z = S.z + f.z * R * u + rt.z * side * R * v;
           if (avoid && avoid(x, z)) score += 100;
           score += Math.abs(this.ctx.at(x, z) - yEnd);
@@ -196,11 +223,16 @@ class Mover {
       let h = r.heading(s) + (dir < 0 ? Math.PI : 0);
       // Turned a little toward where it is easing to.
       if (u < 1) h -= Math.atan(((this.lane - swung) * 6 * (travelled / B) * (1 - travelled / B)) / B);
-      const y = at.y !== undefined ? at.y : this.ctx.at(at.x, at.z);
+      let y = at.y !== undefined ? at.y : this.ctx.at(at.x, at.z);
       let slope = null;
       if (at.y !== undefined) {
         const ahead = r.at(s + 3), behind = r.at(s - 3);
         slope = ((ahead.y - behind.y) / 6) * dir;
+      }
+      // Swung out over ground the route's own heights know nothing about.
+      if (this.turnY && u < 1) {
+        const gy = this.turnY(at.x, at.z, y);
+        if (gy !== y) { y = gy; slope = null; }
       }
       return { x: at.x, y, z: at.z, heading: h, moving: true, slope };
     }
@@ -217,7 +249,9 @@ class Mover {
     // On a route that knows its heights (the haul road), level at the height
     // of its end: at the top that is the rim, over rock the height grid has
     // as the floor far below.
-    const y = e.y !== undefined ? e.y : this.ctx.at(x, z);
+    // Or, where it says, the ground under it: the haul truck's turn out on the
+    // field, which slopes.
+    const y = this.turnY ? this.turnY(x, z, e.y) : e.y !== undefined ? e.y : this.ctx.at(x, z);
     return { x, y, z, heading: Math.atan2(dx, dz), moving: true, slope: null };
   }
 
@@ -230,17 +264,36 @@ class Mover {
     _e.set(-pitch, a.heading, 0, 'YXZ');
     _q.setFromEuler(_e);
     const pos = { x: a.x, y: a.y, z: a.z }, rot = { x: _q.x, y: _q.y, z: _q.z, w: _q.w };
-    if (!this.placed) {
-      this.body.setTranslation(pos, true);
-      this.body.setRotation(rot, true);
-      this.placed = true;
-    } else {
-      this.body.setNextKinematicTranslation(pos);
-      this.body.setNextKinematicRotation(rot);
-    }
     this.dist = (this.dist || 0) + this.speed0 * dt;
     if (dt > 0) this.linvel.set((a.x - this.position.x) / dt, (a.y - this.position.y) / dt, (a.z - this.position.z) / dt);
     if (this.linvel.length() > 40) this.linvel.set(0, 0, 0);
+    const cur = this.body.translation();
+    if (!this.placed || !(dt > 0) || Math.hypot(cur.x - pos.x, cur.y - pos.y, cur.z - pos.z) > ADRIFT) {
+      // Placed, or put back if knocked hopelessly far off its line.
+      this.body.setTranslation(pos, true);
+      this.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      this.placed = true;
+    } else {
+      // What it wants: its route's own speed, and whatever closes the gap to
+      // where it should be by the end of this step, the closing held to
+      // RECOVER. What it gets, across the ground: no more change than its
+      // tyres could make, GRIP_ACCEL. Setting the velocity outright put it
+      // back on line in the very next step, so a car hitting it still met a
+      // wall -- shoved 3 cm by 50 km/h.
+      let cx = (pos.x - cur.x) / dt - this.linvel.x, cz = (pos.z - cur.z) / dt - this.linvel.z;
+      const c = Math.hypot(cx, cz);
+      if (c > RECOVER) { cx *= RECOVER / c; cz *= RECOVER / c; }
+      const now = this.body.linvel();
+      let dx = this.linvel.x + cx - now.x, dz = this.linvel.z + cz - now.z;
+      const d = Math.hypot(dx, dz), most = GRIP_ACCEL * dt;
+      if (d > most) { dx *= most / d; dz *= most / d; }
+      // Up and down it follows the route, at no more than RECOVER too: pushed
+      // down by a car on top of it and put back up in one step, it launched
+      // the car.
+      const vy = this.linvel.y + clamp((pos.y - cur.y) / dt - this.linvel.y, -RECOVER, RECOVER);
+      this.body.setLinvel({ x: now.x + dx, y: vy, z: now.z + dz }, true);
+    }
+    this.body.setRotation(rot, true);
     this.position.set(a.x, a.y, a.z);
     this.forward.set(fx, 0, fz);
     this.speed = a.moving ? this.speed0 : 0;
@@ -398,7 +451,7 @@ export function buildLife(ctx, scene, { fields, quarry, rail, combineField, bale
   const movers = [];
   // Nowhere a vehicle may swing out to turn round, or a combine work: the
   // farmyards and villages (their buildings), and the quarry's rock.
-  const avoid = (x, z) => nearBuildings(ctx, x, z) || (quarry && inQuarryRock(quarry, x, z));
+  const avoid = (x, z) => nearBuildings(ctx, x, z) || (quarry && (inQuarryRock(quarry, x, z) || onHaulRoad(quarry, x, z)));
 
   // ---- tractors on the lanes ----
   // Lanes and B-roads well away from the villages, the farms' own tracks, the
@@ -431,14 +484,20 @@ export function buildLife(ctx, scene, { fields, quarry, rail, combineField, bale
   // ---- dump trucks in the quarry ----
   if (quarry && quarry.track && quarry.haulPath) {
     movers.push(new Mover(ctx, scene, {
-      route: new Route(quarry.track.slice().reverse()), speed: TRUCK_SPEED, offset: rand(rng, 0, 300), name: 'dump-truck', turnR: TURN_TRUCK, avoid,
+      route: new Route(acrossFloor(quarry)), speed: TRUCK_SPEED, offset: rand(rng, 0, 300), name: 'dump-truck', turnR: TURN_TRUCK, avoid,
       geo: truckGeometry(), dims: { l: 9, w: 3.4 }, model: 'truck',
-      colliders: [{ hx: 1.7, hy: 2.1, hz: 4.4, y: 2.1 }],
+      colliders: [{ hx: 1.7, hy: 2.1, hz: 4.4, y: 2.1 }], mass: TRUCK_MASS,
     }));
     movers.push(new Mover(ctx, scene, {
-      route: new Route(quarry.haulPath), speed: TRUCK_SPEED * 0.8, offset: rand(rng, 0, 300), name: 'dump-truck', turnR: TURN_TRUCK, avoid,
+      route: new Route(haulRun(ctx, quarry)), speed: TRUCK_SPEED * 0.8, offset: rand(rng, 0, 300), name: 'dump-truck', turnR: TURN_TRUCK, avoid,
+      // Past the rock, the field; on the top of it, the rim; below, the road's own.
+      turnY: (x, z, y) => {
+        const d = Math.hypot(x - quarry.x, z - quarry.z);
+        if (d > quarry.rimOut) return ctx.at(x, z);
+        return d > quarry.rimIn ? quarry.rimAt(Math.atan2(z - quarry.z, x - quarry.x)) : y;
+      },
       geo: truckGeometry(), dims: { l: 9, w: 3.4 }, model: 'truck',
-      colliders: [{ hx: 1.7, hy: 2.1, hz: 4.4, y: 2.1 }],
+      colliders: [{ hx: 1.7, hy: 2.1, hz: 4.4, y: 2.1 }], mass: TRUCK_MASS,
     }));
   }
 
@@ -450,7 +509,7 @@ export function buildLife(ctx, scene, { fields, quarry, rail, combineField, bale
         route, speed: COMBINE_SPEED, offset: rand(rng, 0, 300), name: 'combine', turnR: TURN_COMBINE, avoid,
         geo: combineGeometry(), dims: { l: 11.5, w: 7.5 }, model: 'combine',
         // Shaped to the player's model: the body, and the header out in front.
-        colliders: [{ hx: 1.75, hy: 2.1, hz: 4.85, y: 2.1, z: 0.25 }, { hx: 3.75, hy: 0.6, hz: 0.6, y: 0.9, z: 5.65 }],
+        colliders: [{ hx: 1.75, hy: 2.1, hz: 4.85, y: 2.1, z: 0.25 }, { hx: 3.75, hy: 0.6, hz: 0.6, y: 0.9, z: 5.65 }], mass: COMBINE_MASS,
       }));
     }
   }
@@ -725,6 +784,77 @@ function nearBuildings(ctx, x, z) {
 }
 
 /** In the quarry's rock: between the floor and the outside of the face. */
+/**
+ * On the haul road's ramps, above the floor: no place to swing out and turn
+ * round on the flat. The track's truck turned at the floor into the foot of the
+ * first rise and sat four metres inside it.
+ */
+function onHaulRoad(q, x, z) {
+  if (!q.haulPath) return false;
+  for (const p of q.haulPath) {
+    if (p.y > q.floor + 0.5 && Math.hypot(p.x - x, p.z - z) < 6) return true;
+  }
+  return false;
+}
+
+/**
+ * The haul road with somewhere flat at each end for its truck to turn round
+ * and straighten up: in from the middle of the floor, and out past the rim
+ * onto the field. "The quarry vehicles seem to drive up an invisible ramp
+ * inside the quarry." The road started climbing the moment it began, so a
+ * truck turned round at the bottom was still swung twenty metres out across
+ * the floor when its height followed the road up -- 4.5 m into thin air -- and
+ * at the top it turned out over the drop.
+ */
+function haulRun(ctx, q) {
+  const H = q.haulPath, S = H[0], E = H[H.length - 1];
+  const dirAt = (a, b) => { const l = Math.hypot(b.x - a.x, b.z - a.z) || 1; return { x: (b.x - a.x) / l, z: (b.z - a.z) / l }; };
+  const bez = (A, K, B, n, y) => {
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const u = i / n, a = (1 - u) * (1 - u), b = 2 * u * (1 - u), c = u * u;
+      const x = a * A.x + b * K.x + c * B.x, z = a * A.z + b * K.z + c * B.z;
+      out.push({ x, z, y: y(x, z) });
+    }
+    return out;
+  };
+  // In: from out on the floor, arriving along the first rise -- from the side
+  // of the floor the first rise is on, off the line the other truck takes
+  // across the middle (acrossFloor), so the two never meet.
+  const t0 = dirAt(S, H[Math.min(H.length - 1, 8)]);
+  const T = q.track[0], ux = q.x - T.x, uz = q.z - T.z, ul = Math.hypot(ux, uz) || 1;
+  let nx = -uz / ul, nz = ux / ul;
+  if (nx * (S.x - q.x) + nz * (S.z - q.z) < 0) { nx = -nx; nz = -nz; }
+  const C = { x: q.x + nx * 28, z: q.z + nz * 28 };
+  const lead = bez(C, { x: S.x - t0.x * 15, z: S.z - t0.z * 15 }, S, 24, () => q.floor);
+  // Out: turning off the last landing before its end -- past it, at the same
+  // distance out, is the ledge below -- and away from the edge onto the field,
+  // at the height of the rock's top (the top ledge is flush with it) until
+  // past the rock, then the ground's.
+  let k = H.length - 1;
+  while (k > 0 && Math.hypot(H[k].x - E.x, H[k].z - E.z) < 12) k--;
+  const E0 = H[k];
+  const ex = E.x - q.x, ez = E.z - q.z, ed = Math.hypot(ex, ez) || 1;
+  const F = { x: q.x + (ex / ed) * (q.r + 30), z: q.z + (ez / ed) * (q.r + 30) };
+  const top = (x, z) => (Math.hypot(x - q.x, z - q.z) < q.rimOut
+    ? q.rimAt(Math.atan2(z - q.z, x - q.x)) : ctx.at(x, z));
+  const tail = bez(E0, E, F, 20, top);
+  tail.push({ x: F.x, z: F.z, y: top(F.x, F.z) });
+  return [...lead, ...H.slice(0, k), ...tail];
+}
+
+/**
+ * The track into the quarry, on across the floor past the middle: it ended
+ * halfway in, so the truck turned round with the cutting's walls either side
+ * and drove back out still swung wide, through the foot of the haul road.
+ */
+function acrossFloor(q) {
+  const pts = q.track.slice().reverse();
+  const end = pts[pts.length - 1], dx = q.x - end.x, dz = q.z - end.z, d = Math.hypot(dx, dz) || 1;
+  pts.push({ x: q.x + (dx / d) * 28, z: q.z + (dz / d) * 28 });
+  return pts;
+}
+
 function inQuarryRock(q, x, z) {
   const d = Math.hypot(x - q.x, z - q.z);
   return d > (q.inner || q.r * 0.6) - 3 && d < q.r + 10;

@@ -418,7 +418,10 @@ The quarry floor is **below zero**, through a hole in the floor plate
 zero is wrong on Haldon now (the searchlight and the skid marks both were). The
 quarry has a **haul road** (`q.haul`) up its ledges; `tests/haulroad.js`.
 `world/countrylife.js` puts tractors, dump trucks, a combine, birds and lit
-windows on the map: kinematic, moved by the wall clock, **not cars** -- not
+windows on the map: **dynamic bodies with a van's weight or more** (not
+kinematic -- the player wanted hitting a tractor to feel like hitting a police
+van, not a wall), steered along wall-clock routes by velocity with a 1 g limit,
+colliding only with cars and debris; **not cars** -- not
 counted as police or traffic (the player asked that the police numbers never
 change for them); the AI queues behind them via `map.movers`. The quarry's track and haul road
 are **roads in the graph**, added late (`addQuarryRoads`, `RoadGraph.reindex`),
@@ -430,7 +433,13 @@ in the field gateways and break in four; their posts are loose and take their
 bit of fence with them. The train model brief is
 `resources/models/TRAIN.md`. Models made to it went in and were taken out at
 the player's word -- "I want the old one back in": the box train is what they
-want; do not put a model back unasked. **Haldon's ground is
+want; do not put a model back unasked. Anything static whose top is at the drawn
+ground's height stands **HILL_SINK proud of the collider a car's body rests on**
+-- the quarry's rim was an invisible kerb for that reason; let such edges down.
+Level-crossing arms break (`Railway._hitArm`, needs `game` passed to
+`railway.update`). The chase camera springs its **offset from the car**, not
+its position (`ChaseCamera.update`): a spring on a moving point judders with
+uneven frames (`tests/camjudder.js`). **Haldon's ground is
 drawn at 4 m**, the height grid's own spacing, so it is the surface things rest
 on (at 8 m cars and bales floated over it, seen from below). The bed has a **blended
 layer of its own** in `buildHeightGrid` (`LW`) under the roads' -- as a place

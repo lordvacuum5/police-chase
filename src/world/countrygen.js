@@ -237,7 +237,7 @@ export function buildCountry(sim, scene, seed = 4417) {
     railway,
     // Called every frame by the game: the bales and gates follow their
     // bodies, the train, the crossings, the tractors and the birds are drawn.
-    update: (game) => { ctx.bales.update(); gates.update(); if (railway) railway.update(); life.update(game); },
+    update: (game) => { ctx.bales.update(); gates.update(); if (railway) railway.update(game); life.update(game); },
     gates,
     // The tractors, trucks and combine, to the AI's queueing (Driver.carInWay).
     movers: life.movers,

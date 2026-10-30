@@ -7234,6 +7234,99 @@ where you are (as by the helicopter), 60 s, distances in three dimensions:
   down. It now also asks the quarry's rock (`map.solidTopAt`): over three ledges
   at 65, 85 and 105 m from the middle it lands at 10, 24 and 43 m up (was 0).
 
+### The judder, a grippier fast car, the quarry trucks, barriers that break, softer tractors
+
+*"On the fast car, increase the grip particuarly at the rear because it has a
+rear spoiler. Also there is quite a bad judder on the player's car just driving
+along, even on single player, possibly when there are a lot of police cars. The
+quarry vehicles seem to drive up an invisible ramp inside the quarry. Make the
+level crossing barriers clippable and make them break into multiple pieces when
+you hit them."* Then: *"the tractor ... it's more like a the resistance and how
+it acts when you hit it is more like a police van"*, *"when ... a police car
+... has its front against your side ... you can't actually go forwards ...
+there needs to be slightly less [friction]. Same with the combine harvester"*,
+and *"when I kept on coming to the edge of the quarry, I kept on hitting an
+invisible barrier ... you know when you jump off a large cliff? I don't want it
+to self-right in midair."*
+
+* **The judder was the camera.** It followed the car on a spring, and a spring
+  chasing a moving point trails it by about speed / rate -- but one step of it
+  trails by less when the step is longer, so every uneven frame moved the gap
+  between camera and car, by about a foot at 130 km/h between a 17 ms frame and
+  a 33 ms one. A big chase makes the frames uneven: at five stars on Haldon
+  `_update` took 15 ms a frame at the median and 28 ms at the 95th percentile
+  (car physics `prepare` 7 ms, the dispatcher 3-4 ms with spikes to 15, the
+  solver itself only 3). Now the spring works on the camera's *offset* from
+  the car, with the old trail put in by hand. `tests/camjudder.js`, the car
+  straight at speed, its movement on screen frame to frame in thousandths of
+  the screen height, mean / 95th percentile:
+
+  | frames | before | after |
+  |---|---|---|
+  | steady 60 Hz | 0.04 / 0.12 | 0.04 / 0.12 |
+  | uneven (17-33 ms) | 0.18 / 0.62 | **0.05 / 0.14** |
+  | slow (22-36 ms) | 0.24 / 0.74 | **0.08 / 0.17** |
+
+  The frame cost itself was not cut (`tests/judder.js` measures it; it needs
+  the browser pane visible, the frame clock stops in a hidden one).
+* **The supercar's rear grip** at speed went from 0.97 to 1.06 and its rear
+  bias from 1.13 to 1.20. `tests/highspeed.js`, full lock held at 180 km/h:
+  2.7 degrees of slip on average, 5.9 at worst (was 6.9 and 14.2), 1.54 g (was
+  1.43). At 140 km/h, 1.8 / 4.0 (3.3 / 7.0). The tail still moves; the first
+  rear-heavy setting, 0.4 degrees, is not back.
+* **The quarry trucks.** The haul road started climbing the moment it began,
+  so a truck that had turned round at the bottom -- swung twenty metres out --
+  followed the road's height up while still out over the floor: 4.5 m into
+  thin air. At the top it turned out over the drop. The other truck's track
+  ended half way in, so it turned with the cutting's walls either side and
+  drove back out through the foot of the haul road, 4.3 m inside it. The haul
+  truck now comes in from the floor and turns off the top onto the field
+  (`haulRun`), the track runs on past the middle of the floor (`acrossFloor`),
+  a turn's swing and the way back from it are kept off the haul road
+  (`onHaulRoad`), and a turn out on the field follows the ground. `tests/movers.js`,
+  worst height above / below what is under it over a whole cycle: haul truck
+  +5.4 / -2.8 m, now +0.2 / -0.07; track truck -4.3, now 0.
+* **The invisible barrier** round the quarry: the rock's top was level with the
+  drawn ground, but the hills' collider, which a car's body rests on, is sunk
+  0.35 m under it -- so the rock's outer edge stood up out of it as a kerb all
+  the way round. Along 36 lines in to the edge, the biggest step up: median
+  0.36 m, now 0.02 (the top rock's outer edge let down under the collider).
+  One line still shows 0.7 m: the graded cutting, ground not rock.
+* **Level-crossing arms break.** An arm was only drawn and cars went through
+  it. A car that meets a lowered one at more than a walk snaps it into four
+  pieces that fly on with its speed (two kilos each: kicked about, not felt).
+  A new arm is up 20 s after the crossing clears; the pieces go after 25 s.
+* **Tractors, trucks and the combine are heavy, not walls.** They were
+  kinematic: infinite mass. Now they are bodies with a weight -- the police
+  van's 3,400 kg for a tractor, 9 t a dump truck, 7 t the combine -- steered
+  along their routes by their velocity, no more change across the ground than
+  1 g of tyre grip, getting back on line at 3 m/s. Setting the velocity
+  outright was tried first and was still a wall (shoved 3 cm by a car at
+  50 km/h). They meet only cars and loose things. `tests/workhit.js`, a car
+  into a tractor's flank, three runs each:
+
+  | | damage | speed 0.5 s after | tractor shoved |
+  |---|---|---|---|
+  | 50 km/h, before | 14.3-14.7% | 21-22 km/h | 0 |
+  | 50 km/h, after | **9.4-9.9%** | 23-24 km/h | 0.7-2.2 m |
+  | 80 km/h, before | 27-33% | 8-15 km/h | 0 |
+  | 80 km/h, after | **18-25%** | **17-28 km/h** | 3.2-4.0 m |
+
+* **Less friction, bodywork on bodywork**: 0.35 to 0.2 (work vehicles 0.5 to
+  0.25). `tests/pinfree.js`, a patrol car's nose pushing on the player's door,
+  full throttle from a standstill for 2 s: the Runner gets 2.9 m (was 2.4;
+  3.6 with nobody there); 0.1 would give 3.3. The supercar, 7.3 m (6.9; 7.9).
+  A patrol car parked against the door does not hold either car back at all,
+  before or after. Not measured: what it does to boxing and arrests in a
+  whole chase.
+* **No righting in the air.** Off the ground long enough, a car used to turn
+  back toward upright. Now its pitch and roll spin is only damped, so it holds
+  the angle it left at. `tests/quarry.js` off the top at 60/90/120 km/h:
+  righted, all landed upright; left entirely alone, the 90 km/h run landed on
+  its roof; damped, all six runs (60-140 km/h) landed upright. Two runs over
+  the floor table at 120-140 km/h ended on their roofs some seconds after
+  landing upright, having driven on into something.
+
 ### Hedges, gates and fences
 
 *"Make it so the hedges are one big sort of line instead of lots of multiple

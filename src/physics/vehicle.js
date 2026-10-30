@@ -23,10 +23,9 @@ const HEDGE_QUERY = groups(0xFFFF, GROUP.HEDGE);
 /** _guardFlip: the tilt it starts at, radians (about 23 degrees), and how hard it rights the car. */
 const FLIP_FROM = 0.4;
 const FLIP_RIGHT = 3.0;
-/** Levelling in the air (_airLevel): after this long, this far up, m, toward upright at this rate per radian of tilt, this quickly. */
+/** Steadying in the air (_airLevel): after this long, this far up, m, its tumble taken out this quickly. */
 const AIR_AFTER = 0.3;
 const AIR_CLEAR = 1.6;
-const AIR_RIGHT = 2.5;
 const AIR_GRIP = 5;
 /** How much of a landing's vertical stop counts as an impact. See postStep. */
 const LANDING_SHARE = 0.35;
@@ -297,7 +296,13 @@ export class Vehicle {
       // a mid-engined car carries more of its length ahead of the CoM.
       .setTranslation(0, s.colliderY === undefined ? 0.1 : s.colliderY, s.colliderZ || 0)
       .setDensity(0)                 // mass comes from setAdditionalMassProperties
-      .setFriction(0.35)
+      // Bodywork on bodywork slides. "When ... a police car ... has its front
+      // against your side ... sometimes you can't actually go forwards. It's
+      // like there's too much friction ... there needs to be friction, but
+      // there needs to be slightly less." 0.35 to 0.2: pushed on the door by a
+      // patrol car, the Runner gets 2.9 m in two seconds from a standstill
+      // instead of 2.4, against 3.6 with nobody there (tests/pinfree.js).
+      .setFriction(0.2)
       .setRestitution(0.12)
       .setCollisionGroups(groups(GROUP.VEHICLE, 0xFFFF));
 
@@ -562,8 +567,8 @@ export class Vehicle {
   }
 
   /**
-   * Level in the air: a car off the ground for a while turns gently back
-   * toward upright, as in any arcade driving game. "Just a big drop off
+   * Steady in the air: a car off the ground for a while stops tumbling. It
+   * used to turn back toward upright, as in arcade driving games. "Just a big drop off
    * somewhere where you can like have a massive fall down quarry" -- off the
    * quarry's cliff a car falls for two seconds and more, and whatever pitch it
    * left the edge with turned it over: every run off the top in tests/quarry.js
@@ -577,15 +582,14 @@ export class Vehicle {
     if (this._airFor < AIR_AFTER || window.__airLevel === false) return;
     const H = this.sim.heightAt;
     if (H && this.position.y - H(this.position.x, this.position.z) < AIR_CLEAR) return;
-    const u = this.up;
-    const tilt = Math.acos(clamp(u.y, -1, 1));
-    let nx = -u.z, nz = u.x;
-    const nl = Math.hypot(nx, nz);
-    if (nl > 1e-4) { nx /= nl; nz /= nl; } else { nx = 0; nz = 0; }
-    const want = AIR_RIGHT * tilt;
+    // Only steadied now, not stood up: the tumble it left the edge with dies
+    // away and it holds whatever angle it had. "When you jump off a large
+    // cliff? I don't want it to self-right in midair. That just looks weird."
+    // Turned toward upright (2.5 rad/s a radian), every run off the top landed upright;
+    // left alone entirely, the 90 km/h one landed on its roof (tests/quarry.js).
     const av = this.body.angvel();
     const k = 1 - Math.exp(-AIR_GRIP * dt);
-    this.body.setAngvel({ x: av.x + (want * nx - av.x) * k, y: av.y, z: av.z + (want * nz - av.z) * k }, true);
+    this.body.setAngvel({ x: av.x * (1 - k), y: av.y, z: av.z * (1 - k) }, true);
   }
 
   /** Called once per physics substep, after world.step(). */

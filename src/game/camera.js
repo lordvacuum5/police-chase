@@ -225,7 +225,7 @@ export class ChaseCamera {
     // for something that mostly goes where it points and useless for
     // something that can fly sideways, backwards and straight down. The air
     // camera sits behind the nose and stays there.
-    if (v.isAircraft) { this._air(dt, v, alpha); return; }
+    if (v.isAircraft) { this._rel = this._lookRel = null; this._air(dt, v, alpha); return; }
 
     _carPos.copy(v.prevPos).lerp(v.position, alpha);
     _carQuat.copy(v.prevQuat).slerp(v.quaternion, alpha);
@@ -247,6 +247,10 @@ export class ChaseCamera {
 
     const turnRate = mode === 'cinematic' ? 1.6 : 5.0;
     this.heading += angleDelta(this.heading, targetHeading) * (1 - Math.exp(-turnRate * dt));
+
+    // The chase views spring an offset from the car (below); anything else
+    // starts them afresh when it hands back.
+    if (mode === 'hood' || mode === 'cinematic') this._rel = this._lookRel = null;
 
     if (mode === 'hood') {
       // Out over the bonnet, from a seat the car itself decides: see hoodEye.
@@ -275,19 +279,33 @@ export class ChaseCamera {
       const height = (close ? 2.2 : 3.05) + clamp(v.speed * 0.012, 0, 0.7);
 
       const sh = Math.sin(this.heading), ch = Math.cos(this.heading);
-      _pos.set(
-        _carPos.x - sh * dist,
-        _carPos.y + height,
-        _carPos.z - ch * dist,
-      );
-      // Follow position with a spring so kerbs and jumps read as movement.
-      this.pos.lerp(_pos, 1 - Math.exp(-(close ? 11 : 8.5) * dt));
+      // Follow with a spring so kerbs and jumps read as movement -- but a
+      // spring on the car's offset, not on where the car is in the world.
+      //
+      // "There is quite a bad judder on the player's car just driving along,
+      // even on single player, possibly when there are a lot of police cars."
+      // A spring chasing a moving point trails it by about speed / rate, but
+      // only about: one step of it trails by less when the step is longer. So
+      // every uneven frame moved the camera's gap to the car -- by a foot at
+      // 130 km/h between a 17 ms frame and a 33 ms one -- and the car shook on
+      // screen, worst when a big chase made the frames uneven.
+      // tests/camjudder.js. Springing the offset from the car instead, with
+      // the trail the old spring settled to put in by hand (the velocity over
+      // the rate), keeps the same picture without the shake.
+      const kPos = close ? 11 : 8.5, kLook = 9;
+      _pos.set(-sh * dist, height, -ch * dist)
+        .addScaledVector(_tmp.set(v.linvel.x, v.linvel.y, v.linvel.z), -1 / kPos);
+      if (!this._rel) this._rel = this.pos.clone().sub(_carPos);
+      this._rel.lerp(_pos, 1 - Math.exp(-kPos * dt));
+      this.pos.copy(_carPos).add(this._rel);
 
       // Look slightly ahead of the car, further the faster it is going.
-      _look.copy(_carPos)
-        .addScaledVector(_fwd, 3.5 + v.speed * 0.16)
-        .add(_tmp.set(0, 1.15, 0));
-      this.look.lerp(_look, 1 - Math.exp(-9 * dt));
+      _look.copy(_fwd).multiplyScalar(3.5 + v.speed * 0.16)
+        .add(_tmp.set(0, 1.15, 0))
+        .addScaledVector(_tmp.set(v.linvel.x, v.linvel.y, v.linvel.z), -1 / kLook);
+      if (!this._lookRel) this._lookRel = this.look.clone().sub(_carPos);
+      this._lookRel.lerp(_look, 1 - Math.exp(-kLook * dt));
+      this.look.copy(_carPos).add(this._lookRel);
 
       this.fov = damp(this.fov, 60 + clamp(v.speed * 0.42, 0, 26), 3.5, dt);
     }
@@ -363,6 +381,7 @@ export class ChaseCamera {
     const sh = Math.sin(this.heading), ch = Math.cos(this.heading);
     this.pos.set(v.position.x - sh * 7.4, v.position.y + 3.05, v.position.z - ch * 7.4);
     this.look.copy(v.position);
+    this._rel = this._lookRel = null;
     this.camera.position.copy(this.pos);
     this.camera.lookAt(this.look);
   }
