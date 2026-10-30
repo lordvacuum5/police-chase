@@ -7056,6 +7056,36 @@ down, sitting at 0.47-0.53 m after.
 `tests/quarry.js`: off the top at 40/60/80 km/h, 3.2/3.1/3.5 s in the air from
 47 m, upright, 0.00-0.01 damage. Floor kicker and table land upright, 0-0.31.
 
+### The quarry walled all round, a track in, and ground drawn where things sit
+
+*"When you lower the floor of the quarry, it almost looks like there's a few
+bits left over. Also, can you make maybe a dirt track go into the quarry?"*
+Dug below its low side, the quarry is a drop all the way round, but the rock
+was still only put up where the ground had stood high: the low side was left
+as raw graded banks, which from above were the leftover bits. Now terraced all
+round but for a cutting the way in comes through, and the rim's ground is no
+longer coloured as rock (it showed as a pink strip along the top). The way in
+is a dirt track (ruts, 5 m wide) from the floor up the ramp and on in a straight
+line to the nearest road, clear of hedges and trees. Driven from the road to
+the floor at 40 km/h: down 13 m, no damage, the car never under 0.43 m.
+
+*"When I'm below a car and it's travelling on a hill, it almost looks like
+it's not fully on the ground. Same with bales ... a tiny gap ... it looks fine
+when you're on the same level or above."* The ground was drawn from every
+other point of the height grid (8 m), so it was a coarser surface than the one
+the wheels and the bales rest on -- under a convex slope, seen from below, the
+gap showed. Over 200,000 random points: drawn 8 m was off by 2 cm on average
+and more than 15 cm over 1.2% of the vale; drawn at the grid's own 4 m, 2 mm and
+none. The cost: the ground is four times the triangles, about 986k drawn in all
+against 480k. The quarry's separate fine patch is no longer needed.
+
+The player's train models are in (`train-cab.glb`, `train-middle.glb`,
+`train-bogie.glb`, made to `resources/models/TRAIN.md`): each carriage hangs its
+model under its body, turned and dropped to the rails; each has two bogies of
+its own on the track under its ends, turned to the rails there, wheels rolling;
+the front cab's lights lit white, the back's red. Until they load, and if they
+are ever missing, the box train runs.
+
 ### Hedges, gates and fences
 
 *"Make it so the hedges are one big sort of line instead of lots of multiple

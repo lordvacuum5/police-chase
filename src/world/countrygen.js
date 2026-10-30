@@ -34,7 +34,7 @@ import {
 } from './common.js';
 import { baseRelief, buildHeightGrid, addHeightfield, buildTerrainMesh, liftMesh, liftPieces, HILL_SINK, H_STEP } from './terrain.js';
 import {
-  makeClearMask, planQuarry, quarryGround, quarryPatch, quarryHole, planQuarryEdge, buildQuarry, quarryColour,
+  makeClearMask, planQuarry, quarryGround, quarryHole, planQuarryEdge, buildQuarry, quarryColour,
   planShortcuts, buildShortcuts, buildGates, planRailway, railGround, buildRailTrack, Railway,
 } from './countryextras.js';
 
@@ -157,9 +157,13 @@ export function buildCountry(sim, scene, seed = 4417) {
     }
     return 0;
   };
-  // The ground as drawn, which is coarser than the ground the wheels feel:
-  // for things laid on it, like the shortcuts' ruts.
-  const DS = 8;
+  // The ground as drawn: for things laid on it, like the shortcuts' ruts.
+  // At the height grid's own 4 m, so it is the ground the wheels feel. At 8 m
+  // it was up to 0.15 m off it over 1.2% of the vale (2 cm on average), and a
+  // car or a bale on a slope, seen from below, stood off the drawn ground:
+  // "it almost looks like it's not fully on the ground ... you can see
+  // there's a tiny gap in between them and the ground". At 4 m, 2 mm.
+  const DS = H_STEP;
   const drawnV = (i, j) => { const px = i * DS - WORLD_HALF, pz = j * DS - WORLD_HALF; return grid.at(px, pz) - 0.04 - nearRoad(px, pz); };
   ctx.drawnAt = (x, z) => {
     const fi = (x + WORLD_HALF) / DS, fj = (z + WORLD_HALF) / DS;
@@ -169,20 +173,10 @@ export function buildCountry(sim, scene, seed = 4417) {
     return e + (drawnV(i, j + 1) - e) * (1 - tx) + (drawnV(i + 1, j) - e) * (1 - tz);
   };
   const colour = (x, z, y, c) => groundColour(ctx, fields, x, z, y, c);
-  // The quarry gets ground of its own at the height grid's full resolution:
-  // at 8 m the cliff was a slope drawn out over the floor in front of it.
-  const patch = quarry ? quarryPatch(quarry) : null;
-  const inPatch = patch ? (x0, z0, x1, z1) => x0 >= patch.x0 && z0 >= patch.z0 && x1 <= patch.x0 + patch.size && z1 <= patch.z0 + patch.size : null;
-  const terrain = buildTerrainMesh(grid, colour, 8, nearRoad, 0, null, inPatch);
+  const terrain = buildTerrainMesh(grid, colour, DS, nearRoad);
   // Before the pavements, which write no depth: see buildVillagePavements.
   terrain.renderOrder = DRAW_ORDER.ground;
   meshes.push(terrain);
-  if (patch) {
-    const fine = buildTerrainMesh(grid, colour, H_STEP, nearRoad, 0, patch);
-    fine.renderOrder = DRAW_ORDER.ground;
-    fine.name = 'terrain-quarry';
-    meshes.push(fine);
-  }
   // And the fields on out to the edge of the plate, which is 200 m wider than
   // the hills on every side. Without it that strip was drivable and not
   // drawn: sky under the wheels, and the field hedges running on across it.

@@ -21,6 +21,7 @@ import { rand, randInt, clamp, lerp, TAU } from '../util/math.js';
 import { WORLD_HALF, GRID_N, CELL, MeshBuilder, vertexColorMaterial } from './common.js';
 import { HILL_SINK } from './terrain.js';
 import { spline, segX, pointOn, roadDistance, inVillage } from './countrygen.js';
+import { GLTFLoader } from '../../vendor/addons/loaders/GLTFLoader.js';
 
 /** Bits in the clear mask. */
 const CLEAR = { RAIL: 1, SHORTCUT: 2, QUARRY: 4 };
@@ -63,6 +64,8 @@ const CARS = 5;
 const CAR_LEN = 23;
 const CAR_GAP = 1;
 const TRAIN_WAIT = 30;
+/** The modelled bogie's wheels, radius m. */
+const WHEEL_R = 0.425;
 /** Lights flash this long before the train is on the crossing, s, and the barriers are down for the last DOWN_AT. */
 const LIGHTS_AT = 14;
 const DOWN_AT = 10;
@@ -160,9 +163,23 @@ export function planQuarry(ctx, base, hills) {
   }
   if (!best) return null;
   markDisc(ctx, best.x, best.z, best.r + 12, CLEAR.QUARRY);
-  // And the ramp in, so no hedge or tree stands across it.
+  // And the way in: "can you make maybe a dirt track go into the quarry?" From
+  // the floor, up the ramp, and on in a straight line to the nearest road --
+  // kept clear of hedges and trees, and drawn as ruts (buildQuarry).
   const ox = Math.cos(best.open), oz = Math.sin(best.open);
-  markLine(ctx, [{ x: best.x + ox * best.r, z: best.z + oz * best.r }, { x: best.x + ox * (best.r + RAMP_LEN + 6), z: best.z + oz * (best.r + RAMP_LEN + 6) }], 10, CLEAR.QUARRY);
+  const end = { x: best.x + ox * (best.r + RAMP_LEN), z: best.z + oz * (best.r + RAMP_LEN) };
+  const road = ctx.graph.nearestEdge(end.x, end.z, 400);
+  best.track = [
+    { x: best.x + ox * (best.r - FACE_IN - 22), z: best.z + oz * (best.r - FACE_IN - 22) },
+    end,
+  ];
+  if (road && road.dist < 400) {
+    // To the road's edge, not its middle.
+    const ux = road.x - end.x, uz = road.z - end.z, ul = Math.hypot(ux, uz) || 1;
+    const stop = Math.max(0, ul - road.edge.width * 0.5);
+    best.track.push({ x: end.x + (ux / ul) * stop, z: end.z + (uz / ul) * stop });
+  }
+  markLine(ctx, [{ x: best.x + ox * best.r, z: best.z + oz * best.r }, ...best.track.slice(1)], 10, CLEAR.QUARRY);
   return best;
 }
 
@@ -222,10 +239,9 @@ export function quarryGround(q, base) {
     const t = clamp((d - (q.r - 6)) / (RAMP_LEN + 6), 0, 1);
     flatten.push({ x: q.x + ox * d, z: q.z + oz * d, r: 8, fade: 10, h: lerp(q.floor, top, t) });
   }
-  return { flatten, pin: { x: q.x, z: q.z, r0: q.r + 0.01, r1: q.r + 9, above: q.lo + 2.5 } };
+  return { flatten, pin: { x: q.x, z: q.z, r0: q.r + 0.01, r1: q.r + 9, above: q.floor + 2.5 } };
 }
 
-/** The square the quarry's fine ground mesh covers, on the coarse mesh's 8 m lattice. */
 /**
  * The hole in the world's floor plate the quarry needs, since its floor and
  * the bottom of its ramp are under zero: the quarry and the ramp, with room
@@ -240,12 +256,6 @@ export function quarryHole(q) {
     z0: Math.min(q.z - pad, ez - 30), z1: Math.max(q.z + pad, ez + 30),
     deep: q.floor - 4,
   };
-}
-
-export function quarryPatch(q) {
-  const x0 = Math.floor((q.x - q.r - 26) / 8) * 8, z0 = Math.floor((q.z - q.r - 26) / 8) * 8;
-  const size = Math.ceil((q.r * 2 + 52) / 8) * 8 + 8;
-  return { x0, z0, size };
 }
 
 /** Eight corners -> a closed prism, flat-shaded, into `b`. Corners: bottom 0-3, top 4-7, same order. */
@@ -419,15 +429,21 @@ export function buildQuarry(ctx, q) {
   q.inner = q.r - FACE_IN - (tiers - 1) * BENCH_WIDE;
   const P = (a, r) => [q.x + Math.cos(a) * r, q.z + Math.sin(a) * r];
   const ledge = (s) => new THREE.Color().setHSL(rand(rng, 0.22, 0.27), rand(rng, 0.25, 0.4), rand(rng, 0.22, 0.3) + s);
+  // Half the angle of the cutting the ramp comes in through.
+  const gap = 13 / q.inner;
   // The face, in slices round the circle. Each slice's tops run from one
   // angle's height to the next, so a ledge is one surface you can drive along
   // rather than a row of steps.
   for (let m = 0; m < STEPS; m++) {
     const a0 = (m / STEPS) * TAU, a1 = ((m + 1) / STEPS) * TAU;
     const h0 = rims[m], h1 = rims[m + 1];
-    // Only where it stands over the lowest ground round it: the open side is
-    // the ramp in, and a wall there would shut it.
-    if (Math.max(h0, h1) - q.lo < 2.5) continue;
+    // All the way round but for the cutting the ramp comes in through. Dug
+    // below the low side, the quarry is a drop there too; walled only where
+    // the ground stood high, as when it was not, the low side was left as raw
+    // graded banks -- "it almost looks like there's a few bits left over".
+    const mid = (a0 + a1) / 2;
+    if (Math.abs(Math.atan2(Math.sin(mid - q.open), Math.cos(mid - q.open))) < gap) continue;
+    if (Math.max(h0, h1) - q.floor < 2.5) continue;
     const lo = q.floor - 1.5, r1 = q.r + FACE_OUT;
     for (let i = 0; i < tiers; i++) {
       // Not a stadium: each ledge wanders in and out, and each face is a
@@ -497,7 +513,27 @@ export function buildQuarry(ctx, q) {
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   mesh.name = 'quarry';
-  return [mesh];
+  // The dirt track in: ruts from the floor up the ramp and on to the road.
+  const t = new MeshBuilder();
+  const pts = [];
+  for (let k = 0; k < q.track.length - 1; k++) {
+    const a = q.track[k], c = q.track[k + 1];
+    const n = Math.max(1, Math.ceil(Math.hypot(c.x - a.x, c.z - a.z) / 3));
+    for (let m = 0; m < n; m++) pts.push({ x: lerp(a.x, c.x, m / n), z: lerp(a.z, c.z, m / n) });
+  }
+  pts.push(q.track[q.track.length - 1]);
+  t.addRibbon(pts, 5, 0, 0x6b5640);
+  t.addRibbon(pts, 0.6, 0.01, 0x4a3a2a, 1.0);
+  t.addRibbon(pts, 0.6, 0.01, 0x4a3a2a, -1.0);
+  const ruts = new THREE.Mesh(t.build(), vertexColorMaterial({ polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }));
+  const drawn = ctx.drawnAt || ctx.at;
+  const p = ruts.geometry.attributes.position;
+  for (let k = 0; k < p.count; k++) p.setY(k, p.getY(k) + drawn(p.getX(k), p.getZ(k)) + 0.06);
+  p.needsUpdate = true;
+  ruts.geometry.computeBoundingSphere();
+  ruts.receiveShadow = true;
+  ruts.name = 'quarry-track';
+  return [mesh, ruts];
 }
 
 /** The quarry floor's colour, or null outside it. */
@@ -511,7 +547,8 @@ export function quarryColour(q, x, z, y, c) {
     c.offsetHSL(0, 0, n * 0.03);
     return true;
   }
-  if (y > q.floor + 2.5) { c.setHSL(0.08, 0.12, 0.48); return true; }
+  // (Rock-coloured ground round the rim, under the face, showed as a pink
+  // strip along the top beyond it. The face covers its own ground.)
   return false;
 }
 
@@ -1059,10 +1096,54 @@ export class Railway {
         );
       }
       // The last car runs backwards, so its cab faces the other way.
-      this.cars.push({ mesh, body, flip: i === CARS - 1, away: true });
+      this.cars.push({ mesh, body, flip: i === CARS - 1, away: true, cab, sc: 0, dir: 1, bogies: [] });
     }
     this.crossings = rail.cross.map((c) => this._buildCrossing(c, scene));
     this.meshes = [];
+    this.scene = scene;
+    // The player's own models, when they load: the box carriages until then,
+    // and for good if they are not there.
+    loadTrainModels().then((m) => { if (m) this._useModels(m); });
+  }
+
+  /**
+   * Put the modelled train on: "I've put the models in". Each carriage's
+   * model hangs under its body, turned (modelled nose to -Z, the bodies run
+   * nose to +Z) and dropped to the rails (modelled from rail height; the body
+   * is a box 1.88 m up). Under each, two bogies of their own -- "shouldn't
+   * each part of the train be movable?" -- placed on the track 8 m either side
+   * of the carriage's middle, turned to the rails there, wheels turning.
+   */
+  _useModels({ cab, coach, bogie }) {
+    for (const car of this.cars) {
+      const model = (car.cab ? cab : coach).clone(true);
+      model.rotation.y = Math.PI;
+      model.position.y = -1.88;
+      if (car.cab) {
+        // Headlights at the front, tail lights at the back.
+        model.traverse((o) => {
+          if (!o.isMesh) return;
+          const swap = (m) => {
+            if (!m || m.name !== 'lights') return m;
+            const lit = m.clone();
+            lit.emissive = new THREE.Color(car.flip ? 0xff2020 : 0xfff4dc);
+            lit.emissiveIntensity = 1.5;
+            return lit;
+          };
+          o.material = Array.isArray(o.material) ? o.material.map(swap) : swap(o.material);
+        });
+      }
+      model.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      car.mesh.geometry = new THREE.BufferGeometry();
+      car.mesh.add(model);
+      for (let k = 0; k < 2; k++) {
+        const b = bogie.clone(true);
+        b.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+        b.visible = false;
+        this.scene.add(b);
+        car.bogies.push({ view: b, axles: ['axle_front', 'axle_rear'].map((n) => b.getObjectByName(n)).filter(Boolean) });
+      }
+    }
   }
 
   /** The front of the train at time t: { s, dir }, or null while it waits off the map. */
@@ -1100,6 +1181,7 @@ export class Railway {
         continue;
       }
       const sc = f.s - f.dir * (i * (CAR_LEN + CAR_GAP) + CAR_LEN * 0.5);
+      car.sc = sc; car.dir = f.dir;
       const a = this._pose(sc + f.dir * 8), b = this._pose(sc - f.dir * 8);
       const dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
       const yaw = Math.atan2(dx, dz) + (car.flip ? Math.PI : 0);
@@ -1123,10 +1205,21 @@ export class Railway {
   update() {
     for (const car of this.cars) {
       car.mesh.visible = !car.away;
+      for (const bg of car.bogies) bg.view.visible = !car.away;
       if (car.away) continue;
       const t = car.body.translation(), r = car.body.rotation();
       car.mesh.position.set(t.x, t.y, t.z);
       car.mesh.quaternion.set(r.x, r.y, r.z, r.w);
+      // The bogies: each on the rails under its end of the carriage, turned
+      // to the track there, its wheels rolled by how far it has come.
+      car.bogies.forEach((bg, k) => {
+        const s = car.sc + (k ? -8 : 8) * car.dir;
+        const a = this._pose(s + car.dir * 1.3), b = this._pose(s - car.dir * 1.3);
+        const dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
+        bg.view.position.set((a.x + b.x) * 0.5, (a.y + b.y) * 0.5, (a.z + b.z) * 0.5);
+        bg.view.rotation.set(-Math.atan2(dy, Math.hypot(dx, dz)), Math.atan2(dx, dz), 0, 'YXZ');
+        for (const ax of bg.axles) ax.rotation.x = (s * car.dir) / WHEEL_R;
+      });
     }
     const flash = Math.floor(this.clock * 3) % 2;
     for (const c of this.crossings) {
@@ -1220,3 +1313,18 @@ export class Railway {
 
 const _e = new THREE.Euler();
 const _q = new THREE.Quaternion();
+
+/**
+ * The player's train models (resources/models/TRAIN.md is the brief they were
+ * made to): { cab, coach, bogie } scenes, or null if any is missing.
+ */
+async function loadTrainModels() {
+  try {
+    const loader = new GLTFLoader();
+    const [cab, coach, bogie] = await Promise.all(['train-cab', 'train-middle', 'train-bogie']
+      .map((n) => loader.loadAsync(`resources/models/${n}.glb`)));
+    return { cab: cab.scene, coach: coach.scene, bogie: bogie.scene };
+  } catch (e) {
+    return null;
+  }
+}
