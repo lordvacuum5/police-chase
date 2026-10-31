@@ -567,15 +567,13 @@ export function buildQuarry(ctx, q) {
           ], grass);
         }
       }
-      // With scrub growing on the ledge, somewhere along the slice.
+      // There was scrub growing on the ledges, somewhere along each slice.
+      // "There's lots of like, little bushes or trees like on the ledges, so
+      // remove all of them." Drawn only, never in the way of anything, but
+      // gone; its random draws are still taken, so nothing else on the map
+      // moves (as with the ghost slices).
       if (grass && rng() < 0.55) {
-        const u = rng(), am = lerp(a0, a1, u);
-        const ra = rAt(a0, i), rb = rAt(a1, i), na = rAt(a0, i + 1), nb = rAt(a1, i + 1);
-        const rm = lerp(lerp(ra, rb, u), lerp(na, nb, u), rand(rng, 0.3, 0.7));
-        const kk = Math.min(n - 1, Math.floor(u * n)), uu = u * n - kk;
-        const tm = lerp(tAt(as[kk], hs[kk], i), tAt(as[kk + 1], hs[kk + 1], i), uu);
-        const [bx2, bz2] = P(am, rm), s = rand(rng, 0.8, 1.8);
-        b.addTaperedBox(s * 1.6, s, s * 1.6, bx2, tm + s * 0.5, bz2, ledge(-0.05), 0.4, 0.4, rng() * TAU);
+        rng(); rand(rng, 0.3, 0.7); rand(rng, 0.8, 1.8); ledge(-0.05); rng();
       }
     }
   }

@@ -12,6 +12,14 @@ import { SEARCH_SECONDS } from '../ai/dispatcher.js';
 const MAX = 5;
 /** How long you have to be pinned before the arrest lands. */
 const BUST_SECONDS = 5;
+/** On the quarry's ledges: seconds before the warning, the countdown after it, and off them all to start again. See Heat._checkLedges. */
+const LEDGE_GRACE = 10;
+const LEDGE_COUNT = 10;
+const LEDGE_RESET = 60;
+/** Slack round the ledges' radii, m, for the way they wander; height over the floor, m; metres either side of the cutting's line that are track, not ledge. */
+const LEDGE_EDGE = 1.5;
+const LEDGE_ABOVE = 2;
+const LEDGE_CUT = 18;
 
 /**
  * Seconds of being watched to climb one tier, indexed by the tier you are on.
@@ -46,6 +54,9 @@ export class Heat {
     this.value = 0;
     this.evadeTimer = 0;
     this.bustTimer = 0;
+    // Time on the quarry's ledges, and off them since (see _checkLedges).
+    this.ledgeTime = 0;
+    this.offLedges = 0;
     this.chaseStarted = 0;
     this.peak = 0;
     this.escapes = 0;
@@ -123,6 +134,7 @@ export class Heat {
     }
 
     this._checkBust(dt, player, dispatcher);
+    this._checkLedges(dt, player);
   }
 
   /**
@@ -178,5 +190,61 @@ export class Heat {
     this.evadeTimer = 0;
     this.bustTimer = 0;
     this.peak = 0;
+    this.ledgeTime = 0;
+    this.offLedges = 0;
+  }
+
+  /**
+   * Hiding on the quarry's ledges, where a police car cannot follow, is an
+   * arrest on a timer. "If you stay on any of those ledges for like 10
+   * seconds, then a warning starts appearing. And even if you're on any other
+   * ledge ... the countdown will still be going, and it'll be 10, 9, until you
+   * just get busted ... I want that to reset, so if the person ... goes ...
+   * off all the ledges resets every ... one minute. Just otherwise, police cars
+   * actually can't get onto the ledges, really."
+   *
+   * Time on any ledge adds up, the haul road's ramps included (they are on
+   * the ledges); the floor, the rim and the cutting are not ledges, since a
+   * unit can drive to all three. LEDGE_GRACE seconds of it, then a warning and
+   * a LEDGE_COUNT countdown, then busted. Off every ledge it holds, and after
+   * LEDGE_RESET seconds off them it starts again from nothing. Only while
+   * wanted, and only for the player's own car.
+   */
+  _checkLedges(dt, player) {
+    const g = this.game;
+    const map = g.world && g.world.__map;
+    const q = map && map.quarry;
+    if (!q || q.inner === undefined || this.value <= 0 || player !== g.player || g.outcome) {
+      this.ledgeTime = 0; this.offLedges = 0;
+      return;
+    }
+    const p = player.position;
+    const d = Math.hypot(p.x - q.x, p.z - q.z);
+    const a = Math.atan2(p.z - q.z, p.x - q.x);
+    const fromCut = Math.abs(Math.atan2(Math.sin(a - q.open), Math.cos(a - q.open)));
+    const on = d > q.inner - LEDGE_EDGE && d < q.rimIn + LEDGE_EDGE
+      && p.y > q.floor + LEDGE_ABOVE
+      && fromCut > LEDGE_CUT / Math.max(1, d);
+    if (on) {
+      this.offLedges = 0;
+      this.ledgeTime = (this.ledgeTime || 0) + dt;
+    } else if ((this.ledgeTime || 0) > 0) {
+      this.offLedges = (this.offLedges || 0) + dt;
+      if (this.offLedges > LEDGE_RESET) { this.ledgeTime = 0; this.offLedges = 0; }
+    }
+    const t = this.ledgeTime || 0;
+    if (t < LEDGE_GRACE) return;
+    const left = Math.ceil(LEDGE_GRACE + LEDGE_COUNT - t);
+    if (left <= 0) { g.onBusted(); return; }
+    if (g.hud && left !== this._ledgeSaid) {
+      this._ledgeSaid = left;
+      g.hud.centreLine(`Off the ledges or you're arrested: ${left}`);
+    }
+  }
+
+  /** Seconds left on the ledge countdown, or null when it is not running. */
+  get ledgeRemaining() {
+    const t = this.ledgeTime || 0;
+    return t < LEDGE_GRACE ? null : Math.max(0, LEDGE_GRACE + LEDGE_COUNT - t);
   }
 }

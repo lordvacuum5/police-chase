@@ -7531,6 +7531,33 @@ the second give-up at about 55 s -- 8 m from the end at 55 s, so the rig's
 60 s window closed before it was 65 m clear. Not stuck for good, but one
 turn-round is not always enough in a track that narrow.
 
+### Ten seconds on the quarry's ledges, then ten more, then busted
+
+*"If you stay on any of those ledges for like 10 seconds, then a warning
+starts appearing. And even if you're on any other ledge, right, it'll be to
+the countdown will still be going, and it'll be 10, 9, until you just get
+busted ... I want that to reset, so if the person ... goes ... off all the
+ledges resets every ... one minute. Just otherwise, police cars actually
+can't get onto the ledges, really."* `Heat._checkLedges`: while wanted, time
+on any ledge adds up (haul road ramps included -- they are on the ledges; the
+floor, the rim and the cutting are not, since a unit can drive to all three).
+At `LEDGE_GRACE` (10 s) a line in the middle of the screen counts down from
+10 each second, and at 0 it is an arrest. Off every ledge the clock holds;
+`LEDGE_RESET` (60 s) off them and it starts again from nothing.
+`tests/ledgebust.js`, the player parked, one star, the ordinary arrest off,
+fresh page: each of the four ledges warns at 10.0-10.1 s and busts at 20.0;
+floor, rim and cutting nothing in 25 s; 5 s on ledge 0 then ledge 2 busts at
+20.0; 8 s on, 30 s on the floor, back on warns at 40.0 and busts at 50.0;
+8 s on, 61 s off, back on warns at 79.1 -- from nothing.
+
+*"There's lots of like, little bushes or trees like on the ledges, so remove
+all of them. Maybe that'll fix the roofing [routing] system."* The ledges had
+no trees; the "bushes" were the scrub drawn on them, one in about every other
+slice. Gone -- but they were drawn only, with no collider, so nothing a car or
+the routing met has changed. Their random draws are still taken: everything
+placed after the quarry measured identical (2765 instances, same positions;
+the road graph the same).
+
 ### Traffic that gets itself chased
 
 *"If they hit a police car, or if a traffic runs a red light, or if they block

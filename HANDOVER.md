@@ -481,7 +481,11 @@ position. A patrol behind traffic that has not moved 2 m in 20 s turns round
 Rig trap: a unit stopped over 14 s more than 200 m from the player is retired
 (`Dispatcher._manageRoster`), so a stuck-unit rig with the player far away
 measures nothing. `tests/quarrypatrol.js` (`__runQuarryPatrol`,
-`__runDeadEndHold`).
+`__runDeadEndHold`). Asked for: **10 s on the quarry's ledges while wanted,
+then a 10-to-0 countdown, then busted** (`Heat._checkLedges`, time summed over
+all ledges, reset after 60 s off them; floor, rim and cutting do not count;
+`tests/ledgebust.js`) -- it stands in for police that cannot reach a ledge.
+The ledges' scrub was removed on request; it never had a collider.
 
 The flyable helicopter tilts to a full **180 degrees** in pitch and roll, which
 was asked for twice; the things that stop it being twitchy are `CYCLIC_RATE`
