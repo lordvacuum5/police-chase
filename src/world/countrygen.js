@@ -1008,7 +1008,9 @@ function buildHedges(ctx, fields) {
   const { graph, rng } = ctx;
   const b = new MeshBuilder();
   const W = ctx.sim.world;
-  ctx.sim.hedges = new Set();
+  // Each hedge's collider, to the height of the top of what is drawn: see
+  // Vehicle._hedgeDrag.
+  ctx.sim.hedges = new Map();
   // One hedge, one look: every piece of a run between two gaps takes the
   // height and colour of its first. Each 8 m piece used to draw its own, and
   // a hedge read as a row of separate bushes of different heights -- "make it
@@ -1051,7 +1053,7 @@ function buildHedges(ctx, fields) {
     // straight through every hedge on the map.
     const body = addStaticBox(W, mx, ctx.at(mx, mz) + HEDGE_SOLID * 0.5, mz, len * 0.5, HEDGE_SOLID * 0.5, 0.7,
       hedgeWall() ? GROUP.BUILDING | GROUP.HEDGE : GROUP.HEDGE, rot, 0xFFFF & ~GROUP.VEHICLE);
-    ctx.sim.hedges.add(body.collider(0).handle);
+    ctx.sim.hedges.set(body.collider(0).handle, ctx.at(mx, mz) + h);
     return true;
   };
 

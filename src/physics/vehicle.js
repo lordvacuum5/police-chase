@@ -780,7 +780,16 @@ export class Vehicle {
     this.world.intersectionsWithShape(
       this.collider.translation(), this.collider.rotation(), this.collider.shape,
       (other) => {
-        if (hedges.has(other.handle)) { inHedge = true; return false; }
+        // Through it, not over it. The collider stands HEDGE_SOLID high for
+        // the AI's sight lines, so a car that jumped clear of the hedge was
+        // still inside it: "if I even jump over the hedge, not even touching
+        // it, it still slows me down." Only once the underside is below the
+        // top of what is drawn.
+        const top = hedges.get(other.handle);
+        if (top !== undefined && this.collider.translation().y - this.spec.dims.h * 0.5 < top) {
+          inHedge = true;
+          return false;
+        }
         return true;
       },
       undefined, HEDGE_QUERY, this.collider,
