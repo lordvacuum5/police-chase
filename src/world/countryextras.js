@@ -34,6 +34,11 @@ const RAMP_LEN = 100;
 /** The dirt track's banks: metres of bank for each metre of depth, and the widest, m. */
 const BANK_FADE = 2.2;
 const BANK_MAX = 45;
+/** Half the cutting's width at the rim, m (13 m at the foot of the faces, so wider up here). */
+const CUT_HALF = 22;
+/** The quarry's rock beside the cutting: within this of its line, radians, in this many pieces a slice. */
+const FINE_NEAR = 0.7;
+const FINE_PIECES = 4;
 /** The rock face, from inside the floor's edge to beyond it, m: thick enough to hide the grid's own slope, which on a 4 m lattice reaches up to a diagonal (5.7 m) either side of the edge. */
 const FACE_IN = 6, FACE_OUT = 7;
 /** The terraces: how tall each face is meant to be, m, and how wide each ledge. See buildQuarry. */
@@ -275,7 +280,16 @@ export function quarryGround(q, base) {
     const fade = clamp((base(x, z) - h) * BANK_FADE, 10, BANK_MAX);
     flatten.push({ x, z, r: 8, fade, h });
   }
-  return { flatten, pin: { x: q.x, z: q.z, r0: q.r + 0.01, r1: q.r + 9, above: q.floor + 2.5 } };
+  // The rim held as a cliff all round but across the cutting and its banks,
+  // which are graded like any bank (terrain.js, BANK_GRADE). "The two sides
+  // of the dirt track, like right when it stops being like the terracing ...
+  // there's an actual slope there that you can actually just get up if you go
+  // fast enough ... I suddenly just hit a brick wall."
+  // Only the cutting: a wider wedge (0.6 rad) graded the rim itself down
+  // toward the track, and its edge was a step of up to 1 m and more cars
+  // rolled (tests/trackbank.js, 4 of 20 against 2).
+  const skip = { dir: q.open, half: CUT_HALF / q.r };
+  return { flatten, pin: { x: q.x, z: q.z, r0: q.r + 0.01, r1: q.r + 9, above: q.floor + 2.5, skip } };
 }
 
 /**
@@ -501,52 +515,67 @@ export function buildQuarry(ctx, q) {
     const mid = (a0 + a1) / 2;
     if (Math.abs(Math.atan2(Math.sin(mid - q.open), Math.cos(mid - q.open))) < gap) continue;
     if (Math.max(h0, h1) - q.floor < 2.5) continue;
-    // Nor beside the cutting where its banks fall steeply along the rim: a
-    // slice's top is straight from one end to the other and the bank is not,
-    // and they left a step of up to 2.5 m at the rock's outer edge. The
-    // graded bank is the ground there instead. Built all the same, into
-    // nothing, so it takes its random draws: `continue` here would re-roll
-    // everything built after the quarry (see ctx.xrng in countrygen.js).
-    const off = Math.abs(Math.atan2(Math.sin(mid - q.open), Math.cos(mid - q.open)));
-    const ghost = off < gap + (BANK_MAX + 8) / q.r && Math.abs(h1 - h0) > 1.2;
-    const bw = ghost ? new MeshBuilder() : b;
     const lo = q.floor - 1.5, r1 = q.r + FACE_OUT;
+    // Beside the cutting, in finer pieces. A slice's top runs straight from
+    // one end to the other, 11 m round the rim, and where the dirt track's
+    // banks are graded down past the rock's end the ground outside it dips
+    // and rises six metres inside that: it left a 3 m trough along the
+    // rock's outer edge. Each piece's ends at the ground just outside, as the
+    // slice's are (quarryRims). Same random draws as one slice, so nothing
+    // else on the map moves.
+    const off = Math.abs(Math.atan2(Math.sin(mid - q.open), Math.cos(mid - q.open)));
+    const n = off < FINE_NEAR ? FINE_PIECES : 1;
+    const as = [], hs = [];
+    for (let k = 0; k <= n; k++) {
+      const ak = lerp(a0, a1, k / n);
+      as.push(ak);
+      hs.push(k === 0 ? h0 : k === n ? h1 : ctx.at(...P(ak, q.r + FACE_OUT + 0.3)));
+    }
     for (let i = 0; i < tiers; i++) {
-      const ra = rAt(a0, i), rb = rAt(a1, i);
-      const t0 = tAt(a0, h0, i), t1 = tAt(a1, h1, i);
-      const [ax, az] = P(a0, ra), [bx, bz] = P(a1, rb), [cx, cz] = P(a1, r1), [dx, dz] = P(a0, r1);
-      // The top one's outer edge let down under the hills' collider, which is
-      // sunk HILL_SINK under the drawn ground: level with the drawn ground, it
-      // stood up out of the collider a car's body rests on as a kerb all the
-      // way round, 0.3-0.7 m. "When I kept on coming to the edge of the
-      // quarry, I kept on hitting an invisible barrier. At least the police
-      // cars did."
-      const lip = i === tiers - 1 ? HILL_SINK + 0.15 : 0;
-      const c = [
-        [ax, lo, az], [bx, lo, bz], [cx, lo, cz], [dx, lo, dz],
-        [ax, t0, az], [bx, t1, bz], [cx, t1 - lip, cz], [dx, t0 - lip, dz],
-      ];
-      if (!ghost) addHull(W, c);
       // Pink-grey limestone, a little different face by face.
-      addPrism(bw, c, new THREE.Color().setHSL(rand(rng, 0.02, 0.07), rand(rng, 0.14, 0.32), rand(rng, 0.46, 0.62)));
-      // A band of darker bedding across the face, a little proud of it.
-      const b0 = q.floor + (Math.min(h0, h1) - q.floor) * (i + 0.45) / tiers;
-      const [ex, ez] = P(a0, ra - 0.08), [fx2, fz2] = P(a1, rb - 0.08);
-      bw.addWall([{ x: ex, z: ez }, { x: fx2, z: fz2 }], b0, b0 + 0.6, new THREE.Color().setHSL(0.05, 0.12, 0.4));
-      // The ledge on top, grassed, up to the foot of the face above, with
-      // scrub growing on it.
-      if (i < tiers - 1) {
-        const na = rAt(a0, i + 1), nb = rAt(a1, i + 1);
-        const [gx, gz] = P(a1, nb), [hx2, hz2] = P(a0, na);
-        addPrism(bw, [
-          [ax, t0 - 0.05, az], [bx, t1 - 0.05, bz], [gx, t1 - 0.05, gz], [hx2, t0 - 0.05, hz2],
-          [ax, t0 + 0.06, az], [bx, t1 + 0.06, bz], [gx, t1 + 0.06, gz], [hx2, t0 + 0.06, hz2],
-        ], ledge(rand(rng, -0.04, 0.06)));
-        if (rng() < 0.55) {
-          const u = rng(), am = lerp(a0, a1, u), rm = lerp(lerp(ra, rb, u), lerp(na, nb, u), rand(rng, 0.3, 0.7));
-          const [bx2, bz2] = P(am, rm), s = rand(rng, 0.8, 1.8);
-          bw.addTaperedBox(s * 1.6, s, s * 1.6, bx2, lerp(t0, t1, u) + s * 0.5, bz2, ledge(-0.05), 0.4, 0.4, rng() * TAU);
+      const stone = new THREE.Color().setHSL(rand(rng, 0.02, 0.07), rand(rng, 0.14, 0.32), rand(rng, 0.46, 0.62));
+      const grass = i < tiers - 1 ? ledge(rand(rng, -0.04, 0.06)) : null;
+      for (let k = 0; k < n; k++) {
+        const p0 = as[k], p1 = as[k + 1], g0 = hs[k], g1 = hs[k + 1];
+        const ra = rAt(p0, i), rb = rAt(p1, i);
+        const t0 = tAt(p0, g0, i), t1 = tAt(p1, g1, i);
+        const [ax, az] = P(p0, ra), [bx, bz] = P(p1, rb), [cx, cz] = P(p1, r1), [dx, dz] = P(p0, r1);
+        // The top one's outer edge let down under the hills' collider, which is
+        // sunk HILL_SINK under the drawn ground: level with the drawn ground, it
+        // stood up out of the collider a car's body rests on as a kerb all the
+        // way round, 0.3-0.7 m. "When I kept on coming to the edge of the
+        // quarry, I kept on hitting an invisible barrier. At least the police
+        // cars did."
+        const lip = i === tiers - 1 ? HILL_SINK + 0.15 : 0;
+        const c = [
+          [ax, lo, az], [bx, lo, bz], [cx, lo, cz], [dx, lo, dz],
+          [ax, t0, az], [bx, t1, bz], [cx, t1 - lip, cz], [dx, t0 - lip, dz],
+        ];
+        addHull(W, c);
+        addPrism(b, c, stone);
+        // A band of darker bedding across the face, a little proud of it.
+        const b0 = q.floor + (Math.min(h0, h1) - q.floor) * (i + 0.45) / tiers;
+        const [ex, ez] = P(p0, ra - 0.08), [fx2, fz2] = P(p1, rb - 0.08);
+        b.addWall([{ x: ex, z: ez }, { x: fx2, z: fz2 }], b0, b0 + 0.6, new THREE.Color().setHSL(0.05, 0.12, 0.4));
+        // The ledge on top, grassed, up to the foot of the face above.
+        if (grass) {
+          const na = rAt(p0, i + 1), nb = rAt(p1, i + 1);
+          const [gx, gz] = P(p1, nb), [hx2, hz2] = P(p0, na);
+          addPrism(b, [
+            [ax, t0 - 0.05, az], [bx, t1 - 0.05, bz], [gx, t1 - 0.05, gz], [hx2, t0 - 0.05, hz2],
+            [ax, t0 + 0.06, az], [bx, t1 + 0.06, bz], [gx, t1 + 0.06, gz], [hx2, t0 + 0.06, hz2],
+          ], grass);
         }
+      }
+      // With scrub growing on the ledge, somewhere along the slice.
+      if (grass && rng() < 0.55) {
+        const u = rng(), am = lerp(a0, a1, u);
+        const ra = rAt(a0, i), rb = rAt(a1, i), na = rAt(a0, i + 1), nb = rAt(a1, i + 1);
+        const rm = lerp(lerp(ra, rb, u), lerp(na, nb, u), rand(rng, 0.3, 0.7));
+        const kk = Math.min(n - 1, Math.floor(u * n)), uu = u * n - kk;
+        const tm = lerp(tAt(as[kk], hs[kk], i), tAt(as[kk + 1], hs[kk + 1], i), uu);
+        const [bx2, bz2] = P(am, rm), s = rand(rng, 0.8, 1.8);
+        b.addTaperedBox(s * 1.6, s, s * 1.6, bx2, tm + s * 0.5, bz2, ledge(-0.05), 0.4, 0.4, rng() * TAU);
       }
     }
   }

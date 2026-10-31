@@ -7404,6 +7404,49 @@ to self-right in midair."*
   before. The haul road rig: climb unchanged, 0.12 damage (none recorded
   before); the car parked on ledge 3 slides, as it did.
 
+### The dirt track's sides, again
+
+*"It's like the two sides of the dirt track, like right when it stops being
+like the terracing ... there's an actual slope there that you can actually
+just get up if you go fast enough ... it's still really steep ... the tyre
+marks are still in the sky, and ... your car starts to basically fly."*
+
+The earlier fix had made it worse: leaving the rock out beside the cutting
+showed the floor's edge under it, a step straight up from the floor. And the
+banks could not be graded where they met the rim at all: the ring of ground
+that holds the quarry's rim as a cliff (`quarryGround`'s pin) ran straight
+across the cutting, so the bank there was never held to `BANK_GRADE`. Now:
+
+* the pin leaves the cutting out (`skip`, 22 m either side at the rim), so its
+  banks are graded like any other;
+* the rock is all built again, and beside the cutting in quarter-slices, so
+  its top follows the ground just outside it rather than running straight
+  for 11 m over a bank that dips and rises 6 m in that (a 3 m trough along
+  its edge); the same random draws, so nothing else on the map moves.
+
+`tests/trackbank.js` now also drives up the side, from the middle of the track
+square at the bank, at 60 km/h. Worst of 20 runs:
+
+| | rolled over | thrown up >2 m/s | worst throw | longest in the air |
+|---|---|---|---|---|
+| before any of this (b4b1d72) | 6 | 15 | 12.3 m/s | 2.0 s |
+| rock left out (57103ce) | -- | -- | 5.6 along the bank | -- |
+| now | **2** | 12 | 10.2 m/s | 1.8 s |
+
+Round the rim from outside, the biggest step up is 0.3 m everywhere.
+`tests/cutting.js` counts steep rises beside the cutting: 460 before, 841
+with the rock left out, 226-310 now -- what is left is the cutting's own rock
+walls, 3-6 m, which you can see. Tried and worse: the wedge widened to 0.6
+rad (the rim graded down too; 4 roll-overs, a 1 m step at its edge); banks
+narrow again (BANK_MAX 12: the same roll-overs, more spin). Driving straight
+up a graded bank at 60 km/h still leaves its top: that is a bank.
+
+*"I suddenly just hit a brick wall and basically went flying backwards"* --
+the invisible wall at the edge of the map. `tests/edgehit.js`, 110 km/h at it:
+thrown back 1.8 / 6.6 / 0 m/s at 20 / 45 / 70 degrees off square. Made
+frictionless and dead: 3.8 / 4.4 / 0, and spinning twice as hard at 45
+degrees -- not better, so left as it was.
+
 ### Police down the railway, not into the trees
 
 *"Whenever the police cars go near trees or an obstacle, they just slow down so

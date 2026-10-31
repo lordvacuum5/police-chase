@@ -316,6 +316,13 @@ export function buildHeightGrid(base, { half = 1000, graph = null, flatten = [],
         const px = i * H_STEP - half;
         const d = Math.hypot(px - p.x, pz - p.z);
         if (d < p.r0 || d > p.r1) continue;
+        // Bar a wedge it leaves to be graded (`skip`: { dir, half }, radians):
+        // the quarry's cutting, whose banks pinned as cliffs were walls a car
+        // could half climb and be thrown off.
+        if (p.skip) {
+          const a = Math.atan2(pz - p.z, px - p.x) - p.skip.dir;
+          if (Math.abs(Math.atan2(Math.sin(a), Math.cos(a))) < p.skip.half) continue;
+        }
         const k = idx(i, j);
         if (H[k] > p.above) pinned[k] = 1;
       }

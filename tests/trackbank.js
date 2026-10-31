@@ -49,7 +49,37 @@ window.__runTrackBank = async function (kph = 40, sides = [-13, -10, 10, 13]) {
         rows.push(`${Math.round(along - q.r)}/${side}: spin ${Math.round(spin)} jump ${jump.toFixed(1)} upset ${upset.toFixed(2)}`);
       }
     }
+    // And up the side: from the middle of the track, square across it toward
+    // the bank, at `kph` + 20 -- "there's an actual slope there that you can
+    // actually just get up if you go fast enough". `air` is the longest spell
+    // with no wheel on anything.
+    let worstAir = 0;
+    for (const along of [q.r + 25, q.r + 10, q.r, q.r - 8]) {
+      for (const side of [1, -1]) {
+        const x = q.x + ox * along, z = q.z + oz * along;
+        const hx = tx * side, hz = tz * side, v = (kph + 20) / 3.6;
+        p.repair();
+        p.teleport({ x, y: g.sim.heightAt(x, z) + 0.9, z }, Math.atan2(hx, hz));
+        p.setVelocity({ x: hx * v, y: 0, z: hz * v });
+        let spin = 0, jump = 0, upset = 0, air = 0, airMax = 0;
+        for (let i = 0; i < 180; i++) {
+          controls = { throttle: 1, brake: 0, steer: 0, handbrake: 0 };
+          g._update(1 / 60);
+          if (i < 10) continue;
+          const av = p.body.angvel();
+          spin = Math.max(spin, Math.hypot(av.x, av.z) * 57.3);
+          jump = Math.max(jump, p.linvel.y);
+          upset = Math.max(upset, 1 - p.up.y);
+          air = p.grounded > 0 ? 0 : air + 1 / 60;
+          airMax = Math.max(airMax, air);
+        }
+        worstSpin = Math.max(worstSpin, spin); worstJump = Math.max(worstJump, jump); worstUpset = Math.max(worstUpset, upset);
+        worstAir = Math.max(worstAir, airMax);
+        rows.push(`up ${Math.round(along - q.r)}/${side}: spin ${Math.round(spin)} jump ${jump.toFixed(1)} upset ${upset.toFixed(2)} air ${airMax.toFixed(1)}`);
+      }
+    }
     g._update = origU;
+    rows.push(`worst air ${worstAir.toFixed(1)} s`);
     rows.push(`worst: spin ${Math.round(worstSpin)} deg/s, jump ${worstJump.toFixed(1)} m/s, upset ${worstUpset.toFixed(2)}`);
     window.__res = rows.join('\n');
   } catch (e) {
