@@ -32,6 +32,16 @@
 // And now and then a car does something stupid in front of a patrol car of
 // its own accord: game/traffic.js runs a red light, very rarely, when there is
 // one to see it.
+//
+// "If I'm the police car, okay, in a single player world, if a normal traffic
+// car hits me, the pursuit starts." The player's own police car counts as a
+// witness to a hit on itself, and is one of the cars that can see a suspect
+// and make the arrest. "If two civilian cars hit each other, I would like one
+// to stay where they are, or come off the road a bit ... and I want the other
+// one to speed off, and then the police to begin pursuit of that vehicle. But
+// only if the police car is in ... relatively close visual range." Two traffic
+// cars that collide within CRASH_SIGHT of a police car that can see them: one
+// pulls onto the verge and stops, the other runs.
 import { Runner } from '../ai/runner.js';
 import { ROLE } from '../ai/officer.js';
 import { dist2 } from '../util/math.js';
@@ -69,6 +79,10 @@ const GONE = 320;
 const PULL_AHEAD = 8;
 const PULL_VERGE = 2.5;
 const PULL_FOR = 9;
+/** A crash between two traffic cars is seen by a police car this near with a clear line, m. */
+const CRASH_SIGHT = 60;
+/** How hard a knock counts as a crash, m/s of velocity change (as Vehicle.takeImpact). */
+const CRASH_HIT = 2.6;
 
 export class Suspects {
   constructor(game) {
@@ -119,10 +133,11 @@ export class Suspects {
     runner.threats = () => this._threats(s);
     this.list.push(s);
     if (witness) this._take(s, witness);
-    const cs = witness ? witness.callsign : 'Control';
+    const cs = witness ? witness.callsign : 'Control, all units';
     const what = why === 'hit' ? 'failed to stop after a collision with a police vehicle'
-      : why === 'red' ? 'through a red light'
-        : why === 'bolt' ? 'making off at speed' : 'obstructing a police vehicle';
+      : why === 'crash' ? 'failed to stop after a collision'
+        : why === 'red' ? 'through a red light'
+          : why === 'bolt' ? 'making off at speed' : 'obstructing a police vehicle';
     g.say('suspect', [
       (x) => `${x.cs}, in pursuit of a civilian vehicle, ${x.what}.`,
       (x) => `${x.cs}, vehicle ${x.what}, attempting to stop it.`,
@@ -174,7 +189,7 @@ export class Suspects {
       if (s.v.removed) { s.state = 'gone'; this._release(s); continue; }
       if (s.state === 'run') this._run(s, dt);
       else if (s.state === 'pull') this._pull(s, dt);
-      else if (s.state === 'parked') s.v.setControls({ throttle: 0, brake: 0, steer: 0, handbrake: 1 });
+      else if (s.state === 'parked') this._parked(s, dt);
       else if (s.state === 'free') this._free(s, dt);
     }
     this.list = this.list.filter((s) => s.state !== 'gone');
@@ -198,6 +213,13 @@ export class Suspects {
         u.vehicle.setControls({ throttle: 0, brake: 1, steer: 0, handbrake: 1 });
       }
       if (!seen && r < SIGHT && d._visibleTo(u, v)) seen = true;
+    }
+    // The player, when the player is the police.
+    const p = this._policePlayer();
+    if (p) {
+      const r = dist2(p.position.x, p.position.z, v.position.x, v.position.z);
+      near = Math.min(near, r - (p.spec.dims.l + v.spec.dims.l) * 0.5);
+      if (!seen && r < SIGHT && d._visibleTo(p, v)) seen = true;
     }
     s.runner.hunted = seen;
     s.runner.update(dt);
@@ -278,6 +300,25 @@ export class Suspects {
     v.setControls(out);
   }
 
+  /**
+   * Stopped for good. A caught suspect stays for the rest of the game; the
+   * other car in a crash goes once nobody can see it.
+   */
+  _parked(s, dt) {
+    const g = this.game, v = s.v;
+    v.setControls({ throttle: 0, brake: 0, steer: 0, handbrake: 1 });
+    if (!s.victim) return;
+    const far = g.watcherDistance(v.position) > GONE;
+    s.goneFor = far && !g.seenByAnyone(v.position) ? s.goneFor + dt : 0;
+    if (s.goneFor > 2) { g.removeVehicle(v); s.state = 'gone'; }
+  }
+
+  /** The player's car, when the player is a police car on their own. */
+  _policePlayer() {
+    const g = this.game, p = g.player;
+    return g.soloPolice && p && p.isPolice && !p.isAircraft && !p.removed ? p : null;
+  }
+
   /** Got away: drives on, and goes once nobody can see it. */
   _free(s, dt) {
     const g = this.game, v = s.v;
@@ -340,6 +381,31 @@ export class Suspects {
         if (g.rng() < BOLT_CHANCE && this.offence(c, 'bolt', w)) break;
       }
     }
+    // A traffic car into the player's own police car.
+    const p = this._policePlayer();
+    if (p && p.lastImpactAt && now - p.lastImpactAt < 300 && p.lastImpact > CRASH_HIT && p._suspectHitAt !== p.lastImpactAt) {
+      p._suspectHitAt = p.lastImpactAt;
+      const other = this._trafficTouching(p);
+      // It drove into you, nose first -- not you into the back or side of it,
+      // which is your doing, not its.
+      const ox = p.position.x - (other ? other.position.x : 0), oz = p.position.z - (other ? other.position.z : 0);
+      const ol = Math.hypot(ox, oz) || 1;
+      if (other && (other.forward.x * ox + other.forward.z * oz) / ol > 0.3) {
+        const s = this.offence(g.traffic.recordOf(other), 'hit', null);
+        if (s) { s.heat = Math.min(MAX_HEAT, s.heat + HIT_HEAT); return; }
+      }
+    }
+    // Two traffic cars into each other, in front of the police.
+    for (const c of g.traffic.cars) {
+      const v = c.v;
+      if (v.dormant || !v.lastImpactAt || now - v.lastImpactAt > 300 || !(v.lastImpact > CRASH_HIT)) continue;
+      if (v._crashAt === v.lastImpactAt) continue;
+      v._crashAt = v.lastImpactAt;
+      const o = this._trafficTouching(v);
+      if (!o) continue;
+      o._crashAt = o.lastImpactAt;
+      if (this._crash(c, g.traffic.recordOf(o))) return;
+    }
     for (const u of d.units) {
       if (u.human || !u.vehicle || u.vehicle.disabled) continue;
       // Only a patrol car notices: one already chasing has other things on.
@@ -371,6 +437,47 @@ export class Suspects {
         u._blockedFor = 0;
       }
     }
+  }
+
+  /** The traffic car touching vehicle `v` right now, if any. */
+  _trafficTouching(v) {
+    let other = null;
+    this.game.world.contactPairsWith(v.collider, (o) => {
+      if (o.__vehicle && o.__vehicle !== v && o.__vehicle.isTraffic) other = o.__vehicle;
+    });
+    return other;
+  }
+
+  /**
+   * Traffic cars `a` and `b` have collided. With a police car near enough to
+   * see it -- the player's, or a patrol's -- one of them runs and the other
+   * pulls over and stops. Either may be the one that runs. Unseen, nothing:
+   * they carry on as traffic.
+   */
+  _crash(a, b) {
+    const g = this.game, d = g.dispatcher;
+    if (!a || !b) return false;
+    const x = (a.v.position.x + b.v.position.x) * 0.5, z = (a.v.position.z + b.v.position.z) * 0.5;
+    const at = { position: { x, y: (a.v.position.y + b.v.position.y) * 0.5, z } };
+    let witness = null, seen = false;
+    const p = this._policePlayer();
+    if (p && dist2(p.position.x, p.position.z, x, z) < CRASH_SIGHT && d._visibleTo(p, at)) seen = true;
+    for (const u of d.units) {
+      if (seen && witness) break;
+      if (u.human || !u.vehicle || u.vehicle.disabled) continue;
+      if (dist2(u.vehicle.position.x, u.vehicle.position.z, x, z) > CRASH_SIGHT || !d._visibleTo(u, at)) continue;
+      seen = true;
+      // Only a patrol goes after it; a unit already on a chase just saw it.
+      if (u.role === ROLE.PATROL) witness = u;
+    }
+    if (!seen) return false;
+    const [run, stop] = g.rng() < 0.5 ? [a, b] : [b, a];
+    if (!this.offence(run, 'crash', witness)) return false;
+    g.traffic.release(stop);
+    const v = stop.v;
+    this.list.push({ v, runner: new Runner(g, v), why: 'crash', victim: true, heat: 0, units: [],
+      state: 'pull', pullFor: 0, goneFor: 0 });
+    return true;
   }
 
   /** A patrol car that can see (x, z), within WITNESS: for game/traffic.js before it runs a light. */

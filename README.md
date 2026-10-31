@@ -7548,6 +7548,47 @@ slowly go up."* (`game/suspects.js`)
 Not done: a guest in a multiplayer game sees the car, but the suspect's state
 lives on the host only.
 
+### Hit the police player, or crash in front of one
+
+*"If I'm the police car, okay, in a single player world, if a normal traffic
+car hits me, the pursuit starts, right? Also, if two civilian cars hit each
+other, I would like one to stay where they are, or come off the road a bit ...
+and I want the other one to speed off, and then the police to begin pursuit of
+that vehicle. But only if the police car is in ... relatively close visual
+range."*
+
+The player's own police car (solo police side) was never on
+`dispatcher.units`, so nothing it saw or was hit by counted. Now:
+
+* **Into you.** A traffic car touching your car at an impact over 2.6 m/s
+  becomes a suspect ('hit', +0.4 heat) -- but only one that drove into you
+  nose first (its heading within ~70 degrees of the line to you). Rear-ending
+  one yourself is your doing: staged at 45 km/h into the back of a parked one
+  (4.7 m/s impact), nothing happened, as wanted.
+* **Two into each other.** A traffic-on-traffic impact over 2.6 m/s, within
+  60 m of a police car -- yours or any AI unit -- with a clear line to the
+  crash: a coin decides which runs ('crash'); the other pulls onto the verge,
+  stops, and is taken away once nobody can see it 320 m off. A patrol-role AI
+  unit that saw it gives chase; otherwise Control sends one.
+* **Your car counts as police** for the suspect's sight and the arrest gap.
+
+`tests/crashwitness.js` (solo police side), staged on the straight road
+nearest the start:
+
+| case | after 2-3 s | after 20 s |
+|---|---|---|
+| traffic car into you at 40 km/h | running, 1 unit | running, 2 units |
+| you into the back of one | nothing | -- |
+| two crash 25 m in front of you | one running (1 unit), other pulling over | running (2 units), other parked |
+| two crash 250 m away | nothing | nothing |
+
+Traffic brakes for a police car in its road, so the rig holds the first car
+on full throttle until it hits -- left to itself it stopped 12 m short.
+
+Runner mode, `tests/suspects.js` 180 s, fresh page each: one suspect before
+(a hit on a patrol), one after (a bolt) -- no crash-witnessed suspects in
+that run, nothing changed.
+
 ### The dirt track's sides, again
 
 *"It's like the two sides of the dirt track, like right when it stops being
