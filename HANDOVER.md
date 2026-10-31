@@ -472,6 +472,14 @@ the ground above the mount and launched cars off the banks onto their roofs
 (`tests/bankroll.js`, from a player log). Every car's clutch slips in first
 (`CLUTCH_SLIP`, `tests/hillstart.js`). Open: *"going up hills, it's a little
 bit too bouncy sometimes"* -- not reproduced yet; the user is saving a log.
+A **dormant traffic car** (`traffic.js _sleep`) reads its cruising speed
+while standing still and is never counted as stuck, so judge "not moving" by
+position. A patrol behind traffic that has not moved 2 m in 20 s turns round
+(`Officer._turnAway`, `PATROL_GIVE_UP`); patrols do not pick dead-end tips.
+Rig trap: a unit stopped over 14 s more than 200 m from the player is retired
+(`Dispatcher._manageRoster`), so a stuck-unit rig with the player far away
+measures nothing. `tests/quarrypatrol.js` (`__runQuarryPatrol`,
+`__runDeadEndHold`).
 
 The flyable helicopter tilts to a full **180 degrees** in pitch and roll, which
 was asked for twice; the things that stop it being twitchy are `CYCLIC_RATE`

@@ -7498,6 +7498,32 @@ traffic time on spur road 9.8% -> 0%. Spur road is 1.4 km of Haldon's 18.2.
 when it is resting on something: a wheel down or the body touching anything
 (`Vehicle.resting`) -- on its roof still counts, at the top of a jump does not.
 
+### A patrol waiting for good behind a car that never moves
+
+*"The police routing system, however, in the quarry is awful ... I literally
+left it running for like 30 minutes ... when it was just trying to patrol,
+literally one is just stuck against the wall and it just cannot move."*
+`tests/quarrypatrol.js` (the player parked on the quarry floor, no wanted
+level, ten minutes headless) found it, and not in the quarry: 175 m off, a
+patrol at the end of the dead-end farm track west of the quarry, which its
+route ran down to turn round in, nose to a traffic car stopped at the turning
+place. The car was dormant (traffic.js `_sleep`: out of range, no body, moved
+along its route without physics) with no route on from a dead end, so it
+stood there for good -- still reading its cruising speed, 10.5 m/s, so the
+patrol "followed" it at a standstill. The patrol was inside 200 m of the
+player, so never retired as stranded; the car was asleep, so never counted as
+stuck and removed either.
+
+Now a patrol held behind traffic that has not moved 2 m in `PATROL_GIVE_UP`
+(20 s) -- by where it is, not its speed -- turns round onto a new beat
+(`Officer._turnAway`), and patrols no longer pick a dead end's last node to
+drive to. `__runDeadEndHold` sets the case up on purpose (car asleep at the
+turning place, player 171 m off, suspects off so it is not made one for
+blocking): before, still there at 60 s; after, clear at 37 s. Ten minutes on
+the floor, fresh pages, on the traffic of the commit before (no traffic on
+spurs any more): stuck spells 3 (longest 16 s) -> 0. Before that commit the
+first run had 3, longest 65 s -- that one this case.
+
 ### Traffic that gets itself chased
 
 *"If they hit a police car, or if a traffic runs a red light, or if they block

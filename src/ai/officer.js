@@ -66,6 +66,8 @@ const OPEN_CLEAR = 30;
 const OPEN_CLOSE = 45;
 /** The share of its grip a patrol car plans a corner on. See the role switch in update. */
 const PATROL_CORNER = 0.6;
+/** Seconds a patrol waits behind traffic that is not moving before it turns round. See update. */
+const PATROL_GIVE_UP = 20;
 /**
  * Whether the hedged-country rules above apply: keep to the lanes when the
  * target is on one, and count a straight line across the fields as closed.
@@ -709,6 +711,23 @@ export class Officer {
     // What it is waiting behind, for the suspects' obstruction rule.
     this._obstacle = obstacle;
     this.driver.holdBehind(obstacle, dt);
+    // Behind traffic that never moves: turn round and go another way. "When it
+    // was just trying to patrol, literally one is just stuck against the wall
+    // and it just cannot move." Left running beside the quarry, a patrol sat
+    // at the end of a dead-end farm track for the rest of the run behind a
+    // traffic car frozen at the turning place, waiting for it to go. Not
+    // moving by where it is, not by its speed: that car was asleep
+    // (traffic.js _sleep), with no route on, and still read its cruising
+    // speed, 10.5 m/s, so the patrol was "following" it at a standstill.
+    const held = patrolling && obstacle && obstacle.isTraffic && v.speed < 0.5;
+    const o = held ? obstacle.position : null;
+    const since = this._behindAt;
+    if (!o || !since || since.car !== obstacle || Math.hypot(o.x - since.x, o.z - since.z) > 2) {
+      this._behindAt = o ? { car: obstacle, x: o.x, z: o.z, t: 0 } : null;
+    } else {
+      since.t += dt;
+      if (since.t > PATROL_GIVE_UP && this._turnAway()) this._behindAt = null;
+    }
     this._warnIfBlocked(dt, patrolling);
     this.repathTimer -= dt;
     this._updateAssist(target, dt);
@@ -802,6 +821,28 @@ export class Officer {
 
   // ------------------------------------------------------------------ roles
 
+  /**
+   * A route on from here that starts the way the car is not pointing, for a
+   * patrol stuck behind something: the router would otherwise go on past the
+   * very car it is stuck behind. The driver turns it round (Driver._turnRound).
+   */
+  _turnAway() {
+    const g = this.game.graph, v = this.vehicle;
+    for (let i = 0; i < 8; i++) {
+      const n = g.randomNode(this.game.rng);
+      if (g.roadDegree(n) < 2) continue;
+      const pts = g.pathFromPosition(
+        v.position.x, v.position.z, -v.forward.x, -v.forward.z, n.id, 3.0, Infinity, 0, LANE_CORNER,
+      );
+      if (pts.length < 2) continue;
+      this.driver.setPath(pts);
+      this.driver.freeLined = false;
+      this.goalNode = n.id;
+      return true;
+    }
+    return false;
+  }
+
   _patrol(dt) {
     const g = this.game.graph;
     if (!this.driver.hasPath || this.driver.remaining() < 40) {
@@ -810,8 +851,10 @@ export class Officer {
       // minute and a half without meeting one, and the game never starts.
       const anchor = this.game.player ? this.game.player.position : this.position;
       let to = null;
+      // Not the end of a dead end, to turn round in somebody's farmyard.
       for (let i = 0; i < 14; i++) {
         const n = g.randomNode(this.game.rng);
+        if (g.roadDegree(n) < 2) continue;
         if (dist2(n.x, n.z, anchor.x, anchor.z) < 650) { to = n; break; }
       }
       if (!to) to = g.randomNode(this.game.rng);
