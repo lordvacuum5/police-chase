@@ -20,6 +20,7 @@ import {
 } from './ai/officer.js';
 import { Driver, SKILL } from './ai/driver.js';
 import { Traffic, trafficPaint } from './game/traffic.js';
+import { Suspects } from './game/suspects.js';
 import { Runner, pickRunnerCar } from './ai/runner.js';
 import { warmLocalPlanner, pumpPlanner, boxesNear } from './ai/localplan.js';
 import { Heat } from './game/heat.js';
@@ -381,6 +382,8 @@ class Game {
     this.dispatcher = new Dispatcher(this);
     this.roadblocks = new RoadblockManager(this);
     this.traffic = new Traffic(this);
+    // Traffic that gets itself chased: game/suspects.js.
+    this.suspects = new Suspects(this);
     this.score = new Score(this);
     this.helicopter = new Helicopter(this);
     /** Set while the wanted level was typed in rather than earned. */
@@ -2186,6 +2189,7 @@ class Game {
     this.dispatcher.reset();
     this.roadblocks.reset();
     this.traffic.clear();
+    this.suspects.reset();
     this.helicopter.reset();
     this.heliGrounded = false;
     this.props.reset();
@@ -3029,6 +3033,7 @@ class Game {
       if (this.runner) this._runnerSight(dt);
       this.roadblocks.update(dt, hunted);
       this.traffic.update(dt);
+      this.suspects.update(dt);
       this.helicopter.update(dt, hunted);
       this.props.update(dt);
       this.garage.update(dt);
@@ -3383,7 +3388,8 @@ class Game {
 
       // Lit in a chase, or for the second of a "move along" blip from a patrol
       // car you are sitting in front of (Officer._warnIfBlocked).
-      if (v.isPolice && !v.unmarked && (this.heat.tier > 0 || v.blipFor > 0)) {
+      // Or on a suspect's tail, whatever the player's wanted level.
+      if (v.isPolice && !v.unmarked && (this.heat.tier > 0 || v.blipFor > 0 || v.onCall)) {
         // Each body puts its bar somewhere different; the body says where. An
         // imported one carries the offsets on the object (it is a whole scene,
         // not one geometry), a generated one on its geometry.

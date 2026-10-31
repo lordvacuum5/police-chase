@@ -441,6 +441,11 @@ as the heightfield collider is), not a bilinear blend -- they parted by 4 m
 on steep banks. Traffic routes with `noUTurn` and never turns round; tractors
 drive **loops** (`tractorLoop`) with a corner speed profile (`_timeLoop`).
 Rock slices left out of the quarry must still take their random draws (`ghost`).
+**Suspects** (`game/suspects.js`): traffic that offends in front of a patrol
+becomes a Runner-driven car with its own heat; its units are **off
+`dispatcher.units`** while on it (driven by `Suspects._run`, `v.onCall` lights
+them), and go back via `dispatcher.adopt`. A caught one is parked off the road
+for good (`v.parkedForGood`). `tests/suspects.js`.
 A target on the railway is followed **down the line** (`Officer._railFollow`,
 `tests/railchase.js`), not by the lead aim, which put units in the woods.
 Level-crossing arms break (`Railway._hitArm`, needs `game` passed to

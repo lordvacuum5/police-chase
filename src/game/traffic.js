@@ -55,6 +55,8 @@ const VERGE = 0.9;
 const CRAWL = 3;
 /** How long a car stays pulled over once it has started, s. */
 const PULL_HOLD = 4;
+/** The chance a car runs a red light it comes to, when a patrol car is close enough to see. */
+const RED_RUN = 0.1;
 /** Pull over for blue lights within this, m. */
 const PULL_RANGE = 70;
 /**
@@ -323,7 +325,20 @@ export class Traffic {
     // Red lights, the same way a patrol car stops for them (Officer._signalCap).
     if (g.signals) {
       const s = g.signals.stopDistanceAt(v.position.x, v.position.z, v.forward.x, v.forward.z, v.speed);
-      if (Number.isFinite(s)) cap = Math.min(cap, Math.sqrt(2 * 3.4 * Math.max(0, s - 1.0)));
+      if (Number.isFinite(s)) {
+        // Now and then one goes through it, with a patrol car there to see:
+        // "very, very, very occasionally a traffic car will say run a red
+        // light in front of a police officer." Decided once a light. Then it
+        // is a suspect (game/suspects.js), and the getaway driver has it.
+        if (c.redCall === undefined) {
+          const w = g.suspects && g.rng() < RED_RUN ? g.suspects.witnessAt(v.position.x, v.position.z) : null;
+          c.redCall = !!w;
+          if (w && g.suspects.offence(c, 'red', w)) return;
+        }
+        cap = Math.min(cap, Math.sqrt(2 * 3.4 * Math.max(0, s - 1.0)));
+      } else {
+        c.redCall = undefined;
+      }
     }
 
     // Queueing behind what is in front, and nothing else: Driver.avoid sweeps
@@ -368,6 +383,23 @@ export class Traffic {
     const out = d.driveTo(aim, CRAWL, dt, {});
     if (v.forwardSpeed > CRAWL + 1.5) { out.throttle = 0; out.brake = 0.4; }
     v.setControls(out);
+  }
+
+  /** Its record in `cars`, for a traffic vehicle. */
+  recordOf(v) {
+    return this.cars.find((c) => c.v === v) || null;
+  }
+
+  /**
+   * Hand a car over to something else -- the suspects (game/suspects.js) --
+   * still in the world, no longer traffic: not driven, counted or removed
+   * from here.
+   */
+  release(c) {
+    if (c.v.dormant) { c.v.body.setEnabled(true); c.v.dormant = false; }
+    const i = this.cars.indexOf(c);
+    if (i >= 0) this.cars.splice(i, 1);
+    c.v.isTraffic = false;
   }
 
   _remove(c) {

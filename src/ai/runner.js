@@ -205,6 +205,9 @@ export class Runner {
    * runner ignoring the only car being driven by a person.
    */
   _threats() {
+    // A suspect's own pursuers are not on the dispatcher's board: whoever
+    // owns it says (game/suspects.js).
+    if (this.threats) return this.threats();
     const out = [];
     const player = this.game.player;
     if (player && player !== this.vehicle && !player.isAircraft) out.push(player);

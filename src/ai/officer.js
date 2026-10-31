@@ -706,6 +706,8 @@ export class Officer {
       if (ahead && ahead !== this.game.player && ahead.isTraffic) obstacle = ahead;
     }
     this._heldByPlayer = obstacle === this.game.player;
+    // What it is waiting behind, for the suspects' obstruction rule.
+    this._obstacle = obstacle;
     this.driver.holdBehind(obstacle, dt);
     this._warnIfBlocked(dt, patrolling);
     this.repathTimer -= dt;

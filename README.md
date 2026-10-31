@@ -7404,6 +7404,56 @@ to self-right in midair."*
   before. The haul road rig: climb unchanged, 0.12 damage (none recorded
   before); the car parked on ledge 3 slides, as it did.
 
+### Traffic that gets itself chased
+
+*"If they hit a police car, or if a traffic runs a red light, or if they block
+a police car's way ... I want then ... a proper wanted level to start on that
+car ... the same properties ... of the first runaway car we've ever made ... it
+still looks like a civilian car, but it wants to start running away and use
+the same routing system ... And have independent heat levels that you can
+slowly go up."* (`game/suspects.js`)
+
+* **What starts one.** A traffic car hits a patrol car; sits stopped in front
+  of one for 12 s with no red light to explain it; runs a red light with one
+  within 80 m to see (game/traffic.js, a 1-in-10 chance at each light when
+  watched -- Haldon Vale has no lights, so this is for a map that does); or,
+  the country's version, floors it in front of one: once a second each
+  traffic car a patrol car can see within 45 m has a 3% chance, and is not
+  asked again for 40 s. At most two at once. In `tests/suspects.js`, five
+  minutes with nobody forcing anything: one, a car bolting, caught and parked.
+* **The chase.** The car stops being traffic and the getaway driver
+  (`ai/runner.js`) has it, running from the start -- same routing, same
+  driving as the burglar's car. The patrol car that saw it goes after it. Its
+  wanted level is its own: 1 to start, +1 every 45 s it is in sight, +0.4 for
+  a hit, down 1 every 18 s once nobody has seen it for 8 s. Its cars --
+  2/3/4/5/6 by that level -- are taken off the dispatcher's board (patrols
+  first, while the player is not wanted; new ones otherwise), so the player's
+  chase neither counts them nor steers them, and they have their lights on.
+  Forced, on Haldon: the suspect ran at 50-94 km/h with the first unit 3-48 m
+  behind it for a minute.
+* **If the player gets wanted as well.** *"I'd only want like two police cars
+  to break off pursuit and actually follow, chase me ... I don't want suddenly
+  like 50 police cars chasing me ... pull police cars slowly away from the
+  other car."* The player's chase is the dispatcher's as always, at its own
+  level -- one star is two cars -- and the suspect keeps its own. When the
+  dispatcher is short it takes the suspects' cars first, one every 4 s,
+  nearest to the player first, never a suspect's last, and waits for that
+  rather than sending new ones. Forced: suspect at 4.5 with 6 cars, player at
+  one star -- the player's chase was the board's 3 cars, the suspect kept 6.
+* **Caught.** *"A full busted thing. But nothing needs to appear on the
+  screen ... that car to then kind of not move for the rest of the map ...
+  off the road."* Stopped (under 1.5 m/s) with a unit's bodywork within 3.2 m
+  for 5 s -- the units stop pushing a car that is all but stopped, which they
+  did, shoving it along at 3-20 km/h so the arrest never came -- and it pulls
+  onto the verge and stays there, handbrake on, for good: 3 m off the road,
+  moved 2 cm in the next 15 s. Its cars go back on patrol. A radio line, no
+  screen.
+* **Lost.** Its level run down to nothing: the cars go back on patrol, and it
+  drives on and is taken off the map once nobody can see it, 320 m away.
+
+Not done: a guest in a multiplayer game sees the car, but the suspect's state
+lives on the host only.
+
 ### The dirt track's sides, again
 
 *"It's like the two sides of the dirt track, like right when it stops being
