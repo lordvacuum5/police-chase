@@ -31,6 +31,9 @@ const QUARRY_MIN_CLIFF = 14;
 /** How far the floor is dug below the lowest ground round it, m: the way in is a ramp down. */
 const QUARRY_DIG = 16;
 const RAMP_LEN = 100;
+/** The dirt track's banks: metres of bank for each metre of depth, and the widest, m. */
+const BANK_FADE = 2.2;
+const BANK_MAX = 45;
 /** The rock face, from inside the floor's edge to beyond it, m: thick enough to hide the grid's own slope, which on a 4 m lattice reaches up to a diagonal (5.7 m) either side of the edge. */
 const FACE_IN = 6, FACE_OUT = 7;
 /** The terraces: how tall each face is meant to be, m, and how wide each ledge. See buildQuarry. */
@@ -264,7 +267,13 @@ export function quarryGround(q, base) {
   const top = base(ex, ez);
   for (let d = q.r - 6; d <= q.r + RAMP_LEN; d += 4) {
     const t = clamp((d - (q.r - 6)) / (RAMP_LEN + 6), 0, 1);
-    flatten.push({ x: q.x + ox * d, z: q.z + oz * d, r: 8, fade: 10, h: lerp(q.floor, top, t) });
+    const x = q.x + ox * d, z = q.z + oz * d, h = lerp(q.floor, top, t);
+    // Banks either side as wide as they are deep, near enough: a fixed 10 m
+    // made them 59 degrees where the track cuts through the rim, and a car on
+    // the edge of one rolled down it or was thrown -- "if I go on the edge of
+    // that ... a really steep edge, so you start having weird stuff in my car".
+    const fade = clamp((base(x, z) - h) * BANK_FADE, 10, BANK_MAX);
+    flatten.push({ x, z, r: 8, fade, h });
   }
   return { flatten, pin: { x: q.x, z: q.z, r0: q.r + 0.01, r1: q.r + 9, above: q.floor + 2.5 } };
 }
@@ -492,6 +501,15 @@ export function buildQuarry(ctx, q) {
     const mid = (a0 + a1) / 2;
     if (Math.abs(Math.atan2(Math.sin(mid - q.open), Math.cos(mid - q.open))) < gap) continue;
     if (Math.max(h0, h1) - q.floor < 2.5) continue;
+    // Nor beside the cutting where its banks fall steeply along the rim: a
+    // slice's top is straight from one end to the other and the bank is not,
+    // and they left a step of up to 2.5 m at the rock's outer edge. The
+    // graded bank is the ground there instead. Built all the same, into
+    // nothing, so it takes its random draws: `continue` here would re-roll
+    // everything built after the quarry (see ctx.xrng in countrygen.js).
+    const off = Math.abs(Math.atan2(Math.sin(mid - q.open), Math.cos(mid - q.open)));
+    const ghost = off < gap + (BANK_MAX + 8) / q.r && Math.abs(h1 - h0) > 1.2;
+    const bw = ghost ? new MeshBuilder() : b;
     const lo = q.floor - 1.5, r1 = q.r + FACE_OUT;
     for (let i = 0; i < tiers; i++) {
       const ra = rAt(a0, i), rb = rAt(a1, i);
@@ -508,26 +526,26 @@ export function buildQuarry(ctx, q) {
         [ax, lo, az], [bx, lo, bz], [cx, lo, cz], [dx, lo, dz],
         [ax, t0, az], [bx, t1, bz], [cx, t1 - lip, cz], [dx, t0 - lip, dz],
       ];
-      addHull(W, c);
+      if (!ghost) addHull(W, c);
       // Pink-grey limestone, a little different face by face.
-      addPrism(b, c, new THREE.Color().setHSL(rand(rng, 0.02, 0.07), rand(rng, 0.14, 0.32), rand(rng, 0.46, 0.62)));
+      addPrism(bw, c, new THREE.Color().setHSL(rand(rng, 0.02, 0.07), rand(rng, 0.14, 0.32), rand(rng, 0.46, 0.62)));
       // A band of darker bedding across the face, a little proud of it.
       const b0 = q.floor + (Math.min(h0, h1) - q.floor) * (i + 0.45) / tiers;
       const [ex, ez] = P(a0, ra - 0.08), [fx2, fz2] = P(a1, rb - 0.08);
-      b.addWall([{ x: ex, z: ez }, { x: fx2, z: fz2 }], b0, b0 + 0.6, new THREE.Color().setHSL(0.05, 0.12, 0.4));
+      bw.addWall([{ x: ex, z: ez }, { x: fx2, z: fz2 }], b0, b0 + 0.6, new THREE.Color().setHSL(0.05, 0.12, 0.4));
       // The ledge on top, grassed, up to the foot of the face above, with
       // scrub growing on it.
       if (i < tiers - 1) {
         const na = rAt(a0, i + 1), nb = rAt(a1, i + 1);
         const [gx, gz] = P(a1, nb), [hx2, hz2] = P(a0, na);
-        addPrism(b, [
+        addPrism(bw, [
           [ax, t0 - 0.05, az], [bx, t1 - 0.05, bz], [gx, t1 - 0.05, gz], [hx2, t0 - 0.05, hz2],
           [ax, t0 + 0.06, az], [bx, t1 + 0.06, bz], [gx, t1 + 0.06, gz], [hx2, t0 + 0.06, hz2],
         ], ledge(rand(rng, -0.04, 0.06)));
         if (rng() < 0.55) {
           const u = rng(), am = lerp(a0, a1, u), rm = lerp(lerp(ra, rb, u), lerp(na, nb, u), rand(rng, 0.3, 0.7));
           const [bx2, bz2] = P(am, rm), s = rand(rng, 0.8, 1.8);
-          b.addTaperedBox(s * 1.6, s, s * 1.6, bx2, lerp(t0, t1, u) + s * 0.5, bz2, ledge(-0.05), 0.4, 0.4, rng() * TAU);
+          bw.addTaperedBox(s * 1.6, s, s * 1.6, bx2, lerp(t0, t1, u) + s * 0.5, bz2, ledge(-0.05), 0.4, 0.4, rng() * TAU);
         }
       }
     }
@@ -623,6 +641,14 @@ export function buildQuarry(ctx, q) {
   const kx = q.x + ox * 22 - tx * 12, kz = q.z + oz * 22 - tz * 12;
   addKicker(ctx, b, kx, kz, Math.atan2(tx, tz), 10, 5, 2.2, ramp);
   addTable(ctx, b, q.x - ox * 22, q.z - oz * 22, Math.atan2(-tx, -tz), 9, 7, 9, 6, 1.8, ramp);
+  // Where they are, roughly, for the trucks to keep clear of (countrylife.js):
+  // the kicker from its run-up to its lip, the table either way along it.
+  // Each a rectangle: its middle, the way it runs (ax, az), half its length
+  // that way and half its width across.
+  q.jumps = [
+    { x: kx - tx * 5, z: kz - tz * 5, ax: tx, az: tz, along: 5, across: 2.5 },
+    { x: q.x - ox * 22, z: q.z - oz * 22, ax: tx, az: tz, along: 12.5, across: 3 },
+  ];
 
   const mesh = new THREE.Mesh(b.build(), vertexColorMaterial());
   mesh.castShadow = true;

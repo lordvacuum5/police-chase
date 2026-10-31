@@ -257,18 +257,28 @@ export class Traffic {
 
   _route(c) {
     const g = this.game, gr = g.graph, v = c.v;
-    let goal = null;
-    for (let i = 0; i < 12 && !goal; i++) {
+    // On somewhere, never back. "They should just be going in loops and
+    // around the map and stuff. They should really never be turning around."
+    // A new goal used to be anywhere, and the router would turn the car round
+    // for one behind it -- where it stood, or at the next junction and
+    // straight back down the same road -- or send it to the end of a dead end
+    // to turn round there, onto the verge. Now: not a dead end, the route
+    // never turning round (`noUTurn`), and a goal it has to turn round for
+    // passed over for another.
+    const deadEnd = (n) => gr.roadDegree(n) < 2 || n.edges.some((id) => gr.edges[id].turningHead);
+    let pts = null;
+    for (let i = 0; i < 12; i++) {
       const n = gr.randomNode(g.rng);
       const d = dist2(n.x, n.z, v.position.x, v.position.z);
-      if (d > 150 && d < 800) goal = n;
+      if (d < 150 || d > 800 || deadEnd(n)) continue;
+      const p = gr.pathFromPosition(
+        v.position.x, v.position.z, v.forward.x, v.forward.z, n.id, LANE,
+        Infinity, v.speed, 9, { cuts: false, noUTurn: true },
+      );
+      if (p.length >= 2 && !turnsBack(p, v.forward)) { pts = p; break; }
+      if (!pts && p.length >= 2) pts = p;
     }
-    if (!goal) goal = gr.randomNode(g.rng);
-    const pts = gr.pathFromPosition(
-      v.position.x, v.position.z, v.forward.x, v.forward.z, goal.id, LANE,
-      Infinity, v.speed, 9, { cuts: false },
-    );
-    if (pts.length >= 2) c.driver.setPath(pts);
+    if (pts) c.driver.setPath(pts);
   }
 
   /** Blue lights near enough to get out of the way of. */
@@ -370,4 +380,20 @@ export class Traffic {
   clear() {
     for (const c of this.cars.slice()) this._remove(c);
   }
+}
+
+/**
+ * Does a path send the car back the way it is pointing from? Anywhere in it a
+ * stretch that runs against `fwd` -- the car's heading -- within its first
+ * 60 m, which is a turn round, not a corner.
+ */
+function turnsBack(pts, fwd) {
+  let run = 0;
+  for (let i = 1; i < pts.length && run < 60; i++) {
+    const dx = pts[i].x - pts[i - 1].x, dz = pts[i].z - pts[i - 1].z, l = Math.hypot(dx, dz);
+    if (l < 1e-3) continue;
+    if ((dx * fwd.x + dz * fwd.z) / l < -0.7) return true;
+    run += l;
+  }
+  return false;
 }

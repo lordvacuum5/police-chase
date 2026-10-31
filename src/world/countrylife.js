@@ -33,6 +33,13 @@ import { GLTFLoader } from '../../vendor/addons/loaders/GLTFLoader.js';
 /** How many tractors on the lanes, how fast, m/s. */
 const TRACTORS = 3;
 const TRACTOR_SPEED = 7;
+/** A tractor's loop of lanes: how long, m, and how far left of the middle it keeps. */
+const LOOP_MIN = 600;
+const LOOP_MAX = 4500;
+const TRACTOR_LANE = 2.2;
+/** Round a loop's corners: the most sideways pull, and braking or pulling away, m/s^2. */
+const LOOP_LAT = 1.5;
+const LOOP_ACCEL = 1;
 /** Dump trucks, m/s; the combine, m/s. */
 const TRUCK_SPEED = 6;
 const COMBINE_SPEED = 2.5;
@@ -54,8 +61,12 @@ const GRIP_ACCEL = 10;
 const ADRIFT = 12;
 /** The most a working vehicle's wheels steer, radians. */
 const STEER_MAX = 0.6;
+/** The steepest a working vehicle is ever pitched, radians. */
+const PITCH_MAX = 0.4;
 /** How far a quarry bale is kept from anywhere a truck drives, m. */
 const BALE_CLEAR = 8;
+/** How far the trucks keep from the quarry floor's jumps, m. */
+const JUMP_CLEAR = 5;
 /** Where the parked tractor stands ahead of its trailer's middle, m: hitched. */
 const HITCH = 6.85;
 /** Birds: how many flocks, how many to a flock, and what puts them up, m. */
@@ -72,7 +83,10 @@ const FLOCK_UP = 14;
 
 /** A polyline with its distances; points may carry their own height `y`. */
 class Route {
-  constructor(points) {
+  /** `loop`: closed, its end joined back to its start, and `s` taken round it. */
+  constructor(points, loop = false) {
+    this.loop = loop;
+    if (loop) points = points.concat([points[0]]);
     this.p = points;
     this.s = [0];
     for (let i = 1; i < points.length; i++) {
@@ -84,7 +98,7 @@ class Route {
   /** Where `s` along it is: x, z, and y if the route knows it. */
   at(s) {
     const S = this.s, P = this.p;
-    s = clamp(s, 0, this.len);
+    s = this.loop ? ((s % this.len) + this.len) % this.len : clamp(s, 0, this.len);
     let lo = 0, hi = S.length - 1;
     while (hi - lo > 1) { const m = (lo + hi) >> 1; if (S[m] <= s) lo = m; else hi = m; }
     const a = P[lo], b = P[Math.min(lo + 1, P.length - 1)];
@@ -123,7 +137,8 @@ class Mover {
     this.turnY = turnY;
     this.turnTime = (Math.PI * turnR) / (speed * 0.6);
     this.cycle = 2 * (this.leg + this.turnTime);
-    this._planTurns(avoid);
+    // Round a loop there is no turning: once round is the whole cycle.
+    if (route.loop) { this._timeLoop(); this.turnTime = 0; } else this._planTurns(avoid);
     this.position = new THREE.Vector3(0, -60, 0);
     this.linvel = new THREE.Vector3();
     this.forward = new THREE.Vector3(0, 0, 1);
@@ -156,6 +171,36 @@ class Mover {
       );
     }
     this.placed = false;
+  }
+
+  /**
+   * A loop's timetable: slower round the corners, as a driver takes them --
+   * no more than LOOP_LAT of sideways pull, braking and pulling away at
+   * LOOP_ACCEL -- so a junction the loop turns sharply at is taken at a
+   * crawl, not swung round at full speed. `_ts`/`_tt`: distance and time.
+   */
+  _timeLoop() {
+    const r = this.route, step = 2, n = Math.ceil(r.len / step);
+    const v = [];
+    for (let i = 0; i < n; i++) {
+      const s = i * step;
+      let dh = r.heading(s + 4) - r.heading(s - 4);
+      dh = Math.abs(Math.atan2(Math.sin(dh), Math.cos(dh)));
+      const radius = dh > 1e-3 ? 8 / dh : Infinity;
+      v.push(Math.max(1.2, Math.min(this.speed0, Math.sqrt(LOOP_LAT * radius))));
+    }
+    // Braking into a corner and pulling away after it, round the loop twice so
+    // the join is right too.
+    for (let pass = 0; pass < 2; pass++) {
+      for (let i = 0; i < n; i++) { const j = (i + 1) % n; v[j] = Math.min(v[j], Math.sqrt(v[i] * v[i] + 2 * LOOP_ACCEL * step)); }
+      for (let i = n - 1; i >= 0; i--) { const j = (i - 1 + n) % n; v[j] = Math.min(v[j], Math.sqrt(v[i] * v[i] + 2 * LOOP_ACCEL * step)); }
+    }
+    this._ts = [0]; this._tt = [0];
+    for (let i = 0; i < n; i++) {
+      this._ts.push(Math.min(r.len, (i + 1) * step));
+      this._tt.push(this._tt[i] + step / ((v[i] + v[(i + 1) % n]) / 2));
+    }
+    this.cycle = this.leg = this._tt[n];
   }
 
   /** Where it is at time t: { x, y, z, heading }. */
@@ -207,6 +252,13 @@ class Mover {
     // sideways, turning at 177 degrees a second.
     const r = this.route, R = this.turnR, B = Math.max(14, 2.5 * (2 * R + 2 * this.lane));
     const p = (((t + this.offset) % this.cycle) + this.cycle) % this.cycle;
+    if (r.loop) {
+      const T = this._tt, S = this._ts;
+      let lo = 0, hi = T.length - 1;
+      while (hi - lo > 1) { const m = (lo + hi) >> 1; if (T[m] <= p) lo = m; else hi = m; }
+      const s = lerp(S[lo], S[hi], (p - T[lo]) / ((T[hi] - T[lo]) || 1)), at = r.at(s);
+      return { x: at.x, y: this.ctx.at(at.x, at.z), z: at.z, heading: r.heading(s), moving: true, slope: null };
+    }
     const legs = [
       { from: 0, end: this.ends[1] },               // out, after turning at the start
       { from: this.leg + this.turnTime, end: this.ends[0] },
@@ -266,8 +318,15 @@ class Mover {
     const a = this.pose(t);
     // Pitched to the ground under its ends.
     const fx = Math.sin(a.heading), fz = Math.cos(a.heading), half = this.spec.dims.l * 0.35;
-    const pitch = a.slope !== null ? Math.atan(a.slope)
-      : Math.atan2(this.ctx.at(a.x + fx * half, a.z + fz * half) - this.ctx.at(a.x - fx * half, a.z - fz * half), half * 2);
+    // The ground under its ends is whatever it drives on (turnY) where that is
+    // given, and never steeper than a vehicle could stand on. "When it turns
+    // around ... and then it comes off the grass onto the actual start of the
+    // quarry track, it tilts like 90 degrees forward and then uprights
+    // itself": by the rim the height grid under its nose is the quarry floor,
+    // thirty metres down.
+    const gy = (x, z) => (this.turnY ? this.turnY(x, z, this.ctx.at(x, z)) : this.ctx.at(x, z));
+    const pitch = clamp(a.slope !== null ? Math.atan(a.slope)
+      : Math.atan2(gy(a.x + fx * half, a.z + fz * half) - gy(a.x - fx * half, a.z - fz * half), half * 2), -PITCH_MAX, PITCH_MAX);
     _e.set(-pitch, a.heading, 0, 'YXZ');
     _q.setFromEuler(_e);
     const pos = { x: a.x, y: a.y, z: a.z }, rot = { x: _q.x, y: _q.y, z: _q.z, w: _q.w };
@@ -481,15 +540,21 @@ export function buildLife(ctx, scene, { fields, quarry, rail, combineField, bale
   const movers = [];
   // Nowhere a vehicle may swing out to turn round, or a combine work: the
   // farmyards and villages (their buildings), and the quarry's rock.
-  const avoid = (x, z) => nearBuildings(ctx, x, z) || (quarry && (inQuarryRock(quarry, x, z) || onHaulRoad(quarry, x, z)));
+  const avoid = (x, z) => nearBuildings(ctx, x, z)
+    || (quarry && (inQuarryRock(quarry, x, z) || onHaulRoad(quarry, x, z) || onJump(quarry, x, z)));
 
   // ---- tractors on the lanes ----
-  // Lanes and B-roads well away from the villages, the farms' own tracks, the
-  // railway (a tractor on a crossing would be under the train) and the quarry,
-  // and away from each other.
+  // Round loops of lanes, the way anything that drives goes about: "they
+  // turn really weirdly. They need to turn more like proper vehicles." Each
+  // drove one lane back and forth and spun a half circle at each end, out
+  // through the hedges. Now a loop: a lane, and the quickest way round by
+  // road from its far end back to its near one, kept on the left, its
+  // junctions rounded as the traffic's are (RoadGraph.pathToPoints). Away from
+  // the villages, the railway (a tractor on a crossing would be under the
+  // train) and the quarry, and away from each other.
   const railEdges = new Set((rail && rail.cross ? rail.cross : []).map((c) => c.edge));
   const cands = graph.edges.filter((e) => !e.cut && !e.turningHead && !e.village && !e.farm && !e.aroad
-    && (e.kind === 'track' || e.kind === 'country') && e.length > 260 && e.length < 900 && !railEdges.has(e.id)
+    && (e.kind === 'track' || e.kind === 'country') && e.length > 120 && e.length < 900 && !railEdges.has(e.id)
     && !(quarry && Math.hypot(e.points[0].x - quarry.x, e.points[0].z - quarry.z) < quarry.r + 40));
   const taken = [];
   const paints = [0xb3261e, 0x2f6e2a, 0x2a5aa8];
@@ -497,15 +562,11 @@ export function buildLife(ctx, scene, { fields, quarry, rail, combineField, bale
     const e = cands[randInt(rng, 0, cands.length - 1)];
     const mid = e.points[Math.floor(e.points.length / 2)];
     if (taken.some((m) => Math.hypot(m.x - mid.x, m.z - mid.z) < 400)) continue;
+    const pts = tractorLoop(graph, e, railEdges, quarry);
+    if (!pts) continue;
     taken.push(mid);
-    const pts = [e.segs[0].a, ...e.segs.map((s) => s.b)];
-    // Short of the junctions at each end, to turn round in the road.
-    const full = new Route(pts);
-    const trimmed = [];
-    for (let s = 14; s <= full.len - 14; s += 4) trimmed.push(full.at(s));
-    const lane = Math.min(2.2, e.width * 0.5 - 1.3);
     movers.push(new Mover(ctx, scene, {
-      route: new Route(trimmed), speed: TRACTOR_SPEED, lane, offset: rand(rng, 0, 500), name: 'tractor', turnR: TURN_TRACTOR, avoid,
+      route: new Route(pts, true), speed: TRACTOR_SPEED, offset: rand(rng, 0, 500), name: 'tractor', turnR: TURN_TRACTOR, avoid,
       geo: tractorGeometry(paints[taken.length - 1]), dims: { l: 4.2, w: 2.3 }, model: 'tractor', paint: paints[taken.length - 1],
       colliders: [{ hx: 1.1, hy: 1.3, hz: 2.0, y: 1.35 }],
     }));
@@ -851,6 +912,40 @@ function nearBuildings(ctx, x, z) {
 
 /** In the quarry's rock: between the floor and the outside of the face. */
 /**
+ * A loop of road through `e`: along it, then the quickest way back from its
+ * far end to its near one by any other road (the edge itself taken out of the
+ * search for the moment). Kept on the left, junctions rounded. Null when
+ * there is none of a tractor's length (LOOP_MIN-LOOP_MAX m), or it would use
+ * a level crossing or the quarry's roads. Villages and A-roads are allowed,
+ * as for any tractor: barred, 22 of the 29 lanes had no way round and only
+ * two of the three tractors found a loop.
+ * Started and ended half way along `e`, so the join is on a straight.
+ */
+function tractorLoop(graph, e, railEdges, quarry) {
+  const wasCut = e.cut;
+  e.cut = true;
+  let back = null;
+  try { back = graph.route(e.b, e.a); } finally { e.cut = wasCut; }
+  if (!back || back.length < 3) return null;
+  const nodes = [e.a, ...back];
+  let len = e.length;
+  for (let i = 1; i < back.length; i++) {
+    const be = graph.edgeBetween(back[i - 1], back[i]);
+    if (!be || be.quarry || be.cut || railEdges.has(be.id)) return null;
+    len += be.length;
+  }
+  if (len < LOOP_MIN || len > LOOP_MAX) return null;
+  // Round once and on along `e` again, so the corner at its start is rounded
+  // too; then cut from half way along `e` to half way along it the next time.
+  const raw = graph.pathToPoints([...nodes, e.b], TRACTOR_LANE, true, 14);
+  const full = new Route(raw);
+  const out = [];
+  for (let s = e.length * 0.5; s < full.len - e.length * 0.5; s += 4) out.push(full.at(s));
+  if (quarry && out.some((p) => Math.hypot(p.x - quarry.x, p.z - quarry.z) < quarry.r + 20)) return null;
+  return out.length > 20 ? out : null;
+}
+
+/**
  * The bales on the quarry floor, moved off the trucks' way: "it goes straight
  * through the bales of hay, so just move the bales of hay somewhere else where
  * it won't go through them." Each one within BALE_CLEAR of anywhere a truck
@@ -930,7 +1025,8 @@ function haulRun(ctx, q) {
   const T = q.track[0], ux = q.x - T.x, uz = q.z - T.z, ul = Math.hypot(ux, uz) || 1;
   let nx = -uz / ul, nz = ux / ul;
   if (nx * (S.x - q.x) + nz * (S.z - q.z) < 0) { nx = -nx; nz = -nz; }
-  const C = { x: q.x + nx * 28, z: q.z + nz * 28 };
+  // Further out than the other truck's turn in the middle swings (20 m).
+  const C = { x: q.x + nx * 34, z: q.z + nz * 34 };
   const lead = bez(C, { x: S.x - t0.x * 15, z: S.z - t0.z * 15 }, S, 24, () => q.floor);
   // Out: turning off the last landing before its end -- past it, at the same
   // distance out, is the ledge below -- and away from the edge onto the field,
@@ -955,9 +1051,20 @@ function haulRun(ctx, q) {
  */
 function acrossFloor(q) {
   const pts = q.track.slice().reverse();
-  const end = pts[pts.length - 1], dx = q.x - end.x, dz = q.z - end.z, d = Math.hypot(dx, dz) || 1;
-  pts.push({ x: q.x + (dx / d) * 28, z: q.z + (dz / d) * 28 });
+  // To the middle and no further: on past it, to 28 m beyond, it drove
+  // through the table. "It goes through the ramp now, so it needs to go round
+  // the ramp." Its turn there swings to whichever side misses the kicker
+  // (onJump, in `avoid`).
+  pts.push({ x: q.x, z: q.z });
   return pts;
+}
+
+/** Over one of the quarry floor's jumps (buildQuarry's q.jumps), or near it. */
+function onJump(q, x, z) {
+  return (q.jumps || []).some((j) => {
+    const dx = x - j.x, dz = z - j.z;
+    return Math.abs(dx * j.ax + dz * j.az) < j.along + JUMP_CLEAR && Math.abs(dx * j.az - dz * j.ax) < j.across + JUMP_CLEAR;
+  });
 }
 
 function inQuarryRock(q, x, z) {

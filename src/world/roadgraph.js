@@ -1030,7 +1030,7 @@ export class RoadGraph {
     // Only from a crawl: tried at any speed, priced by it, it cost the chase
     // (keepup.js Haldon, 90 km/h: 114 -> 163 m behind) -- a unit at speed
     // turned round for a target that was only behind it for a moment.
-    if ((typeof window === 'undefined' || window.__uTurn !== false) && speed < UTURN_MAX) {
+    if ((typeof window === 'undefined' || window.__uTurn !== false) && speed < UTURN_MAX && !(opts && opts.noUTurn)) {
       const back = this._pathAhead(x, z, -dirX, -dirZ, goalId, laneOffset, speedCap, corner, opts);
       if (back.length && pathTime(back) + UTURN_COST + speed * UTURN_PER_MS < bestT) best = back;
     }
@@ -1184,7 +1184,9 @@ export class RoadGraph {
     }
 
     if (aheadId === goalId) return lead;
-    const route = this.route(aheadId, goalId, speedCap, opts);
+    // A car that never turns round may not go to the junction ahead and
+    // straight back down this road either.
+    const route = this.route(aheadId, goalId, speedCap, opts && opts.noUTurn ? { ...opts, noBack: e.id } : opts);
     if (!route || route.length < 2) return lead;
     if (OLD_CORNERS()) {
       const tail = this.pathToPoints(route, laneOffset, true, corner);
@@ -1236,6 +1238,7 @@ export class RoadGraph {
     // threading somebody's garden looks like a bug whatever it saves.
     const cuts = !!(opts && opts.cuts);
     const minWidth = (opts && opts.minWidth) || 0;
+    const noBack = opts && opts.noBack !== undefined ? opts.noBack : -1;
     if (startId === goalId) return [startId];
     const N = this.nodes.length;
     const stamp = ++this._stamp;
@@ -1296,6 +1299,9 @@ export class RoadGraph {
       for (const eid of this.nodes[cur].edges) {
         const e = this.edges[eid];
         if (e.cut && (!cuts || !this.cutsEnabled || e.width < minWidth)) continue;
+        // Not straight back down the road it is leaving (opts.noBack: the
+        // traffic, which never turns round).
+        if (noBack === eid) continue;
         const nxt = this.other(e, cur);
         if (closed.has(nxt)) continue;
         // A cut costs its length at its own slow speed *and* a flat charge on top,

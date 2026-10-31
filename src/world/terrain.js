@@ -379,7 +379,17 @@ export function buildHeightGrid(base, { half = 1000, graph = null, flatten = [],
     const tx = fi - i, tz = fj - j;
     const a = H[idx(i, j)], b = H[idx(i + 1, j)];
     const c = H[idx(i, j + 1)], d = H[idx(i + 1, j + 1)];
-    return (a + (b - a) * tx) * (1 - tz) + (c + (d - c) * tx) * tz;
+    // On the two triangles each cell is drawn as (buildTerrainMesh), split
+    // corner (i+1, j) to (i, j+1) -- which is how the heightfield collider
+    // splits them too. It was the smooth blend of the four corners, which on
+    // gentle ground is the same thing, and on a steep bank is not: by the dirt
+    // track out of the quarry, 59 degrees, the wheels rode a surface up to
+    // 4 m from the one drawn and the one the body lands on. "If I go on the
+    // edge of that ... a really steep edge, so you start having weird stuff
+    // in my car."
+    return tx + tz <= 1
+      ? a + (b - a) * tx + (c - a) * tz
+      : d + (c - d) * (1 - tx) + (b - d) * (1 - tz);
   };
   let max = 0, min = 0;
   for (let k = 0; k < H.length; k++) { if (H[k] > max) max = H[k]; if (H[k] < min) min = H[k]; }

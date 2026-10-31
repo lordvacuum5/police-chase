@@ -7349,6 +7349,61 @@ to self-right in midair."*
   clear spot on the floor (`clearQuarryBales`). Nearest truck path to each of
   the six: 4.4, 2.9, 1.4, 2.8, 1.3, 0.2 m before; 8.1-9.8 m after.
 
+### Traffic that never turns round, tractors on loops, the dirt track's banks
+
+* **Traffic never turns round.** *"The traffic cars still seem to go off-road a
+  bit. Maybe it's mainly when they turn around ... They should just be going
+  in loops and around the map and stuff. They should really never be turning
+  around."* Near the end of each route a car was given a new goal anywhere,
+  and the router turned it round for one behind it: where it stood (slow
+  enough to), or at the next junction and straight back down the same road,
+  or at the end of a dead end -- off onto the verge each time. Now its routes
+  are asked for with `noUTurn` (no turning where it stands; `route` refuses
+  the road it is leaving, `noBack`), dead ends are not goals, and a goal that
+  still needs a turn within 60 m is passed over for another
+  (`tests/trafficturn.js`, 180 s, Haldon): 0.19 turns a car-minute -> 0.08-0.11,
+  and those left are all one hairpin bend in a road, which the rig counts;
+  moving off the tarmac 5.1% -> 0.8-1.0%.
+* **Tractors go round loops.** *"They turn really weirdly. They need to turn
+  more like proper vehicles."* Each drove one lane back and forth and swung a
+  half circle at each end, through the hedges. Now each drives a loop: its
+  lane, then the quickest way round by road back to its start (villages and
+  A-roads allowed -- barred, 22 of 29 lanes had no way round), on the left,
+  junctions rounded, and slowing for the corners -- no more than 1.5 m/s^2 of
+  sideways pull, braking and pulling away at 1 m/s^2 -- so a sharp junction is
+  taken at 5-9 km/h. Three loops, 1.6-3.1 km; off the tarmac 0-0.3% of the
+  lap (2.3 m at worst); turning at 41-69 deg/s at most. Smoothing the loop's
+  points as well was tried: it cut corners up to 4.3 m onto the verge.
+* **The dump truck round the jumps.** *"It goes through the ramp now, so it
+  needs to go round the ramp."* Its track ran on across the floor through the
+  table; it now ends in the middle and swings to the side that misses the
+  kicker (the jumps are rectangles, `q.jumps`; `onJump`). 9 m clear of both.
+  The haul truck's way in starts 34 m out, past where the other one swings.
+* **The haul truck at the top.** *"It tilts like 90 degrees forward and then
+  uprights itself."* Off the road's own heights it was pitched to the height
+  grid under its nose and tail, and by the rim that is the quarry floor: 78
+  degrees. Now it is pitched to the ground it drives on and never past 23.
+* **The dirt track's banks.** *"Where if I go on the edge of that ... a really
+  steep edge, so you start having weird stuff in my car."* Two things:
+  - `heightAt`, which the wheels ride, blended each 4 m cell's corners
+    smoothly, while the ground is drawn -- and the hills' collider built --
+    as two triangles a cell. On gentle ground the same; on the bank, 59
+    degrees, up to **4 m** apart. Now `heightAt` is the triangles: 0.001 m.
+  - The banks were a fixed 10 m wide whatever the depth. Now 2.2 m of bank a
+    metre of depth, up to 45 m; the rim's rock slices beside the cutting,
+    whose straight tops could not follow the bank, are left out (built into
+    nothing, so the map's random stream is untouched -- the gates and
+    shortcuts checked identical).
+  `tests/trackbank.js`, a car along the bank either side at 40 km/h, worst of
+  twelve: spin 413 -> 260 deg/s, thrown up at 5.6 -> 3.4 m/s, tipped 2.0
+  (upside down) -> 0.36. The `heightAt` change alone: 7.1 -> 5.6 m/s, still
+  rolling over. Round the rim, the biggest step up onto the rock: 0.29 m.
+  Off the top in `tests/quarry.js` at 70-120 km/h, upright as before; at
+  45-55 km/h, which tumbles down the ledges, the end varies run to run on the
+  same build (upright 0.85, on its side -0.01) and was 0.96-0.99 in two runs
+  before. The haul road rig: climb unchanged, 0.12 damage (none recorded
+  before); the car parked on ledge 3 slides, as it did.
+
 ### Police down the railway, not into the trees
 
 *"Whenever the police cars go near trees or an obstacle, they just slow down so
