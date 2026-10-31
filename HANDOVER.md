@@ -167,6 +167,12 @@ scoring, deliberately.
   forward expansion the dispatcher uses to cut you off) and scoring junctions by
   distance from the nearest police car. It drives normally for 10–60 s before
   breaking, and the chase then starts through the ordinary provocation rule.
+  **No longer spawned**: the user asked for solo police to be an open world
+  (`Game.openWorld`, set whenever `soloPolice` is) -- no runner, the player's
+  heat pinned at 0, no provocation/red-light checks, no score, nothing ends.
+  The pursuits are traffic suspects (`game/suspects.js`), shown on the minimap
+  via `Game._openWorldMarker` and announced with `hud.centreLine`. Runner
+  code is kept; `_initRunner` runs only if `openWorld` is false.
 * **A flyable police helicopter** — `game/flyheli.js`, with its own flight
   model, fuel, a helipad on the workshop roof, and two-thumbstick phone
   controls. Multiplayer-aware.

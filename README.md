@@ -7675,6 +7675,47 @@ Runner mode, `tests/suspects.js` 180 s, fresh page each: one suspect before
 (a hit on a patrol), one after (a bolt) -- no crash-witnessed suspects in
 that run, nothing changed.
 
+### Over a hedge is not through it
+
+*"With hedges, you know they slow me down. Well, if I even jump over the
+hedge, not even touching it, it still slows me down."* A hedge's collider
+stands 6 m high (HEDGE_SOLID, for the AI's sight lines) over a drawn hedge of
+1.6-2.3 m, and `_hedgeDrag` charged for any overlap with it. Each hedge now
+keeps the height of its drawn top (`sim.hedges` is a Map), and the drag needs
+the car's underside below it. `tests/hedgejump.js`, the player's car sent
+across one hedge (drawn top 2.2 m) at 60 km/h, coasting, 2 s:
+
+| | before | after |
+|---|---|---|
+| through it on the ground | drag, 33 km/h | drag, 22 km/h |
+| jumped clear, underside 5.4 m up | drag, **25 km/h** | none at that hedge |
+| skimming it, underside 1.8-2.2 m | drag, 25 km/h | drag, 27 km/h |
+
+The jump still ended at 49 km/h: it landed in the next hedge along, 14 m on,
+underside 1.8 m up -- that one it went through. The "through" figures are
+two batches in one page and not comparable with each other.
+
+### Police on your own: an open world, no getaway car
+
+*"If I'm the police car, right, in single player, can you make it so it
+removes the runner, so you almost just act like a patrol car, and then ...
+if a civilian car hits you ... it will like pop up as a pursuit. ... it's more
+open world, less set challenges."* Solo police (`Game.openWorld`) spawns no
+getaway car. Without one the quarry falls back to the player, a police car,
+so their heat is held at 0 and the provocation and red-light checks are not
+run: nothing makes you wanted and nothing ends the game. The pursuits are the
+traffic suspects -- hitting you, crashing in front of police, bolting or
+blocking -- each announced on screen ("PURSUIT: vehicle failed to stop after
+a collision with a police vehicle") and marked on the minimap where the
+getaway car was: live while police can see it, its last place for the search
+window after. No score in this mode.
+
+Measured, open world, Haldon Vale: 30 s flat out past patrols, heat 0 and no
+outcome. `tests/suspects.js` 180 s: two suspects (a hit, a bolt), one caught
+and parked, one still running. `tests/crashwitness.js` unchanged from the
+runs above. A forced suspect: marker on at once (last place), two units on
+it at 40 s.
+
 ### The dirt track's sides, again
 
 *"It's like the two sides of the dirt track, like right when it stops being

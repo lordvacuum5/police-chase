@@ -132,6 +132,7 @@ export class Suspects {
     runner.breakIn = 0;
     const s = { v, runner, why, heat: 1, units: [], seen: true, unseenFor: 0, pinFor: 0,
       state: 'run', want: 0, acquireFor: 0, pullFor: 0, goneFor: 0 };
+    s.lastSeen = v.position.clone();
     runner.threats = () => this._threats(s);
     this.list.push(s);
     if (witness) this._take(s, witness);
@@ -145,6 +146,9 @@ export class Suspects {
       (x) => `${x.cs}, vehicle ${x.what}, attempting to stop it.`,
       (x) => `${x.cs}, I've got one ${x.what}, following.`,
     ], { cs, what }, true, { every: 6 });
+    // In the open world it is the whole game, so it says so: "then it will
+    // like pop up as a pursuit."
+    if (g.openWorld && g.hud) g.hud.centreLine('PURSUIT: vehicle ' + what);
     return s;
   }
 
@@ -224,6 +228,9 @@ export class Suspects {
       if (!seen && r < SIGHT && d._visibleTo(p, v)) seen = true;
     }
     s.runner.hunted = seen;
+    s.seen = seen;
+    // For the open world's map marker (Game._openWorldMarker).
+    if (seen) { s.lastSeen = s.lastSeen || v.position.clone(); s.lastSeen.copy(v.position); }
     s.runner.update(dt);
 
     // Its wanted level, its own.

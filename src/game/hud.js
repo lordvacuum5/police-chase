@@ -297,8 +297,9 @@ export class Hud {
 
     // ---- score ----
     // Not on the police side of a solo pursuit: see Game._update.
-    const score = this.game.runner ? null : this.game.score;
-    if (this.scoreBox) this.scoreBox.hidden = !!this.game.runner;
+    const noScore = !!this.game.runner || !!this.game.openWorld;
+    const score = noScore ? null : this.game.score;
+    if (this.scoreBox) this.scoreBox.hidden = noScore;
     if (score) {
       // A frozen run says so, rather than leaving a number that has quietly
       // stopped moving and looks like a bug.

@@ -303,6 +303,14 @@ class Game {
      * this early always answered with whatever the last sitting left behind.
      */
     this.soloPolice = false;
+    /**
+     * The police side on your own, with no getaway car: "if I'm the police car,
+     * right, in single player, can you make it so it removes the runner, so
+     * you almost just act like a patrol car ... it's more open world, less set
+     * challenges." You drive about; the pursuits are the traffic that offends
+     * in front of you (game/suspects.js). Nobody is wanted, and nothing ends.
+     */
+    this.openWorld = false;
     /** The getaway driver, when there is one. See ai/runner.js. */
     this.runner = null;
   }
@@ -313,6 +321,7 @@ class Game {
     // Which side of the game this is. Read here because init() runs on START,
     // by which point the menu has recorded the choice -- see menu.soloRole.
     this.soloPolice = !session.active && !SOLO_AIR && soloRole() === 'police';
+    this.openWorld = this.soloPolice;
     boot.set(0.05, 'starting physics…');
     await initPhysics();
 
@@ -390,7 +399,7 @@ class Game {
     this.heliGrounded = false;
     // The car being chased, when it is not the player. After the dispatcher,
     // because the runner asks it who is after him on its very first tick.
-    if (this.soloPolice) this._initRunner();
+    if (this.soloPolice && !this.openWorld) this._initRunner();
     // The garage before the props, so nothing is stood across its entrance.
     this.garage = new Garage(this);
     // The pad only exists once the garage does, and the player is built
@@ -1032,6 +1041,24 @@ class Game {
       : (k.seen ? car.position
         : ((this.netLostFor || 0) < SEARCH_SECONDS ? this.netLastSeen : null));
     this.hud.suspectStale = !k.seen;
+  }
+
+  /**
+   * The open world's marker on the map: the nearest suspect being chased,
+   * where the minimap draws a getaway car -- live while a police car can see
+   * it, its last place for SEARCH_SECONDS after, then nothing.
+   */
+  _openWorldMarker() {
+    const me = this.player;
+    let best = null, bd = Infinity;
+    for (const s of this.suspects.list) {
+      if (s.state !== 'run' || s.v.removed) continue;
+      const d = dist2(me.position.x, me.position.z, s.v.position.x, s.v.position.z);
+      if (d < bd) { bd = d; best = s; }
+    }
+    this.hud.suspect = !best ? null
+      : (best.seen ? best.v.position : (best.unseenFor < SEARCH_SECONDS ? best.lastSeen || null : null));
+    this.hud.suspectStale = !!best && !best.seen;
   }
 
   /** A place on a road out of `node`; `ok(edge)`, if given, says which roads will do. */
@@ -3047,12 +3074,20 @@ class Game {
       // the pursuit and read as if you were being credited for the suspect's
       // work -- so on that side of the game it does not run, and the HUD
       // leaves the line out entirely.
-      if (!this.runner) this.score.update(dt);
+      if (!this.runner && !this.openWorld) this.score.update(dt);
       this.signals.update(dt);
-      this.heat.update(dt, hunted, this.dispatcher);
+      // With no getaway car the quarry falls back to the player, who is a
+      // police car: nothing they do makes them wanted. The suspects keep
+      // their own levels.
+      if (this.openWorld) {
+        this.heat.value = 0;
+        this._openWorldMarker();
+      } else {
+        this.heat.update(dt, hunted, this.dispatcher);
+        this._checkProvocation(dt);
+        this._checkRedLight();
+      }
       this.commentary.update(dt);
-      this._checkProvocation(dt);
-      this._checkRedLight();
     } else {
       this.props.update(dt);
       this.signals.update(dt);
