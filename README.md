@@ -7524,6 +7524,13 @@ the floor, fresh pages, on the traffic of the commit before (no traffic on
 spurs any more): stuck spells 3 (longest 16 s) -> 0. Before that commit the
 first run had 3, longest 65 s -- that one this case.
 
+Then patrol goals were kept off spurs altogether (traffic.js `spurNodes`, as
+traffic's are), not only off the last node of one. `__runDeadEndHold` again:
+it turned at 30 s, was held by the same car again in the turn, and went on
+the second give-up at about 55 s -- 8 m from the end at 55 s, so the rig's
+60 s window closed before it was 65 m clear. Not stuck for good, but one
+turn-round is not always enough in a track that narrow.
+
 ### Traffic that gets itself chased
 
 *"If they hit a police car, or if a traffic runs a red light, or if they block

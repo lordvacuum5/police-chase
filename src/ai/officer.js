@@ -13,6 +13,9 @@ import { WORLD_HALF } from '../world/common.js';
 import { clamp, clamp01, lerp, dist2, sign, damp, closestOnSegment } from '../util/math.js';
 import { requestPlan, planLocal } from './localplan.js';
 import { freeLine } from './freeline.js';
+// A cycle (traffic.js takes ROLE from here), safe because neither side uses the
+// other's exports until the game is running.
+import { spurNodes } from '../game/traffic.js';
 
 /**
  * How far back a turn starts, in metres: the tangent length of the fillet the
@@ -828,9 +831,10 @@ export class Officer {
    */
   _turnAway() {
     const g = this.game.graph, v = this.vehicle;
+    const spur = spurNodes(g);
     for (let i = 0; i < 8; i++) {
       const n = g.randomNode(this.game.rng);
-      if (g.roadDegree(n) < 2) continue;
+      if (spur.has(n.id)) continue;
       const pts = g.pathFromPosition(
         v.position.x, v.position.z, -v.forward.x, -v.forward.z, n.id, 3.0, Infinity, 0, LANE_CORNER,
       );
@@ -851,10 +855,12 @@ export class Officer {
       // minute and a half without meeting one, and the game never starts.
       const anchor = this.game.player ? this.game.player.position : this.position;
       let to = null;
-      // Not the end of a dead end, to turn round in somebody's farmyard.
+      // Not up a lane that only goes to a farm, to turn round in the yard
+      // (traffic.js spurNodes), as traffic is not.
+      const spur = spurNodes(g);
       for (let i = 0; i < 14; i++) {
         const n = g.randomNode(this.game.rng);
-        if (g.roadDegree(n) < 2) continue;
+        if (spur.has(n.id)) continue;
         if (dist2(n.x, n.z, anchor.x, anchor.z) < 650) { to = n; break; }
       }
       if (!to) to = g.randomNode(this.game.rng);
