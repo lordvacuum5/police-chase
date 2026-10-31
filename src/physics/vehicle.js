@@ -25,6 +25,8 @@ const FLIP_FROM = 0.4;
 const FLIP_RIGHT = 3.0;
 /** Steadying in the air (_airLevel): after this long, this far up, m, its tumble taken out this quickly. */
 const AIR_AFTER = 0.3;
+/** A slipping clutch pulling away in first: held at this share of the way from idle to the redline. */
+const CLUTCH_SLIP = 0.35;
 const AIR_CLEAR = 1.6;
 const AIR_GRIP = 5;
 /** How much of a landing's vertical stop counts as an impact. See postStep. */
@@ -1007,8 +1009,16 @@ export class Vehicle {
       // the first second of every standing start -- measured, the Stiletto
       // spent its first 9 km/h at 1 000 rpm and 0.6 g, on tyres that had
       // twice that to give.
-      if (eng.launchRpm && this.gear === 1 && this.accelInput > 0.5) {
-        targetRpm = Math.max(targetRpm, eng.launchRpm * this.accelInput);
+      //
+      // And every car's clutch slips as a real one does, not only the
+      // launch-control car's: elsewhere the engine was locked to the wheels
+      // from a standstill and made idle torque until they caught it up. On the
+      // flat that cost a second; up a grass bank it was all there was --
+      // "stuck" beside the quarry track at full throttle, the Badger at 850
+      // rpm, 1.6 km/h. Held at CLUTCH_SLIP of the way to the redline in first.
+      if (this.gear === 1 && this.accelInput > 0.5) {
+        const slip = eng.launchRpm || lerp(eng.idleRpm, eng.redline, CLUTCH_SLIP);
+        targetRpm = Math.max(targetRpm, slip * this.accelInput);
       }
     } else {
       // Free revving: the engine answers the throttle directly.

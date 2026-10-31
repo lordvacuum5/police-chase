@@ -7404,6 +7404,48 @@ to self-right in midair."*
   before. The haul road rig: climb unchanged, 0.12 damage (none recorded
   before); the car parked on ledge 3 slides, as it did.
 
+### A clutch that slips: stuck at full throttle on a grass bank
+
+From the player's driving log (`log`, `my-driving-20261031-133558.json`):
+across the fields at 100 km/h, down onto the quarry's ledges, 83 to 10 km/h in
+under a second against something, and then thirty seconds on the banks beside
+the dirt track at full throttle doing 5-35 km/h -- *"either side of the dirt
+track ... when you get to the normal ground level ... weird stuff starts
+happening"*. Put back there, a car on full throttle at the top of the bank
+sat at 1-2 km/h: no contact with anything, four wheels down, and the engine at
+850 rpm. Idle. Only the Stiletto had a clutch that slipped (`launchRpm`); in
+every other car the engine was locked to the wheels from a standstill and made
+idle torque until they caught it up -- a second lost on the flat, everything
+up a grass bank. Now every car's clutch holds the engine at `CLUTCH_SLIP`
+(35%) of the way from idle to the redline in first while pulling away, or at
+its launch revs where it has them.
+
+`tests/hillstart.js`, from a standstill on grass, full throttle, km/h after
+4 s, before -> after:
+
+| | flat | 0.21 (12 deg) | 0.36 (20 deg) |
+|---|---|---|---|
+| Runner | 47 -> 49 | 24 -> 23 | 10 -> 8 |
+| Badger | 43 -> 52 | 26 -> **40** | 11 -> **25** |
+| Patrol | 50 -> 50 | 27 -> 26 | 12 -> 10 |
+| Stiletto | 68 | 43 | 0 |
+
+The two-wheel-drive cars up a grass slope are held by their grip, not their
+revs; the Stiletto cannot climb 0.36 at all (wheelspin), as before. Up the
+bank beside the dirt track from the middle of the track: the Badger is at 52
+km/h over the top (it stopped there before), the Runner 30-39.
+
+On the flat it is quicker off the line, so the cards moved
+(`tests/supercar.js`, and the same 0-60 run on the drivable police specs,
+which reproduces the old cards exactly): Runner 0-60 7.1 -> 6.3 s, Badger
+9.8 -> 9.1, Stiletto 4.8 -> 4.9 (its grip 1.58 -> 1.59 from the rear-grip
+change), Interceptor 5.8 -> 5.6, Police SUV 7.1 -> 6.5. `tests/accel.js`
+0-100: Runner 7.28 -> 6.57 s, patrol 6.53 -> 6.37, interceptor 6.10 -> 5.93,
+unmarked 5.67 -> 5.50 -- the player's car gains most.
+
+Not looked at yet: *"just going up hills, it's a little bit too bouncy
+sometimes"*.
+
 ### Traffic that gets itself chased
 
 *"If they hit a police car, or if a traffic runs a red light, or if they block

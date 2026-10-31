@@ -66,8 +66,8 @@ export const CARS = [
     shape: 'saloon',
     stats: [
       ['Top speed', 134, 'mph'],
-      ['0-60', 7.1, 's', true],
-      ['Grip', 1.40, 'g'],
+      ['0-60', 6.3, 's', true],
+      ['Grip', 1.41, 'g'],
       ['Toughness', 11, 'hits'],
     ],
   },
@@ -79,8 +79,8 @@ export const CARS = [
     shape: 'wedge',
     stats: [
       ['Top speed', 149, 'mph'],
-      ['0-60', 4.8, 's', true],
-      ['Grip', 1.58, 'g'],
+      ['0-60', 4.9, 's', true],
+      ['Grip', 1.59, 'g'],
       ['Toughness', 5, 'hits'],
     ],
   },
@@ -93,9 +93,9 @@ export const CARS = [
     shape: 'boxy',
     stats: [
       ['Top speed', 88, 'mph'],
-      ['0-60', 9.8, 's', true],
+      ['0-60', 9.1, 's', true],
       ['Grip', 1.08, 'g'],
-      ['Toughness', 18, 'hits'],
+      ['Toughness', 19, 'hits'],
     ],
   },
 ];
@@ -117,7 +117,7 @@ export const CARS = [
  * and less grippy, so nobody would pick it for a reason; the unmarked car
  * because a police player turns up as a unit that has been sent, with a light
  * bar on the roof. What is left is a real choice -- the interceptor is a
- * second and a half quicker to sixty, and the SUV is half as breakable again.
+ * second quicker to sixty, and the SUV is half as breakable again.
  */
 export const POLICE_CARS = [
   {
@@ -128,7 +128,7 @@ export const POLICE_CARS = [
     shape: 'saloon',
     stats: [
       ['Top speed', 152, 'mph'],
-      ['0-60', 5.8, 's', true],
+      ['0-60', 5.6, 's', true],
       ['Grip', 1.55, 'g'],
       ['Toughness', 15, 'hits'],
     ],
@@ -142,7 +142,7 @@ export const POLICE_CARS = [
     shape: 'suv',
     stats: [
       ['Top speed', 145, 'mph'],
-      ['0-60', 7.1, 's', true],
+      ['0-60', 6.5, 's', true],
       ['Grip', 1.53, 'g'],
       ['Toughness', 22, 'hits'],
     ],
