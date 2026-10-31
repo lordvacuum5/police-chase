@@ -109,6 +109,30 @@ window.__runCrashWitness = async function (after = 20) {
     rows.push(report(`rammed (3 s, player hit at ${(p.lastImpact || 0).toFixed(1)} m/s)`));
     reset();
 
+    // 1c. "If a civilian car hits me, it still doesn't work": the first
+    // version missed these. Each at 60 Hz, as played, for 3 s: the player
+    // driven (or braked) straight, the traffic car held on throttle (or
+    // braked).
+    const side = (pk, at, ahead, lat, head, tk) => {
+      p.repair();
+      clearPolice(pAt.x, pAt.z);
+      [c1] = two();
+      put(p, pAt, fwd, pk);
+      put(c1.v, on(L * 0.5 + ahead, lat), head, tk);
+      const mine = c1.v.setControls.bind(c1.v);
+      c1.v.setControls = (o) => mine(c1.v.isTraffic
+        ? (tk ? { throttle: 0.8, brake: 0, steer: 0, handbrake: 0 } : { throttle: 0, brake: 1, steer: 0, handbrake: 1 }) : o);
+      Object.assign(ctl, pk ? { throttle: 0.5, brake: 0, handbrake: 0 } : { throttle: 0, brake: 1, handbrake: 1 });
+      for (let i = 0; i < 180; i++) g._update(1 / 60);
+      c1.v.setControls = mine;
+      Object.assign(ctl, { throttle: 0, brake: 1, handbrake: 1 });
+      rows.push(report(at));
+      reset();
+    };
+    side(40, 'head-on, both 40 km/h (3 s)', 30, 0.6, back, 40);
+    side(0, 'into your side at 30 km/h (3 s)', 0, 9, Math.atan2(dz, -dx), 30);
+    side(40, 'you scrape a parked one (3 s, want nothing)', 8, 2.2, fwd, 0);
+
     // 2 and 3. Two into each other, near and far.
     for (const [name, gap] of [['seen', 25], ['unseen', 250]]) {
       p.repair();

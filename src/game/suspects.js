@@ -83,6 +83,10 @@ const PULL_FOR = 9;
 const CRASH_SIGHT = 60;
 /** How hard a knock counts as a crash, m/s of velocity change (as Vehicle.takeImpact). */
 const CRASH_HIT = 2.6;
+/** A traffic car whose bodywork is within this of the police player's at a knock is the one that hit it, m. */
+const HIT_GAP = 1.2;
+/** Coming at the police player at least this fast before the knock, m/s, it is the traffic car's doing. */
+const HIT_CLOSING = 1.5;
 
 export class Suspects {
   constructor(game) {
@@ -383,18 +387,7 @@ export class Suspects {
     }
     // A traffic car into the player's own police car.
     const p = this._policePlayer();
-    if (p && p.lastImpactAt && now - p.lastImpactAt < 300 && p.lastImpact > CRASH_HIT && p._suspectHitAt !== p.lastImpactAt) {
-      p._suspectHitAt = p.lastImpactAt;
-      const other = this._trafficTouching(p);
-      // It drove into you, nose first -- not you into the back or side of it,
-      // which is your doing, not its.
-      const ox = p.position.x - (other ? other.position.x : 0), oz = p.position.z - (other ? other.position.z : 0);
-      const ol = Math.hypot(ox, oz) || 1;
-      if (other && (other.forward.x * ox + other.forward.z * oz) / ol > 0.3) {
-        const s = this.offence(g.traffic.recordOf(other), 'hit', null);
-        if (s) { s.heat = Math.min(MAX_HEAT, s.heat + HIT_HEAT); return; }
-      }
-    }
+    if (p && this._hitPlayer(p, now)) return;
     // Two traffic cars into each other, in front of the police.
     for (const c of g.traffic.cars) {
       const v = c.v;
@@ -437,6 +430,57 @@ export class Suspects {
         u._blockedFor = 0;
       }
     }
+  }
+
+  /**
+   * A traffic car into the police player.
+   *
+   * "If a civilian car hits me, it still doesn't work." The first version
+   * looked once, the frame after the knock, for a traffic car still touching
+   * -- and by then the two had usually bounced apart, so it found none and
+   * the hit was gone for good. And it blamed only a car whose nose pointed at
+   * you, which left out one swerving into your side. Now: a fresh knock over
+   * CRASH_HIT on either car -- the heavy police car can take one under it
+   * that the traffic car does not -- with the traffic car's bodywork within
+   * HIT_GAP of yours. It is to blame if it was coming at you at HIT_CLOSING
+   * or more, or you were not closing on it faster than it on you, by how
+   * each was moving just before (`_before`, kept while neither was hitting
+   * anything): running into the back or side of one is your doing.
+   */
+  _hitPlayer(p, now) {
+    const g = this.game;
+    const fresh = (v) => v.lastImpactAt && now - v.lastImpactAt < 300 && v.lastImpact > CRASH_HIT;
+    const keep = (v) => {
+      if (v.lastImpactAt && now - v.lastImpactAt < 200) return;
+      v._before = v._before || { x: 0, z: 0 };
+      v._before.x = v.linvel.x; v._before.z = v.linvel.z;
+    };
+    keep(p);
+    const hitMe = fresh(p) && p._suspectHitAt !== p.lastImpactAt;
+    let other = null, best = Infinity;
+    for (const c of g.traffic.cars) {
+      const v = c.v;
+      if (v.dormant) continue;
+      const r = dist2(v.position.x, v.position.z, p.position.x, p.position.z);
+      if (r > 30) continue;
+      keep(v);
+      if (r - (v.spec.dims.l + p.spec.dims.l) * 0.5 > HIT_GAP) continue;
+      if (!hitMe && !(fresh(v) && v._playerHitAt !== v.lastImpactAt)) continue;
+      if (r < best) { best = r; other = v; }
+    }
+    if (!other) return false;
+    p._suspectHitAt = p.lastImpactAt;
+    other._playerHitAt = other.lastImpactAt;
+    const nx = (p.position.x - other.position.x) / (best || 1), nz = (p.position.z - other.position.z) / (best || 1);
+    const tb = other._before || other.linvel, pb = p._before || p.linvel;
+    const itClosed = tb.x * nx + tb.z * nz, iClosed = -(pb.x * nx + pb.z * nz);
+    // Yours only if it was not coming at you itself: head-on at 40 km/h
+    // each, you closing at 9.9 m/s and it at 5.4, is still its doing.
+    if (itClosed < HIT_CLOSING && iClosed > itClosed + 1) return false;
+    const s = this.offence(g.traffic.recordOf(other), 'hit', null);
+    if (!s) return false;
+    s.heat = Math.min(MAX_HEAT, s.heat + HIT_HEAT);
+    return true;
   }
 
   /** The traffic car touching vehicle `v` right now, if any. */

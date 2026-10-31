@@ -7618,6 +7618,25 @@ nearest the start:
 Traffic brakes for a police car in its road, so the rig holds the first car
 on full throttle until it hits -- left to itself it stopped 12 m short.
 
+*"If a civilian car hits me, it still doesn't work."* Two faults. It looked
+once, the frame after the knock, for a traffic car still **touching** --
+usually they had bounced apart by then and the hit was dropped for good
+(staged hits at 15, 25 and 40 km/h into a stopped police car, 4-8 m/s
+knocks, none counted). And blaming only a car pointed nose-at-you left out
+side hits. Now a fresh knock over 2.6 m/s on either car, with the traffic
+car's bodywork within 1.2 m of yours, is a hit; it is yours, not its, only if
+it was coming at you under 1.5 m/s and you were closing faster, by the
+velocities kept from just before the knock. A first try at that blamed
+whoever closed faster, and a head-on at 40 km/h each (you 9.9 m/s, it 5.4)
+came out as your fault -- hence the 1.5 m/s floor. At 60 Hz, 3 s each:
+
+| case | result |
+|---|---|
+| head-on, both 40 km/h | running |
+| into your side at 30 km/h | running, 1 unit |
+| you scrape past a parked one at 40 km/h | nothing |
+| you into the back of one at 45 km/h | nothing |
+
 Runner mode, `tests/suspects.js` 180 s, fresh page each: one suspect before
 (a hit on a patrol), one after (a bolt) -- no crash-witnessed suspects in
 that run, nothing changed.

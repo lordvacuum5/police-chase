@@ -449,7 +449,9 @@ becomes a Runner-driven car with its own heat; its units are **off
 `dispatcher.units`** while on it (driven by `Suspects._run`, `v.onCall` lights
 them), and go back via `dispatcher.adopt`. A caught one is parked off the road
 for good (`v.parkedForGood`). `tests/suspects.js`. The solo police player
-counts too (`_policePlayer`): traffic driving into them, or two traffic cars
+counts too (`_policePlayer`): traffic driving into them (`_hitPlayer`: by
+proximity at the knock, not contact -- the cars bounce apart within a frame;
+blame from pre-impact `_before` velocities), or two traffic cars
 crashing within 60 m of any police car that can see it (`_crash`: one runs,
 the other is a `victim` that pulls over and is removed once unseen).
 `tests/crashwitness.js`.
