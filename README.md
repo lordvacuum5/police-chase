@@ -7637,6 +7637,13 @@ came out as your fault -- hence the 1.5 m/s floor. At 60 Hz, 3 s each:
 | you scrape past a parked one at 40 km/h | nothing |
 | you into the back of one at 45 km/h | nothing |
 
+Still *"no, still does not work"* -- on the live site, and asked what had
+happened the player was not sure, and may have hit the car themselves. So the
+blame went: **any** knock between you and a traffic car over 2.6 m/s starts
+it, whoever drove into whom. The back of one at 45 km/h now runs (1 unit at
+3 s); the scrape past a parked one at 40 km/h is still nothing, under the
+2.6 m/s.
+
 Runner mode, `tests/suspects.js` 180 s, fresh page each: one suspect before
 (a hit on a patrol), one after (a bolt) -- no crash-witnessed suspects in
 that run, nothing changed.

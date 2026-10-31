@@ -99,7 +99,7 @@ window.__runCrashWitness = async function (after = 20) {
     rows.push(report(`hit (${after} s)`));
     reset();
 
-    // 1b. The player into the back of one: not its doing.
+    // 1b. The player into the back of one: counts too.
     p.repair();
     clearPolice(pAt.x, pAt.z);
     [c1] = two();
@@ -131,7 +131,7 @@ window.__runCrashWitness = async function (after = 20) {
     };
     side(40, 'head-on, both 40 km/h (3 s)', 30, 0.6, back, 40);
     side(0, 'into your side at 30 km/h (3 s)', 0, 9, Math.atan2(dz, -dx), 30);
-    side(40, 'you scrape a parked one (3 s, want nothing)', 8, 2.2, fwd, 0);
+    side(40, 'you scrape a parked one (3 s)', 8, 2.2, fwd, 0);
 
     // 2 and 3. Two into each other, near and far.
     for (const [name, gap] of [['seen', 25], ['unseen', 250]]) {
