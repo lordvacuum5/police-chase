@@ -458,6 +458,13 @@ layer of its own** in `buildHeightGrid` (`LW`) under the roads' -- as a place
 claim it was a flight of steps. A player's helicopter **landed or
 no higher than the car** sees like a patrol crew (100 m, any direction, line of
 sight) -- it used to see nothing below 2 m of height difference.
+A wheel finds the hills' ground along its ray with **`groundAlong`**
+(bracketed regula falsi, `physics/vehicle.js`). Do not go back to stepping
+"height under where I would be": it diverges once slope x lean passes one, put
+the ground above the mount and launched cars off the banks onto their roofs
+(`tests/bankroll.js`, from a player log). Every car's clutch slips in first
+(`CLUTCH_SLIP`, `tests/hillstart.js`). Open: *"going up hills, it's a little
+bit too bouncy sometimes"* -- not reproduced yet; the user is saving a log.
 
 The flyable helicopter tilts to a full **180 degrees** in pitch and roll, which
 was asked for twice; the things that stop it being twitchy are `CYCLIC_RATE`

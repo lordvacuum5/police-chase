@@ -103,6 +103,41 @@ const FRIENDLY = 0.35;
  */
 const GROUND_RELIEF = 1.0;
 
+/**
+ * How far along a ray from `o` in direction `d` it first meets the ground
+ * `H`, up to `far`; Infinity if it does not get there. 0 if `o` is already
+ * under it.
+ *
+ * It was three steps of "how far down is the ground under where I would be",
+ * which converges only while the slope times the ray's lean is under one. A car
+ * leaning 50 degrees on the bank beside the quarry track is well past that:
+ * the steps flew apart, came back with the ground a metre *above* the wheel's
+ * mount, and the suspension, fully compressed on nothing, threw the car ten
+ * metres up onto its roof -- with its skid marks drawn up there in the air.
+ * "The car was like flying in midair doing weird stuff because I went up that
+ * mound. Tyre tracks still appear. Like above me." Now bracketed and closed in
+ * on (regula falsi, Illinois), which cannot leave the bracket.
+ */
+function groundAlong(H, o, d, far) {
+  const f = (t) => o.y + d.y * t - H(o.x + d.x * t, o.z + d.z * t);
+  let a = 0, fa = f(0);
+  if (fa <= 0) return 0;
+  let b = far, fb = f(far);
+  if (fb > 0) {
+    // Over a crest the ray can dip into the ground and out again.
+    b = far * 0.5; fb = f(b);
+    if (fb > 0) return Infinity;
+  }
+  let side = 0;
+  for (let it = 0; it < 6; it++) {
+    const t = (a * fb - b * fa) / (fb - fa), ft = f(t);
+    if (ft > 0) { a = t; fa = ft; if (side === -1) fb *= 0.5; side = -1; }
+    else { b = t; fb = ft; if (side === 1) fa *= 0.5; side = 1; }
+    if (Math.abs(ft) < 1e-3) return t;
+  }
+  return (a * fb - b * fa) / (fb - fa);
+}
+
 /** What a punctured tyre is left with: a third of its grip. */
 const FLAT = 0.34;
 
@@ -1164,10 +1199,7 @@ export class Vehicle {
         // threw a car at 40 km/h seven metres into the air, nose up. Unless the
         // ground itself is nearer along the ray, which then wins.
         if (H && this.sim.terrainAt && !onPlate && _v1.y < -0.2) {
-          const o = w.worldPos, dy = -_v1.y;
-          let t = (o.y - H(o.x, o.z)) / dy;
-          for (let it = 0; it < 3; it++) t = (o.y - H(o.x + _v1.x * t, o.z + _v1.z * t)) / dy;
-          if (t < toi) onPlate = true;
+          if (groundAlong(H, w.worldPos, _v1, toi) < toi) onPlate = true;
         }
         const standing = H && this.sim.terrainAt && !onPlate && _v1.y < -0.2;
         if (standing) {
@@ -1180,11 +1212,16 @@ export class Vehicle {
           // car leaning a few degrees lands it metres to one side, and the
           // height read there is somebody else's. Cars on Haldon Vale's slopes
           // sat on two wheels, full throttle, going nowhere. Solved along the
-          // ray instead -- three steps of "how far down is the ground under
-          // where I would be" -- and tilted by the slope there.
-          const o = w.worldPos, d = _v1, dy = -d.y;
-          let t = (o.y - H(o.x, o.z)) / dy;
-          for (let it = 0; it < 3; it++) t = (o.y - H(o.x + d.x * t, o.z + d.z * t)) / dy;
+          // ray instead (groundAlong) and tilted by the slope there.
+          const o = w.worldPos, d = _v1;
+          const t = groundAlong(H, o, d, maxToi);
+          if (t === Infinity) {
+            w.grounded = false;
+            w.compression = 0;
+            w.normal.set(0, 1, 0);
+            w.arb = 0;
+            continue;
+          }
           toi = t;
           px = o.x + d.x * t; pz = o.z + d.z * t; py = o.y + d.y * t;
           const e = 0.55;

@@ -7446,6 +7446,39 @@ unmarked 5.67 -> 5.50 -- the player's car gains most.
 Not looked at yet: *"just going up hills, it's a little bit too bouncy
 sometimes"*.
 
+### Thrown off the bank by a wheel finding ground above it
+
+*"When I was at the quarry and the car was like flying in midair doing weird
+stuff because I went up that mound. Tyre tracks still appear. Like above
+me."* The log (`tests/data/my-driving-20261031-174012.json`): the Badger out
+along the dirt track at 70 km/h, then left up the bank beside it just past
+the rim -- and its position all but stops while the speed reads 50 km/h:
+going straight up. Steered after the logged line in a rig, it leant 50 deg on
+the bank, then went up at 14 m/s, ten metres, onto its roof, with wheels'
+contacts 1.25 m *above* their own mounts.
+
+A wheel on the hills finds the ground by stepping along its ray: "how far
+down is the ground under where I would be", three times. That converges only
+while the slope times the ray's lean is under one. Leaning 50 deg on a 50 deg
+bank it is 1.4: the steps flew apart and came back with the ground above the
+mount, the suspension went to full compression on nothing, and the car was
+launched -- with its skid mark drawn where the "contact" was, in the air. Now
+`groundAlong` brackets the crossing between the mount and the suspension's
+reach and closes in on it (regula falsi, Illinois), which cannot leave the
+bracket.
+
+`tests/bankroll.js` (new: the logged line, the same line off the other side,
+and square-ish up either bank at 65 km/h), before -> after, fresh pages:
+highest contact above its mount 6.31 m -> 0.00 (0 is a mount genuinely in the
+ground). The log line itself is chaotic run to run (vy 14.5 then 3.4 before,
+10.1 after) so it is the contacts that are the measure. Up the north bank
+30 deg off square, 65 km/h: vy 17.1 -> 14.8, and one of six runs still ends
+on its roof (two did) -- that is a 50 deg bank met sideways at 65 km/h, a
+roll, not the fault. `tests/trackbank.js`: longest airborne 1.8 -> 0.9 s,
+worst jump 10.2 -> 9.6 m/s, roll-overs (upset over 1) 2 -> 1, but the one left
+is new (`up 0/-1`, 0.53 -> 1.22) while two went (1.05 -> 0.46, 1.08 -> 0.39).
+`tests/hillstart.js` identical to the km/h, so an ordinary slope is untouched.
+
 ### Traffic that gets itself chased
 
 *"If they hit a police car, or if a traffic runs a red light, or if they block
