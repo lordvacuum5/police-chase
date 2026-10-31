@@ -7479,6 +7479,25 @@ worst jump 10.2 -> 9.6 m/s, roll-overs (upset over 1) 2 -> 1, but the one left
 is new (`up 0/-1`, 0.53 -> 1.22) while two went (1.05 -> 0.46, 1.08 -> 0.39).
 `tests/hillstart.js` identical to the km/h, so an ordinary slope is untouched.
 
+### No traffic out of farm lanes; no reset in mid-air
+
+*"Suddenly there were like a line of cars, civilian cars, seemingly all come
+from this farm building ... it's fine if there's a big line of cars on a
+normal road, but ... if it's a tiny road, and the only place that road leads
+it to was a farm building, like, that's not very realistic."* A traffic car
+was made at any road node out of sight -- a farm lane's end as soon as any --
+and while the farm stayed out of sight, the next one there too. Now
+`spurNodes` (game/traffic.js) prunes the road graph's leaves over and over
+until none are left: whatever goes is spur (lanes to farms, drives, closes),
+the rest is through road, and traffic is made only on through road and only
+sent to it. `tests/trafficspur.js` (5 minutes headless, player parked, fresh
+pages), before -> after: cars made on a spur 23 of 101 -> 0 of 99, share of
+traffic time on spur road 9.8% -> 0%. Spur road is 1.4 km of Haldon's 18.2.
+
+*"Make it so you can't reset your car in midair."* R rights the car only
+when it is resting on something: a wheel down or the body touching anything
+(`Vehicle.resting`) -- on its roof still counts, at the top of a jump does not.
+
 ### Traffic that gets itself chased
 
 *"If they hit a police car, or if a traffic runs a red light, or if they block

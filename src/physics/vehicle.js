@@ -660,6 +660,22 @@ export class Vehicle {
     return friend;
   }
 
+  /**
+   * On something: a wheel on the ground, or the body resting against
+   * anything at all (on its roof, on its side, wedged on a wall).
+   */
+  resting() {
+    if (this.grounded > 0) return true;
+    let t = false;
+    for (const c of [this.collider, this.keel]) {
+      if (!c || t) continue;
+      this.world.contactPairsWith(c, (o) => {
+        this.world.contactPair(c, o, (m) => { if (m.numContacts() > 0) t = true; });
+      });
+    }
+    return t;
+  }
+
   takeImpact(dv) {
     // Below this a knock is just a knock: kerbs, cones, a scrape along a wall
     // and the ordinary bumping of a pack of cars all sit under it. Raised

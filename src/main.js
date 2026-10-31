@@ -1034,12 +1034,13 @@ class Game {
     this.hud.suspectStale = !k.seen;
   }
 
-  _placeOnRoad(node) {
+  /** A place on a road out of `node`; `ok(edge)`, if given, says which roads will do. */
+  _placeOnRoad(node, ok = null) {
     const g = this.graph;
     for (const eid of node.edges) {
       const e = g.edges[eid];
       // Not down an alley. A cut is a way through, not a place to put a car.
-      if (e.cut) continue;
+      if (e.cut || (ok && !ok(e))) continue;
       const pts = e.a === node.id ? e.points : e.points.slice().reverse();
 
       let remaining = Math.min(14, e.length * 0.45);
@@ -2375,7 +2376,11 @@ class Game {
       // Righting an upside-down car is still theirs to do.
       const guest = session.active && !session.isHost;
       if (this.outcome) { if (!guest) this.restart(); }
-      else if (this.player.flippedFor > 0.3 || this.player.speed < 2) {
+      else if ((this.player.flippedFor > 0.3 || this.player.speed < 2)
+        // Not in mid-air: "make it so you can't reset your car in midair".
+        // At the top of a jump, or tumbling off the quarry, it was a way to
+        // stop dead and drop straight down upright.
+        && (!this.player.resting || this.player.resting())) {
         // Flip upright in place rather than teleporting across the map.
         _v.copy(this.player.position); _v.y += 1.4;
         this.player.teleport(_v, Math.atan2(this.player.forward.x, this.player.forward.z));

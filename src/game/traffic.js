@@ -75,6 +75,50 @@ const _e = new THREE.Euler();
 const _q = new THREE.Quaternion();
 
 const KINDS = ['hatchback', 'hatchback', 'estate', 'estate', 'civsuv'];
+/**
+ * The road graph's spurs: road that leads only to dead ends -- a lane up to a
+ * farm, a drive, a close. The leaves pruned off over and over until there are
+ * none; whatever went is spur, whatever is left is through road. Traffic is
+ * made only on through road and only sent to it. "Suddenly there were like a
+ * line of cars, civilian cars, seemingly all come from this farm building
+ * ... if it's a tiny road, and the only place that road leads it to was a
+ * farm building, like, that's not very realistic." A car was made at any node
+ * out of sight, a farm lane's end as soon as any; and while the farm stayed
+ * out of sight, the next one too. Once per graph.
+ */
+const _spurs = new WeakMap();
+export function spurNodes(gr) {
+  let out = _spurs.get(gr);
+  if (out && out.edges === gr.edges.length) return out.nodes;
+  const live = (e) => !e.cut && !e.quarry;
+  const deg = new Map();
+  for (const n of gr.nodes) {
+    let k = 0;
+    for (const id of n.edges) if (live(gr.edges[id])) k++;
+    deg.set(n.id, k);
+  }
+  const spur = new Set();
+  let leaves = gr.nodes.filter((n) => deg.get(n.id) === 1);
+  while (leaves.length) {
+    const next = [];
+    for (const n of leaves) {
+      if (spur.has(n.id)) continue;
+      spur.add(n.id);
+      for (const id of n.edges) {
+        const e = gr.edges[id];
+        if (!live(e)) continue;
+        const o = e.a === n.id ? e.b : e.a;
+        if (spur.has(o)) continue;
+        deg.set(o, deg.get(o) - 1);
+        if (deg.get(o) === 1) next.push(gr.nodes[o]);
+      }
+    }
+    leaves = next;
+  }
+  _spurs.set(gr, { edges: gr.edges.length, nodes: spur });
+  return spur;
+}
+
 /** Ordinary car colours: greys and silvers mostly, a few that are not. */
 const PAINTS = [
   0xc9ccce, 0x8d9094, 0x4a4d52, 0x1d1f22, 0xf2f2ef, 0xe8e6e0,
@@ -232,11 +276,14 @@ export class Traffic {
   _spawn(watchers, nearest) {
     const g = this.game, gr = g.graph;
     const w = watchers[Math.floor(g.rng() * watchers.length)];
+    const spur = spurNodes(gr);
+    const through = (e) => !spur.has(e.a) && !spur.has(e.b);
     for (let i = 0; i < 12; i++) {
       const n = gr.randomNode(g.rng);
+      if (spur.has(n.id)) continue;
       const d = dist2(n.x, n.z, w.x, w.z);
       if (d < TRAFFIC_NEAR || d > TRAFFIC_FAR || nearest(n) < TRAFFIC_NEAR) continue;
-      const place = g._placeOnRoad(n);
+      const place = g._placeOnRoad(n, through);
       if (!place || g.seenByAnyone(place.position)) continue;
       const id = `t${++this._made}`;
       const kind = KINDS[Math.floor(g.rng() * KINDS.length)];
@@ -267,7 +314,10 @@ export class Traffic {
     // to turn round there, onto the verge. Now: not a dead end, the route
     // never turning round (`noUTurn`), and a goal it has to turn round for
     // passed over for another.
-    const deadEnd = (n) => gr.roadDegree(n) < 2 || n.edges.some((id) => gr.edges[id].turningHead);
+    // Nor up a spur to get there (spurNodes): a goal on through road can be
+    // reached without one.
+    const spur = spurNodes(gr);
+    const deadEnd = (n) => spur.has(n.id) || gr.roadDegree(n) < 2 || n.edges.some((id) => gr.edges[id].turningHead);
     let pts = null;
     for (let i = 0; i < 12; i++) {
       const n = gr.randomNode(g.rng);

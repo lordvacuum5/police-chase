@@ -438,7 +438,10 @@ ground's height stands **HILL_SINK proud of the collider a car's body rests on**
 -- the quarry's rim was an invisible kerb for that reason; let such edges down.
 **`heightAt` on hilly maps is the drawn triangles** (split (i+1,j)-(i,j+1),
 as the heightfield collider is), not a bilinear blend -- they parted by 4 m
-on steep banks. Traffic routes with `noUTurn` and never turns round; tractors
+on steep banks. Traffic routes with `noUTurn` and never turns round, and is made and sent
+only on **through road** (`spurNodes`: lanes to farms and other dead-end
+spurs pruned off; `tests/trafficspur.js`); R rights the car only when it is
+resting on something (`Vehicle.resting`), never in mid-air; tractors
 drive **loops** (`tractorLoop`) with a corner speed profile (`_timeLoop`).
 Rock slices left out of the quarry must still take their random draws (`ghost`).
 **Suspects** (`game/suspects.js`): traffic that offends in front of a patrol
