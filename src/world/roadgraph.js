@@ -918,7 +918,7 @@ export class RoadGraph {
       if (n.edges.length === 0) continue;
       let d = (n.x - x) * (n.x - x) + (n.z - z) * (n.z - z);
       // A junction that knows its own height (Haldon Vale's quarry: the floor,
-      // and where the haul road comes out on each ledge), asked about a point
+      // and, while there was a haul road, each ledge), asked about a point
       // that has one: a metre up or down counts as five across, so a car on a
       // ledge is near the junction on that ledge, not the one on the floor
       // under it.

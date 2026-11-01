@@ -213,7 +213,7 @@ export function buildCountry(sim, scene, seed = 4417) {
   const railway = rail ? new Railway(ctx, rail, scene) : null;
   // Work going on, birds, lights at night (world/countrylife.js).
   const life = buildLife(ctx, scene, { fields, quarry, rail, combineField: ctx.combineField, baleField: ctx.baleField });
-  // And the quarry's track and haul road, to the police's planner (after the
+  // And the quarry's track, to the police's planner (after the
   // tractors have chosen their lanes, so none is sent down it).
   addQuarryRoads(graph, quarry);
 

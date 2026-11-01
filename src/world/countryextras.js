@@ -577,72 +577,31 @@ export function buildQuarry(ctx, q) {
       }
     }
   }
-  // The haul road, as in any working quarry: a ramp up the foot of each face
-  // in turn, from the floor to the first ledge, ledge to ledge, and from the
-  // last to the rim, each starting where the one below came out, round the
-  // quarry from just past the cutting. Without it a ledge could only be
-  // reached by falling onto it. Each rise runs along the foot of the face it
-  // climbs, HAUL_WIDE across, then levels off for a landing flush with the
-  // ledge above, long enough to ease out onto it -- a short one ended with the
-  // ledge below straight ahead, and the test car went off the end of it and
-  // down a level. As steep as it has to be to go round once in the room
-  // there is, and no less steep than HAUL_GRADE.
+  // There was a haul road here: a ramp up the foot of each face in turn, floor
+  // to rim, round the quarry from just past the cutting, with a dump truck
+  // working it. Taken out: "Can you remove the root given zigzag and up the
+  // quarry bit? Because that kind of, yeah, can't do that." The ledges are now
+  // reached only by falling onto them, which is what the arrest on them is
+  // for (Heat._checkLedges). Its truck runs the dirt track instead
+  // (countrylife.js).
+  //
+  // Where its first rise ran is still worked out, and the scree heaps below
+  // still left off it: a heap placed there would take random draws the map
+  // after it was made with, and move everything built after the quarry.
   const ledgeAt = (a, k) => (k < 0 ? q.floor : tAt(a, rimAt(a), k));
   const room = TAU - 2 * gap - 0.4;
-  // The angle all the rises would take at a grade of one, against the angle
-  // left once the landings are taken out.
   let need = 0;
   for (let k = 0; k < tiers; k++) {
     const a = q.open + gap + 0.2 + (k * room) / tiers;
     need += (ledgeAt(a, k) - ledgeAt(a, k - 1)) / (rAt(a, k) - HAUL_WIDE * 0.5);
   }
   const grade = Math.max(HAUL_GRADE, need / (room - tiers * HAUL_LANDING));
-  const haul = [], haulPath = [], haulBreaks = [];
-  let a = q.open + gap + 0.2;
-  for (let k = 0; k < tiers; k++) {
-    const rise = ledgeAt(a, k) - ledgeAt(a, k - 1);
-    const span = rise / grade / (rAt(a, k) - HAUL_WIDE * 0.5);
-    const N = Math.max(2, Math.ceil((span + HAUL_LANDING) / 0.04));
-    const total = span + HAUL_LANDING;
-    for (let s = 0; s < N; s++) {
-      const s0 = a + (total * s) / N, s1 = a + (total * (s + 1)) / N;
-      // Up the slope, then level at the ledge above.
-      const y = (aa) => lerp(ledgeAt(aa, k - 1), ledgeAt(aa, k), Math.min(1, (aa - a) / span));
-      const out0 = rAt(s0, k), out1 = rAt(s1, k);
-      const in0 = out0 - HAUL_WIDE, in1 = out1 - HAUL_WIDE;
-      const base0 = ledgeAt(s0, k - 1) - 0.6, base1 = ledgeAt(s1, k - 1) - 0.6;
-      const [ax, az] = P(s0, in0), [bx, bz] = P(s1, in1), [cx, cz] = P(s1, out1 + 0.3), [dx, dz] = P(s0, out0 + 0.3);
-      const c = [
-        [ax, base0, az], [bx, base1, bz], [cx, base1, cz], [dx, base0, dz],
-        [ax, y(s0), az], [bx, y(s1), bz], [cx, y(s1), cz], [dx, y(s0), dz],
-      ];
-      addHull(W, c);
-      addPrism(b, c, new THREE.Color().setHSL(0.08, 0.12, 0.5 + (s % 2) * 0.015));
-    }
-    haul.push({ from: a, to: a + total, tier: k });
-    // The middle of the road, with its height, for the dump truck that works
-    // it (countrylife.js): up the rise, then easing out across the landing
-    // to the middle of the next rise's lane.
-    for (let aa = a; aa <= a + total + 1e-6; aa += 0.02) {
-      const u = clamp((aa - a - span) / HAUL_LANDING, 0, 1);
-      const out = k < tiers - 1 ? rAt(aa, k + 1) - HAUL_WIDE * 0.5 : rAt(aa, k) - HAUL_WIDE * 0.5;
-      const [px, pz] = P(aa, lerp(rAt(aa, k) - HAUL_WIDE * 0.5, out, u));
-      haulPath.push({ x: px, z: pz, y: lerp(ledgeAt(aa, k - 1), ledgeAt(aa, k), Math.min(1, (aa - a) / span)) });
-    }
-    // Where this rise comes out onto its ledge: a junction, to the police.
-    haulBreaks.push(haulPath.length - 1);
-    a += total;
-  }
-  q.haul = haul;
-  q.haulPath = haulPath;
-  q.haulBreaks = haulBreaks;
-  q.haulGrade = grade;
-  // Scree heaps at the foot of the deepest faces, pale, to drive up -- not on
-  // the haul road's first rise, which runs along the foot of the first face.
+  const firstFrom = q.open + gap + 0.2;
+  const firstTo = firstFrom + (ledgeAt(firstFrom, 0) - q.floor) / grade / (rAt(firstFrom, 0) - HAUL_WIDE * 0.5) + HAUL_LANDING;
+  // Scree heaps at the foot of the deepest faces, pale, to drive up.
   const onRoad = (aa) => {
-    const h0 = haul[0];
-    const d = Math.atan2(Math.sin(aa - h0.from), Math.cos(aa - h0.from));
-    return d >= -0.15 && d <= h0.to - h0.from + 0.15;
+    const d = Math.atan2(Math.sin(aa - firstFrom), Math.cos(aa - firstFrom));
+    return d >= -0.15 && d <= firstTo - firstFrom + 0.15;
   };
   for (let k = 0; k < 4; k++) {
     const a = q.high + (k - 1.5) * 0.45;
@@ -710,16 +669,17 @@ export function buildQuarry(ctx, q) {
  * a routing system in there." With no road in it, a car down in the quarry was
  * nowhere to the planner: the nearest junction was up on the lanes, and the
  * police tried to get to the car from there, into the rock. Now: the dirt
- * track from its junction to the ramp's top and down onto the floor, across
- * the floor to the foot of the haul road, and up the haul road with a junction
- * where each rise comes out on its ledge, so a car on a ledge is near a
- * junction on that ledge. Dirt tracks to a dead end; laid on the graph after
+ * track from its junction to the ramp's top and down onto the floor, and on
+ * across the floor to its middle. (Up the haul road too, with a junction on
+ * each ledge, until the haul road was taken out: a car on a ledge is no
+ * longer somewhere a unit can drive to, which is what Heat._checkLedges is
+ * for.) Dirt tracks to a dead end; laid on the graph after
  * everything else (RoadGraph.reindex), so they are not drawn as tarmac or
  * levelled into the ground. Their nodes are kept out of RoadGraph.randomNode,
  * so traffic and patrols are not sent down them at random.
  */
 export function addQuarryRoads(graph, q) {
-  if (!q || !q.track || q.trackNode === undefined || !q.haulPath) return;
+  if (!q || !q.track || q.trackNode === undefined) return;
   const node = (p) => { const n = graph.addNode(p.x, p.z, 'lane'); n.quarry = true; if (p.y !== undefined) n.y = p.y; return n; };
   const road = (a, b, pts, name) => {
     const e = graph.addEdge(a, b, 'track', pts, { width: HAUL_WIDE, speed: 12 });
@@ -732,16 +692,7 @@ export function addQuarryRoads(graph, q) {
   const floor = node({ ...q.track[0], y: q.floor });
   road(top, rampTop, null, 'the quarry track');
   road(rampTop, floor, null, 'the quarry track');
-  const H = q.haulPath;
-  let prev = node(H[0]);
-  road(floor, prev, null, 'the quarry floor');
-  let from = 0;
-  for (const k of q.haulBreaks) {
-    const next = node(H[k]);
-    road(prev, next, H.slice(from + 1, k), 'the haul road');
-    prev = next;
-    from = k;
-  }
+  road(floor, node({ x: q.x, z: q.z, y: q.floor }), null, 'the quarry floor');
   graph.reindex();
 }
 

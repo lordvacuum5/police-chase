@@ -425,14 +425,20 @@ runs. `tests/quarry.js`, `tests/railway.js`, `tests/railbed.js`, `tests/spawnsig
 The quarry floor is **below zero**, through a hole in the floor plate
 (`plateHole` in `buildGround`); anything that assumes the ground is never under
 zero is wrong on Haldon now (the searchlight and the skid marks both were). The
-quarry has a **haul road** (`q.haul`) up its ledges; `tests/haulroad.js`.
+quarry's **haul road up its ledges was taken out on request** (1 Nov 2026,
+"remove the ... zigzag"): the ledges are reached only by falling onto them,
+and sitting on one is an arrest on a timer instead (`Heat._checkLedges`). Do
+not put it back unasked. Its first rise's angles are still worked out in
+`buildQuarry`, only so the scree heaps take the same random draws. The second
+dump truck works along the foot of the back wall (`alongBackWall`), the other
+runs the dirt track; a second track in was offered and not built.
 `world/countrylife.js` puts tractors, dump trucks, a combine, birds and lit
 windows on the map: **dynamic bodies with a van's weight or more** (not
 kinematic -- the player wanted hitting a tractor to feel like hitting a police
 van, not a wall), steered along wall-clock routes by velocity with a 1 g limit,
 colliding only with cars and debris; **not cars** -- not
 counted as police or traffic (the player asked that the police numbers never
-change for them); the AI queues behind them via `map.movers`. The quarry's track and haul road
+change for them); the AI queues behind them via `map.movers`. The quarry's track and floor
 are **roads in the graph**, added late (`addQuarryRoads`, `RoadGraph.reindex`),
 with heights on their junctions (`nearestNode(x, z, y)`); `tests/quarrychase.js`. **Hedges do not hide a spawn** (`SPAWN_SIGHT`): the
 player sees over them, though the police do not. The roadside hedges are

@@ -4,7 +4,8 @@
 // Of the ideas put to them they picked four:
 //
 //   * work vehicles -- tractors on the lanes, dump trucks in the quarry, one
-//     down the track and one up the haul road;
+//     down the track and one along the foot of the back wall (it climbed a
+//     haul road up the ledges until that was taken out);
 //   * a harvest -- a combine working a wheat field, and a tractor and trailer
 //     loaded with bales standing by a field of them;
 //   * birds -- flocks in the woods that go up when a car or the helicopter
@@ -67,6 +68,9 @@ const PITCH_MAX = 0.4;
 const BALE_CLEAR = 8;
 /** How far the trucks keep from the quarry floor's jumps, m. */
 const JUMP_CLEAR = 5;
+/** The back-wall truck's run: how far in from the foot of the faces, m, and how far either way round from the back, rad. See alongBackWall. */
+const BACK_WALL_OFF = 18;
+const BACK_WALL_HALF = 0.8;
 /** Where the parked tractor stands ahead of its trailer's middle, m: hitched. */
 const HITCH = 6.85;
 /** Birds: how many flocks, how many to a flock, and what puts them up, m. */
@@ -541,7 +545,7 @@ export function buildLife(ctx, scene, { fields, quarry, rail, combineField, bale
   // Nowhere a vehicle may swing out to turn round, or a combine work: the
   // farmyards and villages (their buildings), and the quarry's rock.
   const avoid = (x, z) => nearBuildings(ctx, x, z)
-    || (quarry && (inQuarryRock(quarry, x, z) || onHaulRoad(quarry, x, z) || onJump(quarry, x, z)));
+    || (quarry && (inQuarryRock(quarry, x, z) || onJump(quarry, x, z)));
 
   // ---- tractors on the lanes ----
   // Round loops of lanes, the way anything that drives goes about: "they
@@ -573,20 +577,21 @@ export function buildLife(ctx, scene, { fields, quarry, rail, combineField, bale
   }
 
   // ---- dump trucks in the quarry ----
-  if (quarry && quarry.track && quarry.haulPath) {
+  // One up and down the dirt track, from the road to the middle of the floor;
+  // one working along the foot of the back wall, where the scree is, on the
+  // far side of the floor from the track, so the two never meet. The second
+  // used to climb the haul road, which is gone: "Can you remove the root given
+  // zigzag and up the quarry bit?"
+  if (quarry && quarry.track) {
     movers.push(new Mover(ctx, scene, {
       route: new Route(acrossFloor(quarry)), speed: TRUCK_SPEED, offset: rand(rng, 0, 300), name: 'dump-truck', turnR: TURN_TRUCK, avoid,
       geo: truckGeometry(), dims: { l: 9, w: 3.4 }, model: 'truck',
       colliders: [{ hx: 1.7, hy: 2.1, hz: 4.4, y: 2.1 }], mass: TRUCK_MASS,
     }));
     movers.push(new Mover(ctx, scene, {
-      route: new Route(haulRun(ctx, quarry)), speed: TRUCK_SPEED * 0.8, offset: rand(rng, 0, 300), name: 'dump-truck', turnR: TURN_TRUCK, avoid,
-      // Past the rock, the field; on the top of it, the rim; below, the road's own.
-      turnY: (x, z, y) => {
-        const d = Math.hypot(x - quarry.x, z - quarry.z);
-        if (d > quarry.rimOut) return ctx.at(x, z);
-        return d > quarry.rimIn ? quarry.rimAt(Math.atan2(z - quarry.z, x - quarry.x)) : y;
-      },
+      // The same draw for its offset as the haul road's truck took, so the
+      // movers after it are as they were.
+      route: new Route(alongBackWall(quarry)), speed: TRUCK_SPEED * 0.8, offset: rand(rng, 0, 300), name: 'dump-truck', turnR: TURN_TRUCK, avoid,
       geo: truckGeometry(), dims: { l: 9, w: 3.4 }, model: 'truck',
       colliders: [{ hx: 1.7, hy: 2.1, hz: 4.4, y: 2.1 }], mass: TRUCK_MASS,
     }));
@@ -985,63 +990,19 @@ function clearQuarryBales(ctx, q, movers) {
 }
 
 /**
- * On the haul road's ramps, above the floor: no place to swing out and turn
- * round on the flat. The track's truck turned at the floor into the foot of the
- * first rise and sat four metres inside it.
+ * Along the foot of the quarry's back wall, where the scree heaps are, and
+ * back: the second truck's work now the haul road is gone. Far enough out
+ * from the faces to turn round at either end without swinging into them, on
+ * the far side of the floor from the track, past the table, and a long way
+ * clear of the other truck, which comes no further than the middle.
  */
-function onHaulRoad(q, x, z) {
-  if (!q.haulPath) return false;
-  for (const p of q.haulPath) {
-    if (p.y > q.floor + 0.5 && Math.hypot(p.x - x, p.z - z) < 6) return true;
+function alongBackWall(q) {
+  const r = (q.inner || q.r * 0.6) - BACK_WALL_OFF;
+  const pts = [];
+  for (let a = -BACK_WALL_HALF; a <= BACK_WALL_HALF + 1e-6; a += 0.04) {
+    pts.push({ x: q.x + Math.cos(q.high + a) * r, z: q.z + Math.sin(q.high + a) * r });
   }
-  return false;
-}
-
-/**
- * The haul road with somewhere flat at each end for its truck to turn round
- * and straighten up: in from the middle of the floor, and out past the rim
- * onto the field. "The quarry vehicles seem to drive up an invisible ramp
- * inside the quarry." The road started climbing the moment it began, so a
- * truck turned round at the bottom was still swung twenty metres out across
- * the floor when its height followed the road up -- 4.5 m into thin air -- and
- * at the top it turned out over the drop.
- */
-function haulRun(ctx, q) {
-  const H = q.haulPath, S = H[0], E = H[H.length - 1];
-  const dirAt = (a, b) => { const l = Math.hypot(b.x - a.x, b.z - a.z) || 1; return { x: (b.x - a.x) / l, z: (b.z - a.z) / l }; };
-  const bez = (A, K, B, n, y) => {
-    const out = [];
-    for (let i = 0; i < n; i++) {
-      const u = i / n, a = (1 - u) * (1 - u), b = 2 * u * (1 - u), c = u * u;
-      const x = a * A.x + b * K.x + c * B.x, z = a * A.z + b * K.z + c * B.z;
-      out.push({ x, z, y: y(x, z) });
-    }
-    return out;
-  };
-  // In: from out on the floor, arriving along the first rise -- from the side
-  // of the floor the first rise is on, off the line the other truck takes
-  // across the middle (acrossFloor), so the two never meet.
-  const t0 = dirAt(S, H[Math.min(H.length - 1, 8)]);
-  const T = q.track[0], ux = q.x - T.x, uz = q.z - T.z, ul = Math.hypot(ux, uz) || 1;
-  let nx = -uz / ul, nz = ux / ul;
-  if (nx * (S.x - q.x) + nz * (S.z - q.z) < 0) { nx = -nx; nz = -nz; }
-  // Further out than the other truck's turn in the middle swings (20 m).
-  const C = { x: q.x + nx * 34, z: q.z + nz * 34 };
-  const lead = bez(C, { x: S.x - t0.x * 15, z: S.z - t0.z * 15 }, S, 24, () => q.floor);
-  // Out: turning off the last landing before its end -- past it, at the same
-  // distance out, is the ledge below -- and away from the edge onto the field,
-  // at the height of the rock's top (the top ledge is flush with it) until
-  // past the rock, then the ground's.
-  let k = H.length - 1;
-  while (k > 0 && Math.hypot(H[k].x - E.x, H[k].z - E.z) < 12) k--;
-  const E0 = H[k];
-  const ex = E.x - q.x, ez = E.z - q.z, ed = Math.hypot(ex, ez) || 1;
-  const F = { x: q.x + (ex / ed) * (q.r + 30), z: q.z + (ez / ed) * (q.r + 30) };
-  const top = (x, z) => (Math.hypot(x - q.x, z - q.z) < q.rimOut
-    ? q.rimAt(Math.atan2(z - q.z, x - q.x)) : ctx.at(x, z));
-  const tail = bez(E0, E, F, 20, top);
-  tail.push({ x: F.x, z: F.z, y: top(F.x, F.z) });
-  return [...lead, ...H.slice(0, k), ...tail];
+  return pts;
 }
 
 /**

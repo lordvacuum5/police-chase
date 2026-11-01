@@ -203,8 +203,8 @@ export class Heat {
    * off all the ledges resets every ... one minute. Just otherwise, police cars
    * actually can't get onto the ledges, really."
    *
-   * Time on any ledge adds up, the haul road's ramps included (they are on
-   * the ledges); the floor, the rim and the cutting are not ledges, since a
+   * Time on any ledge adds up (the haul road that ran up them is gone, so a
+   * car only gets onto one by falling); the floor, the rim and the cutting are not ledges, since a
    * unit can drive to all three. LEDGE_GRACE seconds of it, then a warning and
    * a LEDGE_COUNT countdown, then busted. Off every ledge it holds, and after
    * LEDGE_RESET seconds off them it starts again from nothing. Only while

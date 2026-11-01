@@ -480,7 +480,7 @@ export class FlyingHelicopter {
     // The workshop roof at the garage is a landing surface, not scenery. The
     // aircraft is not a rigid body -- it lands by asking how high the ground
     // is beneath it -- so a pad is simply a disc where the answer is higher.
-    // And the quarry's rock: its ledges, haul road and jumps are ground to
+    // And the quarry's rock: its ledges and jumps are ground to
     // land on, not air above a floor forty metres down.
     const map = this.game.world && this.game.world.__map;
     const rock = map && map.solidTopAt ? map.solidTopAt(this.position.x, this.position.z) : null;

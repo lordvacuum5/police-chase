@@ -7558,6 +7558,37 @@ the routing met has changed. Their random draws are still taken: everything
 placed after the quarry measured identical (2765 instances, same positions;
 the road graph the same).
 
+### No haul road up the ledges
+
+*"Can you remove the root given zigzag and up the quarry bit? Because that
+kind of, yeah, can't do that. And obviously then you have to think of a new
+route ... you could make another dirt track, the other end, of the quarry.
+For the other vehicle to go up and down ... The only thing is, it might look a
+bit too symmetrical ... Also, it might have the same issue as we did have for
+ages with the weird like movements."* The haul road is gone -- its ramps,
+their colliders, its three police roads with a junction on each ledge, and
+`tests/haulroad.js`. A ledge is reached only by falling onto it now, which
+the ledge arrest is for. The police's quarry roads are the track and on
+across the floor to its middle.
+
+A second dirt track was not built, for both of the player's reasons: the
+first track's cutting took weeks of rim pins, bank fades and finer rock
+slices to stop throwing cars about, and every one of those would have to be
+done again at a second cutting. Instead the two dump trucks split the work:
+the one that ran the track still runs it, up and down from the road to the
+middle of the floor, and the haul road's truck works along the foot of the
+back wall (`alongBackWall`, 18 m in from the faces, 0.8 rad either way of the
+back, about 74 m), on the far side of the floor from the track, so they
+never meet. Its offset still takes its random draw, and the haul road's first
+rise is still worked out so the scree heaps take theirs: everything placed
+after the quarry is as it was but the bales, which are cleared off the
+trucks' paths and so moved with the new one (instance sum -28460.5 ->
+-28395.8, bales only). `tests/movers.js`: the old haul truck floated 0.41 m
+over the ground at its worst; the back-wall truck 0.00, sinks 0.00. Driven
+150 s headless: the track truck 867 m, the back-wall one 566 m, both upright
+(worst tilt 0.02), the back-wall one 26-46 m from the middle at its turns and
+along its run -- the rock starts at 61.
+
 ### Traffic that gets itself chased
 
 *"If they hit a police car, or if a traffic runs a red light, or if they block
