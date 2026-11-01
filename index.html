@@ -95,6 +95,22 @@
   }
   #toast.on { opacity: 1; }
 
+  /* A pursuit starting on the police side's open world. Up top, clear of the
+     road ahead and the thumbs, and slow in and out: "appears a bit too
+     quickly, and also kind of in the middle of the screen too much ... still
+     obvious ... keep it up for a little bit longer". */
+  #notice {
+    position: absolute; left: 50%; top: 13%; transform: translateX(-50%);
+    max-width: min(86vw, 520px); text-align: center;
+    padding: 9px 18px; border-radius: 6px;
+    background: rgba(10, 14, 20, .86); border: 1px solid rgba(255, 59, 48, .7);
+    border-left: 4px solid rgb(255, 59, 48);
+    color: var(--ink); font-size: 13px; line-height: 1.4; letter-spacing: .5px;
+    opacity: 0; transition: opacity .9s ease; pointer-events: none;
+  }
+  #notice.on { opacity: 1; }
+  #notice b { color: rgb(255, 99, 88); letter-spacing: 3px; margin-right: 8px; }
+
   /* ---- street nameplate, sitting on top of the dash ---- */
   /* A British street sign: white plate, dark lettering, a thin border. It is
      the one light thing on the HUD, which is why it reads at a glance. */
@@ -745,6 +761,7 @@
 
   <div id="roadsign" hidden></div>
   <div id="toast"></div>
+  <div id="notice"></div>
 
   <div id="dash" class="panel">
     <canvas id="speedo" width="256" height="256"></canvas>

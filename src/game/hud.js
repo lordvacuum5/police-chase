@@ -67,6 +67,7 @@ export class Hud {
 
     this.toastEl = document.getElementById('toast');
     this.centreEl = document.getElementById('applesay');
+    this.noticeEl = document.getElementById('notice');
     this._toastTimer = null;
 
     this.roadEl = document.getElementById('roadsign');
@@ -203,7 +204,9 @@ export class Hud {
     this._lastTier = tier;
     this.heatFill.style.width = (heat.progress * 100).toFixed(0) + '%';
 
-    const st = dispatcher.statusLine();
+    // The police side's open world: what the suspects are doing, since nobody
+    // is after you.
+    const st = (this.game.openWorld && this.game.suspects.statusLine()) || dispatcher.statusLine();
     if (this.statusEl.textContent !== st.text) this.statusEl.textContent = st.text;
     if (this.statusEl.className !== st.cls) this.statusEl.className = st.cls;
 
@@ -454,6 +457,21 @@ export class Hud {
   }
 
   /**
+   * A pursuit starting, in the police side's open world: a title and a line,
+   * up top, for `seconds`. See #notice.
+   */
+  notice(title, text, seconds = 7) {
+    if (!this.noticeEl) return;
+    this.noticeEl.innerHTML = '';
+    const b = document.createElement('b');
+    b.textContent = title;
+    this.noticeEl.append(b, document.createTextNode(text));
+    this.noticeEl.classList.add('on');
+    clearTimeout(this._noticeTimer);
+    this._noticeTimer = setTimeout(() => this.noticeEl.classList.remove('on'), seconds * 1000);
+  }
+
+  /**
    * A word on screen for a moment: what a control did, when it has no other
    * visible answer. Deliberately small -- the banner is for the chase.
    */
@@ -688,8 +706,12 @@ export class Hud {
     // meant nothing at all.
     const hunted = player.isPolice ? (this.suspect && !this.suspectStale ? this.suspect : null) : player.position;
     const at = hunted ? toMap(hunted.x, hunted.z) : null;
-    if (at && heat.tier > 0 && dispatcher.inContact && dispatcher.sightRange) {
-      const rad = dispatcher.sightRange * k;
+    // In the police side's open world nobody is wanted; the suspect being
+    // chased brings its own range (Game._openWorldMarker).
+    const ringRange = this.suspectRange
+      || (heat.tier > 0 && dispatcher.inContact && dispatcher.sightRange);
+    if (at && ringRange) {
+      const rad = ringRange * k;
       ctx.save();
       ctx.beginPath();
       ctx.arc(at.x, at.y, rad, 0, Math.PI * 2);

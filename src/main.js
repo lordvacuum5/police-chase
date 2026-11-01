@@ -20,7 +20,7 @@ import {
 } from './ai/officer.js';
 import { Driver, SKILL } from './ai/driver.js';
 import { Traffic, trafficPaint } from './game/traffic.js';
-import { Suspects } from './game/suspects.js';
+import { Suspects, SUSPECT_SIGHT } from './game/suspects.js';
 import { Runner, pickRunnerCar } from './ai/runner.js';
 import { warmLocalPlanner, pumpPlanner, boxesNear } from './ai/localplan.js';
 import { Heat } from './game/heat.js';
@@ -641,7 +641,7 @@ class Game {
       return;
     }
 
-    const target = this.netSuspect || this._soloQuarry();
+    const target = this.netSuspect || this._soloQuarry() || this._airSuspect();
     if (!target) { this.spotting = { state: 'none', text: 'NO TARGET' }; return; }
 
     const range = Math.round(air.position.distanceTo(target.position));
@@ -655,6 +655,9 @@ class Game {
       return;
     }
     this.spotting = { state: 'ready', text: `EYES ON — ${range} m`, range };
+    // The open world's suspect: the pilot's eyes count as a unit's, so it
+    // stays found, and its own units are told where it is.
+    if (this._airTarget && this._airTarget.v === target) this._airTarget.airSeenAt = this.clock;
 
     // Tell whoever owns the chase, a few times a second. On the escapee's own
     // machine that is here; a police player sends it and it comes back in the
@@ -720,6 +723,25 @@ class Game {
       if (d < bestD) { bestD = d; best = v; }
     }
     return best;
+  }
+
+  /**
+   * In the police side's open world, the suspect being chased nearest the
+   * aircraft. "I'm a helicopter and like they're in pursuit, but it says no
+   * target." Remembered in `_airTarget` so the sighting can be credited.
+   */
+  _airSuspect() {
+    this._airTarget = null;
+    if (!this.openWorld) return null;
+    const air = this.aircraft;
+    let best = null, bd = Infinity;
+    for (const s of this.suspects.list) {
+      if (s.state !== 'run' || s.v.removed) continue;
+      const d = dist2(s.v.position.x, s.v.position.z, air.position.x, air.position.z);
+      if (d < bd) { bd = d; best = s; }
+    }
+    this._airTarget = best;
+    return best ? best.v : null;
   }
 
   /**
@@ -1059,6 +1081,9 @@ class Game {
     this.hud.suspect = !best ? null
       : (best.seen ? best.v.position : (best.unseenFor < SEARCH_SECONDS ? best.lastSeen || null : null));
     this.hud.suspectStale = !!best && !best.seen;
+    // The red ring, round the car while it is seen: how far the police on it
+    // can see it.
+    this.hud.suspectRange = best && best.seen ? SUSPECT_SIGHT : 0;
   }
 
   /** A place on a road out of `node`; `ok(edge)`, if given, says which roads will do. */

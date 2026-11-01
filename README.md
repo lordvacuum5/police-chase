@@ -7716,6 +7716,26 @@ and parked, one still running. `tests/crashwitness.js` unchanged from the
 runs above. A forced suspect: marker on at once (last place), two units on
 it at 40 s.
 
+*"There's no red circle that appears around the fleeing car. Also ... the
+[line] that says what kind of [thing] a car's trying to [do] appears a bit
+too quickly, and also kind of in the middle of the screen too much ... keep
+it up for a little bit longer. Also, the helicopter doesn't have a target ...
+it says no target."* Three things that hung off the wanted level, which in
+the open world is always nothing:
+
+* **The red ring** on the minimap was drawn only at a wanted level with the
+  force in contact. The open world hands the HUD the suspect's own range
+  (`hud.suspectRange`, its 170 m SIGHT) while it is seen.
+* **The notice** moved off the centre-screen line (3 s, snapping in) to its
+  own box up top (`#notice`, red-edged): 0.9 s fade, 7 s up. The status
+  line top left now says `PURSUIT — 2 UNITS ON IT` / `SEARCHING FOR THE
+  VEHICLE` rather than NO ACTIVE PURSUIT.
+* **The helicopter** asked only for a multiplayer suspect or the `?air=1`
+  practice car. It now takes the nearest suspect being chased
+  (`Game._airSuspect`), and its eyes count as a unit's for that suspect
+  (`airSeenAt`). Staged 94 m behind and 70 m up one: EYES ON, the suspect
+  seen with its only unit 453 m away, status PURSUIT, ring drawn.
+
 ### The dirt track's sides, again
 
 *"It's like the two sides of the dirt track, like right when it stops being

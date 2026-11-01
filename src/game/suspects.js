@@ -107,6 +107,21 @@ export class Suspects {
     return this.list.some((s) => s.v === v && s.state === 'run');
   }
 
+  /**
+   * The HUD's status line in the police side's open world, for the suspect
+   * nearest being chased, or null with none: the dispatcher's own line
+   * ("NO ACTIVE PURSUIT") then stands.
+   */
+  statusLine() {
+    const run = this.list.filter((s) => s.state === 'run');
+    if (!run.length) return null;
+    const seen = run.find((s) => s.seen);
+    const s = seen || run[0];
+    const n = s.units.filter((u) => u.vehicle && !u.vehicle.disabled).length;
+    if (seen) return { text: `PURSUIT — ${n} UNIT${n === 1 ? '' : 'S'} ON IT`, cls: 'spotted' };
+    return { text: 'SEARCHING FOR THE VEHICLE', cls: 'searching' };
+  }
+
   /** The police cars on suspects, for anything that needs every unit. */
   units() {
     const out = [];
@@ -148,7 +163,7 @@ export class Suspects {
     ], { cs, what }, true, { every: 6 });
     // In the open world it is the whole game, so it says so: "then it will
     // like pop up as a pursuit."
-    if (g.openWorld && g.hud) g.hud.centreLine('PURSUIT: vehicle ' + what);
+    if (g.openWorld && g.hud) g.hud.notice('PURSUIT', `Vehicle ${what}.`);
     return s;
   }
 
@@ -220,6 +235,8 @@ export class Suspects {
       }
       if (!seen && r < SIGHT && d._visibleTo(u, v)) seen = true;
     }
+    // The player's helicopter, when it has eyes on this one (Game._airSpotting).
+    if (s.airSeenAt !== undefined && g.clock - s.airSeenAt < 0.6) seen = true;
     // The player, when the player is the police.
     const p = this._policePlayer();
     if (p) {
@@ -528,4 +545,4 @@ export class Suspects {
   }
 }
 
-export { SUSPECT_UNITS };
+export { SUSPECT_UNITS, SIGHT as SUSPECT_SIGHT };
