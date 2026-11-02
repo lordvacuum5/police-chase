@@ -10,6 +10,7 @@ import { ROAD_KIND } from '../world/roadgraph.js';
 import { WORLD_HALF } from '../world/common.js';
 import { TRACK_SECONDS } from '../ai/dispatcher.js';
 import { ENDURANCE as AIR_TANK } from './flyheli.js';
+import { AI_ID } from '../net/session.js';
 
 const MAP_PX = 1200;          // offscreen map resolution
 const MAP_SPAN = 470;         // metres visible on the minimap
@@ -875,26 +876,51 @@ export class Hud {
     }
 
     // ---- police ----
-    for (const u of dispatcher.units) {
+    // The units on a traffic suspect are taken off the dispatcher's list
+    // (Suspects), and so fell off the map: "I want the police to still be on
+    // the map when they're in pursuit of another AI traffic vehicle."
+    const onSuspect = new Set(this.game.suspects ? this.game.suspects.units() : []);
+    // "When the police are in pursuit, can you make it so their dots on the
+    // map flash red and blue?" A patrol car stays plain blue, so a flashing
+    // dot is a car that is chasing somebody.
+    const flashRed = Math.floor(performance.now() / 260) % 2 === 0;
+    for (const u of [...dispatcher.units, ...onSuspect]) {
       // A wrecked unit is out of the pursuit; leaving it on the map just
       // makes you plan around a car that is never coming.
-      if (u.vehicle.disabled || u.vehicle.damage >= 0.85) continue;
+      if (!u.vehicle || u.vehicle.disabled || u.vehicle.removed || u.vehicle.damage >= 0.85) continue;
 
-      const p = toMap(u.position.x, u.position.z);
+      const pos = u.vehicle.position;
+      const p = toMap(pos.x, pos.z);
       if (p.x < -20 || p.y < -20 || p.x > W + 20 || p.y > W + 20) continue;
 
-      ctx.fillStyle = u.role === 'intercept' ? '#ffb020'
+      // Another player driving a police car, rather than an AI one: drawn as
+      // the same ringed dot the escapee is on a police player's map, in blue.
+      // "I want it to be a blue for if it's a person playing as a police
+      // officer."
+      const person = u.human && u.netId != null && !String(u.netId).startsWith(AI_ID);
+      // A remote unit carries no role worth reading (it is always PURSUE), so
+      // it counts as chasing whenever the force is.
+      const chasing = onSuspect.has(u)
+        || (u.human ? heat.tier > 0 : u.role !== 'patrol' && u.role !== 'hold');
+      const role = u.role === 'intercept' ? '#ffb020'
         : (u.role === 'pit' || u.role === 'box') ? '#ff3b30' : '#4ea3ff';
+      ctx.fillStyle = chasing ? (flashRed ? '#ff3b30' : '#2f7bff') : person ? '#2f7bff' : role;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, person ? 8 : 7, 0, Math.PI * 2);
       ctx.fill();
+      if (person) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      }
 
       // A short tail showing which way they are going reads faster than a dot.
+      // In its role colour, which the flashing dot no longer shows.
       if (u.vehicle.speed > 3) {
         const f = u.vehicle.forward;
         const tf = f.x * sh + f.z * ch;
         const tr = -f.x * ch + f.z * sh;
-        ctx.strokeStyle = ctx.fillStyle;
+        ctx.strokeStyle = person ? '#2f7bff' : role;
         ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.moveTo(p.x, p.y);

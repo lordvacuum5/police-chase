@@ -7778,6 +7778,31 @@ up to 8 on it (`JOIN_NEAR`, `JOIN_MAX`), only while the player is not wanted.
 Staged: a forced 'hit' (1 unit sent, one star), a patrol put 40 m behind it
 -- on it within 1.5 s; at 20 s, 2 units, its level 1.48, the player's 0.
 
+*"When the police are in pursuit, can you make it so their dots on the map
+flash red and blue? Also, I want the police to still be on the map when
+they're in pursuit of another AI traffic vehicle. ... another player [who's]
+the police car, from the criminal point of view, I want them to be on the
+map ... the same kind of round circle as how it looks for the criminal ...
+blue."* Three minimap changes (`Hud._drawMinimap`):
+
+* **Units on a traffic suspect are drawn.** `Suspects` takes them off
+  `dispatcher.units`, which was the list the map drew from, so they vanished
+  the moment they started chasing. The map now also draws
+  `Suspects.units()`.
+* **Chasing units flash** red/blue, swapping every 260 ms. Chasing is: on a
+  suspect, or an AI unit in any role but patrol/hold, or a remote unit while
+  the force is after you (a remote unit's role is always PURSUE, so it says
+  nothing). Patrols stay the plain blue. The tail keeps the role colour
+  (orange intercept, red PIT/box), which the dot no longer shows.
+* **Another player in a police car** (a remote unit whose id is not an AI
+  `#` id) is the escapee marker's ringed 8 px dot, in blue, white edge.
+
+Checked by drawing the map by hand (the pane's frame loop is throttled in the
+background): Haldon Vale, a forced suspect with its unit 130 m off -- 135 px
+of the dot red one frame, blue the next; the five patrols unchanged. A
+stand-in remote unit with a player id drew the white ring; with a `#` id, not.
+Not tried in a real two-player game.
+
 ### The dirt track's sides, again
 
 *"It's like the two sides of the dirt track, like right when it stops being

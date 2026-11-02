@@ -174,7 +174,10 @@ scoring, deliberately.
   via `Game._openWorldMarker` (marker, red ring via `hud.suspectRange`),
   announced with `hud.notice`, in the status line via
   `Suspects.statusLine`, and the flyable helicopter targets them
-  (`Game._airSuspect`; its sighting sets `airSeenAt`). Runner
+  (`Game._airSuspect`; its sighting sets `airSeenAt`). The minimap draws
+  `Suspects.units()` as well as `dispatcher.units` (suspect units are off
+  the dispatcher's list), flashes chasing units red/blue, and draws remote
+  police *players* as a ringed blue dot. Runner
   code is kept; `_initRunner` runs only if `openWorld` is false.
 * **A flyable police helicopter** — `game/flyheli.js`, with its own flight
   model, fuel, a helipad on the workshop roof, and two-thumbstick phone
