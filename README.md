@@ -7767,6 +7767,17 @@ the open world is always nothing:
   (`airSeenAt`). Staged 94 m behind and 70 m up one: EYES ON, the suspect
   seen with its only unit 453 m away, status PURSUIT, ring drawn.
 
+*"In single player, when ... a normal car hits you, there's no wanted
+levels ... Spawn is normal ... start chasing that vehicle ... And then if a
+normal other patrolling car that isn't in a pursuit goes past the pursuit, it
+joins in."* The stars and bar on the open world's HUD are now the hottest
+suspect's own level (`Suspects.wanted`) -- the player's stays 0, so nobody
+turns on you. Units are still sent by that level as before, and on top of
+them any patrol within 90 m with a clear line to the car joins, once a second,
+up to 8 on it (`JOIN_NEAR`, `JOIN_MAX`), only while the player is not wanted.
+Staged: a forced 'hit' (1 unit sent, one star), a patrol put 40 m behind it
+-- on it within 1.5 s; at 20 s, 2 units, its level 1.48, the player's 0.
+
 ### The dirt track's sides, again
 
 *"It's like the two sides of the dirt track, like right when it stops being

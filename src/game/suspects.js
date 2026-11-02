@@ -48,6 +48,9 @@ import { dist2 } from '../util/math.js';
 
 /** Cars on a suspect by its wanted level, 0-5. */
 const SUSPECT_UNITS = [0, 2, 3, 4, 5, 6];
+/** A patrol this near a suspect with a clear line to it joins the chase, m; never more than JOIN_MAX on one. */
+const JOIN_NEAR = 90;
+const JOIN_MAX = 8;
 /** At most this many suspects at once. */
 const MAX_SUSPECTS = 2;
 /** Its wanted level: up this much a second while seen, down this much once unseen for UNSEEN_GRACE s. */
@@ -120,6 +123,18 @@ export class Suspects {
     const n = s.units.filter((u) => u.vehicle && !u.vehicle.disabled).length;
     if (seen) return { text: `PURSUIT — ${n} UNIT${n === 1 ? '' : 'S'} ON IT`, cls: 'spotted' };
     return { text: 'SEARCHING FOR THE VEHICLE', cls: 'searching' };
+  }
+
+  /**
+   * The wanted level the HUD shows in the police side's open world: the
+   * hottest suspect being chased, as the stars and bar read a Heat ({tier,
+   * progress}). Nothing running, nothing.
+   */
+  wanted() {
+    let h = 0;
+    for (const s of this.list) if (s.state === 'run') h = Math.max(h, s.heat);
+    const tier = Math.max(0, Math.min(MAX_HEAT, Math.floor(h)));
+    return { tier, progress: h <= 0 ? 0 : h >= MAX_HEAT ? 1 : h - Math.floor(h) };
   }
 
   /** The police cars on suspects, for anything that needs every unit. */
@@ -277,6 +292,29 @@ export class Suspects {
         (x) => `${x.cs}, driver detained, vehicle off the road.`,
       ], { cs }, false, { every: 6 });
       return;
+    }
+
+    // A patrol car going about its beat that comes past the chase joins it:
+    // "if a normal other patrolling car that isn't in a pursuit goes past the
+    // pursuit, it joins in." Once a second, any patrol within JOIN_NEAR with a
+    // clear line to the car, over and above what its level calls for, up to
+    // JOIN_MAX on it in all -- and only while the player is not wanted, when
+    // every car on the board is needed for that.
+    s.joinFor = (s.joinFor || 0) - dt;
+    if (s.joinFor <= 0 && g.heat.tier === 0) {
+      s.joinFor = 1;
+      for (const u of d.units.slice()) {
+        if (s.units.length >= JOIN_MAX) break;
+        if (u.human || u.role !== ROLE.PATROL || !u.vehicle || u.vehicle.disabled) continue;
+        const r = dist2(u.vehicle.position.x, u.vehicle.position.z, v.position.x, v.position.z);
+        if (r > JOIN_NEAR || !d._visibleTo(u, v)) continue;
+        this._take(s, u);
+        s.joined = (s.joined || 0) + 1;
+        g.say('suspectJoin', [
+          (x) => `${x.cs}, I've got eyes on it, joining.`,
+          (x) => `${x.cs}, it's just gone past me, joining the pursuit.`,
+        ], { cs: u.callsign }, false, { every: 8 });
+      }
     }
 
     // As many units as its level calls for, from the patrols if there are

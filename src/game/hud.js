@@ -189,7 +189,12 @@ export class Hud {
 
   update(dt, player, heat, dispatcher) {
     // ---- wanted stars ----
-    const tier = heat.tier;
+    // The police side's open world: nobody is after you, so the stars are the
+    // chase you are on -- the hottest suspect's own level, as a police player
+    // in a multiplayer game sees the escapee's. "In single player, when ... a
+    // normal car hits you, there's no wanted levels."
+    const shown = this.game.openWorld ? this.game.suspects.wanted() : heat;
+    const tier = shown.tier;
     let stars = '';
     for (let i = 0; i < 5; i++) stars += i < tier ? '<b>★</b>' : '☆';
     if (this.starsEl.innerHTML !== stars) this.starsEl.innerHTML = stars;
@@ -202,7 +207,7 @@ export class Hud {
     if (this._lastTier === undefined) this._lastTier = tier;
     if (tier > this._lastTier) this._flashStars(tier);
     this._lastTier = tier;
-    this.heatFill.style.width = (heat.progress * 100).toFixed(0) + '%';
+    this.heatFill.style.width = (shown.progress * 100).toFixed(0) + '%';
 
     // The police side's open world: what the suspects are doing, since nobody
     // is after you.
