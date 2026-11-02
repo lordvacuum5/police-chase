@@ -15,6 +15,8 @@ as before.
 | `offroad.glb` | the Badger, the 4x4 |
 | `traffic-hatchback.glb`, `traffic-estate.glb`, `traffic-suv.glb` | traffic (`game/traffic.js`); each needs a material named `paint`, which the game recolours per car |
 
+A brief for a replacement police SUV is in `POLICE-SUV.md`.
+
 The helicopter is not a car and has its own brief and its own loader: see
 `HELICOPTER.md` here and `src/game/helimodel.js`. It is `police_helicopter.glb`,
 and what it needs that a car does not is two separately named rotors.
