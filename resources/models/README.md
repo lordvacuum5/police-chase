@@ -8,7 +8,7 @@ as before.
 |---|---|
 | `police-patrol.glb` | the patrol car — the white one you meet first |
 | `police-interceptor.glb` | the interceptor, from three stars |
-| `police-suv.glb` | the police SUV |
+| `police-suv-new.glb` | the police SUV (built to `POLICE-SUV.md`; the old `police-suv.glb` is kept -- point `suv` in `CAR_MODELS` back at it to switch) |
 | `police-van.glb` | the armoured van, including the head-on one |
 | `supercar.glb` | the Stiletto, the fast one you can drive |
 | `runner.glb` | the Runner, the car the game was built around |
