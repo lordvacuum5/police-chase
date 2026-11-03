@@ -7826,6 +7826,36 @@ Staged on Haldon Vale, the player 30 m behind a traffic car at 22 m/s for
 state rides as `FLAG.SIREN`, so another player's car is lit and heard when
 they switch it on. That part is not tried with two machines.
 
+*"When you're the police, it doesn't show a busting symbol when anyone's
+busting, either the police cars or you ... multiple cars can start running
+from the cops at the same time ... two dots ... on the map ... more police
+cars will spawn ... If there's a few patrol cars really far away from me, I
+just despawn them ... we only need 3 ... when you have a collision with a
+traffic vehicle, I don't want every single traffic vehicle to run away ...
+maybe like 25% ... [the rest] turn on the hazards ... stop where they are,
+pull over ... I don't want them to like run."*
+
+* **The busted meter** read the player's own heat, which the open world pins
+  at 0. It now shows the arrest nearest done on any suspect, yours or a
+  unit's (`Suspects.bust`, fed in `Game._openWorldMarker`). Staged, the
+  player stopped against a held suspect: meter and `pinFor` in step, 0.5 s
+  per 0.5 s, draining when it slid away.
+* **Two at once** was already allowed (`MAX_SUSPECTS` 2), but the map showed
+  only the nearest. Every running suspect now has its marker
+  (`hud.moreSuspects`); the red ring stays on the nearest. Staged two: units
+  2 and 3 on them for 40 s, both on the map; a third was refused.
+* **Patrols thinning back to three** already happens: tier 0's budget is 3
+  and `Dispatcher._manageRoster` retires the furthest, never in sight. After
+  the two chases ended, 8 police (3 patrol + 5 on suspects) were back to 3
+  within 15 s. Not changed.
+* **Hit by (or hitting) a traffic car**: `HIT_RUN_CHANCE` 0.25 run; the rest,
+  and any past the two that can run at once, pull onto the verge and stop
+  with **hazard lights** on (`Suspects._pullOver`, `HazardLights` in
+  `game/effects.js`: four amber lamps at the body's measured corners, ~1.5
+  flashes a second), and go once nobody can see them. The car that stops
+  after a crash between two traffic cars gets hazards too. Staged, 24 hits
+  that registered: 3 ran, 21 pulled over, every one with hazards.
+
 ### Every wheel vanishing at four and five stars
 
 *"When it goes on to level 1 to 5 and there's loads of police, the wheels of

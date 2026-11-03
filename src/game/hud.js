@@ -824,15 +824,20 @@ export class Hud {
     // A police player is told where the car is for as long as the pursuit has
     // eyes on it, the way the rest of the force is; the marker is the same
     // orange as the car's own blip on the escapee's map.
-    if (this.suspect) {
+    // More than one at once in the police side's open world (moreSuspects,
+    // from Game._openWorldMarker): each gets the same marker.
+    const marks = this.suspect ? [{ p: this.suspect, stale: this.suspectStale }] : [];
+    if (this.moreSuspects) marks.push(...this.moreSuspects);
+    for (const mk of marks) {
       // Seen: a solid dot where they are. Lost: the last place anybody saw
       // them, flashing, so it reads as a memory rather than a position.
-      const blink = this.suspectStale ? (Math.floor(performance.now() / 380) % 2 === 0) : true;
+      const stale = mk.stale;
+      const blink = stale ? (Math.floor(performance.now() / 380) % 2 === 0) : true;
       if (blink) {
-        const p = toMap(this.suspect.x, this.suspect.z);
+        const p = toMap(mk.p.x, mk.p.z);
         const edge = 11;
         const off = p.x < edge || p.y < edge || p.x > W - edge || p.y > W - edge;
-        ctx.globalAlpha = this.suspectStale ? 0.75 : 1;
+        ctx.globalAlpha = stale ? 0.75 : 1;
         ctx.fillStyle = '#ff7a1a';
         if (off) {
           // Past the edge of what the map shows, which in a chase is most of
@@ -860,7 +865,7 @@ export class Hud {
         } else {
           ctx.beginPath();
           ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
-          if (this.suspectStale) {
+          if (stale) {
             ctx.lineWidth = 2.5;
             ctx.strokeStyle = '#ff7a1a';
             ctx.stroke();

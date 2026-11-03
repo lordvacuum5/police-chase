@@ -180,7 +180,10 @@ scoring, deliberately.
   police *players* as a ringed blue dot. A police player's own lights,
   siren sound and traffic-yield follow `player.sirenOn` (Q, or the phone's
   SIRENS button; auto-on when someone becomes wanted; `FLAG.SIREN` on the
-  net). Runner
+  net). Busted meter in open world = `Suspects.bust()`; every running
+  suspect has a map marker (`hud.moreSuspects`); a traffic car hit by/into
+  the police player runs 25% of the time, else `_pullOver` (verge, hazards
+  via `HazardLights`, `v.hazards`). Runner
   code is kept; `_initRunner` runs only if `openWorld` is false.
 * **A flyable police helicopter** — `game/flyheli.js`, with its own flight
   model, fuel, a helipad on the workshop roof, and two-thumbstick phone

@@ -216,6 +216,93 @@ export class LightBars {
   }
 }
 
+/**
+ * Hazard lights: four amber lamps at a car's corners, blinking together, for a
+ * car that has pulled over and stopped (game/suspects.js `_pullOver`).
+ *
+ * Where the corners are is measured once per car from its drawn body, with
+ * the body put back at the origin for the measurement -- generated and
+ * imported bodies are all different shapes, and a lamp floating off the
+ * bumper is worse than none.
+ */
+export class HazardLights {
+  constructor(scene, capacity = 24) {
+    this.capacity = capacity;
+    this.time = 0;
+    this.count = 0;
+    this.mesh = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(0.2, 0.1, 0.1),
+      new THREE.MeshBasicMaterial({ color: 0xffa21a, toneMapped: false }),
+      capacity * 4,
+    );
+    this.mesh.frustumCulled = false;
+    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mesh.count = 0;
+    scene.add(this.mesh);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(capacity * 4 * 3), 3));
+    geo.setDrawRange(0, 0);
+    this.glow = new THREE.Points(geo, new THREE.PointsMaterial({
+      color: 0xffa21a, map: haloTexture(), size: 1.6, sizeAttenuation: true, transparent: true,
+      opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
+    }));
+    this.glow.frustumCulled = false;
+    scene.add(this.glow);
+    this._box = new THREE.Box3();
+  }
+
+  begin(dt) {
+    this.time += dt;
+    this.count = 0;
+  }
+
+  /** The four corners of `v`'s body, body-local, cached on the car. */
+  _corners(v) {
+    if (v._hazardCorners) return v._hazardCorners;
+    const view = v.view;
+    const pos = view.position.clone(), quat = view.quaternion.clone();
+    view.position.set(0, 0, 0);
+    view.quaternion.identity();
+    view.updateMatrixWorld(true);
+    const b = this._box.setFromObject(view);
+    view.position.copy(pos);
+    view.quaternion.copy(quat);
+    view.updateMatrixWorld(true);
+    const y = b.min.y + (b.max.y - b.min.y) * 0.42;
+    const x = b.max.x - 0.14, x0 = b.min.x + 0.14;
+    v._hazardCorners = [
+      new THREE.Vector3(x, y, b.max.z - 0.04), new THREE.Vector3(x0, y, b.max.z - 0.04),
+      new THREE.Vector3(x, y, b.min.z + 0.04), new THREE.Vector3(x0, y, b.min.z + 0.04),
+    ];
+    return v._hazardCorners;
+  }
+
+  /** One car's hazards, at the pose it is drawn in this frame. */
+  place(v, basis) {
+    if (this.count >= this.capacity) return;
+    // About 1.5 flashes a second, like the real thing; every car in step is
+    // fine -- nobody counts them.
+    if ((this.time * 1.5) % 1 > 0.5) return;
+    const corners = this._corners(v);
+    const pts = this.glow.geometry.attributes.position;
+    for (let k = 0; k < 4; k++) {
+      const n = this.count * 4 + k;
+      _a.copy(corners[k]).applyQuaternion(basis.quaternion).add(basis.position);
+      _m.compose(_a, basis.quaternion, _s.setScalar(1));
+      this.mesh.setMatrixAt(n, _m);
+      pts.setXYZ(n, _a.x, _a.y, _a.z);
+    }
+    this.count++;
+  }
+
+  end() {
+    this.mesh.count = this.count * 4;
+    this.mesh.instanceMatrix.needsUpdate = true;
+    this.glow.geometry.setDrawRange(0, this.count * 4);
+    this.glow.geometry.attributes.position.needsUpdate = true;
+  }
+}
+
 /** A round, soft-edged spot for the halo points. */
 function haloTexture() {
   const c = document.createElement('canvas');

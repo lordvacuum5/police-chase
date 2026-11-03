@@ -72,7 +72,7 @@ import { Hud } from './game/hud.js';
 import { PauseMenu, savedVolume } from './game/pausemenu.js';
 import { Input } from './core/input.js';
 import { TouchControls } from './core/touch.js';
-import { SkidMarks, LightBars } from './game/effects.js';
+import { SkidMarks, LightBars, HazardLights } from './game/effects.js';
 import { session, packCar, AI_ID, FLAG } from './net/session.js';
 import { GameAudio } from './game/audio.js';
 import { Commentary } from './game/commentary.js';
@@ -515,6 +515,7 @@ class Game {
   _initEffects() {
     this.skids = new SkidMarks(this.scene, 2600);
     this.lights = new LightBars(this.scene, MAX_VEHICLES);
+    this.hazards = new HazardLights(this.scene);
     this._wheelPool(MAX_VEHICLES);
   }
 
@@ -1096,12 +1097,25 @@ class Game {
       const d = dist2(me.position.x, me.position.z, s.v.position.x, s.v.position.z);
       if (d < bd) { bd = d; best = s; }
     }
-    this.hud.suspect = !best ? null
-      : (best.seen ? best.v.position : (best.unseenFor < SEARCH_SECONDS ? best.lastSeen || null : null));
+    const at = (s) => (s.seen ? s.v.position : (s.unseenFor < SEARCH_SECONDS ? s.lastSeen || null : null));
+    this.hud.suspect = best ? at(best) : null;
     this.hud.suspectStale = !!best && !best.seen;
     // The red ring, round the car while it is seen: how far the police on it
     // can see it.
     this.hud.suspectRange = best && best.seen ? SUSPECT_SIGHT : 0;
+    // Any other car being chased at the same time is on the map too: "I want
+    // just two dots ... on the map." Marker only; the ring stays on the nearest.
+    this.hud.moreSuspects = [];
+    for (const s of this.suspects.list) {
+      if (s === best || s.state !== 'run' || s.v.removed) continue;
+      const p = at(s);
+      if (p) this.hud.moreSuspects.push({ p, stale: !s.seen });
+    }
+    // The busted meter, for whichever arrest is nearest done -- yours or a
+    // unit's. The player's own heat is pinned at 0 here, so its meter is free.
+    const b = this.suspects.bust();
+    this.heat.bustTimer = b.timer;
+    this.heat.bustPinned = b.pinned;
   }
 
   /** A place on a road out of `node`; `ok(edge)`, if given, says which roads will do. */
@@ -3434,6 +3448,7 @@ class Game {
     const alpha = clamp01(this.accumulator / FIXED);
     let wi = 0;
     this.lights.begin(dt);
+    this.hazards.begin(dt);
 
     // The player's aircraft, if they are flying one. Not in `vehicles` -- it
     // has no collider and no wheels -- so it is drawn here, the same way and
@@ -3505,11 +3520,13 @@ class Game {
           || LAMP_OFFSETS;
         this.lights.place(v, lamps, v.lampPhase || 0, _drawn);
       }
+      if (v.hazards) this.hazards.place(v, _drawn);
     }
 
     this.wheelMesh.count = wi;
     this.wheelMesh.instanceMatrix.needsUpdate = true;
     this.lights.end();
+    this.hazards.end();
 
     // ---- keep the shadow frustum on the player ----
     const p = this.player.position;

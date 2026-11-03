@@ -88,6 +88,14 @@ const CRASH_SIGHT = 60;
 const CRASH_HIT = 2.6;
 /** A traffic car whose bodywork is within this of the police player's at a knock is the one that hit it, m. */
 const HIT_GAP = 1.2;
+/**
+ * The share of traffic cars that run after a knock with the police player; the
+ * rest pull over and stop with their hazards on. "When you have a collision
+ * with a traffic vehicle, I don't want every single traffic vehicle to run
+ * away. I want it to be maybe like 25% of them ... [the rest] kind of stop
+ * where they are, pull over to the road ... I don't want them to like run."
+ */
+const HIT_RUN_CHANCE = 0.25;
 
 export class Suspects {
   constructor(game) {
@@ -135,6 +143,21 @@ export class Suspects {
     for (const s of this.list) if (s.state === 'run') h = Math.max(h, s.heat);
     const tier = Math.max(0, Math.min(MAX_HEAT, Math.floor(h)));
     return { tier, progress: h <= 0 ? 0 : h >= MAX_HEAT ? 1 : h - Math.floor(h) };
+  }
+
+  /**
+   * The arrest closest to done, as the busted meter reads it: seconds in, and
+   * whether a unit is on it right now. "When you're the police, it doesn't
+   * show a busting symbol when anyone's busting, either the police cars or
+   * you." Any suspect, whoever is making the arrest.
+   */
+  bust() {
+    let best = null;
+    for (const s of this.list) {
+      if (s.state !== 'run' || !(s.pinFor > 0.01)) continue;
+      if (!best || s.pinFor > best.pinFor) best = s;
+    }
+    return best ? { timer: best.pinFor, pinned: !!best.pinned } : { timer: 0, pinned: false };
   }
 
   /** The police cars on suspects, for anything that needs every unit. */
@@ -281,7 +304,8 @@ export class Suspects {
 
     // The arrest.
     // Run down slowly rather than reset by one bad moment of a shove.
-    s.pinFor = near <= BUST_GAP && v.speed < BUST_SPEED ? s.pinFor + dt : Math.max(0, s.pinFor - dt * 0.5);
+    s.pinned = near <= BUST_GAP && v.speed < BUST_SPEED;
+    s.pinFor = s.pinned ? s.pinFor + dt : Math.max(0, s.pinFor - dt * 0.5);
     if (s.pinFor >= BUST_SECONDS) {
       s.state = 'pull';
       s.pullFor = 0;
@@ -524,9 +548,29 @@ export class Suspects {
     if (!other) return false;
     p._suspectHitAt = p.lastImpactAt;
     other._playerHitAt = other.lastImpactAt;
-    const s = this.offence(g.traffic.recordOf(other), 'hit', null);
-    if (!s) return false;
+    const c = g.traffic.recordOf(other);
+    const s = g.rng() < HIT_RUN_CHANCE ? this.offence(c, 'hit', null) : null;
+    // Most of them, and any past the two that can run at once: onto the verge
+    // and stopped, hazards on, the way a driver who has just hit a police car
+    // actually behaves.
+    if (!s) return this._pullOver(c);
     s.heat = Math.min(MAX_HEAT, s.heat + HIT_HEAT);
+    return true;
+  }
+
+  /**
+   * Out of traffic, onto the verge and stopped with its hazards on; it goes
+   * once nobody can see it (_parked). The other car in a crash, or a driver
+   * who has hit the police player and is not running.
+   */
+  _pullOver(c) {
+    if (!c || !c.v || c.v.removed || c.v.isSuspect) return false;
+    const g = this.game;
+    g.traffic.release(c);
+    const v = c.v;
+    v.hazards = true;
+    this.list.push({ v, runner: new Runner(g, v), why: 'crash', victim: true, heat: 0, units: [],
+      state: 'pull', pullFor: 0, goneFor: 0 });
     return true;
   }
 
@@ -564,11 +608,7 @@ export class Suspects {
     if (!seen) return false;
     const [run, stop] = g.rng() < 0.5 ? [a, b] : [b, a];
     if (!this.offence(run, 'crash', witness)) return false;
-    g.traffic.release(stop);
-    const v = stop.v;
-    this.list.push({ v, runner: new Runner(g, v), why: 'crash', victim: true, heat: 0, units: [],
-      state: 'pull', pullFor: 0, goneFor: 0 });
-    return true;
+    return this._pullOver(stop);
   }
 
   /** A patrol car that can see (x, z), within WITNESS: for game/traffic.js before it runs a light. */
