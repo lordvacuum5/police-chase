@@ -515,10 +515,28 @@ class Game {
   _initEffects() {
     this.skids = new SkidMarks(this.scene, 2600);
     this.lights = new LightBars(this.scene, MAX_VEHICLES);
+    this._wheelPool(MAX_VEHICLES);
+  }
+
+  /**
+   * The one instanced mesh every car's wheels are drawn from, room for `cars`.
+   *
+   * It was a fixed forty cars' worth, and MAX_VEHICLES only caps the police:
+   * traffic (17), suspects and other players come on top. At four and five
+   * stars that is over forty, and a draw asking for more instances than the
+   * buffer holds is refused whole by WebGL -- so every wheel in the world went
+   * at once, the player's too. "When it goes on to level 1 to 5 and there's
+   * loads of police, the wheels of the police car and sometimes my wheels
+   * don't exist anymore." Now Game._render grows it before that can happen.
+   */
+  _wheelPool(cars) {
+    const old = this.wheelMesh;
+    if (old) { this.scene.remove(old); old.dispose(); }
+    this.wheelCap = cars * 4;
     this.wheelMesh = new THREE.InstancedMesh(
-      buildWheelGeometry(0.34, 0.26),
-      vertexColorMaterial(),
-      MAX_VEHICLES * 4,
+      old ? old.geometry : buildWheelGeometry(0.34, 0.26),
+      old ? old.material : vertexColorMaterial(),
+      this.wheelCap,
     );
     this.wheelMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.wheelMesh.castShadow = true;
@@ -3440,6 +3458,9 @@ class Game {
     }
 
     const lookOn = !(typeof window !== 'undefined' && window.__driftLook === false);
+    // Room for every car's wheels, with some to spare so it is not rebuilt
+    // for each car that turns up. See _wheelPool.
+    if (this.vehicles.length * 4 > this.wheelCap) this._wheelPool(this.vehicles.length + 16);
     for (const v of this.vehicles) {
       v.view.position.lerpVectors(v.prevPos, v.position, alpha);
       v.view.quaternion.copy(v.prevQuat).slerp(v.quaternion, alpha);

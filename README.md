@@ -7826,6 +7826,24 @@ Staged on Haldon Vale, the player 30 m behind a traffic car at 22 m/s for
 state rides as `FLAG.SIREN`, so another player's car is lit and heard when
 they switch it on. That part is not tried with two machines.
 
+### Every wheel vanishing at four and five stars
+
+*"When it goes on to level 1 to 5 and there's loads of police, the wheels of
+the police car and sometimes my wheels don't exist anymore. They vanished."*
+Every car's wheels are one instanced mesh, sized for MAX_VEHICLES (40) cars --
+but that only caps the police. Traffic (17), suspects and other players come
+on top: five stars on Haldon Vale had 44 cars, 176 wheels for a 160-wheel
+buffer. WebGL refuses a draw that asks for more instances than its buffer
+holds (INVALID_OPERATION, 1282) and it refuses it whole, so every wheel went
+at once, yours included. It is not too many entities for the machine; it was
+one buffer too small.
+
+`Game._wheelPool` now rebuilds the mesh with room for the cars plus 16 when
+they outgrow it, checked each frame in `_render`. Same scene, 44 cars: the old
+pool gave error 1282, the grown one (240) drew all 176 with none. The light
+bars have the same 40 cap, but `LightBars.place` already stops at it, so past
+40 police the extra cars go unlit rather than taking everyone's lights out.
+
 ### The dirt track's sides, again
 
 *"It's like the two sides of the dirt track, like right when it stops being
