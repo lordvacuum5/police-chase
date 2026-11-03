@@ -7889,8 +7889,24 @@ each row a fresh page. Two routes is noisy; read it as a direction.
   moving one adds its own speed. What holds the chase mean down is still real
   obstacles (`Clear`, `wall`), the same clamps the README has tried and failed to
   loosen before. Ashfield at 120 on the final settings: 67 km/h, 3 hits, none hard, no wrecks (no
-  before-figure in the same run). So: better, about 8%, and not "really fast". A trial of those
-  clamps on open ground only is the next thing to try.
+  before-figure in the same run). So that step: better, about 8%, and not "really fast".
+* **The clamps themselves, on open country only** (`Driver._openGround`: a map with
+  hills, no road under the wheels). 3 m in hand instead of 7 and 6 (`OPEN_KEEP`), all
+  of the tyre instead of 75% in the wall and tree clamps (`OPEN_GRIP`), and 15% more
+  braking believed in by the look-ahead (`OPEN_BRAKE`). Cutting these in town doubled
+  the contacts and wrote cars off, so towns and carriageways keep theirs. Four routes,
+  fresh page each, `window.__openLoose = false` for the first:
+
+  | | at 120: mean, with it, behind, hits (hard), spins | at 150: mean, with it, behind, hits (hard), spins |
+  |---|---|---|
+  | margins as they were | 95 km/h, 16%, 226 m, 7 (1), 0 | 94 km/h, 5%, 361 m, 6 (0), 3 |
+  | **loosened (kept)** | **97, 21%, 192 m, 4 (2), 3** | **103, 6%, 319 m, 3 (1), 1** |
+
+  No wrecks either way and worst damage the same, tree contacts 3 -> 2. Fewer knocks in
+  all but harder ones, 1 -> 3, so it does cost something. "Route skips" went 2 -> 27 in
+  the 120 run, not looked into. `Arc` is now the top limit, the turn being held, which
+  is no longer the obstacles. `tests/parkedtractor.js` unchanged: 7 of 8 arrive, the
+  one touch at 13 km/h.
 
 *"There's a tractor with a trailer ... it never moves ... the police cars don't
 know it's there ... the police cars just hit it."* It is meant not to move (the

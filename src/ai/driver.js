@@ -269,6 +269,10 @@ const TREE_STRIP = 1.5;
  * creep at the end of the speed clamps in drive().
  */
 const CREEP_SPEED = 2.5;          // m/s, 9 km/h
+/** On open country (_openGround): metres kept in hand, share of the tyre the wall and tree clamps assume, and more braking believed in by the look-ahead. */
+const OPEN_KEEP = 3;
+const OPEN_GRIP = 1.0;
+const OPEN_BRAKE = 1.15;
 /** The parked tractor: how far off a car allows for it, m; the clearance a line past it must have beyond the car's own width, and the corner it steers for. See _roundParked. */
 const PARKED_LOOK = 90;
 const PARKED_TRIGGER = 1.0;
@@ -777,6 +781,19 @@ export class Driver {
   }
 
   /**
+   * Off the road in the country, where these margins are what holds a car back.
+   *
+   * "They should be really fast on the rolling hills. There's nothing for them
+   * to avoid, really." Every stopping clamp keeps metres in hand and assumes part
+   * of the tyre, which is right among buildings and did cost contacts to cut there
+   * (see the wall clamp), so only on a map with hills and with no road under the
+   * wheels. `window.__openLoose = false` puts them back, for rigs.
+   */
+  _openGround() {
+    return !!this.v.sim.terrainAt && window.__openLoose !== false && !this._onCarriageway();
+  }
+
+  /**
    * Speed ceiling while the car is sideways.
    *
    * Asking a car that is already sliding for the speed that put it there just
@@ -1132,15 +1149,19 @@ export class Driver {
 
     // Stopping distance in what it can see. On a path that is `_pathClear`, which
     // follows the route; otherwise the straight probes above.
-    const usable = Math.max(0, this._clear - 7);
-    let limit = Math.sqrt(2 * aBrake * usable);
+    // Less held in hand on open country: see _openGround.
+    const open = this._openGround();
+    const keep = open ? OPEN_KEEP : 7;
+    const aStop = open ? aBrake * OPEN_BRAKE : aBrake;
+    const usable = Math.max(0, this._clear - keep);
+    let limit = Math.sqrt(2 * aStop * usable);
     // Each clause recorded, for the same reason drive() records its own.
     const c = this.caps;
     c.sClear = limit; c.sTravel = Infinity; c.sRunout = Infinity;
     c.sArc = Infinity; c.sBack = Infinity;
 
     // Stopping distance along the line of travel.
-    c.sTravel = Math.sqrt(2 * aBrake * Math.max(0, this._clearTravel - 7));
+    c.sTravel = Math.sqrt(2 * aStop * Math.max(0, this._clearTravel - keep));
     limit = Math.min(limit, c.sTravel);
 
     // How much road is left in front of us, which is the junction question:
@@ -2180,8 +2201,9 @@ export class Driver {
       // This keeps the straight-ahead probe and only softens what is demanded of
       // it, so there is no new geometry to be wrong about.
       const relief = 1 + this.wallTurn * Math.min(Math.abs(s.alpha), 1.2);
-      const usable = Math.max(0, this.wallNear - this.wallKeep) * relief;
-      caps.wall = Math.sqrt(2 * mu * 9.81 * this.wallGrip * usable);
+      const open = this._openGround();
+      const usable = Math.max(0, this.wallNear - (open ? OPEN_KEEP : this.wallKeep)) * relief;
+      caps.wall = Math.sqrt(2 * mu * 9.81 * (open ? OPEN_GRIP : this.wallGrip) * usable);
       speed = Math.min(speed, caps.wall);
     }
 
@@ -2190,8 +2212,9 @@ export class Driver {
     // tallies still add up.
     if (this.treeNear < TREE_LOOK) {
       const mu = this._mu();
-      const usable = Math.max(0, this.treeNear - TREE_KEEP);
-      const cap = Math.sqrt(2 * mu * 9.81 * this.wallGrip * usable);
+      const open = this._openGround();
+      const usable = Math.max(0, this.treeNear - (open ? OPEN_KEEP : TREE_KEEP));
+      const cap = Math.sqrt(2 * mu * 9.81 * (open ? OPEN_GRIP : this.wallGrip) * usable);
       caps.wall = Math.min(caps.wall, cap);
       speed = Math.min(speed, cap);
     }

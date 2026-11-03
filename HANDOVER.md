@@ -192,8 +192,9 @@ scoring, deliberately.
   `humanDriven`), go round the parked tractor by its corners
   (`Driver._roundParked`, shape on `life.parked.userData.span`), and keep to the
   lane rather than aim between trees (`_treeLineFor`). Player asked for "really
-  fast" on the hills; got about 8% (README, "Faster on the rolling hills"). The
-  open-ground `Clear`/`wall` clamps are the remaining limit.
+  fast" on the hills (README, "Faster on the rolling hills"). The stopping clamps
+  are loosened off-road on hilly maps only (`Driver._openGround`); towns measured
+  worse for it, do not extend it there without a rig.
 * **The police pack cap raised 18 → 30**, which needed the tier budget and
   `MAX_VEHICLES` raising with it.
 * **Air support has two sensors.** `Helicopter.canSee` is the beam pool
