@@ -336,7 +336,6 @@ export class Traffic {
   /** Blue lights near enough to get out of the way of. */
   _sirenNear(v) {
     const g = this.game;
-    if (!(g.heat && g.heat.value > 0)) return false;
     // Coming at it, not merely near it: a roadblock crew parked by the road,
     // or a unit going the other way, used to have every car within 70 m
     // stopped on the verge.
@@ -348,13 +347,17 @@ export class Traffic {
       const mine = (v.linvel.x * dx + v.linvel.z * dz) / (l || 1);
       return theirs - mine > 2;
     };
-    for (const u of g.dispatcher.units) {
-      if (u.role === ROLE.PATROL || !u.vehicle || u.vehicle.disabled) continue;
-      if (coming(u.vehicle)) return true;
+    if (g.heat && g.heat.value > 0) {
+      for (const u of g.dispatcher.units) {
+        if (u.role === ROLE.PATROL || !u.vehicle || u.vehicle.disabled) continue;
+        if (coming(u.vehicle)) return true;
+      }
     }
-    // A police player's car, lights on, counts too.
+    // A police player's car, when its siren is on (Q / SIRENS) -- whatever
+    // anybody's wanted level, so the open world's traffic gets out of the way
+    // of a car on a call too.
     const me = g.player;
-    return !!(me && me.isPolice && me !== v && coming(me));
+    return !!(me && me.isPolice && me.sirenOn && me !== v && coming(me));
   }
 
   _drive(c, dt) {

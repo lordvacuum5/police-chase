@@ -644,6 +644,13 @@
     pointer-events: none;
   }
   #t-hand { grid-column: 1 / span 2; font-size: 11px; }
+  /* Small, at the right edge just above the pedals (core/touch.js). */
+  #t-siren {
+    position: absolute; right: calc(12px + var(--safe-r)); bottom: calc(198px + var(--safe-b));
+    height: 30px; padding: 0 9px; font-size: 9px; border-radius: 8px;
+  }
+  #t-siren[hidden], #touch.air #t-siren, #touch.ended #t-siren { display: none; }
+  #t-siren.on { background: rgba(78, 163, 255, .38); border-color: var(--blue); }
   #t-brake { font-size: 13px; }
   #t-gas { font-size: 15px; }
   #t-brake.on { background: rgba(255, 59, 48, .38); border-color: var(--hot); }
@@ -734,6 +741,7 @@
   /* Short screens: a phone held sideways is about 360-430 px tall. */
   @media (max-height: 360px) {
     #t-pedals { grid-template-rows: 44px 96px; grid-template-columns: 84px 98px; gap: 8px; }
+    #t-siren { bottom: calc(168px + var(--safe-b)); }
     body.touch #minimap { width: 96px; height: 96px; }
   }
 
@@ -800,6 +808,7 @@
           <td class="k"><kbd>F3</kbd></td><td>Debug overlay</td></tr>
       <tr><td class="k"><kbd>N</kbd></td><td>Sound on / off</td>
           <td class="k"><kbd>M</kbd></td><td>Back to the menu</td></tr>
+      <tr><td class="k"><kbd>Q</kbd></td><td>Sirens on / off (police)</td></tr>
       <tr><td class="k"><kbd>1</kbd>–<kbd>5</kbd></td><td>Set wanted level (no score)</td>
           <td class="k"><kbd>0</kbd></td><td>Clear wanted level</td></tr>
       <tr><td class="k">type <kbd>one</kbd>…<kbd>five</kbd></td><td>Same, as words (<kbd>zero</kbd> clears)</td>

@@ -217,6 +217,7 @@ export class TouchControls {
       </div>
       <div id="t-buttons">${BUTTONS.map((b) => `<div class="tbtn" id="t-${b.id}" data-tap="${b.id}"`
         + ` role="button" aria-label="${b.title}">${b.label}</div>`).join('')}</div>
+      <div class="tbtn" id="t-siren" data-tap="siren" role="button" aria-label="Sirens on or off" hidden>SIRENS</div>
       <div class="tbtn" id="t-again" data-tap="again" role="button">RUN AGAIN</div>
       <div id="t-hint" data-tap="hint" role="button" hidden></div>
       <div id="t-rotate" data-tap="rotate" role="button">Turn your phone sideways for a wider view<small>tap to hide</small></div>`;
@@ -232,6 +233,7 @@ export class TouchControls {
     this.pauseBtn = root.querySelector('#t-pause');
     this.fullBtn = root.querySelector('#t-full');
     this.againBtn = root.querySelector('#t-again');
+    this.sirenBtn = root.querySelector('#t-siren');
     this.hintEl = root.querySelector('#t-hint');
 
     // An iPhone has no Fullscreen API at all -- Safari only ever gave it to
@@ -413,6 +415,7 @@ export class TouchControls {
   _tap(id, el) {
     if (id === 'rotate' || id === 'hint') { el.hidden = true; return; }
     if (id === 'again') { this.input.press('KeyR'); return; }
+    if (id === 'siren') { this.input.press('KeyQ'); return; }
     if (id === 'full') { this._toggleFullscreen(); return; }
     const b = BUTTONS.find((x) => x.id === id);
     if (!b) return;
@@ -467,6 +470,11 @@ export class TouchControls {
       this.againBtn.hidden = ended && !this.game.canRestart;
     }
     const p = this.game.player;
+    // Only in a police car you are driving; lit while the siren is on.
+    const cop = !!p && p.isPolice && !p.isAircraft;
+    if (cop !== this._cop) { this._cop = cop; this.sirenBtn.hidden = !cop; }
+    const siren = cop && !!p.sirenOn;
+    if (siren !== this._siren) { this._siren = siren; this.sirenBtn.classList.toggle('on', siren); }
     const stuck = !!p && (p.flippedFor > 0.3);
     if (stuck !== this._stuck) {
       this._stuck = stuck;

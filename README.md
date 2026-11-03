@@ -706,6 +706,7 @@ themselves:
 | `Shift` | Clutch kick (dumps the clutch to break the rear loose) |
 | `C` | Cycle camera — chase / close / bonnet / cinematic |
 | `R` | Flip the car upright, or restart after being busted |
+| `Q` | Sirens on or off, in a police car (the SIRENS button on a phone) |
 | `P` | Pause · `H` Controls · `N` Sound on or off · `M` Back to the menu · `F3` Debug telemetry |
 | `0`–`5`, or type `zero`…`five` | Set the wanted level (stops the run scoring) |
 | type `st` | Save a police report — see below |
@@ -7802,6 +7803,28 @@ background): Haldon Vale, a forced suspect with its unit 130 m off -- 135 px
 of the dot red one frame, blue the next; the five patrols unchanged. A
 stand-in remote unit with a player id drew the white ring; with a `#` id, not.
 Not tried in a real two-player game.
+
+*"On a phone ... a tiny button at the side named sirens, and it can turn off
+and on the sirens ... when you're a police car. And also on keyboard ... Is Q
+a good key?"* Q: bound to nothing, beside WASD, and in none of the typed
+shortcuts (apple, five, st, log). The phone gets a small SIRENS button at the
+right edge above the pedals, shown only in a police car you are driving, lit
+while on; it presses Q (`core/touch.js`). `Vehicle.sirenOn` on your own car
+now decides three things that hung off the wanted level before:
+
+* **Its lights.** Your car is lit when the siren is on and only then. It is
+  switched on for you when somebody becomes wanted (as the lights always were
+  in a multiplayer chase) and Q has the last word from there.
+* **The sound**, heard as a car 60 m off (the wail) -- right on top of you
+  it would drown the engine and the radio.
+* **Traffic pulling over.** `Traffic._sirenNear` returned nothing at heat 0,
+  so the open world's traffic never gave way to you. Your car now counts
+  whenever its siren is on, whatever the heat; AI units still need a chase.
+
+Staged on Haldon Vale, the player 30 m behind a traffic car at 22 m/s for
+0.7 s: siren on, it pulled over (`pullFor` 4); off, nothing. Over the net the
+state rides as `FLAG.SIREN`, so another player's car is lit and heard when
+they switch it on. That part is not tried with two machines.
 
 ### The dirt track's sides, again
 

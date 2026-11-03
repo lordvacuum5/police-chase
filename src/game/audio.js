@@ -1470,12 +1470,15 @@ export class GameAudio {
     if (dispatcher) {
       for (const u of dispatcher.units) {
         const blipping = u.vehicle.blipFor > 0;
-        if (!blipping && (heat.tier === 0 || u.vehicle.unmarked)) continue;
+        if (!blipping && !u.vehicle.sirenOn && (heat.tier === 0 || u.vehicle.unmarked)) continue;
         if (u.vehicle.disabled) continue;
         const d = u.distanceTo(player.position);
         if (d < nearest) { nearest = d; blip = blipping && heat.tier === 0; }
       }
     }
+    // Your own, switched on with Q: heard as a car 60 m off, the wail -- right
+    // on top of you it would drown the engine and the radio.
+    if (player.isPolice && player.sirenOn && nearest > 60) { nearest = 60; blip = false; }
     if (nearest < 190) {
       this.sirenPhase += dt;
 

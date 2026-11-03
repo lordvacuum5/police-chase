@@ -2396,6 +2396,23 @@ class Game {
       }
     }
     if (i.tapped('KeyC')) this.camera3.cycle();
+    // Lights and siren on your own police car. "Can we add on the phone like
+    // a tiny button at the side named sirens, and it can turn off and on the
+    // sirens ... and on keyboard ... Is Q a good key?" Q is bound to nothing,
+    // sits by WASD, and no typed shortcut (apple, five, st, log) has one in it.
+    // The phone's SIRENS button presses it (core/touch.js).
+    const me = this.player;
+    if (me && me.isPolice && !me.isAircraft) {
+      // Switched on for you when somebody becomes wanted, as the lights always
+      // were in a multiplayer chase; from then on Q has the last word.
+      const hot = this.heat.tier > 0;
+      if (hot && !this._sirenWasHot) me.sirenOn = true;
+      this._sirenWasHot = hot;
+      if (i.tapped('KeyQ') && !this.outcome) {
+        me.sirenOn = !me.sirenOn;
+        this.hud.toast(me.sirenOn ? 'SIRENS ON' : 'SIRENS OFF');
+      }
+    }
     // N, not M: M is the menu, and was checked first, so muting could never happen.
     if ((i.tapped('KeyN') || i.tapped('Mute')) && this.audio) {
       // Said out loud on screen, not just written to the radio log -- the log
@@ -2618,6 +2635,7 @@ class Game {
       v.damage = car.damage;
       v.disabled = (car.flags & FLAG.DISABLED) !== 0;
       v.blipFor = (car.flags & FLAG.BLIP) !== 0 ? 0.2 : 0;
+      v.sirenOn = (car.flags & FLAG.SIREN) !== 0;
       // Wheels are cosmetic on a car nobody here is driving: point the front
       // pair where the packet says and roll all four at road speed.
       const radius = v.spec.wheelRadius || 0.34;
@@ -3454,7 +3472,10 @@ class Game {
       // Lit in a chase, or for the second of a "move along" blip from a patrol
       // car you are sitting in front of (Officer._warnIfBlocked).
       // Or on a suspect's tail, whatever the player's wanted level.
-      if (v.isPolice && !v.unmarked && (this.heat.tier > 0 || v.blipFor > 0 || v.onCall)) {
+      // Your own car is lit when you say so (Q / SIRENS), and nothing else.
+      const lit = v === this.player ? v.sirenOn
+        : this.heat.tier > 0 || v.blipFor > 0 || v.onCall || v.sirenOn;
+      if (v.isPolice && !v.unmarked && lit) {
         // Each body puts its bar somewhere different; the body says where. An
         // imported one carries the offsets on the object (it is a whole scene,
         // not one geometry), a generated one on its geometry.

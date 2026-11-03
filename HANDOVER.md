@@ -177,7 +177,10 @@ scoring, deliberately.
   (`Game._airSuspect`; its sighting sets `airSeenAt`). The minimap draws
   `Suspects.units()` as well as `dispatcher.units` (suspect units are off
   the dispatcher's list), flashes chasing units red/blue, and draws remote
-  police *players* as a ringed blue dot. Runner
+  police *players* as a ringed blue dot. A police player's own lights,
+  siren sound and traffic-yield follow `player.sirenOn` (Q, or the phone's
+  SIRENS button; auto-on when someone becomes wanted; `FLAG.SIREN` on the
+  net). Runner
   code is kept; `_initRunner` runs only if `openWorld` is false.
 * **A flyable police helicopter** — `game/flyheli.js`, with its own flight
   model, fuel, a helipad on the workshop roof, and two-thumbstick phone
