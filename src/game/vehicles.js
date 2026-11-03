@@ -639,6 +639,9 @@ Object.assign(SPECS, {
  * Applied to the one car, as its own copy of the spec, so it does not touch
  * the shared table: same body, same model, same collider, same engine.
  */
+/** The player's SUV's brake torque, Nm; the AI's stays at SPECS.suv's 4400. */
+const SUV_PLAYER_BRAKE_TORQUE = 3900;
+
 export function drivablePoliceSpec(key = 'interceptor') {
   const base = SPECS[key] || SPECS.interceptor;
   const spec = Object.assign({}, base, {
@@ -711,6 +714,13 @@ export function drivablePoliceSpec(key = 'interceptor') {
   if (key === 'suv') {
     spec.steering = Object.assign({}, base.steering, { maxAngle: 0.62 });
     spec.gripBias = { front: spec.gripBias.front + 0.10, rear: spec.gripBias.rear };
+    // Softer brakes when you drive it: "[the brakes are] slightly bit too
+    // good when the player is playing the police SUV ... keep the brakes the
+    // same when the computer is driving." Torque rather than the fleet's
+    // braking rubber (gripBonus): cutting that only lengthened the stop from
+    // 100 km/h and did nothing at 60, where torque is the limit. From 100,
+    // 32.9 -> 36.2 m; from 60, 13.0 -> 13.8 m (tests/suvbrake.js).
+    spec.brakes = Object.assign({}, base.brakes, { maxTorque: SUV_PLAYER_BRAKE_TORQUE });
   }
   return spec;
 }

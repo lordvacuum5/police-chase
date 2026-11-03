@@ -7856,6 +7856,27 @@ pull over ... I don't want them to like run."*
   after a crash between two traffic cars gets hazards too. Staged, 24 hits
   that registered: 3 ran, 21 pulled over, every one with hazards.
 
+### The SUV's brakes, yours only
+
+*"[The brakes are] slightly bit too good when the player is playing the
+police SUV. Obviously, keep the brakes the same when the computer is driving
+the police SUV."* `drivablePoliceSpec('suv')` now has 3900 Nm of brake torque
+against the AI's 4400; `SPECS.suv` is untouched. `tests/suvbrake.js`, the
+two side by side on Ashfield's longest wide straight:
+
+| | from 100 km/h | from 60 km/h |
+|---|---|---|
+| AI SUV | 33.2 m | 14.3 m |
+| yours, was | 32.9 m | 13.0 m |
+| gripBonus 1.5 -> 1.25 | 38.1 m | 13.1 m |
+| that and 3900 Nm | 42.2 m | 13.9 m |
+| **3900 Nm alone (kept)** | **36.2 m** | **13.8 m** |
+
+Cutting the fleet's braking rubber only lengthened the fast stop -- below
+about 70 km/h torque is the limit, not grip -- and both together was a
+quarter longer, more than "slightly". Torque alone is about a tenth at 100
+and a sixteenth at 60, and still leaves yours shorter than the AI's at 60.
+
 ### Every wheel vanishing at four and five stars
 
 *"When it goes on to level 1 to 5 and there's loads of police, the wheels of
