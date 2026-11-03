@@ -581,6 +581,7 @@ class Game {
       const kind = SPECS[chosenPoliceCar()] ? chosenPoliceCar() : 'interceptor';
       this.player = this.createVehicle(kind, kind, place.position, place.heading,
         { police: true, spec: drivablePoliceSpec(kind) });
+      this.player.humanDriven = true;
       this._syncApple();
       this.player.lampPhase = this.rng();
       this.startPlace = place;

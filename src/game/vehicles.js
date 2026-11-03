@@ -70,7 +70,9 @@ const baseGears = [0, 4.20, 2.75, 2.05, 1.62, 1.32, 1.08];
  * both "a bit too fast", on maps where slipping between two houses already
  * loses a pursuit. Measured before and after in README, "Evening it up".
  */
-const POLICE_POWER = 1.12;
+const POLICE_POWER = 1.18;
+/** Their tyres on the loose, on top of what each car has. See README, "Faster on the rolling hills". */
+const POLICE_OFFROAD = 1.25;
 const POLICE_GRIP = 1.08;
 /**
  * Paid back for the roll centre.
@@ -357,7 +359,7 @@ export const SPECS = {
     gripBias: { front: 1.08, rear: 1.06 },
     // Fleet tyres bite on the loose. Grass mu goes 0.62 -> about 1.1, so a
     // line straight across country is a real option rather than a bog.
-    offRoadGrip: 1.80,
+    offRoadGrip: 1.80 * POLICE_OFFROAD,
     // And the lock to use it. The limiter sizes the steering for steady-state
     // cornering, which in a wood is far more caution than a gap needs: see
     // offRoadLatLimit in physics/vehicle.js. Tarmac is untouched.
@@ -392,7 +394,7 @@ export const SPECS = {
     // 6 hits against 2, the worst of them 35 m/s at 102 km/h and one car
     // 57% wrecked, because the units spend the extra grip on speed (mean 14
     // km/h through the copse to 40) and then bin it. tests/woods.js.
-    offRoadGrip: 1.85,
+    offRoadGrip: 1.85 * POLICE_OFFROAD,
     offRoadLatLimit: 18.5,
     durability: 2.8,
     topSpeedHint: 99,
@@ -415,7 +417,7 @@ export const SPECS = {
     aero: { dragArea: 0.67, downforce: 0.44 },
     gripScale: 1.0 * POLICE_GRIP * ROLL_PAYBACK,
     gripBias: { front: 1.08, rear: 1.06 },
-    offRoadGrip: 1.88,
+    offRoadGrip: 1.88 * POLICE_OFFROAD,
     offRoadLatLimit: 18.5,
     durability: 2.4,
     topSpeedHint: 103,
@@ -459,7 +461,7 @@ export const SPECS = {
     aero: { dragArea: 0.92, downforce: 0.2 },
     gripScale: 0.98 * POLICE_GRIP,
     gripBias: { front: 1.08, rear: 1.06 },
-    offRoadGrip: 2.0,
+    offRoadGrip: 2.0 * POLICE_OFFROAD,
     offRoadLatLimit: 18.5,
     durability: 3.4,
     topSpeedHint: 92,

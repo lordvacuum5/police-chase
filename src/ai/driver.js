@@ -261,7 +261,7 @@ const WALL_TURN = 0;
  * side of its line of travel is one it must be able to stop for. See the tree
  * sweep in _avoidScenery and the tree clamp in drive().
  */
-const TREE_STRIP = 3;
+const TREE_STRIP = 1.5;
 
 /**
  * The speed a stopped car may still roll at to turn away from something close,
@@ -269,6 +269,10 @@ const TREE_STRIP = 3;
  * creep at the end of the speed clamps in drive().
  */
 const CREEP_SPEED = 2.5;          // m/s, 9 km/h
+/** The parked tractor: how far off a car allows for it, m; the clearance a line past it must have beyond the car's own width, and the corner it steers for. See _roundParked. */
+const PARKED_LOOK = 90;
+const PARKED_TRIGGER = 1.0;
+const PARKED_ROOM = 2.2;
 const CREEP_KEEP = 1.5;
 
 /**
@@ -1904,6 +1908,54 @@ export class Driver {
     return null;
   }
 
+  /**
+   * The corner of Haldon Vale's parked tractor and trailer to go by, when the
+   * line to `aim` runs through it; null when it does not.
+   *
+   * "There's a tractor with a trailer ... and it never moves ... the police
+   * cars don't know it's there ... the police cars just hit it." They did see
+   * it, at 33 m, and braked; but it is 12 m of wall with the target behind it,
+   * so the sweeps said stop and nothing said which way round -- a car stopped
+   * against it and stayed, or shoved it along. So it is told the thing's shape,
+   * asked of the body each time because a car can still move it, and goes by
+   * the corner that makes the shortest way, from as far off as it matters.
+   */
+  _roundParked(aim) {
+    const v = this.v;
+    const map = v.world.__map;
+    const rig = map && map.life && map.life.parked;
+    if (!rig) return null;
+    const { body, span } = rig.userData;
+    const t = body.translation();
+    const cx = v.position.x - t.x, cz = v.position.z - t.z;
+    if (cx * cx + cz * cz > PARKED_LOOK * PARKED_LOOK) return null;
+    const r = body.rotation();
+    const yaw = 2 * Math.atan2(r.y, r.w), ca = Math.cos(yaw), sa = Math.sin(yaw);
+    // Into the rig's own frame, its length along z.
+    const ax = aim.x - t.x, az = aim.z - t.z;
+    const fx = cx * ca - cz * sa, fz = cx * sa + cz * ca;
+    const gx = ax * ca - az * sa, gz = ax * sa + az * ca;
+    const hit = (m, x0, z0, x1, z1) => segmentHitsBox(x0, z0, x1, z1, span.hx + m, span.z0 - m, span.z1 + m);
+    if (!hit(this.halfWidth + PARKED_TRIGGER, fx, fz, gx, gz)) { this._parkedCorner = -1; return null; }
+    const wx = span.hx + this.halfWidth + PARKED_ROOM;
+    const z0 = span.z0 - this.halfWidth - PARKED_ROOM, z1 = span.z1 + this.halfWidth + PARKED_ROOM;
+    let best = -1, bestCost = Infinity, bx = 0, bz = 0;
+    for (let i = 0; i < 4; i++) {
+      const x = i & 1 ? wx : -wx, z = i & 2 ? z1 : z0;
+      // Not one on the far side, through the thing itself.
+      if (hit(this.halfWidth + 0.2, fx, fz, x, z)) continue;
+      let cost = Math.hypot(x - fx, z - fz) + Math.hypot(gx - x, gz - z);
+      if (hit(this.halfWidth + PARKED_TRIGGER, x, z, gx, gz)) cost += PARKED_ROOM + span.z1 - span.z0;
+      // Keep to the one chosen unless another is really shorter: with the target
+      // dead behind the middle of it, the two ways round come out the same.
+      if (i === this._parkedCorner) cost -= 6;
+      if (cost < bestCost) { bestCost = cost; best = i; bx = x; bz = z; }
+    }
+    if (best < 0) return null;
+    this._parkedCorner = best;
+    return { x: t.x + bx * ca + bz * sa, z: t.z - bx * sa + bz * ca };
+  }
+
   /** Clear road straight behind the rear bumper, as clearAhead is in front. */
   _clearBehind(maxDist) {
     const v = this.v;
@@ -2023,6 +2075,10 @@ export class Driver {
     const v = this.v;
     const out = this.out;
     const skill = this.skill;
+    // A local plan has already been swept round everything.
+    const round = this._pureSteer ? null : this._roundParked(aim);
+    this._rounding = !!round;
+    if (round) aim = round;
 
     this._updateGrip(dt);
     this._laneKeep = opts.lane === true;
@@ -2171,7 +2227,12 @@ export class Driver {
     if (speed < CREEP_SPEED && requested > 3 && !opts.holdStill
       && !window.__noCreep) {
       const room = Math.min(this.wallNear, this._clearTravel === undefined ? Infinity : this._clearTravel);
-      const creep = CREEP_SPEED * clamp01((room - CREEP_KEEP) / 3);
+      // On a local plan the car's footprint has been swept along the way it is
+      // about to turn, so what is off the nose is not the question. Nose to the
+      // parked tractor, a car with a plan and no throttle sat there for good:
+      // "the police cars don't know it's there ... [they] just hit it." If the
+      // plan was wrong it stalls, says so (localStalled) and plans again.
+      const creep = this._pureSteer || this._rounding ? CREEP_SPEED : CREEP_SPEED * clamp01((room - CREEP_KEEP) / 3);
       if (creep > speed) {
         caps.creep = creep;
         speed = creep;
@@ -2894,3 +2955,16 @@ Driver.shoveStats = { stalls: 0, couldDrive: 0, blocked: 0 };
 
 /** Turn-rounds started, finished facing the right way, and given up on. */
 Driver.turnStats = { started: 0, done: 0, gaveUp: 0 };
+
+/** Does a segment cross the box |x| < hx, z0 < z < z1? */
+function segmentHitsBox(x0, z0, x1, z1, hx, zMin, zMax) {
+  let t0 = 0, t1 = 1;
+  const dx = x1 - x0, dz = z1 - z0;
+  for (const [p, q] of [[-dx, x0 + hx], [dx, hx - x0], [-dz, z0 - zMin], [dz, zMax - z0]]) {
+    if (p === 0) { if (q < 0) return false; continue; }
+    const u = q / p;
+    if (p < 0) { if (u > t1) return false; if (u > t0) t0 = u; }
+    else { if (u < t0) return false; if (u < t1) t1 = u; }
+  }
+  return true;
+}

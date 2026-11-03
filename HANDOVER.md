@@ -188,6 +188,12 @@ scoring, deliberately.
 * **A flyable police helicopter** — `game/flyheli.js`, with its own flight
   model, fuel, a helipad on the workshop roof, and two-thumbstick phone
   controls. Multiplayer-aware.
+* **AI police on Haldon Vale**: pay no hedge drag (a human police car does:
+  `humanDriven`), go round the parked tractor by its corners
+  (`Driver._roundParked`, shape on `life.parked.userData.span`), and keep to the
+  lane rather than aim between trees (`_treeLineFor`). Player asked for "really
+  fast" on the hills; got about 8% (README, "Faster on the rolling hills"). The
+  open-ground `Clear`/`wall` clamps are the remaining limit.
 * **The police pack cap raised 18 → 30**, which needed the tier budget and
   `MAX_VEHICLES` raising with it.
 * **Air support has two sensors.** `Helicopter.canSee` is the beam pool

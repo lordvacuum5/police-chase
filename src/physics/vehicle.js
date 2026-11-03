@@ -770,10 +770,12 @@ export class Vehicle {
    * second." A hedge does not collide with cars (world/countrygen.js), so
    * nothing stops the car; being in one starts HEDGE_DRAG seconds of drag
    * that take HEDGE_LOSS off the speed, topped up while the car is still in
-   * it. Every car pays it, the police too -- though their sweeps still see a
-   * hedge as a wall, so they keep out of them.
+   * it. Not the computer's police: "do police cars get slowed down by hedges?
+   * And if so, make sure they don't." A police car a person is driving
+   * (humanDriven, Game._initPlayer) still pays.
    */
   _hedgeDrag(dt) {
+    if (this.isPolice && !this.humanDriven) return;
     const hedges = this.sim.hedges;
     if (!hedges || !hedges.size) return;
     let inHedge = false;

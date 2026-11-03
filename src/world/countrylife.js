@@ -752,6 +752,10 @@ function baleTrailer(ctx, seed, fields) {
   const parts = [
     { hx: 1.3, hy: 1.4, hz: 3.2, z: 0, mass: PARKED_TRAILER_MASS },
     { hx: 1.1, hy: 1.4, hz: 2.0, z: HITCH, mass: VAN_MASS },
+    // The hitch, solid from the trailer's front to the tractor's back. Two
+    // boxes left a notch 1.65 m wide between them, which a police car's nose
+    // went into and stayed: "the police cars just hit it."
+    { hx: 1.1, hy: 1.4, hz: 0.83, z: 4.03, mass: 100 },
   ];
   for (const c of parts) {
     W.createCollider(
@@ -773,6 +777,8 @@ function baleTrailer(ctx, seed, fields) {
     group.quaternion.copy(q.set(r.x, r.y, r.z, r.w));
   };
   group.userData.body = body;
+  // Its footprint in the body's frame, for the drivers: see Driver._roundParked.
+  group.userData.span = { hx: 1.3, z0: -3.2, z1: HITCH + 2.0 };
   return group;
 }
 

@@ -7856,6 +7856,80 @@ pull over ... I don't want them to like run."*
   after a crash between two traffic cars gets hazards too. Staged, 24 hits
   that registered: 3 ran, 21 pulled over, every one with hazards.
 
+### Faster on the rolling hills, the parked tractor, the trees and the posts
+
+*"Can you try and make just the police cars just faster in general? ... do
+police cars get slowed down by hedges? ... They should be really fast on the
+rolling hills. There's nothing for them to avoid, really."* Measured with
+`tests/keepup.js`, Haldon Vale, two interceptors after a ghost, two routes, 30 s,
+each row a fresh page. Two routes is noisy; read it as a direction.
+
+| | at 120: mean, with it, hits (hard) | at 150: mean, behind, hits (hard), spins |
+|---|---|---|
+| was | 82 km/h, 13%, 8 (0) | 85 km/h, 482 m, 14 (0), 0 |
+| no hedge drag | 87, 25%, 2 (0) | 86, 476 m, 2 (0), 0 |
+| and tree strip 1 m (was 3) | 90, 20%, 3 (0) | 96, 435 m, 5 (2), 1 |
+| strip 1.5, power 1.25, off-road grip x1.25 | 94, 18%, 10 (0) | 88, 483 m, 5 (1), 2 |
+| and staying on the lane past trees, power 1.25 | 85, 26%, 9 (2) | 93, 508 m, 8 (2), 3 |
+| **same, power 1.18 (kept)** | **88, 26%, 11 (1)** | **92, 458 m, 5 (0), 0** |
+
+* **Hedges.** The computer's police no longer pay the hedge's 40% (`_hedgeDrag`);
+  a police car a person drives still does (`humanDriven`). A fair part of what
+  "hits" counted was the hedge's own thump.
+* **`POLICE_POWER` 1.12 -> 1.18, `POLICE_OFFROAD` 1.25.** 1.25 of power spun them
+  3 times in a run. Every police spec has these, so a police car you drive gets
+  them too.
+* **`TREE_STRIP` 3 -> 1.5 m.** Off the road a unit holds to what can stop for any
+  trunk in a strip that far either side of its line, and on tree-lined Haldon that
+  worked out to about the 85 km/h it was doing. Half a strip is a nearer miss, and
+  the rigs show it: tree contacts 0-2 became 2-3, none of them a wreck.
+* **It is not a speed limit on the grass.** `tests/openfield.js`, 450 m of clear
+  grass at a parked car: 160 km/h by 12 s, with the throttle down, and "asked 162"
+  is the closing margin (`OPEN_CLOSE`) against a target that is not moving -- a
+  moving one adds its own speed. What holds the chase mean down is still real
+  obstacles (`Clear`, `wall`), the same clamps the README has tried and failed to
+  loosen before. Ashfield at 120 on the final settings: 67 km/h, 3 hits, none hard, no wrecks (no
+  before-figure in the same run). So: better, about 8%, and not "really fast". A trial of those
+  clamps on open ground only is the next thing to try.
+
+*"There's a tractor with a trailer ... it never moves ... the police cars don't
+know it's there ... the police cars just hit it."* It is meant not to move (the
+parked one in the bale field). They did see it -- sweeps read it at 33 m -- but
+`tests/parkedtractor.js`, one car from eight directions at a stopped target 60 m
+beyond it, 4 of 8 never arrived. Traced: nose within the wall clamp's margin the
+speed comes out at 0, so a car with a plan and lock on sat with no throttle for
+good; or it backed away for 15 s. Three changes:
+
+* The collider had a 1.65 m notch between trailer and tractor. Closed.
+* The creep floor applies on a swept local plan (`_pureSteer`) whatever is off the
+  nose. Alone: 5 of 8 arrive, 3 shove it.
+* `Driver._roundParked`: told the thing's shape, a line to the aim that crosses it
+  goes by the nearest corner instead, from 90 m; and `_localDrive` hands over while
+  it does. Final settings: 7 of 8 arrive, one touch at 3 km/h that still arrives; the
+  8th never came within 55 m of it and stopped 16 m short of the target, on
+  something else, not looked into.
+
+Wrong guess, for the record: it is not that a sleeping body is invisible to
+sweeps (the 60 m read was a page that had not stepped), and `world.__blocks` is
+not the planner, only the tree placement.
+
+*"Either side of the road there's trees ... one of the police cars decides to try
+and go in between two of the trees ... it goes insanely slowly ... Or ... hits the
+tree."* The direct chase's line-of-sight test counts only buildings, on purpose,
+and `_crossCountry`'s sweep only asks if the car fits. On a map with hills, on a
+carriageway with the target on a road and a trunk within 1 m of the car's line, it
+now keeps to the lane for 1.5 s at a time (`_treeLineFor`, mode `lanes`); and a
+line off the road needs 3 m clear of trees either side (`CROSS_TREES`). Not staged
+on its own; in the keepup rows above, off-road time did not fall much (66-74% ->
+68-71%), most of that being open fields, which is what is wanted.
+
+*"The posts holding the barriers are not breakable. Make them breakable as
+well."* They were only drawn. `Railway._hitPost` tests each car's box against the
+post (a car in its lane 2.8 m off leaves it; straight at it at 70 km/h, it goes),
+breaks it into three lengths and the board, takes the arm with it, up or down, and
+the lamps; all back with the arm, `BARRIER_BACK` after the crossing clears. Nothing
+stops the car.
+
 ### The SUV's brakes, yours only
 
 *"[The brakes are] slightly bit too good when the player is playing the

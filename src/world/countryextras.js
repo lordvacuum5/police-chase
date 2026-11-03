@@ -62,6 +62,10 @@ const GATE_BREAK = 1.5;
 const BARRIER_BITS = 4;
 const BARRIER_BITS_LAST = 25;
 const BARRIER_BACK = 20;
+/** Their posts: half their width, m; pieces one breaks into, as well as the board; how long each is, m. */
+const POST_HALF = 0.13;
+const POST_BITS = 3;
+const POST_BIT = 0.87;
 const GATE_PART = 1.05;
 const GATE_PIECES = 160;
 /** A gatepost, kg: heavier than the gate, light enough to go over. */
@@ -1456,13 +1460,16 @@ export class Railway {
       c.arm = c.arm === undefined ? target : c.arm + clamp(target - c.arm, -stepA, stepA);
       for (const side of c.sides) {
         side.pivot.rotation.z = c.arm;
-        side.lampA.visible = lit && flash === 0;
-        side.lampB.visible = lit && flash === 1;
+        side.lampA.visible = lit && flash === 0 && !side.postGone;
+        side.lampB.visible = lit && flash === 1 && !side.postGone;
         // A new arm once the crossing is clear and nobody is watching it go up.
         if (side.broken && !lit && this.clock - side.broken > BARRIER_BACK) {
           side.broken = 0;
+          side.postGone = false;
           side.pivot.visible = true;
+          side.post.visible = true;
         }
+        if (game && !side.postGone) this._hitPost(c, side, game);
         if (!side.broken && c.arm < 0.6 && game) this._hitArm(c, side, game);
       }
     }
@@ -1478,11 +1485,8 @@ export class Railway {
    * and a new one is up BARRIER_BACK seconds after the crossing clears.
    */
   _hitArm(c, side, game) {
-    const g = side.group, ry = g.rotation.y;
-    const ax = Math.cos(ry), az = -Math.sin(ry);   // local +x, across the road
-    const len = c.width * 0.5 + 0.4;
-    const x0 = g.position.x + ax * 0.2, z0 = g.position.z + az * 0.2;
-    const y = g.position.y + 1.05;
+    const line = this._armLine(c, side);
+    const { ax, az, x0, z0, y, len } = line;
     for (const v of game.vehicles) {
       if (v.removed || v.dormant || v.isAircraft) continue;
       const dx = v.position.x - x0, dz = v.position.z - z0;
@@ -1492,12 +1496,90 @@ export class Railway {
       const ox = dx - ax * u, oz = dz - az * u;
       // About the car's half width, plus however far it went in one frame.
       if (Math.hypot(ox, oz) > 1.1 + v.speed * 0.03) continue;
-      this._breakArm(c, side, v, { ax, az, x0, z0, y, len });
+      this._breakArm(c, side, v, line);
       return;
     }
   }
 
-  _breakArm(c, side, v, { ax, az, x0, z0, y, len }) {
+  /** Where a side's arm runs when it is down. */
+  _armLine(c, side) {
+    const g = side.group, ry = g.rotation.y;
+    const ax = Math.cos(ry), az = -Math.sin(ry);   // local +x, across the road
+    return { ax, az, x0: g.position.x + ax * 0.2, z0: g.position.z + az * 0.2,
+      y: g.position.y + 1.05, len: c.width * 0.5 + 0.4 };
+  }
+
+  /**
+   * The post goes too. "You've made the actual barriers breakable, but the
+   * posts holding the barriers are not breakable. Make them breakable as
+   * well." It was only drawn, so a car went through it and left it standing.
+   * Tested against the car's own box -- the post is right by the carriageway,
+   * and a radius big enough to catch a fast car took it down from the lane --
+   * and it takes its arm and lamps with it, up or down. All of it comes back
+   * with the arm (BARRIER_BACK). Nothing stops the car, as with the arm.
+   */
+  _hitPost(c, side, game) {
+    const g = side.group, px = g.position.x, pz = g.position.z;
+    for (const v of game.vehicles) {
+      if (v.removed || v.dormant || v.isAircraft || v.speed < 1.5) continue;
+      const dx = px - v.position.x, dz = pz - v.position.z;
+      if (dx * dx + dz * dz > 100 || Math.abs(v.position.y - g.position.y) > 3) continue;
+      const f = v.forward, d = v.spec.dims;
+      if (Math.abs(dx * f.x + dz * f.z) > d.l * 0.5 + v.speed * 0.03) continue;
+      if (Math.abs(dx * f.z - dz * f.x) > d.w * 0.5 + POST_HALF) continue;
+      if (!side.broken) this._breakArm(c, side, v, this._armLine(c, side), c.arm >= 0.6);
+      side.broken = this.clock || 1e-6;
+      side.postGone = true;
+      side.post.visible = false;
+      this._breakPost(g, v);
+      return;
+    }
+  }
+
+  _breakPost(g, v) {
+    if (!this._postBitGeo) {
+      this._postBitGeo = new MeshBuilder().addBox(0.25, POST_BIT, 0.25, 0, 0, 0, 0xdddddd).build();
+      this._boardGeo = new MeshBuilder().addBox(1.1, 0.5, 0.06, 0, 0, 0, 0x111111).build();
+    }
+    const q = g.quaternion;
+    for (let k = 0; k <= POST_BITS; k++) {
+      const board = k === POST_BITS;
+      this._flyBit(board ? this._boardGeo : this._postBitGeo,
+        board ? { x: 0.55, y: 0.25, z: 0.03 } : { x: 0.125, y: POST_BIT * 0.5, z: 0.125 },
+        { x: g.position.x, y: g.position.y + (board ? 2.25 : (k + 0.5) * POST_BIT), z: g.position.z },
+        { x: q.x, y: q.y, z: q.z, w: q.w }, v, board ? 3 : 6);
+    }
+  }
+
+  /** One piece thrown on with the speed of the car that hit it, gone BARRIER_BITS_LAST seconds on. */
+  _flyBit(geo, half, at, rot, v, mass) {
+    const lv = v.linvel;
+    const body = this.world.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic()
+        .setTranslation(at.x, at.y, at.z)
+        .setRotation(rot)
+        .setLinvel(lv.x * rand(Math.random, 0.6, 0.95) + rand(Math.random, -2, 2), rand(Math.random, 1.5, 4),
+          lv.z * rand(Math.random, 0.6, 0.95) + rand(Math.random, -2, 2))
+        .setAngvel({ x: rand(Math.random, -8, 8), y: rand(Math.random, -8, 8), z: rand(Math.random, -8, 8) })
+        .setLinearDamping(0.4)
+        .setAngularDamping(0.4),
+    );
+    this.world.createCollider(
+      RAPIER.ColliderDesc.cuboid(half.x, half.y, half.z)
+        .setMass(mass)
+        .setFriction(0.7)
+        .setRestitution(0.25)
+        // A few kilos: a car kicks one along, it does not feel it.
+        .setCollisionGroups(groups(GROUP.DEBRIS, GROUP.TERRAIN | GROUP.HILL | GROUP.STREET | GROUP.VEHICLE | GROUP.DEBRIS)),
+      body,
+    );
+    const mesh = new THREE.Mesh(geo, this._crossMat);
+    mesh.castShadow = true;
+    this.scene.add(mesh);
+    this.bits.push({ body, mesh, until: this.clock + BARRIER_BITS_LAST });
+  }
+
+  _breakArm(c, side, v, { ax, az, x0, z0, y, len }, raised = false) {
     side.broken = this.clock || 1e-6;
     side.pivot.visible = false;
     const part = len / BARRIER_BITS;
@@ -1506,33 +1588,12 @@ export class Railway {
       this._bitGeo = new MeshBuilder().addBox(part, 0.14, 0.1, 0, 0, 0, 0xf4f4f4)
         .addBox(Math.min(0.5, part * 0.45), 0.15, 0.11, 0, 0, 0, 0xc8202a).build();
     }
-    const lv = v.linvel;
+    const half = Math.sin(-Math.atan2(az, ax) / 2), full = Math.cos(-Math.atan2(az, ax) / 2);
     for (let k = 0; k < BARRIER_BITS; k++) {
-      const s = (k + 0.5) * part + 0.2;
-      const half = Math.sin(-Math.atan2(az, ax) / 2), full = Math.cos(-Math.atan2(az, ax) / 2);
-      const body = this.world.createRigidBody(
-        RAPIER.RigidBodyDesc.dynamic()
-          .setTranslation(x0 + ax * (s - 0.2), y, z0 + az * (s - 0.2))
-          .setRotation({ x: 0, y: half, z: 0, w: full })
-          .setLinvel(lv.x * rand(Math.random, 0.6, 0.95) + rand(Math.random, -2, 2), rand(Math.random, 1.5, 4),
-            lv.z * rand(Math.random, 0.6, 0.95) + rand(Math.random, -2, 2))
-          .setAngvel({ x: rand(Math.random, -8, 8), y: rand(Math.random, -8, 8), z: rand(Math.random, -8, 8) })
-          .setLinearDamping(0.4)
-          .setAngularDamping(0.4),
-      );
-      this.world.createCollider(
-        RAPIER.ColliderDesc.cuboid(part * 0.5, 0.07, 0.05)
-          .setMass(2)
-          .setFriction(0.7)
-          .setRestitution(0.25)
-          // Two kilos: a car kicks one along, it does not feel it.
-          .setCollisionGroups(groups(GROUP.DEBRIS, GROUP.TERRAIN | GROUP.HILL | GROUP.STREET | GROUP.VEHICLE | GROUP.DEBRIS)),
-        body,
-      );
-      const mesh = new THREE.Mesh(this._bitGeo, this._crossMat);
-      mesh.castShadow = true;
-      this.scene.add(mesh);
-      this.bits.push({ body, mesh, until: this.clock + BARRIER_BITS_LAST });
+      const s = (k + 0.5) * part;
+      // Stood up, if the post went while the arm was raised.
+      const at = raised ? { x: x0, y: y + s, z: z0 } : { x: x0 + ax * s, y, z: z0 + az * s };
+      this._flyBit(this._bitGeo, { x: part * 0.5, y: 0.07, z: 0.05 }, at, { x: 0, y: half, z: 0, w: full }, v, 2);
     }
   }
 
@@ -1580,7 +1641,8 @@ export class Railway {
       // Local +x across the road toward its middle, local +z along the travel.
       g.rotation.y = Math.atan2(lz, -lx);
       // The board faces the traffic coming, which is behind: local -z.
-      g.add(new THREE.Mesh(postGeo, mat));
+      const post = new THREE.Mesh(postGeo, mat);
+      g.add(post);
       const armLen = c.width * 0.5 + 0.4;
       const ab = new MeshBuilder().addBox(armLen, 0.14, 0.1, armLen * 0.5 + 0.2, 0, 0, 0xf4f4f4);
       for (let k = 0; k < 3; k++) ab.addBox(0.5, 0.15, 0.11, 0.8 + k * (armLen / 3), 0, 0, 0xc8202a);
@@ -1594,7 +1656,7 @@ export class Railway {
       lampA.visible = lampB.visible = false;
       g.add(lampA, lampB);
       scene.add(g);
-      out.sides.push({ group: g, pivot, lampA, lampB, hx, hz });
+      out.sides.push({ group: g, post, pivot, lampA, lampB, hx, hz });
     }
     return out;
   }

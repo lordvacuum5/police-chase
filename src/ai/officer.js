@@ -59,8 +59,15 @@ const FREE_FROM = 6;
  * Officer._crossCountry: the furthest it will try, and how much longer the
  * road has to be (as a multiple of the straight line) to bother.
  */
+const PROPS_ONLY = groups(0xFFFF, GROUP.PROP);
 const CROSS_MAX = 250;
 const CROSS_SAVING = 1.35;
+/** How far either side of a line off the road must be free of trees, m. */
+const CROSS_TREES = 3;
+/** Keeping to the lane rather than aiming between trees: how far off the target must be, m; room a trunk must leave beyond the car, m; how long it holds, s. */
+const TREE_LINE_FROM = 30;
+const TREE_LINE_ROOM = 1;
+const TREE_LINE_HOLD = 1.5;
 /** Grass a direct chase may cross to a target on the road, in hedged country -- see _pursue. */
 const CROSS_GRASS = 20;
 /** Open ground: further off than this, m, with nothing within OPEN_CLEAR ahead, a unit may close at up to OPEN_CLOSE m/s above the target's speed. See _pursue. */
@@ -1382,6 +1389,16 @@ export class Officer {
     _ccFrom.set(v.position.x, v.position.y + 0.5, v.position.z);
     const toi = sweepBox(v.world, _ccFrom, _ccDir, d, RAY_GROUNDS, v.body, this.driver.halfWidth + 0.6);
     this._ccOpen = toi >= d - 2;
+    // Nor between two trees, when it is on a road to begin with: "either side
+    // of the road there's trees ... one of the police cars decides to try and
+    // go in between two of the trees ... it goes insanely slowly. It's like,
+    // what's the point? Or ... hits the tree." The sweep above fits a car
+    // through; a trunk this near the line then holds it to a crawl
+    // (Driver.treeNear), so the short cut was never a short cut.
+    if (this._ccOpen && !window.__ccTrees && this.driver._onCarriageway()
+      && sweepBox(v.world, _ccFrom, _ccDir, d, PROPS_ONLY, v.body, this.driver.halfWidth + CROSS_TREES) < d - 2) {
+      this._ccOpen = false;
+    }
     // In hedged country, not across fields to a point on a road: the way in
     // is a gateway and the way out the next one, and the lane is quicker. See
     // the same rule in _pursue.
@@ -1636,7 +1653,9 @@ export class Officer {
     const d = this.driver;
     let lp = this._lp;
     this._lpCool = (this._lpCool || 0) - dt;
-    if (v.speed > 14) {
+    // The parked tractor in the way: the driver knows how to go round that
+    // (Driver._roundParked), and a plan made while nose-on to it did not.
+    if (v.speed > 14 || d._roundParked(point)) {
       this._lp = null;
       if (this._lpTicket) { this._lpTicket.cancelled = true; this._lpTicket = null; }
       return null;
@@ -1930,6 +1949,23 @@ export class Officer {
         }
       }
 
+      // Off the road between two trees, with the target on a road as well: not
+      // on the map with hills. "Either side of the road there's trees ... one of
+      // the police cars decides to try and go in between two of the trees ... it
+      // goes insanely slowly. It's like, what's the point? Or ... hits the
+      // tree." Trunks do not close this line above, on purpose -- in a wood they
+      // are not what stops you -- but from a lane they are, and the lane goes
+      // there anyway. Held a moment so it does not flicker past each trunk.
+      if (this.game.sim.terrainAt && d > TREE_LINE_FROM && !window.__ccTrees
+        && this.driver._onCarriageway()
+        && this.game.sim.surfaceAt(target.position.x, target.position.z) !== 0) {
+        _ccDir.set(ux, 0, uz);
+        _ccFrom.set(v.position.x, v.position.y + 0.5, v.position.z);
+        if (sweepBox(v.world, _ccFrom, _ccDir, look, PROPS_ONLY, v.body, this.driver.halfWidth + TREE_LINE_ROOM) < look - 2) {
+          this._treeLineFor = TREE_LINE_HOLD;
+        }
+      }
+
       // Hysteresis, because this decides how the car drives and a car that
       // changes its mind four times a second drives into things. Blocked is
       // believed at once -- there is a building there -- but a corridor that
@@ -1952,6 +1988,12 @@ export class Officer {
     if (!window.__noLocalPlan && d > LP_NEAR) {
       const c = this._localDrive(dt, target.position, this._chaseSpeed());
       if (c) return c;
+    }
+
+    this._treeLineFor = (this._treeLineFor || 0) - dt;
+    if (this._treeLineFor > 0) {
+      this._mode = 'lanes';
+      return this._goTo(dt, this._laneAhead(target), 1.0);
     }
 
     if (!this._hasLos) {
