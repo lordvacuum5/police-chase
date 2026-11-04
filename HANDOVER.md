@@ -192,6 +192,8 @@ scoring, deliberately.
   the units to arrest (`tests/aibust.js`); `OPEN_WORLD_UNITS` is the larger table.
   Collision boxes are centred on the drawn body with `BODY_MIDDLE` in vehicles.js:
   a new model of very different proportions needs its value re-measuring.
+* **Suspects in multiplayer** run on the host and are sent like traffic, under
+  `v.trafficId`; `Suspects._policePlayers` is the solo player plus remote police players.
 * **Long-range line planner** (`ai/fastplan.js`, `Officer._fastLine`): off the road on
   Haldon Vale and Wexbury, a planned line driven by `followPath`. Tree hits in the forest
   rig 12 -> 1. Off on Ashfield, where it measured no better. Not used by the fleeing Runner.

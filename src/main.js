@@ -2696,6 +2696,8 @@ class Game {
       v.disabled = (car.flags & FLAG.DISABLED) !== 0;
       v.blipFor = (car.flags & FLAG.BLIP) !== 0 ? 0.2 : 0;
       v.sirenOn = (car.flags & FLAG.SIREN) !== 0;
+      v.fleeing = (car.flags & FLAG.SUSPECT) !== 0;
+      v.hazards = (car.flags & FLAG.HAZARD) !== 0;
       // Wheels are cosmetic on a car nobody here is driving: point the front
       // pair where the packet says and roll all four at road speed.
       const radius = v.spec.wheelRadius || 0.34;
@@ -2789,6 +2791,17 @@ class Game {
         : (seen ? this.netSuspect.position
           : ((this.netLostFor || 0) < SEARCH_SECONDS ? this.netLastSeen : null));
       this.hud.suspectStale = !seen;
+      // The red ring. "In multiplayer mode, there's no like red circle round my
+      // friend." Its size was dispatcher.sightRange, and the dispatcher does not run
+      // on this machine: nothing, so no ring. It comes over with the world now.
+      this.hud.suspectRange = chaseOn && seen ? (session.sightRange || 150) : 0;
+    }
+    // Civilians on the run, the host's, on a police player's map and meter.
+    if (session.role === 'police' && this.netCars) {
+      const more = [];
+      for (const v of this.netCars.values()) if (v.fleeing) more.push({ p: v.position, stale: false });
+      this.hud.moreSuspects = more;
+      this.heat.bustTimer = Math.max(this.heat.bustTimer, session.suspectBust || 0);
     }
   }
 
@@ -3007,7 +3020,8 @@ class Game {
       const unit = this.dispatcher.units.find((u) => !u.human && u.vehicle
         && String(u.callsignId || u.vehicle.id) === key);
       const car = !unit && this.traffic.cars.find((c) => c.id === key);
-      v = (unit && unit.vehicle) || (car && car.v);
+      const out = !unit && !car && this.suspects.list.find((s) => s.v.trafficId === key);
+      v = (unit && unit.vehicle) || (car && car.v) || (out && out.v);
     }
     if (!v) return;
     // Where the car that reported it is now, if this machine knows. A hit that
@@ -3046,6 +3060,7 @@ class Game {
       // has to hear about a police player hitting it just as much as the
       // other way round.
       if (msg.e === 'hit') { this._netApplyHit(msg); continue; }
+      if (msg.e === 'notice') { if (session.role === 'police') this.hud.notice(msg.title, msg.text); continue; }
       // A police player asking for a wanted level. The heat is the escapee's
       // -- it is computed on their machine and sent out with the world -- so a
       // guest typing FIVE cannot just set it locally; the next packet would
@@ -3123,7 +3138,22 @@ class Game {
     for (const c of this.traffic.cars) {
       if (inSight(c.v)) cars.push(packCar(AI_ID + c.id, c.v));
     }
-    session.sendWorld(cars, this.heat.value, this.dispatcher.inContact, this.heat.bustTimer);
+    // Traffic that has been let out of it, under the same id so it does not pop:
+    // one fleeing, wherever it is, for the police players' maps; one pulled over,
+    // and the units on either, only near somebody. "Can we make it so civilian
+    // cars can still flee in multiplayer?" They did, here, and on everyone else's
+    // screen were simply gone.
+    for (const s of this.suspects.list) {
+      if (s.v.removed || s.v.trafficId === undefined) continue;
+      if (s.state === 'run' || inSight(s.v)) cars.push(packCar(AI_ID + s.v.trafficId, s.v));
+      for (const u of s.units) {
+        if (u.vehicle && !u.vehicle.removed && inSight(u.vehicle)) {
+          cars.push(packCar(AI_ID + (u.callsignId || u.vehicle.id), u.vehicle));
+        }
+      }
+    }
+    session.sendWorld(cars, this.heat.value, this.dispatcher.inContact, this.heat.bustTimer,
+      this.dispatcher.sightRange, this.suspects.bust().timer);
   }
 
   _update(dt) {

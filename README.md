@@ -7910,6 +7910,28 @@ side, my wheels fade through the floor."*
 8 hits, 0 hard; at 150 mean 99, with it 8%, 4 hits, 1 hard; no trees, no wrecks. Against
 97 and 103 before this section, so no worse in the noise.
 
+### Multiplayer: the red ring, and civilians who flee on everyone's screen
+
+*"In multiplayer mode, there's no like red circle round my friend. When I'm the police,
+also, can we make it so civilian cars can still flee in multiplayer?"*
+
+* **The ring.** Its size was `dispatcher.sightRange`, and the dispatcher only runs on the
+  host, so on a police player's machine it was nothing and no ring was drawn. It comes
+  over with the world (`r`) and sets `hud.suspectRange`.
+* **Civilians.** They were fleeing, on the host, and were gone from everyone else's
+  screen: `_netSend` sent traffic and the dispatcher's units, and a suspect and its units
+  are neither. They go now under their traffic id so they do not pop, with `FLAG.SUSPECT`
+  for a map dot, `FLAG.HAZARD` for the lights, and `FLAG.SIREN` on the units. A running one
+  is sent wherever it is. The police players count as police on the host
+  (`Suspects._policePlayers`): seeing, arresting, setting one off (the same 1 in 4),
+  witnessing a crash. The PURSUIT notice goes as an event, the arrest in the world (`sb`).
+
+Tested with two tabs on `?net=local`, stepped by hand. Police player 25 m from the escapee:
+range 166 m, marker live. One civilian forced and traffic cars driven into the police
+player's car on the host: police player's map 3 dots, 4 sets of hazards, 2 units lit.
+Caught ones stayed dots at first; fixed (`v.fleeing` follows the state). Not played by
+two people, and over a real server only as far as the messages are the same ones.
+
 ### A line planned across open country at speed
 
 *"Is there any way you can just make the police better? At doing stuff. And going

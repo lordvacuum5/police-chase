@@ -84,7 +84,7 @@ const KINDS = ['runner', 'supercar', 'offroad', 'patrol', 'interceptor', 'suv', 
   // Traffic (game/traffic.js).
   'hatchback', 'estate', 'civsuv'];
 
-export const FLAG = { POLICE: 1, UNMARKED: 2, DISABLED: 4, BLIP: 8, SIREN: 16 };
+export const FLAG = { POLICE: 1, UNMARKED: 2, DISABLED: 4, BLIP: 8, SIREN: 16, SUSPECT: 32, HAZARD: 64 };
 
 /** A car, as it goes on the wire: fifteen numbers and an id. */
 /**
@@ -106,7 +106,10 @@ export function packCar(id, v, extra = {}) {
   if (v.unmarked) flags |= FLAG.UNMARKED;
   if (v.disabled) flags |= FLAG.DISABLED;
   if (v.blipFor > 0 || extra.blip) flags |= FLAG.BLIP;
-  if (v.sirenOn) flags |= FLAG.SIREN;
+  // On a call counts: a unit after a fleeing civilian is lit whoever is wanted.
+  if (v.sirenOn || v.onCall) flags |= FLAG.SIREN;
+  if (v.fleeing) flags |= FLAG.SUSPECT;
+  if (v.hazards) flags |= FLAG.HAZARD;
   const r2 = (n) => Math.round(n * 100) / 100;
   const r3 = (n) => Math.round(n * 1000) / 1000;
   return [
@@ -529,6 +532,10 @@ class Session {
         this.heat = msg.h || 0;
         this.seen = !!msg.s;
         this.bust = msg.b || 0;
+        // How far the force can see the escapee, and the arrest of any fleeing
+        // civilian: both are worked out on the host.
+        this.sightRange = msg.r || 0;
+        this.suspectBust = msg.sb || 0;
         const live = new Set();
         for (const packed of msg.c) {
           const car = unpackCar(packed);
@@ -606,13 +613,15 @@ class Session {
     return true;
   }
 
-  sendWorld(cars, heat, seen, bust) {
+  sendWorld(cars, heat, seen, bust, range = 0, suspectBust = 0) {
     if (!this.active || !this.transport) return;
     this.transport.send({
       t: 'w', from: this.id, c: cars, h: heat, s: seen ? 1 : 0,
       // How far through the arrest the escapee is, so every screen can show
       // the same five seconds running down.
       b: Math.round((bust || 0) * 100) / 100,
+      r: Math.round(range || 0),
+      sb: Math.round((suspectBust || 0) * 100) / 100,
     });
   }
 

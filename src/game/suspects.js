@@ -47,6 +47,7 @@ import { ROLE } from '../ai/officer.js';
 import { dist2 } from '../util/math.js';
 import { groups, GROUP } from '../physics/world.js';
 import { fleeingSpec } from './vehicles.js';
+import { session, AI_ID } from '../net/session.js';
 
 /** Cars on a suspect by its wanted level, 0-5. */
 const SUSPECT_UNITS = [0, 2, 3, 4, 5, 6];
@@ -208,6 +209,8 @@ export class Suspects {
     g.traffic.release(c);
     const v = c.v;
     v.isSuspect = true;
+    v.fleeing = true;
+    v.trafficId = c.id;
     const runner = new Runner(g, v);
     // Running from the start: it has already shown its hand.
     runner.running = true;
@@ -236,6 +239,7 @@ export class Suspects {
     // In the open world it is the whole game, so it says so: "then it will
     // like pop up as a pursuit."
     if (g.openWorld && g.hud) g.hud.notice('PURSUIT', `Vehicle ${what}.`);
+    if (session.active && session.isHost) session.sendEvent('notice', { title: 'PURSUIT', text: `Vehicle ${what}.` });
     return s;
   }
 
@@ -261,8 +265,7 @@ export class Suspects {
   /** The cars this suspect is running from: its own, and anyone else's. */
   _threats(s) {
     const out = [];
-    const p = this.game.player;
-    if (p && !p.isAircraft && p.isPolice) out.push(p);
+    for (const p of this._policePlayers()) out.push(p);
     for (const u of s.units) if (u.vehicle && !u.vehicle.disabled) out.push(u.vehicle);
     for (const u of this.game.dispatcher.units) if (u.vehicle && !u.vehicle.disabled) out.push(u.vehicle);
     return out;
@@ -300,6 +303,8 @@ export class Suspects {
     for (const s of this.list) {
       if (s.v.removed) { s.state = 'gone'; this._release(s); continue; }
       this._rescue(s.v);
+      // What the map on a police player's screen goes by: caught or lost is off it.
+      s.v.fleeing = s.state === 'run';
       if (s.state === 'run') this._run(s, dt);
       else if (s.state === 'pull') this._pull(s, dt);
       else if (s.state === 'parked') this._parked(s, dt);
@@ -331,8 +336,7 @@ export class Suspects {
     // The player's helicopter, when it has eyes on this one (Game._airSpotting).
     if (s.airSeenAt !== undefined && g.clock - s.airSeenAt < 0.6) seen = true;
     // The player, when the player is the police.
-    const p = this._policePlayer();
-    if (p) {
+    for (const p of this._policePlayers()) {
       const r = dist2(p.position.x, p.position.z, v.position.x, v.position.z);
       near = Math.min(near, r - (p.spec.dims.l + v.spec.dims.l) * 0.5);
       if (!seen && r < SIGHT && d._visibleTo(p, v)) seen = true;
@@ -477,10 +481,20 @@ export class Suspects {
     if (s.goneFor > 2) { g.removeVehicle(v); s.state = 'gone'; }
   }
 
-  /** The player's car, when the player is a police car on their own. */
-  _policePlayer() {
-    const g = this.game, p = g.player;
-    return g.soloPolice && p && p.isPolice && !p.isAircraft && !p.removed ? p : null;
+  /**
+   * The police cars people are driving: the player's on their own, and in a
+   * multiplayer game the other players' (this runs on the host, who is the one
+   * being chased). Each can see a suspect, make the arrest, and set one off.
+   */
+  _policePlayers() {
+    const g = this.game, out = [], p = g.player;
+    if (g.soloPolice && p && p.isPolice && !p.isAircraft && !p.removed) out.push(p);
+    if (g.netCars) {
+      for (const [id, v] of g.netCars) {
+        if (v.isPolice && !v.removed && !String(id).startsWith(AI_ID)) out.push(v);
+      }
+    }
+    return out;
   }
 
   /** Got away: drives on, and goes once nobody can see it. */
@@ -546,8 +560,7 @@ export class Suspects {
       }
     }
     // A traffic car into the player's own police car.
-    const p = this._policePlayer();
-    if (p && this._hitPlayer(p, now)) return;
+    for (const p of this._policePlayers()) if (this._hitPlayer(p, now)) return;
     // Two traffic cars into each other, in front of the police.
     for (const c of g.traffic.cars) {
       const v = c.v;
@@ -645,6 +658,7 @@ export class Suspects {
     g.traffic.release(c);
     const v = c.v;
     this._groundIt(v);
+    v.trafficId = c.id;
     v.hazards = true;
     this.list.push({ v, runner: new Runner(g, v), why: 'crash', victim: true, heat: 0, units: [],
       state: 'pull', pullFor: 0, goneFor: 0 });
@@ -672,8 +686,9 @@ export class Suspects {
     const x = (a.v.position.x + b.v.position.x) * 0.5, z = (a.v.position.z + b.v.position.z) * 0.5;
     const at = { position: { x, y: (a.v.position.y + b.v.position.y) * 0.5, z } };
     let witness = null, seen = false;
-    const p = this._policePlayer();
-    if (p && dist2(p.position.x, p.position.z, x, z) < CRASH_SIGHT && d._visibleTo(p, at)) seen = true;
+    for (const p of this._policePlayers()) {
+      if (dist2(p.position.x, p.position.z, x, z) < CRASH_SIGHT && d._visibleTo(p, at)) seen = true;
+    }
     for (const u of d.units) {
       if (seen && witness) break;
       if (u.human || !u.vehicle || u.vehicle.disabled) continue;

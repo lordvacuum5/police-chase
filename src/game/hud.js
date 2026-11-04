@@ -906,7 +906,7 @@ export class Hud {
       // A remote unit carries no role worth reading (it is always PURSUE), so
       // it counts as chasing whenever the force is.
       const chasing = onSuspect.has(u)
-        || (u.human ? heat.tier > 0 : u.role !== 'patrol' && u.role !== 'hold');
+        || (u.human ? heat.tier > 0 || u.vehicle.sirenOn : u.role !== 'patrol' && u.role !== 'hold');
       const role = u.role === 'intercept' ? '#ffb020'
         : (u.role === 'pit' || u.role === 'box') ? '#ff3b30' : '#4ea3ff';
       ctx.fillStyle = chasing ? (flashRed ? '#ff3b30' : '#2f7bff') : person ? '#2f7bff' : role;
