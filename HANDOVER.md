@@ -192,6 +192,9 @@ scoring, deliberately.
   the units to arrest (`tests/aibust.js`); `OPEN_WORLD_UNITS` is the larger table.
   Collision boxes are centred on the drawn body with `BODY_MIDDLE` in vehicles.js:
   a new model of very different proportions needs its value re-measuring.
+* **Long-range line planner** (`ai/fastplan.js`, `Officer._fastLine`): off the road on
+  hilly maps, a planned line driven by `followPath`. Tree hits in the forest rig 12 -> 1.
+  Not on the town maps, not used by the fleeing Runner: both unmeasured.
 * **AI police on Haldon Vale**: pay no hedge drag (a human police car does:
   `humanDriven`), go round the parked tractor by its corners
   (`Driver._roundParked`, shape on `life.parked.userData.span`), and keep to the

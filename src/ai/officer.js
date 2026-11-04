@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import { Driver, SKILL } from './driver.js';
 import { pitUpdate, relativeTo, boxAim, boxSpeed } from './tactics.js';
+import { planFast } from './fastplan.js';
 import { hasLineOfSight, sweepBox, raycast, groups, GROUP, RAY_SOLID, RAY_WALL, RAY_GROUNDS } from '../physics/world.js';
 import { WORLD_HALF } from '../world/common.js';
 import { clamp, clamp01, lerp, dist2, sign, damp, closestOnSegment } from '../util/math.js';
@@ -77,6 +78,29 @@ const WOOD_MAX = 40;
 const WOOD_HOLD = 3;
 const WOOD_REACHED = 10;
 const WOOD_DRIFT = 45;
+/**
+ * The long-range line (_fastLine): nearer than this it goes for the car itself, m;
+ * under this speed it is the local planner's, m/s; how often it is planned again,
+ * s; how far off it or how little of it left means now, m.
+ */
+const FAST_FROM = 35;
+const FAST_SPEED = 8;
+const FAST_EVERY = 0.8;
+/** The least time between any two plans, across the force, s. */
+const FAST_GAP = 1 / 30;
+const FAST_OFF = 8;
+const FAST_SHORT = 25;
+
+/** The parked tractor as the planner's boxes are, wherever it has been shoved to. */
+function parkedBox(rig) {
+  const { body, span } = rig.userData;
+  const p = body.translation(), r = body.rotation();
+  const yaw = 2 * Math.atan2(r.y, r.w), mid = (span.z0 + span.z1) * 0.5, hz = (span.z1 - span.z0) * 0.5;
+  return {
+    x: p.x + Math.sin(yaw) * mid, z: p.z + Math.cos(yaw) * mid, hx: span.hx, hz,
+    c: Math.cos(yaw), s: Math.sin(yaw), rad: Math.hypot(span.hx, hz),
+  };
+}
 /** Keeping to the lane rather than aiming between trees: how far off the target must be, m; room a trunk must leave beyond the car, m; how long it holds, s. */
 const TREE_LINE_FROM = 30;
 const TREE_LINE_ROOM = 1;
@@ -651,6 +675,11 @@ export class Officer {
     if (role !== this.role) {
       this.role = role;
       this.goalNode = null;
+      // Off a long-range line, whatever it is told to do next.
+      if (this._fast) {
+        this.driver.trustRoute = this._fastTrust; this.driver.freeLined = false; this.driver.planned = false;
+        this._fast = null;
+      }
       this.driver.setPath([]);
       this.repathTimer = 0;
       if (role !== ROLE.PIT) this.pitState = {};
@@ -2003,6 +2032,9 @@ export class Officer {
       if (c) return c;
     }
 
+    const line = this._fastLine(dt, target, d);
+    if (line) return line;
+
     this._treeLineFor = (this._treeLineFor || 0) - dt;
     if (this._treeLineFor > 0) {
       this._mode = 'lanes';
@@ -2151,6 +2183,42 @@ export class Officer {
       speed, this._chaseSpeed() * lerp(1, 1.15, ram), this._gapCap(target),
       this._planCap === undefined ? Infinity : this._planCap,
     ), dt, { courseRadius: this._courseRadius, goal: target.position });
+  }
+
+  /**
+   * Off the road with something to go round: a line from the long-range planner
+   * (ai/fastplan.js), driven like a road. Null when there is nothing to plan round,
+   * or it is the last stretch, or both cars are on a road, which is the router's.
+   * One plan every FAST_GAP across the force, so a unit may wait a little for one.
+   */
+  _fastLine(dt, target, d) {
+    const v = this.vehicle, dr = this.driver, g = this.game, t = target.position;
+    const drop = () => {
+      if (this._fast) { dr.trustRoute = this._fastTrust; dr.freeLined = false; dr.planned = false; }
+      this._fast = null;
+      return null;
+    };
+    if (window.__noFastPlan || !g.sim.terrainAt || d < FAST_FROM || v.speed < FAST_SPEED) return drop();
+    if (dr._onCarriageway() && g.sim.surfaceAt(t.x, t.z) !== 0) return drop();
+    this._fastFor = (this._fastFor || 0) - dt;
+    const off = this._fast && dr.hasPath && Math.abs(dr.crossTrack || 0) > FAST_OFF;
+    const short = this._fast && dr.remaining() < FAST_SHORT;
+    if ((this._fastFor <= 0 || off || short) && !(g.clock - (g._fastAt ?? -1) < FAST_GAP)) {
+      g._fastAt = g.clock;
+      this._fastFor = FAST_EVERY;
+      const sp = target.speed, lead = sp > 1 ? clamp(sp * WOOD_LEAD, 0, WOOD_MAX) / sp : 0;
+      const goal = { x: t.x + target.linvel.x * lead, z: t.z + target.linvel.z * lead };
+      const rig = g.world.__map && g.world.__map.life && g.world.__map.life.parked;
+      const res = planFast(g, v, goal, rig ? [parkedBox(rig)] : null);
+      if (res && res.line) {
+        if (!this._fast) { this._fastTrust = dr.trustRoute; dr.trustRoute = true; dr.freeLined = true; dr.planned = true; }
+        this._fast = res;
+        dr.setPath(res.line);
+      } else return drop();
+    }
+    if (!this._fast || !dr.hasPath) return null;
+    this._mode = 'fast';
+    return dr.followPath(dt, this._chaseSpeed(), { lane: false });
   }
 
   _holdWoodsAim(dt, target, d) {

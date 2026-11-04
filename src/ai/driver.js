@@ -2850,7 +2850,9 @@ export class Driver {
     // brake (see the note above), and the strip off-road must not pick up the
     // buildings either side of a gap, which have their own clamps.
     this.treeNear = Infinity;
-    if (trees && !this.wallSeesTrees && !window.__noTreeStrip) {
+    // Not on a long-range line (ai/fastplan.js), which has already gone round them:
+    // the strip was reading trunks outside the curve it was on.
+    if (trees && !this.wallSeesTrees && !window.__noTreeStrip && !this.planned) {
       this.treeNear = sweepBox(v.world, _origin, _probe, TREE_LOOK, PROPS_ONLY,
         v.body, hw + TREE_STRIP);
       // Zero is a trunk the strip starts already touching, which is one beside

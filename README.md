@@ -7910,7 +7910,45 @@ side, my wheels fade through the floor."*
 8 hits, 0 hard; at 150 mean 99, with it 8%, 4 hits, 1 hard; no trees, no wrecks. Against
 97 and 103 before this section, so no worse in the noise.
 
-### Civilians who can actually run, and trees that are still not solved
+### A line planned across open country at speed
+
+*"Is there any way you can just make the police better? At doing stuff. And going
+fast ... when I asked you to make them fast ... you said, oh, I could make a really
+good route plan ... and that really fixed it. Is there anything else?"* The same idea
+again. `ai/localplan.js` hands over at 50 km/h; above that, off the road, a unit aimed
+at its target on reflexes, and the tree log below says what those are worth at speed.
+`ai/fastplan.js` asks 170 m out: a 4 m grid over the ground to the target, every tree
+and building from the local planner's own list, 3 m clear and a cost nearer than 7,
+searched with heading in the state so a turn costs more the faster the car is going;
+corners pulled tight and rounded. `Officer._fastLine` hands the line to
+`Driver.followPath`, so `planSpeed` brakes for its bends in advance as for a road's,
+and `_pathClear` looks along it rather than straight past the bend. Every 0.8 s, sooner
+if the car is 8 m off it or near its end. Maps with hills, with a car or target off the
+road, over 35 m from the target. Each row a fresh page:
+
+| | near | closest | hits (hard) | trees |
+|---|---|---|---|---|
+| `tests/force.js` kind `trees`, before | 38% | 45 m | 28 (4) | 12 |
+| **with the line** | **42%** | **37 m** | **23 (1)** | **1** |
+
+| `tests/keepup.js`, 4 routes | at 120: mean, behind, hits (hard) | at 150: mean, behind, hits (hard) |
+|---|---|---|
+| before | 100 km/h, 192 m, 8 (0) | 99 km/h, 343 m, 4 (1) |
+| **with the line** | **108, 118 m, 5 (0)** | **106, 283 m, 9 (1)** |
+
+No wrecks in either. `Arc`, the bends in its own line, is now the top limit, `wall` down
+from a quarter to 11-15%; a straighter line is the next thing to try. Three walls in the
+tree rig where there were none before, and 3 trees in the keepup run at 150 against 0-2:
+not looked into. `route skips` reads 86-201 in the rig, which is the plan being replaced,
+not the fault it was built to find. `tests/parkedtractor.js`: 7 of 8, most 2-5 s sooner; the
+eighth touched it at 16 km/h and stopped 25 m short of the target.
+
+Cost: 2.4 ms a plan warm in the thickest place on the map, 33 ms for the first (the JIT),
+and no more than 30 plans a second across the force. `Game._update` at five stars, 22
+units, off/on/off/on: 6.9, 7.2, 6.8, 6.2 ms, so lost in the noise. `window.__noFastPlan`
+turns it off.
+
+### Civilians who can actually run, and four tries at the trees
 
 *"The civilian ... cars seem really bad ... sometimes they don't even move, or they
 just crash into another police car ... They're really bad at driving, and just like
@@ -7938,9 +7976,9 @@ running, one lost. A chase now, which is what was asked for.
 
 The log says why the wood rules did nothing: the hard ones are at 100-190 km/h with
 the strip clear until the trunk is 14-18 m off, mostly lone trees outside anything
-that counts as a wood. All four were taken out. The both-sides look is the only one
-that moved the number, and it costs what the open-ground margins gained; the player's
-call, not made here.
+that counts as a wood. All four were taken out. The both-sides look moved the number but cost what the
+open-ground margins gained, and asked, the player said *"No, keep them fast."* The answer
+was to see the trees sooner: the section above this one.
 
 ### Faster on the rolling hills, the parked tractor, the trees and the posts
 
