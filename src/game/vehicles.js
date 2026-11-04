@@ -756,7 +756,7 @@ export function fleeingSpec(base) {
  * models; README, "The gap between cars".
  */
 const BODY_MIDDLE = {
-  patrol: -0.195, interceptor: -0.16, unmarked: 0.065, suv: -0.02, van: -0.205,
+  patrol: -0.195, interceptor: -0.16, unmarked: 0.065, suv: 0.02, van: -0.205,
   runner: -0.055, supercar: 0.284, offroad: -0.26, hatchback: -0.255, estate: -0.30, civsuv: -0.14,
 };
 for (const k of Object.keys(BODY_MIDDLE)) SPECS[k].colliderZ = BODY_MIDDLE[k];

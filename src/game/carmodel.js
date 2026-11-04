@@ -45,10 +45,7 @@ import { SPECS } from './vehicles.js';
 export const CAR_MODELS = {
   patrol: { url: 'resources/models/police-patrol.glb', police: true, yaw: 0, lift: 0, lamps: null },
   interceptor: { url: 'resources/models/police-interceptor.glb', police: true, yaw: 0, lift: 0, lamps: null },
-  // The new SUV, built to POLICE-SUV.md. The old one is kept beside it:
-  // "I don't want you to ... delete the old one. So if needed, I can just
-  // change it back" -- to go back, set this to 'resources/models/police-suv.glb'.
-  suv: { url: 'resources/models/police-suv-new.glb', police: true, yaw: 0, lift: 0, lamps: null },
+  suv: { url: 'resources/models/police-suv.glb', police: true, yaw: 0, lift: 0, lamps: null },
   van: { url: 'resources/models/police-van.glb', police: true, yaw: 0, lift: 0, lamps: null },
   supercar: { url: 'resources/models/supercar.glb', police: false, yaw: 0, lift: 0, lamps: null },
   runner: { url: 'resources/models/runner.glb', police: false, yaw: 0, lift: 0, lamps: null },

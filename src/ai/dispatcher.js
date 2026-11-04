@@ -329,7 +329,11 @@ export class Dispatcher {
     let spotter = null;
     let best = Infinity;
 
-    for (const u of this.units) {
+    // Cars chasing a civilian are off this board but not blind: "if the police cars
+    // are in pursuit of a traffic vehicle, they cannot get in a pursuit with you."
+    // Past one at 110 km/h, nothing at all (tests/busycop.js).
+    const busy = this.game.suspects ? this.game.suspects.units() : [];
+    for (const u of busy.length ? this.units.concat(busy) : this.units) {
       if (u.disabled) continue;
       const d = u.distanceTo(target.position);
       if (d > sightRange || d > best) continue;

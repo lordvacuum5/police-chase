@@ -3406,7 +3406,8 @@ class Game {
     if (p.lastImpactAt && p.lastImpactAt !== this._lastRamImpact
         && performance.now() - p.lastImpactAt < 60) {
       this._lastRamImpact = p.lastImpactAt;
-      for (const u of this.dispatcher.units) {
+      // Whatever it was doing: one chasing a civilian is on the suspect's list.
+      for (const u of this.dispatcher.units.concat(this.suspects.units())) {
         if (u.distanceTo(p.position) < 6.5) {
           if (this.heat.value <= 0) this.heat.bump(1, 'ramming a patrol car');
           this.dispatcher.onRammed(u);

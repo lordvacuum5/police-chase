@@ -7910,6 +7910,26 @@ side, my wheels fade through the floor."*
 8 hits, 0 hard; at 150 mean 99, with it 8%, 4 hits, 1 hard; no trees, no wrecks. Against
 97 and 103 before this section, so no worse in the noise.
 
+### A police car chasing a civilian can still chase you; no work vehicles in multiplayer
+
+*"If the police cars are in pursuit of a traffic vehicle, they cannot get in a pursuit with
+you, with the actual player."* A unit on a suspect is off `dispatcher.units`, and that list
+was the only thing the sight pass and the rammed rule asked. `tests/busycop.js`, nobody else
+about: past one at 110 km/h, never wanted, and it carried on. Now both ask the suspects'
+units too, and with the player wanted, `Suspects._peel` sends one within 170 m with a clear
+view at once, the last on a civilian or not (`PEEL_NEAR`). Past it, or ramming it: wanted at
+once, that unit on the player.
+
+*"In multiplayer, it's really laggy. So I would like you to remove tractor and quarry
+vehicles ... only in multiplayer."* `buildLife` makes none of them with a session on: the
+three tractors, two dump trucks, the combine and the parked tractor and trailer. Six movers
+and the rig in single player, none on a `?net=local` host. Whether that cures the lag is not
+measured: two tabs in a hidden pane cannot say, and most of a game's cost may well be
+elsewhere. Say so if it is still laggy.
+
+The police SUV is now the player's third model, as `police-suv.glb`; the two before it are
+deleted (git has them). `BODY_MIDDLE` 0.02 for it, ends 0.09 past the box each way.
+
 ### Multiplayer: the red ring, and civilians who flee on everyone's screen
 
 *"In multiplayer mode, there's no like red circle round my friend. When I'm the police,

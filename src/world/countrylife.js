@@ -24,6 +24,7 @@
 // Their timetable is the wall clock, as the train's is, so every machine in a
 // game sees the same tractor in the same place without being told.
 
+import { session } from '../net/session.js';
 import * as THREE from 'three';
 import { GROUP, groups, RAPIER, addStaticBox } from '../physics/world.js';
 import { rand, randInt, clamp, lerp, TAU } from '../util/math.js';
@@ -562,7 +563,12 @@ export function buildLife(ctx, scene, { fields, quarry, rail, combineField, bale
     && !(quarry && Math.hypot(e.points[0].x - quarry.x, e.points[0].z - quarry.z) < quarry.r + 40));
   const taken = [];
   const paints = [0xb3261e, 0x2f6e2a, 0x2a5aa8];
-  for (let tries = 0; tries < 200 && taken.length < TRACTORS && cands.length; tries++) {
+  // None of the work vehicles in a multiplayer game, for its frame rate: "in
+  // multiplayer, it's really laggy. So I would like you to remove tractor and quarry
+  // vehicles ... only in multiplayer." Every machine in the game agrees, and each
+  // mover costs a body, a collider and a model on all of them.
+  const working = !session.active;
+  for (let tries = 0; working && tries < 200 && taken.length < TRACTORS && cands.length; tries++) {
     const e = cands[randInt(rng, 0, cands.length - 1)];
     const mid = e.points[Math.floor(e.points.length / 2)];
     if (taken.some((m) => Math.hypot(m.x - mid.x, m.z - mid.z) < 400)) continue;
@@ -582,7 +588,7 @@ export function buildLife(ctx, scene, { fields, quarry, rail, combineField, bale
   // far side of the floor from the track, so the two never meet. The second
   // used to climb the haul road, which is gone: "Can you remove the root given
   // zigzag and up the quarry bit?"
-  if (quarry && quarry.track) {
+  if (working && quarry && quarry.track) {
     movers.push(new Mover(ctx, scene, {
       route: new Route(acrossFloor(quarry)), speed: TRUCK_SPEED, offset: rand(rng, 0, 300), name: 'dump-truck', turnR: TURN_TRUCK, avoid,
       geo: truckGeometry(), dims: { l: 9, w: 3.4 }, model: 'truck',
@@ -598,7 +604,7 @@ export function buildLife(ctx, scene, { fields, quarry, rail, combineField, bale
   }
 
   // ---- the harvest ----
-  if (combineField) {
+  if (working && combineField) {
     const route = combineRoute(ctx, fields, combineField, rng);
     if (route) {
       movers.push(new Mover(ctx, scene, {
@@ -610,7 +616,7 @@ export function buildLife(ctx, scene, { fields, quarry, rail, combineField, bale
     }
   }
   if (quarry) clearQuarryBales(ctx, quarry, movers);
-  const parked = baleField ? baleTrailer(ctx, baleField, fields) : null;
+  const parked = working && baleField ? baleTrailer(ctx, baleField, fields) : null;
   if (parked) meshes.push(parked);
   // The player's models, when they load, in place of the boxes.
   loadLifeModels().then((m) => {

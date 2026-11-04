@@ -98,6 +98,8 @@ const STILL_REACH = 22;
 const UNDER = 1.2;
 /** How often a unit is taken off the suspect for the player's chase, s. */
 const PEEL_EVERY = 4;
+/** Nearer the wanted player than this, m, with a clear view, a unit does not wait its turn. */
+const PEEL_NEAR = 170;
 /** A patrol held behind a traffic car this long, both stopped and no red light, s: obstruction. */
 const BLOCK_SECONDS = 12;
 /** How far a patrol car notices a traffic car hit it or run a light, m. */
@@ -517,6 +519,19 @@ export class Suspects {
     if (!(g.heat.tier > 0)) return;
     const live = d.units.filter((u) => !u.human && !u.vehicle.disabled && u.role !== ROLE.HOLD);
     const want = d.rules ? d.rules.units : 0;
+    // One right there with the player in view comes at once, the last on a civilian
+    // or not: it is not going to carry on past the car it is now wanted for.
+    if (live.length < want) {
+      for (const s of this.list) {
+        if (s.state !== 'run') continue;
+        const u = s.units.find((o) => !o.vehicle.disabled && o.distanceTo(g.quarry.position) < PEEL_NEAR && d._visibleTo(o, g.quarry));
+        if (!u) continue;
+        s.units.splice(s.units.indexOf(u), 1);
+        u.vehicle.onCall = false;
+        d.adopt(u);
+        return;
+      }
+    }
     const spare = this.list.some((s) => s.state === 'run' && s.units.length > 1);
     if (!spare || live.length >= want) return;
     // The dispatcher waits for these rather than sending new cars.

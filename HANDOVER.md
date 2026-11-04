@@ -192,6 +192,8 @@ scoring, deliberately.
   the units to arrest (`tests/aibust.js`); `OPEN_WORLD_UNITS` is the larger table.
   Collision boxes are centred on the drawn body with `BODY_MIDDLE` in vehicles.js:
   a new model of very different proportions needs its value re-measuring.
+* **No tractors, dump trucks, combine or parked rig in a multiplayer game**
+  (`buildLife`, `session.active`), for its frame rate. Single player keeps them.
 * **Suspects in multiplayer** run on the host and are sent like traffic, under
   `v.trafficId`; `Suspects._policePlayers` is the solo player plus remote police players.
 * **Long-range line planner** (`ai/fastplan.js`, `Officer._fastLine`): off the road on
