@@ -46,6 +46,7 @@ import { Runner } from '../ai/runner.js';
 import { ROLE } from '../ai/officer.js';
 import { dist2 } from '../util/math.js';
 import { groups, GROUP } from '../physics/world.js';
+import { fleeingSpec } from './vehicles.js';
 
 /** Cars on a suspect by its wanted level, 0-5. */
 const SUSPECT_UNITS = [0, 2, 3, 4, 5, 6];
@@ -87,6 +88,8 @@ const NERVE_NEAR = 25;
 const NERVE_TAILED = 1 / 40;
 const NERVE_KNOCK = 0.15;
 const NERVE_DAMAGE = 0.6;
+/** With a unit this near, m, it drives as if seen. */
+const HUNTED_NEAR = 250;
 /** A suspect that has not moved for this long, s, can be arrested from this far, m: wherever it has ended up, a unit can walk to it. */
 const STILL_SECONDS = 10;
 const STILL_REACH = 22;
@@ -209,6 +212,10 @@ export class Suspects {
     // Running from the start: it has already shown its hand.
     runner.running = true;
     runner.breakIn = 0;
+    // Keeps trying, however close the police are. Stopping is decided here, by
+    // its nerve, or by not being able to move.
+    runner.neverPinned = true;
+    v.spec = fleeingSpec(v.spec);
     const s = { v, runner, why, heat: 1, units: [], seen: true, unseenFor: 0, pinFor: 0,
       state: 'run', want: 0, acquireFor: 0, pullFor: 0, goneFor: 0 };
     s.lastSeen = v.position.clone();
@@ -330,7 +337,8 @@ export class Suspects {
       near = Math.min(near, r - (p.spec.dims.l + v.spec.dims.l) * 0.5);
       if (!seen && r < SIGHT && d._visibleTo(p, v)) seen = true;
     }
-    s.runner.hunted = seen;
+    // Still running flat out with them just out of sight, not back to the limit.
+    s.runner.hunted = seen || near < HUNTED_NEAR;
     s.seen = seen;
     // For the open world's map marker (Game._openWorldMarker).
     if (seen) { s.lastSeen = s.lastSeen || v.position.clone(); s.lastSeen.copy(v.position); }

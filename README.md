@@ -7910,6 +7910,38 @@ side, my wheels fade through the floor."*
 8 hits, 0 hard; at 150 mean 99, with it 8%, 4 hits, 1 hard; no trees, no wrecks. Against
 97 and 103 before this section, so no worse in the noise.
 
+### Civilians who can actually run, and trees that are still not solved
+
+*"The civilian ... cars seem really bad ... sometimes they don't even move, or they
+just crash into another police car ... They're really bad at driving, and just like
+can't seem to get out of busting situations fast enough."* `tests/fleeing.js`, six
+suspects, 40 s, player away: mean 54 km/h (37-73 for those not caught). They were still
+on traffic's 62% engine and small brakes, and `Runner._pinned` put the brakes on for
+good with any police car within 7 m at a crawl: from a standstill beside one, it never
+moved again. Now: `fleeingSpec` (the Runner's engine, stronger brakes, `gripScale`
+1.02, its own mass and size), `neverPinned` (stopping is decided by nerve or by not
+being able to move), and with a unit within 250 m it drives as if seen rather than
+easing off when a line of sight drops. Mean 72 km/h; 84 leaving out the one caught.
+It costs the police: `tests/aibust.js` went 3 of 4 caught to 2 of 4 in 100 s, one still
+running, one lost. A chase now, which is what was asked for.
+
+*"They still seem to crash ... through trees."* Not fixed, and four tries measured.
+`tests/force.js` kind `trees`, 4 runs at 90 km/h, fresh pages, `__treeLog`:
+
+| | near | held on | hits (hard) | trees | at 150 in keepup |
+|---|---|---|---|---|---|
+| kept: held aim only | 38% | 22.5 s | 28 (4) | 12 | 99 km/h |
+| old margins in a wood (5+ trunks in 28 m) | 29% | 21.2 s | 21 (5) | 11 | not run |
+| and 79 km/h limit in one | 31% | 14.4 s | 28 (6) | 11 | not run |
+| look 20 degrees both sides at speed | 22% | 29.5 s | 25 (7) | 9 | 85 km/h |
+| the same, only to the side it is turning | 24% | 21.2 s | 28 (8) | 12 | 104 km/h |
+
+The log says why the wood rules did nothing: the hard ones are at 100-190 km/h with
+the strip clear until the trunk is 14-18 m off, mostly lone trees outside anything
+that counts as a wood. All four were taken out. The both-sides look is the only one
+that moved the number, and it costs what the open-ground margins gained; the player's
+call, not made here.
+
 ### Faster on the rolling hills, the parked tractor, the trees and the posts
 
 *"Can you try and make just the police cars just faster in general? ... do

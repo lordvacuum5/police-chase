@@ -727,6 +727,24 @@ export function drivablePoliceSpec(key = 'interceptor') {
 }
 
 /**
+ * A traffic car once its driver has decided to run: the same car, driven flat out.
+ *
+ * "They're really bad at driving ... can't seem to get out of busting situations
+ * fast enough." Traffic is 62% of a normal engine and small brakes, for pottering
+ * about: running on that they averaged 54 km/h (tests/fleeing.js). Its mass, size
+ * and looks are its own; the rest is close to the getaway car's, as first asked --
+ * "the same properties ... of the first runaway car we've ever made."
+ */
+export function fleeingSpec(base) {
+  return Object.assign({}, base, {
+    engine: SPECS.runner.engine,
+    brakes: Object.assign({}, base.brakes, { maxTorque: 3200, gripBonus: 1.2 }),
+    gripScale: 1.02,
+    topSpeedHint: 70,
+  });
+}
+
+/**
  * Where each body's middle is, along its length, as it is drawn.
  *
  * The origin is the centre of mass, which is forward of or behind the middle of

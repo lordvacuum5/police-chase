@@ -314,6 +314,7 @@ export class Runner {
    */
   _pinned(dt) {
     const v = this.vehicle;
+    if (this.neverPinned) return false;
     if (Math.abs(v.forwardSpeed) * 3.6 > PIN_SPEED) { this.pinnedFor = 0; return false; }
     let near = Infinity;
     for (const t of this._threats()) {
