@@ -761,7 +761,7 @@ export class Vehicle {
       if (w.punctured && w.condition > FLAT) w.condition = Math.max(FLAT, w.condition - dt * 0.33);
     }
 
-    if (this.damage >= 0.92) this.disabled = true;
+    if (this.damage >= 0.92 && !this.spec.neverDisabled) this.disabled = true;
   }
 
   /**
@@ -865,7 +865,7 @@ export class Vehicle {
   applyDamage(amount) {
     if (!(amount > 0) || this.assist.shielded) return;
     this.damage = clamp01(this.damage + amount / (this.spec.durability || 1));
-    if (this.damage >= 0.92) this.disabled = true;
+    if (this.damage >= 0.92 && !this.spec.neverDisabled) this.disabled = true;
   }
 
   _readState() {
@@ -1115,7 +1115,7 @@ export class Vehicle {
     // hurt. Damage is much harder to pick up now, so when you do have it the
     // car should be genuinely crippled rather than mildly down on power: a
     // wreck at full damage keeps a tenth of its torque, not a third.
-    engineTorque *= lerp(1, 0.10, smoothstep(0.28, 1.0, this.damage));
+    engineTorque *= lerp(1, this.spec.wreckPower ?? 0.10, smoothstep(0.28, 1.0, this.damage));
     // The clutch kick releases a torque spike as it re-engages.
     if (this.kickTimer > 0 && this.clutch > 0.3) engineTorque *= 1.55;
     if (this.rpm > eng.redline * 1.01) engineTorque = Math.min(engineTorque, 0);

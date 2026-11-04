@@ -23,6 +23,8 @@
 // against it, which is the right kind of fair.
 
 import { Driver, SKILL } from './driver.js';
+import { planFast } from './fastplan.js';
+import { requestPlan } from './localplan.js';
 import { clamp, dist2 } from '../util/math.js';
 
 /**
@@ -115,6 +117,13 @@ const CALM_AFTER = 12;
  * is the one making the arrest (Officer._holdingArrest) and for the same
  * reason: the manoeuvre that opens the gap cancels the arrest it just earned.
  */
+/** _planners: slower than this for this long it asks for a plan out, m/s, s; how fast and how long it drives one, m/s, s; a line off the road, from what speed and how often. */
+const STUCK_SPEED = 2;
+const STUCK_FOR = 0.8;
+const PLAN_SPEED = 10;
+const PLAN_MAX = 6;
+const LINE_FROM = 8;
+const LINE_EVERY = 0.8;
 const PIN_GAP = 7;
 const PIN_SPEED = 2.5;
 const PIN_SECONDS = 1.2;
@@ -402,6 +411,13 @@ export class Runner {
       this.goalNode = null;
     }
 
+    // The police's planners, for a civilian on the run: "can you also give them the
+    // same routing system as the police?"
+    if (this.usePlanners && !window.__noRunnerPlan) {
+      const c = this._planners(dt);
+      if (c) { v.setControls(c); return; }
+    }
+
     this.repathTimer -= dt;
     // Re-plan on the clock, when the path has run out, or when the junction it
     // was heading for has stopped being the safe one -- which is what happens
@@ -431,6 +447,58 @@ export class Runner {
     const cap = !this.running ? CRUISE_CAP
       : (this.clearFor > CALM_AFTER ? 26 : Infinity);
     v.setControls(this.driver.followPath(dt, cap));
+  }
+
+  /**
+   * Stopped against something, a plan out of it (ai/localplan.js); off the road at
+   * speed, a line to the junction it is making for (ai/fastplan.js). Null on the road
+   * and moving, which is the route's. The same as Officer._localDrive and _fastLine,
+   * with the road route as what it goes back to.
+   */
+  _planners(dt) {
+    const v = this.vehicle, d = this.driver, g = this.game;
+    const goal = g.graph.nodes[this.goalNode];
+    if (!goal) return null;
+    this._slowFor = v.speed < STUCK_SPEED && !(d.reverseTimer > 0) ? (this._slowFor || 0) + dt : 0;
+    const t = this._lpTicket;
+    if (t && t.done) {
+      this._lpTicket = null;
+      if (t.result) { this._lp = t.result; this._lp.age = 0; }
+    }
+    if (this._lp) {
+      const lp = this._lp;
+      lp.age += dt;
+      const c = lp.done || lp.lost || lp.blocked || lp.age > PLAN_MAX ? null : d.followLocal(lp, PLAN_SPEED, dt);
+      if (c) return c;
+      this._lp = null;
+      this._slowFor = 0;
+      this.repathTimer = 0;
+    } else if (!this._lpTicket && this._slowFor > STUCK_FOR) {
+      this._lpTicket = requestPlan(g, v, goal, { cuts: true });
+    }
+
+    const dropLine = () => {
+      if (this._line) {
+        d.planned = false; d.trustRoute = false; d.freeLined = false;
+        d.setPath([]);
+        this.repathTimer = 0;
+      }
+      this._line = null;
+      return null;
+    };
+    if (d._onCarriageway() || v.speed < LINE_FROM) return dropLine();
+    this._lineFor = (this._lineFor || 0) - dt;
+    if (this._lineFor <= 0 && !(g.clock - (g._fastAt ?? -1) < 1 / 30)) {
+      g._fastAt = g.clock;
+      this._lineFor = LINE_EVERY;
+      const res = planFast(g, v, goal);
+      if (!res || !res.line) return dropLine();
+      this._line = res;
+      d.planned = true; d.trustRoute = true; d.freeLined = true;
+      d.setPath(res.line);
+    }
+    if (!this._line || !d.hasPath) return null;
+    return d.followPath(dt, Infinity, { lane: false });
   }
 
   /** Scrub the roster entry, so nothing holds a reference to a dead car. */

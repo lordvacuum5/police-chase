@@ -7910,6 +7910,24 @@ side, my wheels fade through the floor."*
 8 hits, 0 hard; at 150 mean 99, with it 8%, 4 hits, 1 hard; no trees, no wrecks. Against
 97 and 103 before this section, so no worse in the noise.
 
+### Civilians you cannot wreck with one knock, on the police's planners
+
+*"The civilian cars, like when I hit them once, they seem to suddenly get 100% damage. And they
+basically can't move ... Can you also give them the same routing system as the police? And ...
+lots and lots and lots more health ... it doesn't slow them down anywhere near as much as it
+would a player."* A police car is heavy, so a knock was a big change of speed for a light car:
+30 m/s of it came to 0.82 damage at a durability of 1.4, and 0.92 disables. Every traffic car
+now has `durability` 11 (that knock 0.10), `wreckPower` 0.7 (a player's car keeps 0.10 of its
+engine at full damage), and `neverDisabled`. A fleeing one uses the police's planners
+(`Runner._planners`): stopped 0.8 s, a local plan out; off the road at speed, a long-range line
+to the junction it wants.
+
+`tests/fleeing.js`, 6 runs, then `tests/aibust.js`, 4: damage reached 0.55-0.66, now 0.00-0.05;
+longest stall 5.3-5.7 s, now 3.2 s; time stopped 3% to 1%; mean 72 to 70 km/h, the same in the
+noise, so the planners have not made them measurably quicker, only less stuck. Caught with the
+player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
+(`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
+
 ### Real sirens, a different one by the car
 
 *"Can you find a proper siren sound on the web? I like different siren sounds ... Cars."*

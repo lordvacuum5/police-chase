@@ -587,7 +587,15 @@ function trafficSpec(o) {
     engine: Object.assign({}, baseEngine, { torqueCurve: scaled(0.62, baseEngine.torqueCurve) }),
     brakes: { maxTorque: 2100, frontBias: 0.64, handbrakeTorque: 2400, abs: 1 },
     gripScale: 0.92,
-    durability: 1.4,
+    // "When I hit them once, they seem to suddenly get 100% damage. And they basically
+    // can't move ... lots and lots more health ... it doesn't slow them down anywhere
+    // near as much as it would a player." A police car is heavy, so one knock at 30 m/s
+    // of change was 0.82 on a durability of 1.4: disabled by the second, and a wreck's
+    // tenth of its power before that. Now that knock is 0.10, it never disables, and a
+    // car at full damage keeps wreckPower of its engine. See Vehicle.
+    durability: 11,
+    wreckPower: 0.7,
+    neverDisabled: true,
     topSpeedHint: 48,
     traffic: true,
   }, o));

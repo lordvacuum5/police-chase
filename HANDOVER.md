@@ -192,6 +192,9 @@ scoring, deliberately.
   the units to arrest (`tests/aibust.js`); `OPEN_WORLD_UNITS` is the larger table.
   Collision boxes are centred on the drawn body with `BODY_MIDDLE` in vehicles.js:
   a new model of very different proportions needs its value re-measuring.
+* **Traffic cars are very tough** (`durability` 11, `wreckPower` 0.7, `neverDisabled` in
+  `trafficSpec`), and a fleeing one uses the police's planners (`Runner._planners`,
+  `usePlanners`, set in `Suspects.offence`). It stops by nerve, not by wrecking.
 * **No tractors, dump trucks, combine or parked rig in a multiplayer game**
   (`buildLife`, `session.active`), for its frame rate. Single player keeps them.
 * **Suspects in multiplayer** run on the host and are sent like traffic, under

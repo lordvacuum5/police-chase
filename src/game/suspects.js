@@ -220,6 +220,7 @@ export class Suspects {
     // Keeps trying, however close the police are. Stopping is decided here, by
     // its nerve, or by not being able to move.
     runner.neverPinned = true;
+    runner.usePlanners = true;
     v.spec = fleeingSpec(v.spec);
     const s = { v, runner, why, heat: 1, units: [], seen: true, unseenFor: 0, pinFor: 0,
       state: 'run', want: 0, acquireFor: 0, pullFor: 0, goneFor: 0 };
