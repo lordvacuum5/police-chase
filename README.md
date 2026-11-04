@@ -7924,7 +7924,7 @@ corners pulled tight and rounded. `Officer._fastLine` hands the line to
 `Driver.followPath`, so `planSpeed` brakes for its bends in advance as for a road's,
 and `_pathClear` looks along it rather than straight past the bend. Every 0.8 s, sooner
 if the car is 8 m off it or near its end. Maps with hills, with a car or target off the
-road, over 35 m from the target. Each row a fresh page:
+road, over 35 m from the target; Wexbury as well, below. Each row a fresh page:
 
 | | near | closest | hits (hard) | trees |
 |---|---|---|---|---|
@@ -7947,6 +7947,24 @@ Cost: 2.4 ms a plan warm in the thickest place on the map, 33 ms for the first (
 and no more than 30 plans a second across the force. `Game._update` at five stars, 22
 units, off/on/off/on: 6.9, 7.2, 6.8, 6.2 ms, so lost in the noise. `window.__noFastPlan`
 turns it off.
+
+*"In the UK map, when I'm just going through a few corners ... the police seem really
+slow, like slower than they were."* Wexbury, measured against the code from before any of
+this session's police changes (0dcd8ef), same page method: not slower than they were --
+63 and 57 km/h then, 65 and 57 now -- but slow, and next to Haldon's 106 it reads as worse.
+`tests/keepup.js`, 4 routes:
+
+| | at 90: mean, behind, hits, spins | at 120: mean, behind, hits, spins |
+|---|---|---|
+| Wexbury, no line | 65 km/h, 72 m, 18, 2 | 57 km/h, 169 m, 19, 6 |
+| **Wexbury, the line off the road (kept)** | **62, 80 m, 18, 3** | **67, 81 m, 13, 1** |
+| Wexbury, on the road as well | 64, 92 m, 13, 2 | 65, 115 m, 26, 1; damage 0.84 |
+| Ashfield, no line (kept) | 67, 79 m, 10, 1 | 60, 148 m, 19, 6 |
+| Ashfield, the line | 66, 82 m, 12, 0 | 62, 185 m, 20, 2 |
+
+So on Wexbury off the road; not on the road, and not on Ashfield. Better against a fast
+car, level against a slower one, and still a long way under Haldon: `Arc` (27-30%) and
+`wall` (22%) are what hold them, the corners themselves, in a town of tight ones.
 
 ### Civilians who can actually run, and four tries at the trees
 

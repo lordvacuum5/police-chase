@@ -2198,7 +2198,8 @@ export class Officer {
       this._fast = null;
       return null;
     };
-    if (window.__noFastPlan || !g.sim.terrainAt || d < FAST_FROM || v.speed < FAST_SPEED) return drop();
+    // Not on Ashfield's grid, where it measured no better: README, "A line planned".
+    if (window.__noFastPlan || (g.mapDef && g.mapDef.id === 'city') || d < FAST_FROM || v.speed < FAST_SPEED) return drop();
     if (dr._onCarriageway() && g.sim.surfaceAt(t.x, t.z) !== 0) return drop();
     this._fastFor = (this._fastFor || 0) - dt;
     const off = this._fast && dr.hasPath && Math.abs(dr.crossTrack || 0) > FAST_OFF;
