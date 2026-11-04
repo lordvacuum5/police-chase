@@ -289,6 +289,31 @@ const ROTOR_AT = 1.0;
 const ROTOR_PITCH = 0.55;
 
 /**
+ * Real sirens, a different one by the kind of car. "Can you find a proper siren
+ * sound on the web? I like different siren sounds ... Cars." Two recordings from
+ * Wikimedia Commons, credited in the README: `two` a German police two-tone, close
+ * and clean; `wail` American sirens in Washington DC, a long way off through a
+ * window, so quiet it is brought up by twenty times, and filtered to the band the
+ * siren is in to leave the street out. `from`/`to`/`fade` as the rotor's above.
+ * SIREN_VOICE is which car uses which, and at what pitch, so the same recording
+ * can be two different cars; a kind not listed keeps the synthesised siren.
+ */
+const SIREN_SAMPLES = {
+  two: { url: 'resources/sounds/commons-german-police-siren.ogg', from: 1, to: 13, fade: 0.25, low: 300, high: 4000 },
+  wail: { url: 'resources/sounds/commons-american-police-siren.ogg', from: 9, to: 21, fade: 0.6, low: 550, high: 2100 },
+};
+const SIREN_VOICE = {
+  patrol: { sample: 'two', rate: 1 },
+  interceptor: { sample: 'wail', rate: 1 },
+  suv: { sample: 'two', rate: 0.86 },
+  van: { sample: 'wail', rate: 0.84 },
+};
+/** How loud each is made, as a loop's average level, before distance. */
+const SIREN_LEVEL = 0.28;
+/** How much faster a recording runs with the car right on you: the note changing is how you know it has closed. */
+const SIREN_CLOSE_RATE = 1.2;
+
+/**
  * Fold a region of a recording into a seamless mono loop by crossfading the
  * material just past the loop end back over its beginning. Looping a raw
  * region clicks at the seam every pass, which at idle is several times a second.
@@ -620,6 +645,7 @@ export class GameAudio {
     this.ready = true;
     this._loadEngineSample();
     this._loadRotorSample();
+    for (const k of Object.keys(SIREN_SAMPLES)) this._loadSirenSample(k);
   }
 
   /**
@@ -627,6 +653,31 @@ export class GameAudio {
    * who is actually flying. Fire-and-forget like the engine: a missing file
    * leaves a silent aircraft rather than a broken game.
    */
+  async _loadSirenSample(key) {
+    const def = SIREN_SAMPLES[key], ctx = this.ctx;
+    try {
+      const res = await fetch(def.url);
+      if (!res.ok) throw new Error('http ' + res.status);
+      const raw = await ctx.decodeAudioData(await res.arrayBuffer());
+      const loop = makeSeamlessLoop(ctx, raw, def.from, def.to, def.fade);
+      if (!loop) throw new Error('loop region too short');
+      const d = loop.getChannelData(0);
+      let sum = 0;
+      for (let i = 0; i < d.length; i += 4) sum += d[i] * d[i];
+      const src = ctx.createBufferSource();
+      src.buffer = loop;
+      src.loop = true;
+      const lo = ctx.createBiquadFilter(), hi = ctx.createBiquadFilter(), gain = ctx.createGain();
+      lo.type = 'highpass'; lo.frequency.value = def.low;
+      hi.type = 'lowpass'; hi.frequency.value = def.high;
+      gain.gain.value = 0;
+      src.connect(lo); lo.connect(hi); hi.connect(gain); gain.connect(this.master);
+      src.start();
+      if (!this.sirenVoices) this.sirenVoices = {};
+      this.sirenVoices[key] = { src, gain, scale: SIREN_LEVEL / (Math.sqrt(sum / (d.length / 4)) || 1) };
+    } catch (e) { /* the synthesised siren carries on for that kind of car */ }
+  }
+
   async _loadRotorSample() {
     const ctx = this.ctx;
     try {
@@ -1466,19 +1517,19 @@ export class GameAudio {
     // In a chase, the nearest marked car. Out of one, only a car giving you a
     // one-second "move along" blip (Officer._warnIfBlocked) -- which is always
     // the yelp: a couple of whoops, not a wail starting up.
-    let nearest = Infinity, blip = false;
+    let nearest = Infinity, blip = false, sirenCar = null;
     if (dispatcher) {
       for (const u of dispatcher.units) {
         const blipping = u.vehicle.blipFor > 0;
         if (!blipping && !u.vehicle.sirenOn && (heat.tier === 0 || u.vehicle.unmarked)) continue;
         if (u.vehicle.disabled) continue;
         const d = u.distanceTo(player.position);
-        if (d < nearest) { nearest = d; blip = blipping && heat.tier === 0; }
+        if (d < nearest) { nearest = d; blip = blipping && heat.tier === 0; sirenCar = u.vehicle; }
       }
     }
     // Your own, switched on with Q: heard as a car 60 m off, the wail -- right
     // on top of you it would drown the engine and the radio.
-    if (player.isPolice && player.sirenOn && nearest > 60) { nearest = 60; blip = false; }
+    if (player.isPolice && player.sirenOn && nearest > 60) { nearest = 60; blip = false; sirenCar = player; }
     if (nearest < 190) {
       this.sirenPhase += dt;
 
@@ -1502,9 +1553,26 @@ export class GameAudio {
       this.sirenHorn.frequency.setTargetAtTime(hz * 1.9, t, glide);
 
       const prox = 1 - clamp01(nearest / 190);
-      this.sirenGain.gain.setTargetAtTime(prox * prox * 0.075 * this.duck, t, 0.12);
+      const want = prox * prox * 0.075 * this.duck;
+      // That kind of car's recording if it has one and it has loaded; otherwise
+      // the synthesised note above.
+      const voice = sirenCar && SIREN_VOICE[sirenCar.specKey];
+      const rec = voice && this.sirenVoices && this.sirenVoices[voice.sample];
+      this.sirenGain.gain.setTargetAtTime(rec ? 0 : want, t, 0.12);
+      if (this.sirenVoices) {
+        for (const k of Object.keys(this.sirenVoices)) {
+          const on = rec === this.sirenVoices[k];
+          this.sirenVoices[k].gain.gain.setTargetAtTime(on ? want * this.sirenVoices[k].scale : 0, t, 0.15);
+        }
+      }
+      if (rec) rec.src.playbackRate.setTargetAtTime(voice.rate * (yelp ? SIREN_CLOSE_RATE : 1), t, 0.25);
+      this.sirenSounding = rec ? voice.sample : 'synth';
     } else {
       this.sirenGain.gain.setTargetAtTime(0, t, 0.25);
+      if (this.sirenVoices) {
+        for (const k of Object.keys(this.sirenVoices)) this.sirenVoices[k].gain.gain.setTargetAtTime(0, t, 0.25);
+      }
+      this.sirenSounding = null;
     }
   }
 }
