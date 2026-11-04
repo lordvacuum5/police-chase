@@ -208,7 +208,6 @@ export const SPECS = {
     // clearance as the saloons. Shifted forward because the body is placed on
     // the axles rather than centred on a centre of mass this far back.
     colliderY: 0.195,
-    colliderZ: 0.214,
     mass: 1390,
     // Mid-engined: the weight sits behind the driver.
     frontWeight: 0.42,
@@ -726,6 +725,23 @@ export function drivablePoliceSpec(key = 'interceptor') {
   }
   return spec;
 }
+
+/**
+ * Where each body's middle is, along its length, as it is drawn.
+ *
+ * The origin is the centre of mass, which is forward of or behind the middle of
+ * the car, and the collision box was centred on it -- so it stuck out past one
+ * end of the bodywork and stopped short of the other. "I'm supposed to be like
+ * hitting a police car, and there's like still a visible gap." A patrol car's box
+ * was 0.19 m past its nose and 0.20 m short of its tail; nose to nose, two of them
+ * stopped 0.38 m apart, and a hatchback's was 0.26 m out. Measured off the fitted
+ * models; README, "The gap between cars".
+ */
+const BODY_MIDDLE = {
+  patrol: -0.195, interceptor: -0.16, unmarked: 0.065, suv: -0.02, van: -0.205,
+  runner: -0.055, supercar: 0.284, offroad: -0.26, hatchback: -0.255, estate: -0.30, civsuv: -0.14,
+};
+for (const k of Object.keys(BODY_MIDDLE)) SPECS[k].colliderZ = BODY_MIDDLE[k];
 
 /**
  * The getaway car, when the computer is driving it and you are the police.

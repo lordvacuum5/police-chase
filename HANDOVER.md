@@ -188,6 +188,10 @@ scoring, deliberately.
 * **A flyable police helicopter** — `game/flyheli.js`, with its own flight
   model, fuel, a helipad on the workshop roof, and two-thumbstick phone
   controls. Multiplayer-aware.
+* **Suspects in the open world** give up: `s.nerve`, then `s.gaveUp` stops the car for
+  the units to arrest (`tests/aibust.js`); `OPEN_WORLD_UNITS` is the larger table.
+  Collision boxes are centred on the drawn body with `BODY_MIDDLE` in vehicles.js:
+  a new model of very different proportions needs its value re-measuring.
 * **AI police on Haldon Vale**: pay no hedge drag (a human police car does:
   `humanDriven`), go round the parked tractor by its corners
   (`Driver._roundParked`, shape on `life.parked.userData.span`), and keep to the

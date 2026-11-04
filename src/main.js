@@ -96,6 +96,9 @@ const MAX_SUBSTEPS = 5;
  * and room for a couple of other players' cars in multiplayer.
  */
 const MAX_VEHICLES = 40;
+/** Tipped further than this (its up vector's height) a car is drawn clear of the ground, at most this far, m. See _tippedLift. */
+const TIPPED_FROM = 0.8;
+const TIPPED_MAX = 0.8;
 
 /**
  * How far up the target's road a rolling block may be put, metres. See
@@ -1117,6 +1120,30 @@ class Game {
     const b = this.suspects.bust();
     this.heat.bustTimer = b.timer;
     this.heat.bustPinned = b.pinned;
+  }
+
+  /**
+   * How far to draw a tipped car up so nothing of it is under the ground,
+   * eased in as it tips so it does not jump. See Game._render.
+   */
+  _tippedLift(v, up) {
+    const p = v.view.position, q = v.view.quaternion, s = v.spec, d = s.dims;
+    const ground = this.sim.heightAt(p.x, p.z);
+    let low = Infinity;
+    const cy = s.colliderY === undefined ? 0.1 : s.colliderY, cz = s.colliderZ || 0;
+    for (let i = 0; i < 8; i++) {
+      _v.set(i & 1 ? d.w * 0.5 : -d.w * 0.5, cy + (i & 2 ? d.h * 0.5 : -d.h * 0.5), cz + (i & 4 ? d.l * 0.5 : -d.l * 0.5))
+        .applyQuaternion(q);
+      low = Math.min(low, p.y + _v.y);
+    }
+    // A wheel's lowest point: its rim square to the axle, its face along it.
+    const axleY = _v.set(1, 0, 0).applyQuaternion(q).y;
+    for (const w of v.wheels) {
+      const r = s.wheelRadius, hw = (s.wheelWidth || 0.26) * 0.5;
+      const y = p.y + _v.copy(w.pos).applyQuaternion(q).y;
+      low = Math.min(low, y - r * Math.sqrt(Math.max(0, 1 - axleY * axleY)) - hw * Math.abs(axleY));
+    }
+    return Math.min(TIPPED_MAX, Math.max(0, ground - low)) * clamp01((TIPPED_FROM - up.y) / 0.3);
   }
 
   /** A place on a road out of `node`; `ok(edge)`, if given, says which roads will do. */
@@ -3486,6 +3513,11 @@ class Game {
       _drawn.position = v.view.position;
       _drawn.quaternion = v.view.quaternion;
       _drawn.up = _up.copy(AXIS_Y).applyQuaternion(v.view.quaternion);
+      // Tipped over, it is the bodywork that rests, and on the hills on a
+      // collider sunk HILL_SINK under what is drawn; nor does the box reach out
+      // over the wheels. "Sometimes when I go on my side, my wheels fade through
+      // the floor." Drawn up by however far its lowest wheel or corner is under.
+      if (_up.y < TIPPED_FROM) v.view.position.y += this._tippedLift(v, _up);
 
       // Every wheel is one instance of the same 0.34 m by 0.26 m tyre, scaled
       // to whatever this car actually runs on -- wider still at the rear if

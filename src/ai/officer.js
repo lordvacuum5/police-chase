@@ -64,6 +64,19 @@ const CROSS_MAX = 250;
 const CROSS_SAVING = 1.35;
 /** How far either side of a line off the road must be free of trees, m. */
 const CROSS_TREES = 3;
+/**
+ * The held aim point in a wood (_holdWoodsAim): how long since a trunk was last in
+ * the strip it still counts, s; nearer than this it goes for the car itself, m;
+ * how far ahead of the target, s and at most m; and what uses a point up: age, s,
+ * the car within this of it, m, the target this far from it, m.
+ */
+const WOOD_SEEN = 3;
+const WOOD_NEAR = 18;
+const WOOD_LEAD = 1.4;
+const WOOD_MAX = 40;
+const WOOD_HOLD = 3;
+const WOOD_REACHED = 10;
+const WOOD_DRIFT = 45;
 /** Keeping to the lane rather than aiming between trees: how far off the target must be, m; room a trunk must leave beyond the car, m; how long it holds, s. */
 const TREE_LINE_FROM = 30;
 const TREE_LINE_ROOM = 1;
@@ -2057,6 +2070,7 @@ export class Officer {
     }
 
     this._cutInside(target, d, _aim);
+    this._holdWoodsAim(dt, target, d);
 
     this.driver.setPath([]);
 
@@ -2137,6 +2151,38 @@ export class Officer {
       speed, this._chaseSpeed() * lerp(1, 1.15, ram), this._gapCap(target),
       this._planCap === undefined ? Infinity : this._planCap,
     ), dt, { courseRadius: this._courseRadius, goal: target.position });
+  }
+
+  _holdWoodsAim(dt, target, d) {
+    // In among trees, a point a little ahead of the target, held until it is
+    // used up. "Give that police car's routing system ... a route a little way
+    // ahead of me in the forest ... because of me constantly turning and for it
+    // to reroute ... I might end up turning and end up hitting a tree. If you
+    // just set a point a little bit where you think I'm gonna be, and just keep
+    // on resetting that point, when I get there or get past there." Aiming at
+    // the car itself, its every swerve swings the nose of the car behind, at
+    // speed and between trunks.
+    const v = this.vehicle, dr = this.driver, t = target.position;
+    this._treesFor = dr.treeNear < 69 ? WOOD_SEEN : (this._treesFor || 0) - dt;
+    if (!(this._treesFor > 0) || d < WOOD_NEAR || dr._onCarriageway() || window.__noWoodAim
+      || this.game.sim.surfaceAt(t.x, t.z) !== 0) {
+      this._woodAim = null;
+      return;
+    }
+    const h = this._woodAim;
+    const vx = target.linvel.x, vz = target.linvel.z;
+    if (h) h.age += dt;
+    const used = !h || h.age > WOOD_HOLD
+      || dist2(v.position.x, v.position.z, h.x, h.z) < WOOD_REACHED
+      || dist2(t.x, t.z, h.x, h.z) > WOOD_DRIFT
+      // The target has reached it or gone past it, by the way it is going.
+      || (t.x - h.x) * vx + (t.z - h.z) * vz > 0;
+    if (used) {
+      const sp = Math.hypot(vx, vz);
+      const lead = clamp(sp * WOOD_LEAD, 0, WOOD_MAX) / (sp || 1);
+      this._woodAim = { x: t.x + vx * lead, z: t.z + vz * lead, age: 0 };
+    }
+    _aim.set(this._woodAim.x, _aim.y, this._woodAim.z);
   }
 
   /**

@@ -45,12 +45,19 @@
 import { Runner } from '../ai/runner.js';
 import { ROLE } from '../ai/officer.js';
 import { dist2 } from '../util/math.js';
+import { groups, GROUP } from '../physics/world.js';
 
 /** Cars on a suspect by its wanted level, 0-5. */
 const SUSPECT_UNITS = [0, 2, 3, 4, 5, 6];
+/**
+ * The same when the police side is the player's: nobody else needs the cars.
+ * "It's like wanted level 5, and there were like 4 cops ... it's weird."
+ * Closer to what those stars mean in the player's own chase (dispatcher TIER).
+ */
+const OPEN_WORLD_UNITS = [0, 2, 4, 7, 10, 14];
 /** A patrol this near a suspect with a clear line to it joins the chase, m; never more than JOIN_MAX on one. */
 const JOIN_NEAR = 90;
-const JOIN_MAX = 8;
+const JOIN_MAX = 16;
 /** At most this many suspects at once. */
 const MAX_SUSPECTS = 2;
 /** Its wanted level: up this much a second while seen, down this much once unseen for UNSEEN_GRACE s. */
@@ -66,6 +73,25 @@ const SIGHT = 170;
 const BUST_SPEED = 1.5;
 const BUST_GAP = 3.2;
 const BUST_SECONDS = 5;
+/** How fast the arrest runs back once nobody is on it, per second: the same as the player's own (game/heat.js). */
+const BUST_DRAIN = 2.2;
+/**
+ * A driver's nerve, out of 1: what being tailed within NERVE_NEAR m takes a
+ * second, what a knock from a police car takes, and the damage at which they
+ * have had enough regardless. "A police cars can't bust normal cars. Like I have
+ * to be there for them to bust it." A unit can only arrest a stopped car, and a
+ * fleeing one never stopped: 100 s with units on it and 0.63 damage and it was
+ * still going. With a player in the way it stopped against them.
+ */
+const NERVE_NEAR = 25;
+const NERVE_TAILED = 1 / 40;
+const NERVE_KNOCK = 0.15;
+const NERVE_DAMAGE = 0.6;
+/** A suspect that has not moved for this long, s, can be arrested from this far, m: wherever it has ended up, a unit can walk to it. */
+const STILL_SECONDS = 10;
+const STILL_REACH = 22;
+/** Further under the ground than this, m, a car has gone through it. */
+const UNDER = 1.2;
 /** How often a unit is taken off the suspect for the player's chase, s. */
 const PEEL_EVERY = 4;
 /** A patrol held behind a traffic car this long, both stopped and no red light, s: obstruction. */
@@ -188,6 +214,7 @@ export class Suspects {
     s.lastSeen = v.position.clone();
     runner.threats = () => this._threats(s);
     this.list.push(s);
+    this._groundIt(v);
     if (witness) this._take(s, witness);
     const cs = witness ? witness.callsign : 'Control, all units';
     const what = why === 'hit' ? 'failed to stop after a collision with a police vehicle'
@@ -203,6 +230,25 @@ export class Suspects {
     // like pop up as a pursuit."
     if (g.openWorld && g.hud) g.hud.notice('PURSUIT', `Vehicle ${what}.`);
     return s;
+  }
+
+  /**
+   * A car out of traffic meets the hills again. Traffic's bodywork ignores them,
+   * being many and on the roads (Vehicle); off the road, or shoved over on its
+   * side, nothing then held it up: "sometimes to the quarry ... it goes through
+   * the floor and you can't bust it."
+   */
+  _groundIt(v) {
+    if (this.game.sim.terrainAt) v.collider.setCollisionGroups(groups(GROUP.VEHICLE, 0xFFFF));
+  }
+
+  /** Under the ground regardless: back up on the nearest road. */
+  _rescue(v) {
+    const g = this.game;
+    if (v.position.y > g.sim.heightAt(v.position.x, v.position.z) - UNDER) return;
+    const snap = g.graph.nearestEdge(v.position.x, v.position.z, 400);
+    const x = snap ? snap.x : v.position.x, z = snap ? snap.z : v.position.z;
+    v.teleport({ x, y: g.sim.heightAt(x, z) + 1, z }, Math.atan2(v.forward.x, v.forward.z));
   }
 
   /** The cars this suspect is running from: its own, and anyone else's. */
@@ -246,6 +292,7 @@ export class Suspects {
     this._spotOffences(dt);
     for (const s of this.list) {
       if (s.v.removed) { s.state = 'gone'; this._release(s); continue; }
+      this._rescue(s.v);
       if (s.state === 'run') this._run(s, dt);
       else if (s.state === 'pull') this._pull(s, dt);
       else if (s.state === 'parked') this._parked(s, dt);
@@ -268,7 +315,8 @@ export class Suspects {
       // Making the arrest: sit on it rather than pushing it away again. A
       // unit still driving into a car that is all but stopped shoved it along
       // at 3-20 km/h and the arrest never came.
-      if (gap <= BUST_GAP + 2 && v.speed < BUST_SPEED * 3) {
+      // Inside the arrest gap: stopped short of it, it never starts.
+      if (gap <= BUST_GAP - 0.4 && v.speed < BUST_SPEED * 3) {
         u.vehicle.setControls({ throttle: 0, brake: 1, steer: 0, handbrake: 1 });
       }
       if (!seen && r < SIGHT && d._visibleTo(u, v)) seen = true;
@@ -286,13 +334,29 @@ export class Suspects {
     s.seen = seen;
     // For the open world's map marker (Game._openWorldMarker).
     if (seen) { s.lastSeen = s.lastSeen || v.position.clone(); s.lastSeen.copy(v.position); }
-    s.runner.update(dt);
+    // Lost its nerve: stops where it is, for the units to come and arrest it.
+    if (near < NERVE_NEAR) s.nerve = (s.nerve === undefined ? 1 : s.nerve) - NERVE_TAILED * dt;
+    if (v.lastImpactAt && v.lastImpactAt !== s.knockAt && v.lastImpact > CRASH_HIT && near < BUST_GAP) {
+      s.knockAt = v.lastImpactAt;
+      s.nerve = (s.nerve === undefined ? 1 : s.nerve) - NERVE_KNOCK;
+    }
+    if (!s.gaveUp && (s.nerve <= 0 || v.damage >= NERVE_DAMAGE)) {
+      s.gaveUp = true;
+      g.say('suspectStop', [
+        () => 'Control, vehicle is slowing, driver giving up.',
+        () => 'Control, vehicle stopping, moving in.',
+      ], {}, false, { every: 10 });
+    }
+    if (s.gaveUp) v.setControls({ throttle: 0, brake: 1, steer: 0, handbrake: v.speed < 3 ? 1 : 0 });
+    else s.runner.update(dt);
 
     // Its wanted level, its own.
     s.unseenFor = seen ? 0 : s.unseenFor + dt;
     if (seen) s.heat = Math.min(MAX_HEAT, s.heat + HEAT_RISE * dt);
     else if (s.unseenFor > UNSEEN_GRACE) s.heat -= HEAT_FALL * dt;
-    if (s.heat <= 0 || !s.units.length && s.unseenFor > UNSEEN_GRACE) {
+    // Given up, it waits to be arrested: a stopped car does not get away.
+    if (s.gaveUp) s.heat = Math.max(s.heat, 1);
+    else if (s.heat <= 0 || !s.units.length && s.unseenFor > UNSEEN_GRACE) {
       s.state = 'free';
       this._release(s);
       g.say('suspectLost', [
@@ -304,8 +368,11 @@ export class Suspects {
 
     // The arrest.
     // Run down slowly rather than reset by one bad moment of a shove.
-    s.pinned = near <= BUST_GAP && v.speed < BUST_SPEED;
-    s.pinFor = s.pinned ? s.pinFor + dt : Math.max(0, s.pinFor - dt * 0.5);
+    // Back at the rate the player's own does: "it just seems to go down really
+    // slowly." It was a quarter of that, to forgive a shove.
+    s.stillFor = v.speed < BUST_SPEED ? (s.stillFor || 0) + dt : 0;
+    s.pinned = near <= (s.stillFor > STILL_SECONDS ? STILL_REACH : BUST_GAP) && v.speed < BUST_SPEED;
+    s.pinFor = s.pinned ? s.pinFor + dt : Math.max(0, s.pinFor - dt * BUST_DRAIN);
     if (s.pinFor >= BUST_SECONDS) {
       s.state = 'pull';
       s.pullFor = 0;
@@ -345,8 +412,9 @@ export class Suspects {
     // any to spare and the player is not wanted, otherwise new.
     const tier = Math.max(1, Math.min(5, Math.floor(s.heat)));
     s.acquireFor -= dt;
-    if (s.units.length < SUSPECT_UNITS[tier] && s.acquireFor <= 0) {
-      s.acquireFor = 3;
+    const wanted = (g.openWorld ? OPEN_WORLD_UNITS : SUSPECT_UNITS)[tier];
+    if (s.units.length < wanted && s.acquireFor <= 0) {
+      s.acquireFor = g.openWorld ? 1.5 : 3;
       let pick = null, best = 650;
       if (g.heat.tier === 0) {
         for (const u of d.units) {
@@ -568,6 +636,7 @@ export class Suspects {
     const g = this.game;
     g.traffic.release(c);
     const v = c.v;
+    this._groundIt(v);
     v.hazards = true;
     this.list.push({ v, runner: new Runner(g, v), why: 'crash', victim: true, heat: 0, units: [],
       state: 'pull', pullFor: 0, goneFor: 0 });

@@ -7856,6 +7856,60 @@ pull over ... I don't want them to like run."*
   after a crash between two traffic cars gets hazards too. Staged, 24 hits
   that registered: 3 ran, 21 pulled over, every one with hazards.
 
+### Arrests without you, the gap between cars, and held aim in the woods
+
+*"It just seems to go down really slowly ... a police cars can't bust normal cars.
+Like I have to be there for them to bust it ... wanted level 5, and there were like
+4 cops ... it goes through the floor and you can't bust it ... I'm supposed to be
+like hitting a police car, and there's like still a visible gap ... when I go on my
+side, my wheels fade through the floor."*
+
+* **The busting bar** ran back at a quarter of the player's own rate. Now the same
+  (`BUST_DRAIN` 2.2).
+* **Arrests.** `tests/aibust.js`, the player parked far away: 1 of 3 caught in 100 s.
+  In one, units were on it for 100 s, 0.63 damage, and it kept going: a unit can only
+  arrest a stopped car and a fleeing one never stopped, unless it hit the player.
+  Now a driver has nerve (`NERVE_*`): tailed within 25 m it goes in 40 s, a knock
+  takes 0.15, 0.6 damage ends it. It stops and waits, and cannot then be lost. And a
+  unit braked for the arrest 5.2 m off, outside the 3.2 m that counts; now inside it.
+  After: 3 of 4 caught, at 32-55 s; the fourth got away at 100 m with 2 units, fairly.
+* **Five stars, four cops.** The open world has its own table (`OPEN_WORLD_UNITS`
+  2/4/7/10/14, was 2/3/4/5/6), asked for every 1.5 s, `JOIN_MAX` 16. Forced to five
+  with the player away: 14 units in 20 s, 40 cars on the board. Runner games keep the
+  old table so a suspect does not take the player's chase.
+* **Through the floor.** Traffic's bodywork ignores the hills (Vehicle); a car let out
+  of traffic kept that, so off the road or on its side nothing held it up.
+  `Suspects._groundIt` puts it back. `_rescue` is the backstop: over 1.2 m under, back
+  on the nearest road; staged 4 m under, on the road within a second. Not reproduced
+  as it happened in play. And a car still for 10 s can be arrested from 22 m, for one
+  stuck somewhere nobody can drive to.
+* **The gap.** The collision box was centred on the origin, the centre of mass, and
+  the bodywork is not. Past the nose and short of the tail: patrol 0.19/0.20, van
+  0.22/0.19, hatchback 0.26/0.26, estate 0.30/0.30. `colliderZ` per car (`BODY_MIDDLE`,
+  off the fitted models), ends now within 0.04 m but the Interceptor, Unmarked and
+  Badger, whose models are 0.15-0.39 m longer than their boxes and overhang.
+  Two patrols driven nose to nose: drawn gap -0.03 m, about 0.38 m before. Width not
+  changed: the measure includes mirrors, so it cannot say. Keepup with it, below.
+* **On its side.** Bodywork rests on a heightfield sunk `HILL_SINK` under what is
+  drawn, and the wheels stand beyond the box. `Game._tippedLift` draws a car tipped past
+  up.y 0.8 clear of the ground, eased in, at most 0.8 m; on its side on Haldon, 0.52 m.
+  Drawn only. The slight sink upright that was mentioned earlier is not measured here.
+* **Held aim in the woods** (the player's design, `_holdWoodsAim`): off the road after
+  a target off the road with trunks about, aim 1.4 s ahead of it (at most 40 m) and
+  hold that point until the car or the target reaches it or passes it, it drifts 45 m
+  off the target, or 3 s. `tests/force.js` kind `trees`, 4 runs, fresh pages:
+
+  | | near | closest | hits (hard) | trees |
+  |---|---|---|---|---|
+  | off (`__noWoodAim`) | 30% | 52 m | 25 (7) | 12 |
+  | **on** | **38%** | **45 m** | **28 (4)** | **12** |
+
+  Closer and fewer hard ones, tree touches no fewer: a gain, not the cure hoped for.
+
+`tests/keepup.js` on all of it, Haldon Vale, 4 routes: at 120 mean 100, with it 21%,
+8 hits, 0 hard; at 150 mean 99, with it 8%, 4 hits, 1 hard; no trees, no wrecks. Against
+97 and 103 before this section, so no worse in the noise.
+
 ### Faster on the rolling hills, the parked tractor, the trees and the posts
 
 *"Can you try and make just the police cars just faster in general? ... do
