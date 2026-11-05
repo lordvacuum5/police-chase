@@ -45,6 +45,8 @@ const TRAFFIC_GONE = 360;
 const LANE = 2.4;
 /** Within this of a player, m, a traffic car is simulated; beyond it, moved along its route. */
 const SIM_RANGE = 150;
+/** Nearer anybody than this, m, a car's driver thinks every frame. */
+const DRIVE_NEAR = 90;
 const SIM_SLACK = 40;
 /**
  * How far past the edge of the road a car pulls over onto the verge, m: short
@@ -209,7 +211,15 @@ export class Traffic {
       if (c.v.dormant && far < SIM_RANGE) this._wake(c);
       else if (!c.v.dormant && far > SIM_RANGE + SIM_SLACK && !g.seenByAnyone(c.v.position)) this._sleep(c);
       if (c.v.dormant) this._glide(c, dt);
-      else this._drive(c, dt);
+      else if (far < DRIVE_NEAR) this._drive(c, dt);
+      else {
+        // Far enough off that nobody can tell, its driver thinks a third as often: the
+        // car still runs on the controls it was given. A traffic car's thinking was a
+        // quarter of a millisecond a frame, a dozen of them a frame's worth of judder.
+        c.driveDt = (c.driveDt || 0) + dt;
+        c.driveTick = ((c.driveTick || 0) + 1) % 3;
+        if (c.driveTick === 0) { this._drive(c, c.driveDt); c.driveDt = 0; }
+      }
     }
   }
 
@@ -351,6 +361,12 @@ export class Traffic {
       for (const u of g.dispatcher.units) {
         if (u.role === ROLE.PATROL || !u.vehicle || u.vehicle.disabled) continue;
         if (coming(u.vehicle)) return true;
+      }
+    }
+    // One after a civilian is coming through whoever is wanted, and is on its list.
+    if (g.suspects) {
+      for (const u of g.suspects.units()) {
+        if (u.vehicle && !u.vehicle.disabled && coming(u.vehicle)) return true;
       }
     }
     // A police player's car, when its siren is on (Q / SIRENS) -- whatever

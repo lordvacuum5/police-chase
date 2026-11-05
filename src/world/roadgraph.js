@@ -933,44 +933,57 @@ export class RoadGraph {
    * far along that edge it sits. Used to snap cars onto the graph.
    */
   nearestEdge(x, z, maxRadius = 90) {
+    // Called for every traffic car every frame and by half the game besides, so
+    // nothing here allocates until the answer is known: a Set a call and an object a
+    // segment was garbage by the thousand a second, and collecting it is a dropped
+    // frame. "Try to stop it juddering so much." Same answer as closestOnSegment.
     const cs = this.cellSize;
     const cx0 = Math.floor((x - maxRadius) / cs), cx1 = Math.floor((x + maxRadius) / cs);
     const cz0 = Math.floor((z - maxRadius) / cs), cz1 = Math.floor((z + maxRadius) / cs);
+    if (!this._seenEdge || this._seenEdge.length < this.edges.length) {
+      this._seenEdge = new Uint32Array(this.edges.length);
+      this._seenStamp = 0;
+    }
+    const seen = this._seenEdge, stamp = ++this._seenStamp;
 
-    let best = null, bestD = Infinity;
-    const seen = new Set();
-
+    let bestE = null, bestS = null, bestD = Infinity, bestT = 0;
     for (let cx = cx0; cx <= cx1; cx++) {
       for (let cz = cz0; cz <= cz1; cz++) {
         const list = this.cells.get(cx * 73856093 ^ cz * 19349663);
         if (!list) continue;
-        for (const eid of list) {
-          if (seen.has(eid)) continue;
-          seen.add(eid);
-          const e = this.edges[eid];
-          for (const s of e.segs) {
-            const r = closestOnSegment(x, z, s.a.x, s.a.z, s.b.x, s.b.z);
-            if (r.dist < bestD) {
-              bestD = r.dist;
-              best = { edge: e, x: r.x, z: r.z, dist: r.dist, along: s.start + r.t * s.len };
-            }
+        for (let i = 0; i < list.length; i++) {
+          const eid = list[i];
+          if (seen[eid] === stamp) continue;
+          seen[eid] = stamp;
+          const e = this.edges[eid], segs = e.segs;
+          for (let k = 0; k < segs.length; k++) {
+            const seg = segs[k], ax = seg.a.x, az = seg.a.z;
+            const dx = seg.b.x - ax, dz = seg.b.z - az;
+            const lenSq = dx * dx + dz * dz;
+            let t = lenSq > 1e-9 ? ((x - ax) * dx + (z - az) * dz) / lenSq : 0;
+            if (t < 0) t = 0; else if (t > 1) t = 1;
+            const px = ax + dx * t - x, pz = az + dz * t - z;
+            const d = px * px + pz * pz;
+            if (d < bestD) { bestD = d; bestE = e; bestS = seg; bestT = t; }
           }
         }
       }
     }
     // Fall back to a full scan if the car has left the map entirely.
-    if (!best) {
+    if (!bestE) {
       for (const e of this.edges) {
-        for (const s of e.segs) {
-          const r = closestOnSegment(x, z, s.a.x, s.a.z, s.b.x, s.b.z);
-          if (r.dist < bestD) {
-            bestD = r.dist;
-            best = { edge: e, x: r.x, z: r.z, dist: r.dist, along: s.start + r.t * s.len };
-          }
+        for (const seg of e.segs) {
+          const r = closestOnSegment(x, z, seg.a.x, seg.a.z, seg.b.x, seg.b.z);
+          if (r.dist * r.dist < bestD) { bestD = r.dist * r.dist; bestE = e; bestS = seg; bestT = r.t; }
         }
       }
     }
-    return best;
+    if (!bestE) return null;
+    const a = bestS.a, b = bestS.b;
+    return {
+      edge: bestE, x: a.x + (b.x - a.x) * bestT, z: a.z + (b.z - a.z) * bestT,
+      dist: Math.sqrt(bestD), along: bestS.start + bestT * bestS.len,
+    };
   }
 
   /** Unit direction of travel along an edge at distance `along`, toward node b. */

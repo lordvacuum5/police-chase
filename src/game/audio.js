@@ -1519,9 +1519,13 @@ export class GameAudio {
     // the yelp: a couple of whoops, not a wail starting up.
     let nearest = Infinity, blip = false, sirenCar = null;
     if (dispatcher) {
-      for (const u of dispatcher.units) {
+      // Those after a civilian as well, who are off this list and on a call whatever
+      // anybody's wanted level: they were silent.
+      const busy = dispatcher.game && dispatcher.game.suspects ? dispatcher.game.suspects.units() : [];
+      for (const u of busy.length ? dispatcher.units.concat(busy) : dispatcher.units) {
         const blipping = u.vehicle.blipFor > 0;
-        if (!blipping && !u.vehicle.sirenOn && (heat.tier === 0 || u.vehicle.unmarked)) continue;
+        const called = u.vehicle.onCall && !u.vehicle.unmarked;
+        if (!blipping && !called && !u.vehicle.sirenOn && (heat.tier === 0 || u.vehicle.unmarked)) continue;
         if (u.vehicle.disabled) continue;
         const d = u.distanceTo(player.position);
         if (d < nearest) { nearest = d; blip = blipping && heat.tier === 0; sirenCar = u.vehicle; }

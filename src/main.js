@@ -23,6 +23,7 @@ import { Traffic, trafficPaint } from './game/traffic.js';
 import { Suspects, SUSPECT_SIGHT } from './game/suspects.js';
 import { Runner, pickRunnerCar } from './ai/runner.js';
 import { warmLocalPlanner, pumpPlanner, boxesNear } from './ai/localplan.js';
+import { planFast } from './ai/fastplan.js';
 import { Heat } from './game/heat.js';
 import { RoadblockManager } from './game/roadblock.js';
 import { Helicopter, buildHelicopterMesh } from './game/helicopter.js';
@@ -352,6 +353,17 @@ class Game {
     // The local planner's list of every building and tree box, made now rather
     // than the first time a unit needs it, which is in the middle of a chase.
     warmLocalPlanner(this);
+    // The same for the long-range planner: its first plan cost 33 ms against 2.4 ms
+    // after, a dropped frame on whichever moment first had a unit off the road.
+    {
+      const n = this.graph && this.graph.nodes.find((x) => x.edges.length);
+      if (n) {
+        const from = { position: { x: n.x, z: n.z }, forward: { x: 0, z: 1 }, speed: 30 };
+        try {
+          for (let i = 0; i < 6; i++) planFast(this, from, { x: n.x + 80 + i * 10, z: n.z + 90 - i * 15 });
+        } catch (e) { /* a warm-up that fails costs nothing but the warm-up */ }
+      }
+    }
 
     // The ways through between the buildings, which the road network does not
     // describe. Has to happen here rather than in the generator: the buildings
@@ -3017,7 +3029,7 @@ class Game {
       v = this.player;
     } else if (id.startsWith(AI_ID) && session.isHost) {
       const key = id.slice(1);
-      const unit = this.dispatcher.units.find((u) => !u.human && u.vehicle
+      const unit = this.dispatcher.units.concat(this.suspects.units()).find((u) => !u.human && u.vehicle
         && String(u.callsignId || u.vehicle.id) === key);
       const car = !unit && this.traffic.cars.find((c) => c.id === key);
       const out = !unit && !car && this.suspects.list.find((s) => s.v.trafficId === key);
@@ -3287,7 +3299,9 @@ class Game {
     this._catchFallen();
     this._updateSkids(dt);
     // The same part-way-through-a-substep pose the frame will be drawn in.
-    this.camera3.update(dt, player, clamp01(this.accumulator / FIXED));
+    // An aircraft is stepped once a frame, not on the physics clock, so the fraction
+    // of a physics substep left over means nothing for it: see the same in _render.
+    this.camera3.update(dt, player, player.isAircraft ? 1 : clamp01(this.accumulator / FIXED));
     this.weather.update(dt);
 
     // Camera shake and a thud on a real hit.
@@ -3514,8 +3528,13 @@ class Game {
     // between the same two steps.
     const air = this.aircraft;
     if (air && air.view) {
-      air.view.position.lerpVectors(air.prevPos, air.position, alpha);
-      air.view.quaternion.copy(air.prevQuat).slerp(air.quaternion, alpha);
+      // Where it is. It steps once a frame, so `alpha`, which is a fraction of a physics
+      // substep, landed it at an arbitrary point along that frame's travel, the camera
+      // with it: with half a millisecond of wobble in the frame time the view moved
+      // 0.05 m one frame at 200 km/h where it should move 0.93. "Try to stop it juddering
+      // so much." tests/helijudder.js.
+      air.view.position.copy(air.position);
+      air.view.quaternion.copy(air.quaternion);
       const ud = air.view.userData;
       if (ud.main) {
         // Spin about the mast, and tilt the whole disc with the cyclic -- the

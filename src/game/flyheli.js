@@ -513,9 +513,7 @@ export class FlyingHelicopter {
     this.spin = damp(this.spin, flying && !this.engineOff ? 1 : 0, 0.8, dt);
 
     // ---- collective ----
-    // Centre is a hover, so hands off holds height. Without that the aircraft
-    // sinks whenever the pilot is busy looking at something, which is most of
-    // the time in this job.
+    // Hands off is IDLE, under a hover, so it sinks: see IDLE for why.
     // The lever runs from nothing to everything with idle in the middle: W
     // takes it up from idle to full, S takes it down from idle to nothing.
     // Clamping to idle instead meant S did nothing at all and the aircraft

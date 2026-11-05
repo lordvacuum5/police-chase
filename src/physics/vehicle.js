@@ -775,7 +775,8 @@ export class Vehicle {
    * (humanDriven, Game._initPlayer) still pays.
    */
   _hedgeDrag(dt) {
-    if (this.isPolice && !this.humanDriven) return;
+    // Nor traffic, which keeps to the road, and asked every substep for nothing.
+    if ((this.isPolice && !this.humanDriven) || this.isTraffic) return;
     const hedges = this.sim.hedges;
     if (!hedges || !hedges.size) return;
     let inHedge = false;

@@ -62,6 +62,8 @@ const JOIN_NEAR = 90;
 const JOIN_MAX = 16;
 /** At most this many suspects at once. */
 const MAX_SUSPECTS = 2;
+/** At most this many caught ones left where they stopped. */
+const MAX_PARKED = 4;
 /** Its wanted level: up this much a second while seen, down this much once unseen for UNSEEN_GRACE s. */
 const HEAT_RISE = 1 / 45;
 const HEAT_FALL = 1 / 18;
@@ -391,6 +393,8 @@ export class Suspects {
     if (s.pinFor >= BUST_SECONDS) {
       s.state = 'pull';
       s.pullFor = 0;
+      // Off any long-range line it was on: its own driving, from here.
+      Object.assign(s.runner.driver, { planned: false, trustRoute: false, freeLined: false });
       const cs = s.units.length ? s.units[0].callsign : 'Control';
       this._release(s);
       g.say('suspectBusted', [
@@ -478,7 +482,11 @@ export class Suspects {
   _parked(s, dt) {
     const g = this.game, v = s.v;
     v.setControls({ throttle: 0, brake: 0, steer: 0, handbrake: 1 });
-    if (!s.victim) return;
+    // A caught one stays, "for the rest of the map", but they all count against the
+    // police cars the board can hold (Game.carCount), so over a long game they stopped
+    // any more being sent. The oldest beyond MAX_PARKED goes, once nobody can see it.
+    if (!s.victim && !(this.list.filter((o) => o.state === 'parked' && !o.victim).length > MAX_PARKED
+      && this.list.find((o) => o.state === 'parked' && !o.victim) === s)) return;
     const far = g.watcherDistance(v.position) > GONE;
     s.goneFor = far && !g.seenByAnyone(v.position) ? s.goneFor + dt : 0;
     if (s.goneFor > 2) { g.removeVehicle(v); s.state = 'gone'; }

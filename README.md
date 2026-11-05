@@ -7910,6 +7910,54 @@ side, my wheels fade through the floor."*
 8 hits, 0 hard; at 150 mean 99, with it 8%, 4 hits, 1 hard; no trees, no wrecks. Against
 97 and 103 before this section, so no worse in the noise.
 
+### A bug hunt, and the judder
+
+*"Just fix any bugs you can find ... Try to stop it juddering so much. Try to make the
+helicopter better. Just make stuff better. But don't actually change anything like core."*
+
+Found by reading, each confirmed staged:
+
+* Units on a civilian were **silent**, and **traffic did not pull over** for them: both asked
+  `dispatcher.units`, and those units are off it. Staged, nobody wanted: `sirenSounding` two,
+  `_sirenNear` true.
+* In multiplayer a police player's **hit on one of those units was dropped** (`_netApplyHit`
+  looked in the same list). Fixed by reading; not staged.
+* **Caught civilians stayed for ever and counted against `Game.carCount`**, so a long game ran
+  out of room to send police. `MAX_PARKED` 4: 7 staged at 700 m thinned to 4 once unseen.
+* A runner caught while on a long-range line kept its `planned` flags. Cleared.
+
+`tests/soak.js`: Haldon Vale 300 s, Wexbury 150 s, Ashfield 90 s, "nothing to report" on all:
+no NaNs, no cars under the world, no thrown frames, bodies level.
+
+**The helicopter's judder was a real bug.** Cars step on the 120 Hz physics clock and are drawn
+between steps by the fraction left over (`alpha`). The aircraft steps once a frame but was drawn
+with the same `alpha`, a meaningless number for it, and its camera with it, so each frame landed at
+an arbitrary point along its travel and the world shook. `tests/helijudder.js`, 200 km/h dead
+straight, half a millisecond of wobble in the frame time: camera movement a frame 0.05-1.01 m where
+0.93 is right, mean error 3.0%. Drawn at its position: 0.895-0.95 m, which is the wobble itself,
+mean error 0.4%. At an exactly steady 60 Hz there was never any error, which is why it hid.
+
+**Time per frame.** `tests/hitches.js` times each part of `_update`. Per frame on Haldon Vale:
+suspension and tyres about 6 ms, physics 3, the force 3, traffic 2. Things cut, none changing what
+happens:
+
+* `RoadGraph.nearestEdge` was half of traffic's cost. Written without a `Set` a call or an object a
+  segment: identical on 2,382 random points, 7 times quicker (65 to 10 microseconds). A first go
+  with a helper closure came out 30% **slower** than the original: the engine had already been
+  optimising the objects away, so check before believing "no allocation" is quicker.
+* Traffic over 90 m from anybody thinks every third frame (`DRIVE_NEAR`); traffic asks about hedges
+  no more.
+* The long-range planner warmed at map load: its first plan cost 33 ms against 2.4 ms after.
+
+The spikes of 100-200 ms in the first profile were compiling and collection, not steady cost: in a
+warmed page no function in the force exceeded 10 ms. p50 on Wexbury 8.7 ms, p99 32.
+
+Not measured: anything in the renderer. The Browser pane is hidden and draws about once a second,
+so judder from the graphics side cannot be seen from here, nor a frame rate on the player's own
+machine. Nor was a hands-off sink in the helicopter changed: `tests/flyheli.js` has it at 2.8 m/s,
+which is what the player asked for ("without pressing W it should just start losing power"). A
+comment still saying otherwise was corrected.
+
 ### Civilians you cannot wreck with one knock, on the police's planners
 
 *"The civilian cars, like when I hit them once, they seem to suddenly get 100% damage. And they
