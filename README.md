@@ -7976,30 +7976,23 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
-### Real sirens, a different one by the car
+### Real sirens, a different pitch by the car
 
 *"Can you find a proper siren sound on the web? I like different siren sounds ... Cars."*
-Two recordings from Wikimedia Commons, in `resources/sounds/`:
+`resources/sounds/commons-american-police-siren.ogg`: "American police siren i" by lezer, public
+domain, [source](https://commons.wikimedia.org/wiki/File:American_police_siren_i.ogg). Patrol at
+normal pitch, interceptor 1.1, SUV 0.9, van 0.8; unmarked and anything else, or a failed load, the
+synthesised siren. As before only the nearest car is heard. It runs 1.2 times faster with the car
+within 55 m, in place of the synth's change to a yelp, so closing still sounds different.
 
-* `commons-german-police-siren.ogg`: "WWS Policecarsiren" by Work With Sounds / Konrad
-  Gutkowski (recorded with Jonathan Nicolai and Anna Pietzuch),
-  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/),
-  [source](https://commons.wikimedia.org/wiki/File:WWS_Policecarsiren.ogg). Changed: a
-  1-13 s loop, filtered, played at varying pitch.
-* `commons-american-police-siren.ogg`: "American police siren i" by lezer, public domain,
-  [source](https://commons.wikimedia.org/wiki/File:American_police_siren_i.ogg).
+A German two-tone ("WWS Policecarsiren", Work With Sounds, CC BY 4.0) went in beside it for a day
+and came out again: *"it's kind of German, right? I would kind of like an American one, because
+they're American police cars."*
 
-Patrol: the German two-tone. Interceptor: the American wail. SUV: the two-tone at 0.86 pitch.
-Van: the wail at 0.84. Unmarked and anything else: the synthesised siren, which also stands in
-if a file does not load. As before only the nearest car is heard. It runs 1.2 times faster with
-the car within 55 m, in place of the synth's change to a yelp, so closing still sounds different.
-
-Nobody here can listen to it, so measured instead. German: level 11-19% from 0.5 to 15 s, tones
-at about 1220, 1380 and 1820 Hz, clean. American: level about 1%, a window's worth of Washington
-with the wail sweeping 900-1500 Hz in it, so brought up 21 times and filtered to 550-2100 Hz: it
-may well sound distant or carry street noise, which the player's ear will have to judge. Both
-loops scaled to the same level; peaks at full volume 0.08 and 0.12, so no clipping. No free UK
-siren was found: the ones about are paid, or game mods of unclear rights.
+Nobody here can listen to it, so measured instead: level about 1%, a window's worth of Washington
+with the wail sweeping 900-1500 Hz in it, so brought up 21 times and filtered to 550-2100 Hz, peak
+0.12 at full volume. It may well sound distant or carry street noise, which the player's ear will
+have to judge. It is the only free American recording found; a closer one would be better.
 
 ### A police car chasing a civilian can still chase you; no work vehicles in multiplayer
 

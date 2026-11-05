@@ -289,24 +289,23 @@ const ROTOR_AT = 1.0;
 const ROTOR_PITCH = 0.55;
 
 /**
- * Real sirens, a different one by the kind of car. "Can you find a proper siren
- * sound on the web? I like different siren sounds ... Cars." Two recordings from
- * Wikimedia Commons, credited in the README: `two` a German police two-tone, close
- * and clean; `wail` American sirens in Washington DC, a long way off through a
- * window, so quiet it is brought up by twenty times, and filtered to the band the
- * siren is in to leave the street out. `from`/`to`/`fade` as the rotor's above.
- * SIREN_VOICE is which car uses which, and at what pitch, so the same recording
- * can be two different cars; a kind not listed keeps the synthesised siren.
+ * A real siren, pitched differently by the kind of car. "Can you find a proper siren
+ * sound on the web? I like different siren sounds ... Cars." Then, of the German
+ * two-tone it started with beside this: "I would kind of like an American one, because
+ * they're American police cars." From Wikimedia Commons, credited in the README:
+ * sirens in Washington DC, a long way off through a window, so quiet it is brought up
+ * by twenty times, and filtered to the band the siren is in to leave the street out.
+ * `from`/`to`/`fade` as the rotor's above. SIREN_VOICE is which car uses it at what
+ * pitch; a kind not listed keeps the synthesised siren.
  */
 const SIREN_SAMPLES = {
-  two: { url: 'resources/sounds/commons-german-police-siren.ogg', from: 1, to: 13, fade: 0.25, low: 300, high: 4000 },
   wail: { url: 'resources/sounds/commons-american-police-siren.ogg', from: 9, to: 21, fade: 0.6, low: 550, high: 2100 },
 };
 const SIREN_VOICE = {
-  patrol: { sample: 'two', rate: 1 },
-  interceptor: { sample: 'wail', rate: 1 },
-  suv: { sample: 'two', rate: 0.86 },
-  van: { sample: 'wail', rate: 0.84 },
+  patrol: { sample: 'wail', rate: 1 },
+  interceptor: { sample: 'wail', rate: 1.1 },
+  suv: { sample: 'wail', rate: 0.9 },
+  van: { sample: 'wail', rate: 0.8 },
 };
 /** How loud each is made, as a loop's average level, before distance. */
 const SIREN_LEVEL = 0.28;
