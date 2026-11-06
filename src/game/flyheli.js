@@ -275,6 +275,29 @@ const AIR_SOLID = groups(0xFFFF, GROUP.BUILDING | GROUP.PROP);
  * survivable in a car, and not something a helicopter walks away from.
  */
 const CRASH_SPEED = 14;
+/**
+ * Meeting the ground. "I can like smash into the ground at like 300 miles an hour, almost
+ * at a nosedive, and I'll be fine." Only the speed downward was asked about, and a shallow
+ * dive has little of that: then it stopped dead, level, on its skids. So: flat to within
+ * LAND_TILT, or only at a crawl (LAND_CRAWL m/s, any way) or it is down. Flat and over
+ * SLIDE_MAX across the ground, it is down. Flat and over SLIDE_FROM, "I want it almost to
+ * slide along the ground", slowing at SLIDE_DRAG m/s^2, and anything it meets ends it.
+ */
+const LAND_TILT = Math.cos(25 * Math.PI / 180);
+const LAND_CRAWL = 3;
+const SLIDE_MAX = 33;
+const SLIDE_FROM = 4;
+const SLIDE_DRAG = 8;
+const SLIDE_HOLD = 2;
+/** A wreck on the ground: how fast it scrapes to a stop, m/s^2 and more per m/s; how far it sits below where its skids stood, m; how far over it lies, radians. */
+const WRECK_DRAG = 6;
+const WRECK_DRAG_SPEED = 0.25;
+const WRECK_SINK = 0.62;
+const WRECK_ROLL = 0.42;
+const WRECK_PITCH = 0.14;
+/** What comes off (_shed): how much of the speed they keep, and they stop bouncing under this, m/s. */
+const PART_KEEP = 0.7;
+const PART_REST = 2.2;
 /** Seconds of holding W before a shut-down rotor has lift in it. */
 /**
  * How much of the stick's unmet demand the rotor disc leads the body by, and
@@ -335,6 +358,81 @@ export const AIR_DIMS = { l: 12.4, w: 2.5, h: 3.5 };
 const MARK_CONE = 0.95;          // radians off the nose, a generous windscreen
 /** Landed, or no higher than the car: how far the crew can make it out, m -- about a patrol car's sight at three stars. See canSee. */
 const GROUND_SIGHT = 100;
+const _spin = new THREE.Quaternion();
+const _flat = new THREE.Quaternion();
+const _yAxis = new THREE.Vector3(0, 1, 0);
+const TAU = Math.PI * 2;
+
+/**
+ * The imported body's skids, as pieces of their own. They are not named, but they are
+ * separate islands of the mesh: the two rails and the two cross tubes under the cabin,
+ * nothing else that low and that wide. Returns { hull, pieces: [{ geo, mid }] } sharing the
+ * body's vertices, or null if there is nothing that shape. Worked out once for a geometry.
+ */
+const _splits = new WeakMap();
+function splitSkids(geo) {
+  if (_splits.has(geo)) return _splits.get(geo);
+  let out = null;
+  const p = geo.attributes.position, n = p.count;
+  const idx = geo.index ? geo.index.array : null, tc = idx ? idx.length : n;
+  // Vertices at the same place are the same point: a mesh's edges are often split.
+  const id = new Map(), par = [], canon = new Int32Array(n);
+  for (let i = 0; i < n; i++) {
+    const k = `${p.getX(i).toFixed(3)},${p.getY(i).toFixed(3)},${p.getZ(i).toFixed(3)}`;
+    if (!id.has(k)) { id.set(k, par.length); par.push(par.length); }
+    canon[i] = id.get(k);
+  }
+  const find = (x) => { while (par[x] !== x) { par[x] = par[par[x]]; x = par[x]; } return x; };
+  for (let t = 0; t < tc; t += 3) {
+    const a = canon[idx ? idx[t] : t], b = canon[idx ? idx[t + 1] : t + 1], c = canon[idx ? idx[t + 2] : t + 2];
+    par[find(a)] = find(b);
+    par[find(c)] = find(b);
+  }
+  const boxes = new Map();
+  for (let i = 0; i < n; i++) {
+    const r = find(canon[i]);
+    let b = boxes.get(r);
+    if (!b) boxes.set(r, b = new THREE.Box3());
+    b.expandByPoint(_splitV.fromBufferAttribute(p, i));
+  }
+  const skid = new Set();
+  for (const [r, b] of boxes) {
+    const w = b.max.x - b.min.x, l = b.max.z - b.min.z;
+    const rail = b.min.y < 0.1 && b.max.y < 0.6 && l > 3 && w < 0.4;
+    const tube = b.min.y < 0.2 && b.max.y < 1 && w > 2 && l < 0.4;
+    if (rail || tube) skid.add(r);
+  }
+  if (skid.size) {
+    const hull = [], lists = new Map();
+    for (let t = 0; t < tc; t += 3) {
+      const ia = idx ? idx[t] : t, ib = idx ? idx[t + 1] : t + 1, ic = idx ? idx[t + 2] : t + 2;
+      const r = find(canon[ia]);
+      if (skid.has(r)) {
+        if (!lists.has(r)) lists.set(r, []);
+        lists.get(r).push(ia, ib, ic);
+      } else {
+        hull.push(ia, ib, ic);
+      }
+    }
+    const make = (list) => {
+      const g = new THREE.BufferGeometry();
+      for (const name of Object.keys(geo.attributes)) g.setAttribute(name, geo.attributes[name]);
+      g.setIndex(list);
+      return g;
+    };
+    const pieces = [];
+    for (const [r, list] of lists) {
+      const mid = new THREE.Vector3();
+      boxes.get(r).getCenter(mid);
+      pieces.push({ geo: make(list), mid });
+    }
+    out = { hull: make(hull), pieces };
+  }
+  _splits.set(geo, out);
+  return out;
+}
+const _splitV = new THREE.Vector3();
+
 /** How often the fix is sent to the machine that owns the chase. */
 const REPORT_EVERY = 0.25;
 
@@ -539,6 +637,7 @@ export class FlyingHelicopter {
     // aircraft, and there is nothing to steer on the ground anyway: W lifts
     // it straight up and control arrives with the air under it.
     const cold = this.onGround;
+    const dead = this.disabled && this.partsOff;
     const wantPitch = cold ? 0 : clamp(c.pitch || 0, -1, 1) * MAX_PITCH;
     const wantRoll = cold ? 0 : clamp(c.roll || 0, -1, 1) * MAX_ROLL;
     // Kept for the disc, which leads the airframe -- see discPitch below.
@@ -553,6 +652,12 @@ export class FlyingHelicopter {
       if (cold || !c.roll) this.roll = damp(this.roll, 0, cold ? 8 : LEVEL, dt);
       this.pitchRate = 0;
       this.rollRate = 0;
+    } else if (dead) {
+      // No rotor and nobody flying it: over on one side, and it stays there.
+      this.pitchRate = 0;
+      this.rollRate = 0;
+      this.pitch = damp(this.pitch, WRECK_PITCH, cold ? 3 : 1.2, dt);
+      this.roll = damp(this.roll, this.wreckRoll, cold ? 3 : 1.2, dt);
     } else if (cold) {
       this.pitchRate = 0;
       this.rollRate = 0;
@@ -573,7 +678,8 @@ export class FlyingHelicopter {
     }
 
     // ---- pedals ----
-    this.yawRate = damp(this.yawRate, cold ? 0 : clamp(c.yaw || 0, -1, 1) * YAW_RATE,
+    // With the rotor gone, nothing holds the nose: it turns on the way down.
+    this.yawRate = damp(this.yawRate, cold ? 0 : dead ? this.wreckRoll * 3 : clamp(c.yaw || 0, -1, 1) * YAW_RATE,
       window.__heliLight ? 3.2 : YAW_EASE, dt);
     // A swings the nose left. The model's nose is +Z and its left is +X, so
     // left is a rising yaw -- it was falling, and the pedals were handed.
@@ -606,9 +712,13 @@ export class FlyingHelicopter {
     this._moveAndHit(dt);
 
     // ---- the ground, and the sky ----
-    const floor = this.groundY + SKID;
+    const floor = this.groundY + SKID - (this.partsOff ? WRECK_SINK : 0);
+    // A slide stays on the ground over a crest, unless the pilot is pulling up: at idle it
+    // weighs almost nothing, and skipped along the fields for eighty metres.
+    if (this.sliding && ask <= 0 && this.position.y < floor + SLIDE_HOLD) this.position.y = floor;
     if (this.position.y <= floor) {
       this.position.y = floor;
+      if (!this.onGround && !this.disabled) this._meetGround();
       this._struck(-this.linvel.y);
       this.linvel.y = Math.max(0, this.linvel.y);
 
@@ -617,7 +727,22 @@ export class FlyingHelicopter {
       // turning hard enough to pick it up; leaning the stick used to taxi it
       // across the forecourt like a hovercraft.
       const lifting = this.collective * THRUST * Math.cos(this.pitch) * Math.cos(this.roll);
-      if (this.engineOff || lifting <= 1.0) {
+      const across = Math.hypot(this.linvel.x, this.linvel.z);
+      if (this.disabled && this.partsOff) {
+        // A wreck scrapes to a stop where it fell, whichever way it was going.
+        const left = Math.max(0, across - (WRECK_DRAG + across * WRECK_DRAG_SPEED) * dt);
+        const k = across > 1e-3 ? left / across : 0;
+        this.linvel.x *= k;
+        this.linvel.z *= k;
+        this._restAt = null;
+      } else if (this.sliding) {
+        const left = Math.max(0, across - SLIDE_DRAG * dt);
+        const k = across > 1e-3 ? left / across : 0;
+        this.linvel.x *= k;
+        this.linvel.z *= k;
+        this._restAt = null;
+        if (left < 1) { this.sliding = false; this._touchDown(); }
+      } else if (this.engineOff || lifting <= 1.0) {
         // Pinned, not merely slowed.
         //
         // Zeroing the velocity here was not enough, and the reason is the
@@ -654,12 +779,14 @@ export class FlyingHelicopter {
       // alone. It is the height that is held, not the angle: the body cannot
       // go below the skids however far it is tipped, and the rotor is welcome
       // to swing through the ground, which is what it would really do.
-      if (!this.onGround) this._touchDown();
+      if (!this.onGround && !this.sliding && !(this.disabled && this.partsOff)) this._touchDown();
       this.onGround = true;
     } else {
       this.onGround = false;
+      this.sliding = false;
       this._restAt = null;
     }
+    this._updateParts(dt);
     this._parkedCollider();
     if (this.position.y > CEILING) {
       this.position.y = CEILING;
@@ -1046,7 +1173,8 @@ export class FlyingHelicopter {
     this.lastImpact = into;
     this.lastImpactAt = performance.now();
     this.damage = clamp01(this.damage + (into - 5) / 55);
-    if (into >= CRASH_SPEED || this.damage >= 1) this.wreck();
+    // Sliding along the ground, whatever it meets is the end of it.
+    if (into >= CRASH_SPEED || this.damage >= 1 || this.sliding) this.wreck();
   }
 
   /**
@@ -1061,9 +1189,155 @@ export class FlyingHelicopter {
     this.downFor = 0;
     this.damage = 1;
     this.wreckedAt = performance.now();
+    this.sliding = false;
+    this._shed();
     // A dead rotor still turns, slowing, on the way down.
     this.spin = Math.max(this.spin, 0.9);
     if (this.game.hud) this.game.hud.toast('AIRCRAFT DOWN');
+  }
+
+  /** First touch of the ground, from the air: is this a landing? See LAND_TILT. */
+  _meetGround() {
+    const across = Math.hypot(this.linvel.x, this.linvel.z), down = -this.linvel.y;
+    _up.set(0, 1, 0).applyQuaternion(this.quaternion);
+    if (_up.y < LAND_TILT) {
+      if (across > LAND_CRAWL || down > LAND_CRAWL) this.wreck();
+    } else if (across > SLIDE_MAX) {
+      this.wreck();
+    } else if (across > SLIDE_FROM) {
+      this.sliding = true;
+      this.hitAt = performance.now();
+      this.lastImpact = 6;
+      this.lastImpactAt = performance.now();
+    }
+  }
+
+  /**
+   * It comes apart. "When it's aircraft down, it kind of just flips upright ... maybe the
+   * two rail landers and the main rotor blade almost fall off and be on the ground, lying
+   * flat, with a nice animation." The rotor goes up and away, still turning; the skids and
+   * their cross tubes drop off and tumble. All of them carry on with most of the speed it
+   * had, bounce, and come to rest lying flat. The hull goes down without them and lies over
+   * on one side. Put back by _restoreParts.
+   */
+  _shed() {
+    this.wreckRoll = (this.roll >= 0 ? 1 : -1) * WRECK_ROLL;
+    if (this.partsOff) return;
+    this.partsOff = true;
+    this.parts = [];
+    const view = this.view, scene = this.game.scene;
+    if (!view || !scene) return;
+    view.position.copy(this.position);
+    view.quaternion.copy(this.quaternion);
+    view.updateMatrixWorld(true);
+    const ud = view.userData;
+    const fly = (obj, up, side, spinAxis, spin, flatYaw) => {
+      this.parts.push({
+        obj,
+        vel: new THREE.Vector3(this.linvel.x * PART_KEEP + side.x, Math.max(this.linvel.y * 0.4, 0) + up, this.linvel.z * PART_KEEP + side.z),
+        axis: spinAxis, spin, flatYaw, bounces: 0, rest: false,
+      });
+    };
+    const lx = this.left.x, lz = this.left.z;
+    const r = () => Math.random() * 2 - 1;
+    // The main rotor, whole, up and away.
+    if (ud.main) {
+      this._rotorHome = { parent: ud.main.parent, pos: ud.main.position.clone(), quat: ud.main.quaternion.clone(), order: ud.main.rotation.order };
+      scene.attach(ud.main);
+      // Thrown well clear: it is twelve metres across and would land through the hull.
+      const away = Math.random() * TAU, flung = 5 + Math.random() * 3;
+      fly(ud.main, 7 + Math.random() * 3, { x: Math.sin(away) * flung, z: Math.cos(away) * flung }, new THREE.Vector3(0, 1, 0), 22, Math.random() * TAU);
+      this.parts[this.parts.length - 1].isRotor = true;
+    }
+    // The skids and cross tubes, if this body has them as separate pieces.
+    const body = view.getObjectByName('body');
+    const split = body && splitSkids(body.geometry);
+    if (split) {
+      this._bodyGeo = body.geometry;
+      body.geometry = split.hull;
+      body.updateMatrixWorld(true);
+      for (const piece of split.pieces) {
+        const pivot = new THREE.Object3D();
+        const mesh = new THREE.Mesh(piece.geo, body.material);
+        mesh.castShadow = true;
+        mesh.position.copy(piece.mid).negate();
+        pivot.add(mesh);
+        pivot.position.copy(piece.mid).applyMatrix4(body.matrixWorld);
+        body.getWorldQuaternion(pivot.quaternion);
+        body.getWorldScale(pivot.scale);
+        scene.add(pivot);
+        const out = piece.mid.x >= 0 ? 1 : -1;
+        fly(pivot, 1 + Math.random() * 2, { x: lx * out * (2 + Math.random() * 2) + r(), z: lz * out * (2 + Math.random() * 2) + r() },
+          new THREE.Vector3(r(), r() * 0.3, r()).normalize(), 3 + Math.random() * 5, this.yaw + (Math.random() - 0.5) * 1.6);
+        this.parts[this.parts.length - 1].made = true;
+      }
+    }
+  }
+
+  _updateParts(dt) {
+    if (!this.parts || !this.parts.length) return;
+    const heightAt = this.game.sim && this.game.sim.heightAt;
+    for (const p of this.parts) {
+      const o = p.obj;
+      p.vel.y -= G * dt;
+      o.position.addScaledVector(p.vel, dt);
+      const ground = (heightAt ? heightAt(o.position.x, o.position.z) : 0) + 0.06;
+      if (o.position.y <= ground) {
+        o.position.y = ground;
+        if (-p.vel.y > PART_REST && p.bounces < 4) {
+          p.vel.y *= -0.34;
+          p.vel.x *= 0.7;
+          p.vel.z *= 0.7;
+          p.spin *= 0.55;
+          p.bounces++;
+        } else {
+          p.rest = true;
+          p.vel.y = 0;
+          p.vel.x *= Math.exp(-3.5 * dt);
+          p.vel.z *= Math.exp(-3.5 * dt);
+          p.spin *= Math.exp(-4 * dt);
+        }
+      } else {
+        p.rest = false;
+      }
+      if (Math.abs(p.spin) > 0.01) {
+        _spin.setFromAxisAngle(p.axis, p.spin * dt);
+        if (p.isRotor) o.quaternion.multiply(_spin);
+        else o.quaternion.premultiply(_spin);
+      }
+      // A rotor's spin dies away of its own accord, in the air too.
+      if (p.isRotor) p.spin *= Math.exp(-0.5 * dt);
+      // Lying flat on the ground.
+      if (p.rest) {
+        _flat.setFromAxisAngle(_yAxis, p.flatYaw);
+        o.quaternion.slerp(_flat, 1 - Math.exp(-7 * dt));
+      }
+    }
+  }
+
+  /** Everything back where it came off, for a fresh aircraft. */
+  _restoreParts() {
+    this.partsOff = false;
+    this.sliding = false;
+    if (!this.parts) return;
+    const view = this.view, ud = view && view.userData;
+    for (const p of this.parts) {
+      if (p.isRotor && this._rotorHome) {
+        const h = this._rotorHome;
+        h.parent.add(ud.main);
+        ud.main.position.copy(h.pos);
+        ud.main.quaternion.copy(h.quat);
+        ud.main.rotation.order = h.order;
+      } else if (p.made) {
+        p.obj.parent && p.obj.parent.remove(p.obj);
+      }
+    }
+    this.parts = [];
+    if (this._bodyGeo && view) {
+      const body = view.getObjectByName('body');
+      if (body) body.geometry = this._bodyGeo;
+      this._bodyGeo = null;
+    }
   }
 
   /**
@@ -1109,6 +1383,7 @@ export class FlyingHelicopter {
     this.wreckFor = 0;
     this.disabled = false;
     this.damage = 0;
+    this._restoreParts();
     // A full tank: it is a fresh aircraft off the pad, not the one that was
     // just written off.
     this.fuel = ENDURANCE;
@@ -1162,6 +1437,7 @@ export class FlyingHelicopter {
    * every screen except the one flying it.
    */
   repair() {
+    this._restoreParts();
     this.damage = 0;
     this.disabled = false;
     this.fuel = Math.max(this.fuel, ENDURANCE * 0.5);
@@ -1196,6 +1472,7 @@ export class FlyingHelicopter {
       this.game.world.removeRigidBody(this._parked);
       this._parked = null;
     }
+    this._restoreParts();
     this.position.set(at.x, at.y, at.z);
     this.prevPos.copy(this.position);
     this.linvel.set(0, 0, 0);

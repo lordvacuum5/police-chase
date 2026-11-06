@@ -109,6 +109,10 @@ function hoodEye(v) {
 const CAM_CLEAR = 0.6;
 /** How quickly the air camera swings round behind the aircraft's nose, 1/s. */
 const AIR_FOLLOW = 7;
+/** Round toward a sideways line of travel: at most this far off the nose, radians, and how quickly. The most the picture banks. */
+const AIR_SLIP = 0.6;
+const AIR_SLIP_FOLLOW = 2.5;
+const AIR_BANK = 0.08;
 const HOOD_CLEAR = 0.3;
 /** Where round the camera the ground is also sampled for that. */
 const CLEAR_RING = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -150,16 +154,33 @@ export class ChaseCamera {
     // swings a metre sideways and the rotor two, so a camera aimed at the
     // skids sat off to one side of what you were looking at. Height is still
     // taken from the skids, so a bank does not bob the camera up and down.
+    //
+    // The roll only, across the view. "I wanted to stay in a fixed position with the
+    // tilt, lifting up, lifting down": pitched, the whole of this went fore and aft.
+    const nose = v.yaw !== undefined ? v.yaw : Math.atan2(v.forward.x, v.forward.z);
     if (v.quaternion) {
       _upv.copy(AXIS_U).applyQuaternion(v.quaternion);
       const mid = ((v.spec && v.spec.dims && v.spec.dims.h) || 3) * 0.5;
-      _carPos.x += _upv.x * mid;
-      _carPos.z += _upv.z * mid;
+      const lx = Math.cos(nose), lz = -Math.sin(nose);
+      const across = (_upv.x * lx + _upv.z * lz) * mid;
+      _carPos.x += lx * across;
+      _carPos.z += lz * across;
     }
-    const nose = v.yaw !== undefined ? v.yaw : Math.atan2(v.forward.x, v.forward.z);
     // And closer behind it in a turn: at 3.4 the camera trailed a steady turn
     // by a third of a second, which is a view from the side as well.
-    this.heading += angleDelta(this.heading, nose) * (1 - Math.exp(-AIR_FOLLOW * dt));
+    //
+    // And round toward the way it is going when that is sideways: "when it's strafing
+    // to the side, I kind of want it to follow." The less of its speed is forward, the
+    // further, up to AIR_SLIP; held down at low speed, where which way it is drifting
+    // means nothing and would swing the view about in a hover.
+    let want = nose;
+    if (v.linvel && v.speed > 8) {
+      const sx = Math.sin(nose), sz = Math.cos(nose);
+      const fwd = v.linvel.x * sx + v.linvel.z * sz;
+      const side = v.linvel.x * Math.cos(nose) - v.linvel.z * Math.sin(nose);
+      want += clamp(Math.atan2(side, Math.max(Math.abs(fwd), 15)), -AIR_SLIP, AIR_SLIP) * smoothstep(8, 25, v.speed);
+    }
+    this.heading += angleDelta(this.heading, want) * (1 - Math.exp(-(want === nose ? AIR_FOLLOW : AIR_SLIP_FOLLOW) * dt));
 
     const sh = Math.sin(this.heading), ch = Math.cos(this.heading);
     // Rise with speed so the ground stays in shot in a dash across town, and
@@ -186,7 +207,10 @@ export class ChaseCamera {
     this.camera.lookAt(this.look);
     // Bank the picture a little with the aircraft -- a fraction of the real
     // roll, which reads as a turn without taking the horizon away.
-    this.camera.rotateZ(clamp(-(v.roll || 0) * 0.35, -0.3, 0.3));
+    // Kept small: the picture turns about its own middle and the aircraft sits below
+    // that, so a big bank swung it out to the side of the screen, a fifth of the way
+    // across at 45 degrees. "The camera ends up being to the side."
+    this.camera.rotateZ(clamp(-(v.roll || 0) * 0.1, -AIR_BANK, AIR_BANK));
     if (this.camera.fov !== this.fov) {
       this.camera.fov = this.fov;
       this.camera.updateProjectionMatrix();

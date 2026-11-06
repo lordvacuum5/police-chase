@@ -3536,7 +3536,7 @@ class Game {
       air.view.position.copy(air.position);
       air.view.quaternion.copy(air.quaternion);
       const ud = air.view.userData;
-      if (ud.main) {
+      if (ud.main && !air.partsOff) {
         // Spin about the mast, and tilt the whole disc with the cyclic -- the
         // disc leads the airframe into a turn on a real one, and a rotor
         // bolted rigidly to the body is what makes a model look like a model.

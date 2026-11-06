@@ -7976,6 +7976,47 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Landing it, crashing it, and the camera at strange angles
+
+*"I can like smash into the ground at like 300 miles an hour, almost at a nosedive, and I'll be
+fine. So make sure you have to be relatively flat ... if you're going too fast, aircraft down ...
+if you're going still a bit fast, I want it almost to slide along the ground, and if it hits a
+building it just kills itself."* Only the speed straight down was asked about, and a shallow dive
+has little of it: it then stopped dead, level, on its skids. `FlyingHelicopter._meetGround` on first
+touch: tilted over 25 degrees and moving over 3 m/s, down. Flat, over 33 m/s (119 km/h) across the
+ground, down. Flat, over 4 m/s, a slide at 8 m/s^2, held to the ground over crests unless the pilot
+pulls up, and anything it meets ends it. `tests/helicrash.js`:
+
+| | |
+|---|---|
+| straight down gently; flat at 3 m/s | landed |
+| flat at 15 / 30 m/s | slid 18 / 55 m, landed |
+| flat at 45 m/s; straight down 20 m/s | down |
+| nose down 70 at 300 mph; nose down 40 at 70 m/s | down |
+| tilted 40 at 10 m/s | down |
+| tilted 40 barely moving; tilted 20 at 15 m/s | landed |
+| sliding at 30 m/s at a real wall 20 m off | down at 0.7 s, 20 m on |
+
+*"When it's aircraft down, it kind of just flips upright ... the two rail landers and the main rotor
+blade almost fall off and be on the ground, lying flat, with a nice animation."* `_shed`: the rotor
+goes up and away, thrown clear, still turning. The two rails and two cross tubes come off: they are
+not named in the model, but are separate islands of the body mesh, found by shape (`splitSkids`, 5,984
+of 24,656 triangles), and fall tumbling with most of its speed. All bounce and settle flat, 0 degrees
+in the rig. The hull drops 0.62 m and lies 24 degrees over, nose 8 down, and scrapes to a stop. A
+wreck's stick is dead now, which it was not in the air, and its nose turns on the way down. Everything
+goes back on the respawn. A generated body has no such islands, so only its rotor would come off.
+Another player's screen does not see the parts come off: not sent, the aircraft there just goes down.
+
+*"If you do some strange angles ... the camera ends up being to the side, the left or the right ...
+stay in a fixed position with the tilt ... when it's strafing to the side, I kind of want it to
+follow."* `tests/helicam.js` found no sudden jumps, and both sides the same, but rolled the aircraft
+went up to 0.21 of a half-screen off the middle: the picture banked by up to 0.3 rad about its own
+middle with the aircraft sitting below that. Bank now at most 0.08 rad. Pitched, the centring offset went fore
+and aft; now it follows the roll only, so pitching is 0.00 off centre. And the camera comes round
+toward a sideways line of travel, up to 0.6 rad (`AIR_SLIP`). Rolled, 0.21 down to 0.15, part of which
+is the rig measuring the skids and not the cabin it now centres on. The word "hiccups" was not
+reproduced as a jump: say if they are still there, and doing what.
+
 ### Real sirens, close up, and an engine you can hear them over
 
 *"Can you find a proper siren sound on the web? I like different siren sounds ... Cars."* A German
