@@ -207,6 +207,9 @@ scoring, deliberately.
   (`buildLife`, `session.active`), for its frame rate. Single player keeps them.
 * **Suspects in multiplayer** run on the host and are sent like traffic, under
   `v.trafficId`; `Suspects._policePlayers` is the solo player plus remote police players.
+* **`Game._driftLook` is off**, at the player's word: it drew a police car's tail swung out up to 34 degrees.
+  `spec.bumpGrip` loosens the tyres in a bump; `spec.sceneryShare` halves what scenery costs them. `tests/ramslide.js`,
+  `tests/hillcharge.js`, `tests/runnergrip.js`. `boxesNear` can return the huge ground slab: check real distance.
 * **AI police have the grip for corners but not for stopping** (`AI_POLICE_BRAKE_G`, `spec.brakes.maxDecel`), and
   their tyre forces act high up (`pitchCentre`, `rollCentre`) so the grip does not tip them, at the player's request:
   they looked wrong otherwise. Anything planning a stop goes through `Driver._stopAccel`. Rigs: `tests/stoppie.js`, `tests/jolt.js`.

@@ -160,15 +160,22 @@ export const SPECS = {
     suspension: Object.assign({}, baseSuspension, { arbFront: 12400, arbRear: 9800 }),
     brakes: { maxTorque: 2400, frontBias: 0.62, handbrakeTorque: 4400 },
     // 1.0 until the roll centre stood it up on its kerbs and handed it grip it
-    // had not asked for: see ROLL_PAYBACK.
-    gripScale: 0.92,
+    // had not asked for: see ROLL_PAYBACK. "It handles a little bit better, because otherwise the
+    // police are just so good now. It has no chance."
+    gripScale: 0.98,
     // A little extra at the front is the direct anti-understeer lever.
     gripBias: { front: 1.09, rear: 1.05 },
     // Bare grass is 0.62 -- less than half the road figure -- which makes the
     // verge feel like ice the moment you clip it. This takes it to about 0.96,
     // enough to gather the car up rather than simply passenger it. Still well
     // short of the fleet's 1.80, so they keep the advantage off the tarmac.
-    offRoadGrip: 1.55,
+    //
+    // 2.0 and more of it behind. "A bit more grip off-road." The front alone turned it in and swapped
+    // ends: tests/runnergrip.js at 110 km/h on a fixed lock, 35 degrees sideways at 2.0 and 25 with
+    // 1.35 behind it. 1.8 and 1.4: 2 degrees, 1.0 g, 22 m to stop from 100 on grass where it was 38.
+    // The fleeing cars and the police have their own; a computer's getaway Runner gets this too.
+    offRoadGrip: 1.8,
+    offRoadRear: 1.4,
     // Raised hard. Contact is the whole texture of a pursuit and the runner was
     // collecting damage from every scrape; the trade is that what does get
     // through hurts far more (see the torque falloff in vehicle.js).
@@ -813,6 +820,9 @@ const AI_POLICE_PITCH_CENTRE = 0.45;
 // longer to stop than almost instant." In g, held by the brake's own torque, so the extra load of
 // a landing cannot buy any more. Driver._stopAccel plans on it.
 const AI_POLICE_BRAKE_G = 1.25;
+// A share of its grip while touching another car or about to, and coming back over a second after.
+// 0.6 of 1.39 is a person's 0.93, and measured no more of a push than none: tests/ramslide.js.
+const AI_POLICE_BUMP_GRIP = 0.45;
 const HUMAN_POLICE = {};
 for (const k of ['patrol', 'interceptor', 'unmarked', 'suv', 'van']) {
   const s = SPECS[k];
@@ -831,6 +841,8 @@ for (const k of ['patrol', 'interceptor', 'unmarked', 'suv', 'van']) {
     durability: s.durability * AI_POLICE_DURABILITY,
     wreckPower: 1,
     wreckAt: 1,
+    sceneryShare: 0.5,
+    bumpGrip: AI_POLICE_BUMP_GRIP,
     steering: Object.assign({}, s.steering, { ease: AI_POLICE_EASE }),
     brakes: Object.assign({}, s.brakes, {
       maxTorque: (s.mass * AI_POLICE_BRAKE_G * 9.81 * s.wheelRadius) / 4,

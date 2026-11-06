@@ -44,8 +44,14 @@ const KEEL_H = 0.08;
 /** The share of its speed along the ground a car keeps when the keel meets the hill. See _rideUpHill. */
 const HILL_KEEP = 0.985;
 /** Easing the steering (spec.steering.ease, seconds): nothing below this speed, all of it above, m/s; not past this slip, rad. */
-const EASE_FROM = 8;
-const EASE_FULL = 20;
+/**
+ * After touching another car (spec.bumpGrip): how long the grip takes to come back, s. "If they're in
+ * contact with another vehicle, that gives them normal levels of grip ... so they can slide around
+ * the ground if you hit them hard ... then they come out of contact, they become 100% grip again."
+ */
+const BUMP_BACK = 1.0;
+const EASE_FROM = 16;
+const EASE_FULL = 28;
 const EASE_SLIP = 0.12;
 import {
   tyreForces, slipRatioOf, slipAngleOf, slipIntensity, loadedMu,
@@ -412,13 +418,25 @@ export class Vehicle {
     });
     if (!hill) return;
     this.world.contactPairsWith(this.collider, (o) => {
+      // The flat plate under the map is the ground as well. Counted as something in the way, it
+      // switched this off on exactly the slopes it is for: tests/hillcharge.js. "One almost hit an
+      // invisible wall when it was going up a hill and just bounced back."
+      if (((o.collisionGroups() >>> 16) & 0xFFFF) & GROUP.TERRAIN) return;
       let t = false;
       this.world.contactPair(this.collider, o, (m) => { if (m.numContacts() > 0) t = true; });
       if (t) other = true;
     });
     if (other) return;
     const k = want / now;
-    this.body.setLinvel({ x: lv.x * k, y: lv.y, z: lv.z * k }, true);
+    // What it keeps along the ground it does not also get upward: the solver's bounce on top of the
+    // speed threw a car 30 m/s into the air and on to its roof. No more than the slope asks.
+    let vy = lv.y;
+    if (vy > 0 && this.sim.heightAt) {
+      const ux = (lv.x / now), uz = (lv.z / now), px = this.position.x, pz = this.position.z;
+      const grade = Math.max(0, (this.sim.heightAt(px + ux * 3, pz + uz * 3) - this.sim.heightAt(px, pz)) / 3);
+      vy = Math.min(vy, want * grade + 1);
+    }
+    this.body.setLinvel({ x: lv.x * k, y: vy, z: lv.z * k }, true);
   }
 
   /**
@@ -522,6 +540,7 @@ export class Vehicle {
     this.body.resetForces(false);
     this.body.resetTorques(false);
 
+    this._bumpPass(dt);
     this._suspensionPass(dt);
     this._antiRollPass();
     this._tyrePass(dt, driveTorque);
@@ -545,6 +564,19 @@ export class Vehicle {
    * On the ground only: a car in the air or upside down is past saving and
    * pretending otherwise would look wrong.
    */
+  _bumpPass(dt) {
+    if (!this.spec.bumpGrip) return;
+    let on = !!this.bumpSoon;
+    if (!on) {
+      this.world.contactPairsWith(this.collider, (o) => {
+        const c = o.__vehicle;
+        if (on || !c || c === this) return;
+        this.world.contactPair(this.collider, o, (m) => { if (m.numContacts() > 0) on = true; });
+      });
+    }
+    this._bump = on ? 1 : Math.max(0, (this._bump || 0) - dt / BUMP_BACK);
+  }
+
   _guardSpin(dt) {
     // Not straight after a knock. A car shunted sideways that shrugs it off and
     // carries on pointing the way it was going reads as a cheat in a way that
@@ -713,9 +745,17 @@ export class Vehicle {
       // police officer, the other police cars seem to do loads of damage".
       // Both ways round, so the pack does not wreck itself on you either.
       const friendly = this.isPolice && this._touchingPolice() ? FRIENDLY : 1;
+      // Less health so a person can wreck them, not so they wreck themselves. A wall or a tree, with
+      // no other car in it, costs a car with spec.sceneryShare only that share.
+      let share = 1;
+      if (this.spec.sceneryShare) {
+        let car = false;
+        this.world.contactPairsWith(this.collider, (o) => { if (o.__vehicle && o.__vehicle !== this) car = true; });
+        if (!car) share = this.spec.sceneryShare;
+      }
       this.damage = clamp01(
         this.damage
-          + ((dv - 2.6) * 0.042 * friendly * (this.damageScale || 1)) / (this.spec.durability || 1),
+          + ((dv - 2.6) * 0.042 * friendly * share * (this.damageScale || 1)) / (this.spec.durability || 1),
       );
     }
     this.lastImpact = dv;
@@ -762,12 +802,22 @@ export class Vehicle {
    */
   _keepLanding(dt) {
     const most = this.spec.brakes.maxDecel;
-    if (!most || !((this._airFor || 0) > LAND_AIR || this._settleFor > 0)) return;
+    if (!most) return;
     const pv = this._prevVel, before = Math.hypot(pv.x, pv.z);
     if (before < 8) return;
     const lv = this.body.linvel(), now = Math.hypot(lv.x, lv.z);
     const want = before - most * dt;
     if (now >= want || now < 0.5) return;
+    // Or a short hop coming down on the slope, which is the keel on the hill however long it was up.
+    if (!((this._airFor || 0) > LAND_AIR || this._settleFor > 0)) {
+      let keel = false;
+      if (this.keel) {
+        this.world.contactPairsWith(this.keel, (o) => {
+          this.world.contactPair(this.keel, o, (man) => { if (man.numContacts() > 0) keel = true; });
+        });
+      }
+      if (!keel) return;
+    }
     for (const c of this.keel ? [this.collider, this.keel] : [this.collider]) {
       let other = false;
       this.world.contactPairsWith(c, (o) => {
@@ -1532,7 +1582,8 @@ export class Vehicle {
       // it. Pursuit units are allowed to cut corners and take lines across open
       // ground, and being allowed to do it is not much use on a surface that
       // gives up less than half the grip of the road.
-      const loose = w.surface === 0 ? (s.offRoadGrip || 1) : 1;
+      // offRoadRear: more of it behind, for a car that would otherwise turn in and swap ends.
+      const loose = w.surface === 0 ? (s.offRoadGrip || 1) * (w.front ? 1 : s.offRoadRear || 1) : 1;
       // High-speed tyre behaviour, for the cars that ask for it. The road tyre
       // only reaches peak cornering force at 8.6 degrees of slip, so any car
       // cornering hard at speed sits nine or ten degrees sideways -- which on a
@@ -1551,8 +1602,12 @@ export class Vehicle {
         latStiff = 1 + (axle(hs.stiffness) - 1) * u;
         hsGrip = 1 + (axle(hs.grip) - 1) * u;
       }
+      // In a bump: ordinary tyres for the moment. See _bumpPass.
+      const bump = this._bump || 0;
+      const bumped = bump > 0 ? 1 - (1 - s.bumpGrip) * bump : 1;
+      if (bump > 0) latStiff = 1 + (latStiff - 1) * (1 - bump);
       const f = tyreForces(tyre, Fs, w.slipRatio, w.slipAngle, w.condition,
-        s.gripScale * bias * this._assistGrip(w) * loose * hsGrip * (this.sim.wetGrip || 1),
+        s.gripScale * bias * this._assistGrip(w) * loose * hsGrip * bumped * (this.sim.wetGrip || 1),
         latStiff, this._driftHold);
       // Fleet braking rubber. Applied to the longitudinal force only, and only
       // while the pedal is down and the force is opposing motion, so it buys
@@ -1703,7 +1758,8 @@ export class Vehicle {
       }
     }
 
-    if (this.assist.stability > 0 && this.speed > 4) {
+    // Not in a bump: straightening a car that has just been hit is the sticking to the ground.
+    if (this.assist.stability > 0 && this.speed > 4 && !(this._bump > 0)) {
       // The stability assist straightens a car that is sideways, so while a drift
       // is wanted it has to stop being a straightener and become a limiter: it
       // only acts on slip past the target. Without this the two assists fight,

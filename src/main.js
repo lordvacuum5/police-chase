@@ -209,6 +209,13 @@ const _drawn = { position: null, quaternion: null, up: _up };
 // 0.32 at first; "when they kind of do the slide at 90 degrees, they need to
 // like actually slide a bit more ... almost sideways ... like a real car."
 const DRIFT_LOOK_MAX = 0.6;
+/** Game._leanLook: radians per m/s^2 across the car and along it, the most of either, and how quickly, 1/s. */
+const LEAN_ROLL = 0.004;
+const LEAN_PITCH = 0.003;
+const LEAN_MAX = 0.06;
+const LEAN_EASE = 7;
+const AXIS_Z_LEAN = new THREE.Vector3(0, 0, 1);
+const AXIS_X_LEAN = new THREE.Vector3(1, 0, 0);
 const DRIFT_LOOK_START = 0.6;
 const DRIFT_LOOK_FULL = 0.95;
 const DRIFT_LOOK_FROM = 9;
@@ -3499,6 +3506,34 @@ class Game {
     v.view.quaternion.premultiply(_qA);
   }
 
+  /**
+   * The lean and dive the computer's police cars no longer have, drawn only. Their tyre forces act
+   * high up so the grip does not lift their wheels (AI_POLICE_ROLL_CENTRE), which left them cornering
+   * and braking as flat as a tray. A few degrees, eased, for the weight of the thing. Nothing in the
+   * simulation, the camera or the collisions sees it.
+   */
+  _leanLook(v, dt) {
+    const d = Math.min(dt || 0, 0.1);
+    if (d <= 0) {
+      if (!v.leanRoll && !v.leanPitch) return;
+    } else {
+      const grounded = v.grounded >= 3 && !v.disabled;
+      const lat = grounded ? v.yawRate * v.speed : 0;
+      const acc = grounded ? (v.forwardSpeed - (v._leanSpeed ?? v.forwardSpeed)) / d : 0;
+      v._leanSpeed = v.forwardSpeed;
+      const k = 1 - Math.exp(-LEAN_EASE * d);
+      v.leanRoll = (v.leanRoll || 0) + (clamp(lat * LEAN_ROLL, -LEAN_MAX, LEAN_MAX) - (v.leanRoll || 0)) * k;
+      v.leanPitch = (v.leanPitch || 0) + (clamp(-acc * LEAN_PITCH, -LEAN_MAX, LEAN_MAX) - (v.leanPitch || 0)) * k;
+    }
+    // Out of the turn, and nose down under braking. In the car's frame +x is its left and +z its nose:
+    // a positive turn about +z lifts the left side, which is what a left turn (positive yaw) does, and
+    // a positive turn about +x drops the nose.
+    _qA.setFromAxisAngle(AXIS_Z_LEAN, v.leanRoll || 0);
+    v.view.quaternion.multiply(_qA);
+    _qA.setFromAxisAngle(AXIS_X_LEAN, v.leanPitch || 0);
+    v.view.quaternion.multiply(_qA);
+  }
+
   _render(dt) {
     // Cones are dynamic bodies, so their meshes have to follow them.
     this.roadblocks.syncVisuals();
@@ -3552,7 +3587,10 @@ class Game {
       if (ud.tail) ud.tail.rotation[ud.tailAxis || 'y'] = air.rotor * 1.7;
     }
 
-    const lookOn = !(typeof window !== 'undefined' && window.__driftLook === false);
+    // Off now. "It was almost the back of the police cars ... it still looks so weird." On tyres that
+    // no longer slide, a tail swung out by up to 34 degrees for the picture alone was the oddest thing
+    // on screen. `window.__driftLook = true` brings it back for a comparison.
+    const lookOn = typeof window !== 'undefined' && window.__driftLook === true;
     // Room for every car's wheels, with some to spare so it is not rebuilt
     // for each car that turns up. See _wheelPool.
     if (this.vehicles.length * 4 > this.wheelCap) this._wheelPool(this.vehicles.length + 16);
@@ -3560,6 +3598,7 @@ class Game {
       v.view.position.lerpVectors(v.prevPos, v.position, alpha);
       v.view.quaternion.copy(v.prevQuat).slerp(v.quaternion, alpha);
       if (lookOn && v.isPolice && v !== this.player) this._driftLook(v, dt);
+      if (v.isPolice && v !== this.player && !v.remote) this._leanLook(v, dt);
       // The wheels, the lamps and the camera all have to agree with the body
       // they are attached to, so everything below works off the drawn pose.
       _drawn.position = v.view.position;

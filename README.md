@@ -7976,6 +7976,80 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Sliding when hit, no fake tail, the invisible wall, and a chance for the Runner
+
+**The back of the car.** *"It was almost the back of the police cars ... it still looks so weird."* `Game._driftLook`,
+from an old request for drifting, drew the body swung about its front axle by up to 34 degrees in a tight corner, with
+nothing in the simulation doing so. Off (`window.__driftLook = true` for a comparison). Its measure of how hard a corner
+was used road grip, so today's grip very likely set it off more, though that was not measured. In its place `Game._leanLook`:
+3 degrees of lean and 2 of dive, drawn only, since the last section left them flat. Judged by no rig and by nobody yet: the
+player is the test of this one.
+
+**Hit, they slide.** *"They basically just seem to stick to the ground ... if they're in contact with another vehicle, that
+gives them normal levels of grip ... and if it predicts you're a millisecond away from hitting a police car, make it less
+grippy."* `spec.bumpGrip` 0.45, no high-speed stiffness and no stability assist, touching another car or within 0.2 s of a
+car not on their side (`Officer._aboutToHit`), and back over 1 s. `tests/ramslide.js`, side-on at 100 km/h: pushed 9.5 to
+12.5 m, turned 25 to about 65 degrees, over 2 m/s sideways for 0.11 to about 0.4 s. A setting of 0.6 pushed no further than
+none. Worse: on `tests/keepup.js` at 120 "lost it" went up, see below.
+
+**The invisible wall.** *"One almost hit an invisible wall when it was going up a hill and just bounced back."* Found, with
+`tests/hillcharge.js`: nobody steering, flat out up 40 slopes of 12-48%. 125 km/h to 8 in a fifth of a second. `_rideUpHill`,
+written for exactly this when a person complained, gives up if the body is touching anything, and the flat plate under the
+map counted as something. It does not now, for any car. Keeping the speed then threw cars 33 m/s into the air, so upward speed
+is held to what the slope asks. And a short hop coming down on a slope now counts as a landing for `_keepLanding`.
+
+| thrown back / on its roof or side, of 40 | before | after |
+|---|---|---|
+| at 90 km/h | 16 / 1 | 3 / 0 |
+| at 150 km/h | 10 / 1 | 8 / 0 |
+
+Not gone at 150. One of those is a real quarry wall the rig drove into.
+
+**Between buildings.** *"If I just go in between some buildings, they almost do seem worse."* Half right, `tests/weave.js`
+on Ashfield, 8 runs, one unit following through gaps:
+
+| | before all of today's police changes | with them | and now |
+|---|---|---|---|
+| stayed with it | 46% | 61% | 64% |
+| mean | 44 km/h | 47 | 53 |
+| hits | 11 | 17 | 16 |
+
+So they do hit more, and they go faster and stay closer. Tried: the brakes back up, the whole force 2 runs: no difference
+past noise (mean nearest 238 against 236 m on the same code, 161 m on an earlier run of it). No steering easing: 19 hits,
+so `EASE_FROM` moved up to 16 m/s, above gap speeds, jolts 4 to 6 a minute. Planning stops on less than the brake has
+(`STOP_PLAN` 0.9 to 0.78): 14 hits at first reading. And since half health was never meant for them to wreck themselves, a wall or tree
+with no car in it costs `sceneryShare` 0.5: 6 shunts' worth, with 3 from a car. The force rig on Ashfield still wrecked 1 in 8 runs.
+
+**The whole thing**, against the last section:
+
+| | was | now |
+|---|---|---|
+| `force.js` trees, 8 runs: knocks, hard | 43, 1 | 40, 0 |
+| trees, walls | 14, 1 | 5, 2 |
+| worst damage | 0 | 0.26 |
+| mean nearest | 145 m | 141 m |
+| `keepup.js` at 120: mean, behind, with it | 96, 224 m, 14% | 92, 227 m, 17% |
+| at 120: knocks, hard, lost it, wrecked | 22, 2, 4x, 0 | **39, 5, 16x, 1** |
+| at 150: mean, behind, with it | 110, 273 m, 5% | 104, 337 m, 6% |
+| at 150: knocks, hard, lost it | 31, 2, 9x | 25, 4, 10x |
+
+Negatives. Losing grip near the ghost at 120 costs knocks and control, and that is the price of the slide. All four wheels off the
+ground at speed went 1% to 10% on the forest rig. Keeping their speed over crests is the likeliest reason, not shown. And time
+within 60 m of the target (14-17%, 5-6%) was left alone: the same player has just said the police are too good.
+
+**The Runner.** *"The first car we ever made ... a bit more grip off-road and handles a little bit better, because otherwise the
+police are just so good now. It has no chance."* `offRoadGrip` 1.55 to 1.8, new `offRoadRear` 1.4, `gripScale` 0.92 to 0.98.
+Extra grip at the front alone made it worse: at 2.0, 35 degrees sideways at 110. 1.35 behind, 25; 1.45, 1.5. `tests/runnergrip.js`, on grass, 0.8 lock:
+
+| | was | now |
+|---|---|---|
+| held at 50 / 80 / 110 km/h | 0.80 / 0.80 / 0.74 g | 0.98 / 1.02 / 0.99 |
+| sideways at those | 8 / 19 / 25 deg | 2 / 2 / 2 |
+| stop from 100 | 38 m | 22 m |
+
+(Those last figures are with `gripScale` 0.98.) The road was not measured on tarmac by itself: the rig's car runs off it inside
+the turn. Not tested with a person driving, nor `tests/kerbs.js`, which the extra `gripScale` could affect. A computer's getaway Runner gets all this.
+
 ### A second helicopter camera, and the SUV's
 
 *"Create a second camera on a helicopter ... almost like a bonnet view. Also, with the SUV, the camera needs to be

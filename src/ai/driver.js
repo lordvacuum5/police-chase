@@ -274,7 +274,7 @@ const OPEN_KEEP = 3;
 const OPEN_GRIP = 1.0;
 const OPEN_BRAKE = 1.15;
 /** How much of spec.brakes.maxDecel a stop is planned on. */
-const STOP_PLAN = 0.9;
+const STOP_PLAN = 0.78;
 /** The parked tractor: how far off a car allows for it, m; the clearance a line past it must have beyond the car's own width, and the corner it steers for. See _roundParked. */
 const PARKED_LOOK = 90;
 const PARKED_TRIGGER = 1.0;

@@ -93,6 +93,9 @@ const FAST_SHORT = 25;
 /** A wreck on the brakes this hard down to this speed, m/s, then locked. */
 const WRECK_BRAKE = 0.5;
 const WRECK_ROLL = 4;
+/** About to hit another car: within this far, m, and this long at the speed they are closing, s. */
+const BUMP_LOOK = 30;
+const BUMP_SOON = 0.2;
 /** Leaving a road for a line: the target at least this far, m; the road this many times as long; asked this often, s. */
 const SHORT_FROM = 70;
 const SHORT_SAVING = 1.25;
@@ -714,6 +717,7 @@ export class Officer {
   update(dt, target) {
     const v = this.vehicle;
     this._record(dt, target);
+    v.bumpSoon = this._aboutToHit();
     // A "move along" blip of lights and siren runs down whatever else happens
     // (see _warnIfBlocked).
     if (v.blipFor > 0) v.blipFor = Math.max(0, v.blipFor - dt);
@@ -2243,6 +2247,26 @@ export class Officer {
     if (!this._fast || !dr.hasPath) return null;
     this._mode = 'fast';
     return dr.followPath(dt, this._chaseSpeed(), { lane: false });
+  }
+
+  /** A split second from another car that is not one of ours? Vehicle._bumpPass eases the tyres for it. */
+  _aboutToHit() {
+    const v = this.vehicle;
+    if (!v.spec.bumpGrip) return false;
+    const list = this.game.vehicles;
+    for (let i = 0; i < list.length; i++) {
+      const o = list[i];
+      if (o === v || o.removed || o.dormant || (o.isPolice && !o.humanDriven)) continue;
+      const dx = o.position.x - v.position.x, dz = o.position.z - v.position.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 > BUMP_LOOK * BUMP_LOOK) continue;
+      const d = Math.sqrt(d2) || 1;
+      const closing = ((v.linvel.x - o.linvel.x) * dx + (v.linvel.z - o.linvel.z) * dz) / d;
+      if (closing < 2) continue;
+      const gap = d - (v.spec.dims.l + (o.spec ? o.spec.dims.l : 4)) * 0.5;
+      if (gap < closing * BUMP_SOON) return true;
+    }
+    return false;
   }
 
   /** Is the road to the target a good deal longer than the way across? Asked about once a second. */
