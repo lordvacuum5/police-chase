@@ -207,6 +207,9 @@ scoring, deliberately.
   (`buildLife`, `session.active`), for its frame rate. Single player keeps them.
 * **Suspects in multiplayer** run on the host and are sent like traffic, under
   `v.trafficId`; `Suspects._policePlayers` is the solo player plus remote police players.
+* **AI police have the grip for corners but not for stopping** (`AI_POLICE_BRAKE_G`, `spec.brakes.maxDecel`), and
+  their tyre forces act high up (`pitchCentre`, `rollCentre`) so the grip does not tip them, at the player's request:
+  they looked wrong otherwise. Anything planning a stop goes through `Driver._stopAccel`. Rigs: `tests/stoppie.js`, `tests/jolt.js`.
 * **AI police have half the health and lose nothing for damage until 100** (`wreckAt`, `wreckPower`), at the
   player's request. A wreck stays a wreck: only `disabled` takes one off the board or the map, not a damage level.
 * **A long-range line is checked against the real boxes** (`fineClear`, 2.6 m), not the 4 m grid, which

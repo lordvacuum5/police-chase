@@ -7976,6 +7976,43 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Grip for corners, not for stopping
+
+*"I saw a police car do a massive jump ... it hit the ground and because it has so much grip, it stops. I want them
+to have loads of grip, but I want it to take a bit longer to stop than almost instant ... so the braking looks a
+little bit more realistic ... it can be like how it was before."*
+
+Two things. The brakes: `AI_POLICE_BRAKE_G` 1.25, set by the brake's torque so the load of a landing cannot buy any
+more, and `Driver._stopAccel` plans on it, or the cars would brake late. Cornering grip untouched. And the landing, which
+was not the brakes at all: 28 km/h went in a tenth of a second on the throttle. `Vehicle._keepLanding`: while settling,
+the ground may take no more speed than the brake could; a tree or another car takes what it takes.
+
+`tests/stoppie.js`, 140 km/h, flat, and dropped from 7 m. A person's car is untouched, and is the standard:
+
+| | was | now | a person's car |
+|---|---|---|---|
+| full brake, mean over 0.5 s | 2.2 g (3.2 before the last section) | 1.3 g | 1.4 g |
+| lands on the throttle, next 0.1 s | 142 to 114 km/h | 142 to 133 | not run |
+| lands on full brake, to half its speed | 0.50 s, 13 m | 1.35 s, 38 m | 0.60 s, 15 m |
+
+At 1.5 in the setting it measured 1.8 g, so 1.25.
+
+Longer stops ought to cost crashes, and did not:
+
+| | was | 1.5 | **1.25, with the landing** |
+|---|---|---|---|
+| `force.js` trees, 8 runs: knocks, hard | 47, 9 | 40, 2 | 43, 1 |
+| trees, walls | 24, 2 | 8, 4 | 14, 1 |
+| worst damage | 0.60 | 0 | 0 |
+| jolts a minute | 5 | 3 | 4 |
+| mean nearest | 143 m | 143 m | 145 m |
+| `keepup.js` at 120: mean, behind | 91 km/h, 252 m | 84, 252 | 96, 224 |
+| at 150: mean, behind | 101 km/h, 364 m | 105, 303 | 110, 273 |
+
+Negatives. With it, at 120: 27% to 14%; at 150: 7% to 5%. All wheels off the ground at speed 1% to 6%, not looked into.
+Tree hits between the last two columns are noise as much as anything, and the 8 and 14 against 24 may be too. A brake
+this much weaker should lengthen a stop in front of a trunk: I can only say it did not show here.
+
 ### The jolt in a turn
 
 *"It almost just looks like they almost just jolt ... it's not like they do a whole jolt 90 degrees. It's just

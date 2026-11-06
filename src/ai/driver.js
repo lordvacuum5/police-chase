@@ -273,6 +273,8 @@ const CREEP_SPEED = 2.5;          // m/s, 9 km/h
 const OPEN_KEEP = 3;
 const OPEN_GRIP = 1.0;
 const OPEN_BRAKE = 1.15;
+/** How much of spec.brakes.maxDecel a stop is planned on. */
+const STOP_PLAN = 0.9;
 /** The parked tractor: how far off a car allows for it, m; the clearance a line past it must have beyond the car's own width, and the corner it steers for. See _roundParked. */
 const PARKED_LOOK = 90;
 const PARKED_TRIGGER = 1.0;
@@ -709,6 +711,12 @@ export class Driver {
    * holds it there. Without this the fleet's better brakes would sit unused --
    * the planner would go on asking for the same speeds it always did.
    */
+  /** The hardest it can plan to stop: what the tyres would give, or what the brakes will, if less (spec.brakes.maxDecel). */
+  _stopAccel(a) {
+    const most = this.v.spec.brakes.maxDecel;
+    return most ? Math.min(a, most * STOP_PLAN) : a;
+  }
+
   _brakeFraction(base) {
     const b = this.v.spec.brakes;
     const abs = b.abs || 0;
@@ -955,7 +963,7 @@ export class Driver {
     // use the help they have been given.
     const assist = v.assist || { grip: 1, boost: 1 };
     const mu = this._mu();
-    const aBrake = mu * 9.81 * this._brakeFraction(0.9);
+    const aBrake = this._stopAccel(mu * 9.81 * this._brakeFraction(0.9));
 
     let limit = roadCap;
     let acc = 0;
@@ -1078,7 +1086,7 @@ export class Driver {
   safeSpeed(alpha, aimDist, aimX, aimZ, onPath = false) {
     const v = this.v;
     const mu = this._mu();
-    const aBrake = mu * 9.81 * this._brakeFraction(0.85);
+    const aBrake = this._stopAccel(mu * 9.81 * this._brakeFraction(0.85));
 
     this._clearTimer -= 1;
     if (this._clearTimer <= 0) {
@@ -1152,7 +1160,7 @@ export class Driver {
     // Less held in hand on open country: see _openGround.
     const open = this._openGround();
     const keep = open ? OPEN_KEEP : 7;
-    const aStop = open ? aBrake * OPEN_BRAKE : aBrake;
+    const aStop = open ? this._stopAccel(aBrake * OPEN_BRAKE) : aBrake;
     const usable = Math.max(0, this._clear - keep);
     let limit = Math.sqrt(2 * aStop * usable);
     // Each clause recorded, for the same reason drive() records its own.
@@ -1511,7 +1519,7 @@ export class Driver {
       z: aim.z,
       clear: best.ran,
       cap: best.blocked
-        ? Math.max(PLAN_MIN_CAP, Math.sqrt(2 * this._mu() * 9.81 * 0.85 * Math.max(0, best.ran - 6)))
+        ? Math.max(PLAN_MIN_CAP, Math.sqrt(2 * this._stopAccel(this._mu() * 9.81 * 0.85) * Math.max(0, best.ran - 6)))
         : Infinity,
     };
     return this._plan;
@@ -2203,7 +2211,7 @@ export class Driver {
       const relief = 1 + this.wallTurn * Math.min(Math.abs(s.alpha), 1.2);
       const open = this._openGround();
       const usable = Math.max(0, this.wallNear - (open ? OPEN_KEEP : this.wallKeep)) * relief;
-      caps.wall = Math.sqrt(2 * mu * 9.81 * (open ? OPEN_GRIP : this.wallGrip) * usable);
+      caps.wall = Math.sqrt(2 * this._stopAccel(mu * 9.81 * (open ? OPEN_GRIP : this.wallGrip)) * usable);
       speed = Math.min(speed, caps.wall);
     }
 
@@ -2214,7 +2222,7 @@ export class Driver {
       const mu = this._mu();
       const open = this._openGround();
       const usable = Math.max(0, this.treeNear - (open ? OPEN_KEEP : TREE_KEEP));
-      const cap = Math.sqrt(2 * mu * 9.81 * (open ? OPEN_GRIP : this.wallGrip) * usable);
+      const cap = Math.sqrt(2 * this._stopAccel(mu * 9.81 * (open ? OPEN_GRIP : this.wallGrip)) * usable);
       caps.wall = Math.min(caps.wall, cap);
       speed = Math.min(speed, cap);
     }

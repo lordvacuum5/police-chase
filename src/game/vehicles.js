@@ -800,6 +800,11 @@ const AI_POLICE_EASE = 0.12;
 // and it kicked round when they landed. tests/stoppie.js, tests/jolt.js.
 const AI_POLICE_ROLL_CENTRE = 0.45;
 const AI_POLICE_PITCH_CENTRE = 0.45;
+// The grip for cornering, not for stopping. "It did a massive jump ... it hit the ground and because
+// it has so much grip, it stops ... I want them to have loads of grip, but I want it to take a bit
+// longer to stop than almost instant." In g, held by the brake's own torque, so the extra load of
+// a landing cannot buy any more. Driver._stopAccel plans on it.
+const AI_POLICE_BRAKE_G = 1.25;
 const HUMAN_POLICE = {};
 for (const k of ['patrol', 'interceptor', 'unmarked', 'suv', 'van']) {
   const s = SPECS[k];
@@ -819,6 +824,11 @@ for (const k of ['patrol', 'interceptor', 'unmarked', 'suv', 'van']) {
     wreckPower: 1,
     wreckAt: 1,
     steering: Object.assign({}, s.steering, { ease: AI_POLICE_EASE }),
+    brakes: Object.assign({}, s.brakes, {
+      maxTorque: (s.mass * AI_POLICE_BRAKE_G * 9.81 * s.wheelRadius) / 4,
+      gripBonus: 1,
+      maxDecel: AI_POLICE_BRAKE_G * 9.81,
+    }),
     suspension: Object.assign({}, s.suspension, { rollCentre: AI_POLICE_ROLL_CENTRE, pitchCentre: AI_POLICE_PITCH_CENTRE }),
   }, gears ? { gears } : {});
 }

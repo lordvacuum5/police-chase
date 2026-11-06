@@ -71,6 +71,30 @@ window.__runStoppie = async function (kph = 140) {
     run('person\'s car, full brake', human, full, 30, 3);
     run('AI, steer 0.8 for 0.5 s', ai, steer, 60, 4);
     run('person\'s car, steer 0.8 for 0.5 s', human, steer, 60, 4);
+    // Off a jump: dropped from a height at speed, on throttle or on full brake. How far from where
+    // it touches to where it is down to half its speed.
+    const land = (label, spec, brake) => {
+      v.spec = spec;
+      v.repair();
+      v.teleport({ x: start.x, y: start.y + 7, z: start.z }, h);
+      v.setVelocity({ x: Math.sin(h) * speed, y: 0, z: Math.cos(h) * speed });
+      v._readState();
+      let at = null, half = null, min = 9, seen = [];
+      for (let i = 0; i < 300; i++) {
+        v.setControls({ throttle: brake ? 0 : 0.6, brake: brake ? 1 : 0, steer: 0, handbrake: 0 });
+        g.heat.value = 0;
+        g.stepHeadless(1 / 60, idle);
+        if (at === null && v.grounded > 0) at = { i, s: v.speed, x: v.position.x, z: v.position.z };
+        if (at) {
+          if (seen.length < 8 && (i - at.i) % 6 === 0) seen.push(Math.round(v.speed * 3.6));
+          if (half === null && v.speed < at.s * 0.5) half = { t: (i - at.i) / 60, d: Math.hypot(v.position.x - at.x, v.position.z - at.z) };
+        }
+      }
+      rows.push(`${label}: touched at ${at ? Math.round(at.s * 3.6) : '-'} km/h, then every 0.1 s ${seen.join(' ')}; half its speed ${half ? `after ${half.t.toFixed(2)} s, ${Math.round(half.d)} m` : 'never in 5 s'}`);
+    };
+    land('AI lands, on throttle', ai, false);
+    land('AI lands, full brake', ai, true);
+    land('person lands, full brake', human, true);
     v.spec = ai;
     window.__res = rows.join('\n');
   } catch (e) {

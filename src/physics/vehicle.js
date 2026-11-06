@@ -753,8 +753,37 @@ export class Vehicle {
     this.body.setAngvel({ x: av.x * k, y: av.y, z: av.z * k }, true);
   }
 
+  /**
+   * A landing does not take the speed. "It did a massive jump ... it hit the ground and because it
+   * has so much grip, it stops." Dropped from 7 m at 142 km/h, 28 km/h went in a tenth of a second
+   * on the throttle and 40 on the brake, with the load on these tyres at many times its weight.
+   * For the cars with a brake limit (spec.brakes.maxDecel), the ground may take no more than the
+   * brake could, while settling. A tree or another car takes what it takes.
+   */
+  _keepLanding(dt) {
+    const most = this.spec.brakes.maxDecel;
+    if (!most || !((this._airFor || 0) > LAND_AIR || this._settleFor > 0)) return;
+    const pv = this._prevVel, before = Math.hypot(pv.x, pv.z);
+    if (before < 8) return;
+    const lv = this.body.linvel(), now = Math.hypot(lv.x, lv.z);
+    const want = before - most * dt;
+    if (now >= want || now < 0.5) return;
+    for (const c of this.keel ? [this.collider, this.keel] : [this.collider]) {
+      let other = false;
+      this.world.contactPairsWith(c, (o) => {
+        if (o === this.collider || o === this.keel) return;
+        if (((o.collisionGroups() >>> 16) & 0xFFFF) & (GROUP.HILL | GROUP.TERRAIN)) return;
+        this.world.contactPair(c, o, (man) => { if (man.numContacts() > 0) other = true; });
+      });
+      if (other) return;
+    }
+    const k = want / now;
+    this.body.setLinvel({ x: lv.x * k, y: lv.y, z: lv.z * k }, true);
+  }
+
   postStep(dt) {
     this._rideUpHill();
+    this._keepLanding(dt);
     const lv = this.body.linvel();
     _v1.set(lv.x, lv.y, lv.z);
     // A large velocity change in a single substep can only be a collision.
