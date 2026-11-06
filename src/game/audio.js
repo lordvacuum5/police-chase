@@ -227,7 +227,9 @@ const ENGINE_ORDER = 4;
  * Overall engine level, intake roar included. Halved on request: the engine
  * was the loudest thing in the mix and sat on top of the radio.
  */
-const ENGINE_VOLUME = 0.5;
+// Well down on what it was (0.5): "the engine noise is so loud compared with sirens ... it's
+// kind of horrible ... just make it much quieter. I'd rather hear sirens than engine."
+const ENGINE_VOLUME = 0.2;
 
 /** How far the mix drops under a call from a speaker with no duck of its own. */
 const RADIO_DUCK = 0.55;
@@ -289,28 +291,23 @@ const ROTOR_AT = 1.0;
 const ROTOR_PITCH = 0.55;
 
 /**
- * A real siren, pitched differently by the kind of car. "Can you find a proper siren
- * sound on the web? I like different siren sounds ... Cars." Then, of the German
- * two-tone it started with beside this: "I would kind of like an American one, because
- * they're American police cars." From Wikimedia Commons, credited in the README:
- * sirens in Washington DC, a long way off through a window, so quiet it is brought up
- * by twenty times, and filtered to the band the siren is in to leave the street out.
- * `from`/`to`/`fade` as the rotor's above. SIREN_VOICE is which car uses it at what
- * pitch; a kind not listed keeps the synthesised siren.
+ * A real siren, close up, pitched differently by the kind of car. "Can you find a proper
+ * siren sound on the web?", then "I would kind of like an American one", then of a
+ * recording made through a window, "you can tell the recording is like from far away."
+ * A Whelen siren on an American fire engine (Wikimedia Commons, CC0): its wail while a
+ * car is working towards you, its yelp once it is on you, as crews do, the change being
+ * how you know it has closed. `from`/`to`/`fade` as the rotor's above, the yelp's loop
+ * being exactly six of its 0.331 s cycles, so it meets itself in step. SIREN_RATE is the
+ * pitch by kind of car; a kind not listed keeps the synthesised siren.
  */
+const SIREN_FILE = 'resources/sounds/commons-whelen-siren.ogg';
 const SIREN_SAMPLES = {
-  wail: { url: 'resources/sounds/commons-american-police-siren.ogg', from: 9, to: 21, fade: 0.6, low: 550, high: 2100 },
+  wail: { from: 9.3, to: 14.02, fade: 0.12 },
+  yelp: { from: 5.2, to: 7.216, fade: 0.03 },
 };
-const SIREN_VOICE = {
-  patrol: { sample: 'wail', rate: 1 },
-  interceptor: { sample: 'wail', rate: 1.1 },
-  suv: { sample: 'wail', rate: 0.9 },
-  van: { sample: 'wail', rate: 0.8 },
-};
+const SIREN_RATE = { patrol: 1, interceptor: 1.06, suv: 0.94, van: 0.87 };
 /** How loud each is made, as a loop's average level, before distance. */
-const SIREN_LEVEL = 0.28;
-/** How much faster a recording runs with the car right on you: the note changing is how you know it has closed. */
-const SIREN_CLOSE_RATE = 1.2;
+const SIREN_LEVEL = 0.55;
 
 /**
  * Fold a region of a recording into a seamless mono loop by crossfading the
@@ -655,7 +652,7 @@ export class GameAudio {
   async _loadSirenSample(key) {
     const def = SIREN_SAMPLES[key], ctx = this.ctx;
     try {
-      const res = await fetch(def.url);
+      const res = await fetch(SIREN_FILE);
       if (!res.ok) throw new Error('http ' + res.status);
       const raw = await ctx.decodeAudioData(await res.arrayBuffer());
       const loop = makeSeamlessLoop(ctx, raw, def.from, def.to, def.fade);
@@ -666,11 +663,10 @@ export class GameAudio {
       const src = ctx.createBufferSource();
       src.buffer = loop;
       src.loop = true;
-      const lo = ctx.createBiquadFilter(), hi = ctx.createBiquadFilter(), gain = ctx.createGain();
-      lo.type = 'highpass'; lo.frequency.value = def.low;
-      hi.type = 'lowpass'; hi.frequency.value = def.high;
+      const gain = ctx.createGain();
       gain.gain.value = 0;
-      src.connect(lo); lo.connect(hi); hi.connect(gain); gain.connect(this.master);
+      src.connect(gain);
+      gain.connect(this.master);
       src.start();
       if (!this.sirenVoices) this.sirenVoices = {};
       this.sirenVoices[key] = { src, gain, scale: SIREN_LEVEL / (Math.sqrt(sum / (d.length / 4)) || 1) };
@@ -1556,11 +1552,11 @@ export class GameAudio {
       this.sirenHorn.frequency.setTargetAtTime(hz * 1.9, t, glide);
 
       const prox = 1 - clamp01(nearest / 190);
-      const want = prox * prox * 0.075 * this.duck;
+      const want = Math.pow(prox, 1.5) * 0.075 * this.duck;
       // That kind of car's recording if it has one and it has loaded; otherwise
       // the synthesised note above.
-      const voice = sirenCar && SIREN_VOICE[sirenCar.specKey];
-      const rec = voice && this.sirenVoices && this.sirenVoices[voice.sample];
+      const rate = sirenCar && SIREN_RATE[sirenCar.specKey];
+      const rec = rate && this.sirenVoices && this.sirenVoices[yelp ? 'yelp' : 'wail'];
       this.sirenGain.gain.setTargetAtTime(rec ? 0 : want, t, 0.12);
       if (this.sirenVoices) {
         for (const k of Object.keys(this.sirenVoices)) {
@@ -1568,8 +1564,8 @@ export class GameAudio {
           this.sirenVoices[k].gain.gain.setTargetAtTime(on ? want * this.sirenVoices[k].scale : 0, t, 0.15);
         }
       }
-      if (rec) rec.src.playbackRate.setTargetAtTime(voice.rate * (yelp ? SIREN_CLOSE_RATE : 1), t, 0.25);
-      this.sirenSounding = rec ? voice.sample : 'synth';
+      if (rec) rec.src.playbackRate.setTargetAtTime(rate, t, 0.25);
+      this.sirenSounding = rec ? (yelp ? 'yelp' : 'wail') : 'synth';
     } else {
       this.sirenGain.gain.setTargetAtTime(0, t, 0.25);
       if (this.sirenVoices) {

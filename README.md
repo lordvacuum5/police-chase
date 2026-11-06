@@ -7976,23 +7976,25 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
-### Real sirens, a different pitch by the car
+### Real sirens, close up, and an engine you can hear them over
 
-*"Can you find a proper siren sound on the web? I like different siren sounds ... Cars."*
-`resources/sounds/commons-american-police-siren.ogg`: "American police siren i" by lezer, public
-domain, [source](https://commons.wikimedia.org/wiki/File:American_police_siren_i.ogg). Patrol at
-normal pitch, interceptor 1.1, SUV 0.9, van 0.8; unmarked and anything else, or a failed load, the
-synthesised siren. As before only the nearest car is heard. It runs 1.2 times faster with the car
-within 55 m, in place of the synth's change to a yelp, so closing still sounds different.
+*"Can you find a proper siren sound on the web? I like different siren sounds ... Cars."* A German
+two-tone came first and went: *"I would kind of like an American one, because they're American
+police cars."* Then sirens in Washington DC through an apartment window, about 1% level and
+brought up 21 times: *"you can tell the recording is like from far away. Try and get a closer up
+one."* Now `resources/sounds/commons-whelen-siren.ogg`:
+[Whelen.ogg](https://commons.wikimedia.org/wiki/File:Whelen.ogg) by Heggyhomolit, CC0, a Whelen
+siren on an American fire engine, 14 s of wail, yelp and piercer. Level 6-62%, against that 1%.
 
-A German two-tone ("WWS Policecarsiren", Work With Sounds, CC BY 4.0) went in beside it for a day
-and came out again: *"it's kind of German, right? I would kind of like an American one, because
-they're American police cars."*
+Its wail (9.3-14.0 s, 850-1650 Hz) with a car working towards you; its yelp (six cycles of 0.331 s
+from 5.2 s, seam correlating at 0.97) within 55 m. No filter on it, there being no street to take
+out. Pitch by car: patrol 1, interceptor 1.06, SUV 0.94, van 0.87; unmarked, or a failed load, the
+synth. Only the nearest car is heard, as ever.
 
-Nobody here can listen to it, so measured instead: level about 1%, a window's worth of Washington
-with the wail sweeping 900-1500 Hz in it, so brought up 21 times and filtered to 550-2100 Hz, peak
-0.12 at full volume. It may well sound distant or carry street noise, which the player's ear will
-have to judge. It is the only free American recording found; a closer one would be better.
+*"The engine noise is so loud compared with sirens ... it's kind of horrible ... just make it much
+quieter. I'd rather hear sirens than engine."* `ENGINE_VOLUME` down to 0.4 of what it was; the same
+recording. `SIREN_LEVEL` 0.28 to 0.55, and it falls off with distance as prox^1.5 rather than
+prox^2, so one 100 m off is half as loud again. Not heard by anyone here: the player's ear decides.
 
 ### A police car chasing a civilian can still chase you; no work vehicles in multiplayer
 
