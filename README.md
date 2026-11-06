@@ -7976,6 +7976,41 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### The jolt in a turn
+
+*"It almost just looks like they almost just jolt ... it's not like they do a whole jolt 90 degrees. It's just
+like a couple of degrees ... It looks very obvious that they have something weird about them."*
+
+`tests/jolt.js` reads every frame of a chase. A car at speed was on two wheels 17-22% of the time, and most jolts
+were on two or three. `tests/stoppie.js`, on the flat from 140 km/h: full brake was 3.2 g with the rear wheels off the
+ground by 88 km/h, a person's car 1.4 g on all four. So the grip was tipping the car, mostly onto its nose, and it
+kicked round when the wheels landed. Sometimes the body touched the ground too.
+
+The grip is still all there. `pitchCentre` (new) and `rollCentre` 0.45 for the computer's police apply the tyres'
+forces higher up, so they no longer tip the car; `steering.ease` 0.12 s smooths a command that steps half its lock in
+a frame, above 20 km/h or so and not while catching a slide. The steering, alone, did little (11 to 10 jolts a minute),
+which is why the rest was looked for. The roll centre alone was no better either: on two wheels 22% against 17%.
+
+| `tests/force.js` trees, 8 runs | before | after |
+|---|---|---|
+| jolts a minute at speed | 11 | 5 |
+| yaw rate kick, p99, rad/s | 0.38 | 0.28 |
+| all four wheels down | 69% (4 runs) | 96% |
+| all knocks, hard | 58, 16 | 47, 9 |
+| trees | 20 | 24 |
+| worst damage | 0.24 | **0.60** |
+| mean nearest | 153 m | 143 m |
+
+Jolts are not gone: half what they were, and most of the rest follow a jump in the steering or a new line.
+Full brake from 140 km/h came down from 3.2 g to 2.2 g, an effect of the same change.
+
+`tests/keepup.js`, 8 routes, against the last shipped: at 120 104 to 91 km/h, behind 160 to 252 m; at 150 101 to 101, behind 327 to
+364 m. Old code has read 92-106 and 87-110 on this rig, so this is within what it does by itself, but it is the wrong way.
+
+*"Like one almost hit an invisible wall when it was going up a hill and just bounced back."* Not found. Most of what
+my detector called thrown back was the car on full brake, and at about 6 g in a chase that may be what was seen,
+but that is a guess; the body touching anything is down from 2% of the time to 1%.
+
 ### Easier to wreck, and nothing lost until they are
 
 *"Can you make it so police cars have less health, so it's easier to wreck them ... when you wreck them, I want

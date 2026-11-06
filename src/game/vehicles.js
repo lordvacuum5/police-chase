@@ -794,6 +794,12 @@ const AI_POLICE_GRIP = 1.5;
 const AI_POLICE_POWER = 1.35;
 const AI_POLICE_DRAG = 0.8;
 const AI_POLICE_DURABILITY = 0.5;
+const AI_POLICE_EASE = 0.12;
+// "It almost just looks like they almost just jolt." Both centres high enough that the grip does
+// not tip the car: it was on two wheels 22% of the time at speed, the rear two under braking,
+// and it kicked round when they landed. tests/stoppie.js, tests/jolt.js.
+const AI_POLICE_ROLL_CENTRE = 0.45;
+const AI_POLICE_PITCH_CENTRE = 0.45;
 const HUMAN_POLICE = {};
 for (const k of ['patrol', 'interceptor', 'unmarked', 'suv', 'van']) {
   const s = SPECS[k];
@@ -812,6 +818,8 @@ for (const k of ['patrol', 'interceptor', 'unmarked', 'suv', 'van']) {
     durability: s.durability * AI_POLICE_DURABILITY,
     wreckPower: 1,
     wreckAt: 1,
+    steering: Object.assign({}, s.steering, { ease: AI_POLICE_EASE }),
+    suspension: Object.assign({}, s.suspension, { rollCentre: AI_POLICE_ROLL_CENTRE, pitchCentre: AI_POLICE_PITCH_CENTRE }),
   }, gears ? { gears } : {});
 }
 

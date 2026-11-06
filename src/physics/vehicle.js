@@ -43,6 +43,10 @@ const IMPACT_FROM = 2.6;
 const KEEL_H = 0.08;
 /** The share of its speed along the ground a car keeps when the keel meets the hill. See _rideUpHill. */
 const HILL_KEEP = 0.985;
+/** Easing the steering (spec.steering.ease, seconds): nothing below this speed, all of it above, m/s; not past this slip, rad. */
+const EASE_FROM = 8;
+const EASE_FULL = 20;
+const EASE_SLIP = 0.12;
 import {
   tyreForces, slipRatioOf, slipAngleOf, slipIntensity, loadedMu,
   TYRE_ROAD, TYRE_GRASS, TYRE_PAVED,
@@ -999,7 +1003,18 @@ export class Vehicle {
     // rather than to the absolute maximum.
     this.steerLimit = limit;
 
-    const target = this.controls.steer * limit;
+    let target = this.controls.steer * limit;
+    // A computer's command steps: half of lock or more in one frame, where hands would take
+    // their time. On these tyres the car answers at once, and it shows. "It almost just looks
+    // like they almost just jolt ... it's just like a couple of degrees." Eased at speed; not
+    // while catching a slide, and not at a crawl, where it has junctions to get round.
+    const ease = st.ease ? st.ease * smoothstep(EASE_FROM, EASE_FULL, this.speed) : 0;
+    if (ease > 0 && Math.abs(this.slipAngleBody) < EASE_SLIP) {
+      this._steerEased = damp(this._steerEased ?? this.steerAngle, target, 1 / ease, dt);
+      target = this._steerEased;
+    } else {
+      this._steerEased = target;
+    }
 
     // The rack takes real time to move. Slamming to full lock inside a couple
     // of frames drives the front slip angle far past its peak and scrubs the
@@ -1543,7 +1558,14 @@ export class Vehicle {
       const rc = sus.rollCentre || 0;
       if (rc > 0) {
         _v4.copy(_wf).multiplyScalar(f.Fx + rr);
-        this.body.addForceAtPoint(_v4, w.contact, true);
+        // On tyres that brake at 3 g the same lever stands the car on its nose: the rear wheels
+        // leave the ground, and it turns on the front two until they land. spec.suspension.pitchCentre.
+        if (sus.pitchCentre) {
+          _v5.copy(w.contact).addScaledVector(this.up, sus.pitchCentre);
+          this.body.addForceAtPoint(_v4, _v5, true);
+        } else {
+          this.body.addForceAtPoint(_v4, w.contact, true);
+        }
         _v4.copy(_wl).multiplyScalar(f.Fy);
         _v5.copy(w.contact).addScaledVector(this.up, rc);
         this.body.addForceAtPoint(_v4, _v5, true);
