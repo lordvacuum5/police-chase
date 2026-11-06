@@ -207,6 +207,8 @@ scoring, deliberately.
   (`buildLife`, `session.active`), for its frame rate. Single player keeps them.
 * **Suspects in multiplayer** run on the host and are sent like traffic, under
   `v.trafficId`; `Suspects._policePlayers` is the solo player plus remote police players.
+* **AI police have half the health and lose nothing for damage until 100** (`wreckAt`, `wreckPower`), at the
+  player's request. A wreck stays a wreck: only `disabled` takes one off the board or the map, not a damage level.
 * **A long-range line is checked against the real boxes** (`fineClear`, 2.6 m), not the 4 m grid, which
   lets a line within 0.2 m of a trunk. `tests/forestline.js` shows how close lines pass and what a car was doing
   at each knock. Forest hits are still not zero, and within-80-m fell in that rig: README, "Lines that actually

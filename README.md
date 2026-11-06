@@ -7976,6 +7976,27 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Easier to wreck, and nothing lost until they are
+
+*"Can you make it so police cars have less health, so it's easier to wreck them ... when you wreck them, I want
+the police lights to turn off ... even at 99, I want them to be moving just as fast and have no negative effects
+on their speed or acceleration in any way ... just stop where they are and turn off their lights."*
+
+The cars the computer drives: `durability` halved, `wreckPower` 1 and `wreckAt` 1 (all other cars lose power from
+28% and are finished at 92%). A person's police car is as it was. At 100 it brakes at half to 4 m/s, then locks,
+and stays there (flipped, it used to be righted with 45% of its health back). Lights and siren off, off the map,
+no part in an arrest, the radio call and the 250 points already there. The board clears it once 200 m off; that was
+any car over 55%, and the map hid any over 85%, both of which would have taken a working car away.
+
+`tests/wreckcop.js`, the interceptor: 3 shunts at 50 km/h, was 6 by the formula (not run on the old code). Full
+throttle from the same spot at 0, 50 and 99 damage: 91 km/h at 4 s and 154 at 8 s, all three. Wrecked at 54 km/h: stopped
+in 0.9 s and 5 m, and stayed stopped. 12 cars lit, one wrecked, 11 lit.
+
+`tests/force.js` trees, 8 runs: wrecked 0, worst 0, because units are shielded until within 30 m, so this says
+nothing about a close fight, and I have not measured how often they now wreck each other or themselves in one.
+It does say something else: within 80 m came out 13% where the last section's shipped code gave 19%, with damage
+playing no part in it. So that rig's figure moves that much by itself, and the fall from 33% below may be mostly that.
+
 ### Lines that actually miss the trees
 
 *"The police cars still do seem to crash quite a lot when you go through dense forests. Can you run some

@@ -3594,8 +3594,9 @@ class Game {
       // car you are sitting in front of (Officer._warnIfBlocked).
       // Or on a suspect's tail, whatever the player's wanted level.
       // Your own car is lit when you say so (Q / SIRENS), and nothing else.
-      const lit = v === this.player ? v.sirenOn
-        : this.heat.tier > 0 || v.blipFor > 0 || v.onCall || v.sirenOn;
+      // Never a wreck's: "when you wreck them, I want the police lights to turn off."
+      const lit = !v.disabled && (v === this.player ? v.sirenOn
+        : this.heat.tier > 0 || v.blipFor > 0 || v.onCall || v.sirenOn);
       if (v.isPolice && !v.unmarked && lit) {
         // Each body puts its bar somewhere different; the body says where. An
         // imported one carries the offsets on the object (it is a whole scene,

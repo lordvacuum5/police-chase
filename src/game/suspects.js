@@ -332,6 +332,17 @@ export class Suspects {
     const g = this.game, v = s.v, d = g.dispatcher;
     // Its own units, driven here: they are not on the dispatcher's board.
     s.units = s.units.filter((u) => u.vehicle && !u.vehicle.removed);
+    // A wreck is no use to this chase: to the board, which clears it once out of sight, and
+    // another car can be called.
+    for (let i = s.units.length - 1; i >= 0; i--) {
+      const u = s.units[i];
+      if (!u.human && u.vehicle.disabled) {
+        s.units.splice(i, 1);
+        u.vehicle.onCall = false;
+        u.suspectTier = undefined;
+        d.adopt(u);
+      }
+    }
     let seen = false, near = Infinity;
     // Driving at what they know. They were handed the car itself every frame, seen or not:
     // "do the other police cars definitely not know where it is, even when they're searching

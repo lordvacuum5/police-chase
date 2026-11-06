@@ -898,7 +898,7 @@ export class Hud {
     for (const u of [...dispatcher.units, ...onSuspect]) {
       // A wrecked unit is out of the pursuit; leaving it on the map just
       // makes you plan around a car that is never coming.
-      if (!u.vehicle || u.vehicle.disabled || u.vehicle.removed || u.vehicle.damage >= 0.85) continue;
+      if (!u.vehicle || u.vehicle.disabled || u.vehicle.removed) continue;
 
       const pos = u.vehicle.position;
       const p = toMap(pos.x, pos.z);

@@ -90,6 +90,9 @@ const FAST_EVERY = 0.8;
 const FAST_GAP = 1 / 30;
 const FAST_OFF = 8;
 const FAST_SHORT = 25;
+/** A wreck on the brakes this hard down to this speed, m/s, then locked. */
+const WRECK_BRAKE = 0.5;
+const WRECK_ROLL = 4;
 /** Leaving a road for a line: the target at least this far, m; the road this many times as long; asked this often, s. */
 const SHORT_FROM = 70;
 const SHORT_SAVING = 1.25;
@@ -727,14 +730,16 @@ export class Officer {
     // A car on its roof, or wrecked, is out of the pursuit until it recovers.
     if (v.disabled || v.flippedFor > 2.2) {
       this.recoverTimer += dt;
-      v.setControls({ throttle: 0, brake: 1, steer: 0, handbrake: 1 });
-      if (v.flippedFor > 2.2 && this.recoverTimer > 3.0) {
+      // Wrecked: rolls to a stop where it is and stays there. "Just stop where they are and
+      // turn off their lights." Locking everything at 150 km/h spun it, in the way of a car
+      // that had just won the fight.
+      if (v.disabled && v.speed > WRECK_ROLL) v.setControls({ throttle: 0, brake: WRECK_BRAKE, steer: 0, handbrake: 0 });
+      else v.setControls({ throttle: 0, brake: 1, steer: 0, handbrake: 1 });
+      if (!v.disabled && v.flippedFor > 2.2 && this.recoverTimer > 3.0) {
         // Right the car where it lies rather than despawning it; a wreck in
         // the road is a hazard the pursuit has to deal with.
         _tmp.copy(v.position); _tmp.y += 1.2;
         v.teleport(_tmp, Math.atan2(v.forward.x, v.forward.z));
-        v.damage = Math.min(v.damage, 0.55);
-        v.disabled = false;
         this.recoverTimer = 0;
       }
       return;

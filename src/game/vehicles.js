@@ -783,10 +783,17 @@ for (const k of Object.keys(BODY_MIDDLE)) SPECS[k].colliderZ = BODY_MIDDLE[k];
  * ... unlimited speed ... I just want them to be fast and quick and route well." Their grip
  * had come out at 0.93 against a fleeing civilian's 1.2. A person driving one keeps the car as
  * it was (HUMAN_POLICE, drivablePoliceSpec): this is the opposition, not the handling.
+ *
+ * Half the health, and nothing for it until it has all gone. "Police cars have less health,
+ * so it's easier to wreck them ... even at 99, I want them to be moving just as fast and have
+ * no negative effects on their speed or acceleration in any way." So wreckPower 1, and
+ * wreckAt 1 where everything else is finished at 0.92. At 100, Officer.update stops the car
+ * and the render puts its lights out.
  */
 const AI_POLICE_GRIP = 1.5;
 const AI_POLICE_POWER = 1.35;
 const AI_POLICE_DRAG = 0.8;
+const AI_POLICE_DURABILITY = 0.5;
 const HUMAN_POLICE = {};
 for (const k of ['patrol', 'interceptor', 'unmarked', 'suv', 'van']) {
   const s = SPECS[k];
@@ -802,6 +809,9 @@ for (const k of ['patrol', 'interceptor', 'unmarked', 'suv', 'van']) {
     }),
     aero: Object.assign({}, s.aero, { dragArea: s.aero.dragArea * AI_POLICE_DRAG }),
     topSpeedHint: s.topSpeedHint * 1.25,
+    durability: s.durability * AI_POLICE_DURABILITY,
+    wreckPower: 1,
+    wreckAt: 1,
   }, gears ? { gears } : {});
 }
 

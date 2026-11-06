@@ -797,7 +797,7 @@ export class Vehicle {
       if (w.punctured && w.condition > FLAT) w.condition = Math.max(FLAT, w.condition - dt * 0.33);
     }
 
-    if (this.damage >= 0.92 && !this.spec.neverDisabled) this.disabled = true;
+    if (this.damage >= (this.spec.wreckAt ?? 0.92) && !this.spec.neverDisabled) this.disabled = true;
   }
 
   /**
@@ -902,7 +902,7 @@ export class Vehicle {
   applyDamage(amount) {
     if (!(amount > 0) || this.assist.shielded) return;
     this.damage = clamp01(this.damage + amount / (this.spec.durability || 1));
-    if (this.damage >= 0.92 && !this.spec.neverDisabled) this.disabled = true;
+    if (this.damage >= (this.spec.wreckAt ?? 0.92) && !this.spec.neverDisabled) this.disabled = true;
   }
 
   _readState() {

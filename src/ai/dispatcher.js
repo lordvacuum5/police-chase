@@ -507,7 +507,7 @@ export class Dispatcher {
 
       // Damaged units are pulled off the board once they are far enough away
       // that you will not see them vanish.
-      const wrecked = u.vehicle.damage >= 0.55 && d > 200;
+      const wrecked = u.vehicle.disabled && d > 200;
       const stranded = u.strandedFor > 14 && d > 200;
 
       // Through retire(), not by splicing the array here: a unit can also be
