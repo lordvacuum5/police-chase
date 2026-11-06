@@ -7982,8 +7982,8 @@ player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve th
 from an old request for drifting, drew the body swung about its front axle by up to 34 degrees in a tight corner, with
 nothing in the simulation doing so. Off (`window.__driftLook = true` for a comparison). Its measure of how hard a corner
 was used road grip, so today's grip very likely set it off more, though that was not measured. In its place `Game._leanLook`:
-3 degrees of lean and 2 of dive, drawn only, since the last section left them flat. Judged by no rig and by nobody yet: the
-player is the test of this one.
+3 degrees of lean and 2 of dive, drawn only, since the last section left them flat. Judged by no rig; by the player: *"Looks
+right now."*
 
 **Hit, they slide.** *"They basically just seem to stick to the ground ... if they're in contact with another vehicle, that
 gives them normal levels of grip ... and if it predicts you're a millisecond away from hitting a police car, make it less
