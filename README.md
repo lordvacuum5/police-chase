@@ -8017,6 +8017,12 @@ toward a sideways line of travel, up to 0.6 rad (`AIR_SLIP`). Rolled, 0.21 down 
 is the rig measuring the skids and not the cabin it now centres on. The word "hiccups" was not
 reproduced as a jump: say if they are still there, and doing what.
 
+**All of that camera change was taken back out**, the next message: *"You've made the camera
+position worse on the helicopter."* So the bank, the fore-and-aft offset and the swing toward a
+sideways line of travel are as they were. Which of the three was the trouble was not established;
+try them one at a time if this comes back. The numbers above are real but off centre on a rig is
+evidently not what the player is judging it by.
+
 ### Real sirens, close up, and an engine you can hear them over
 
 *"Can you find a proper siren sound on the web? I like different siren sounds ... Cars."* A German
