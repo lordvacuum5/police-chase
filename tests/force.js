@@ -73,6 +73,8 @@ function snap(u, t) {
     rev: d.reverseTimer > 0,
     tree: d.treeNear === Infinity ? null : +(d.treeNear ?? -1).toFixed(1),
     yaw: +(v.yawRate || 0).toFixed(2),
+    mode: u._mode,
+    fast: !!u._fast,
     cap: d.caps ? Object.fromEntries(Object.entries(d.caps)
       .filter(([, x]) => x !== Infinity).map(([k, x]) => [k, Math.round(x * 3.6)])) : null,
     path: !!(d.hasPath && d._laneKeep),

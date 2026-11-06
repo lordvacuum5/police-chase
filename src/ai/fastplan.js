@@ -15,7 +15,7 @@
 // planSpeed then brakes for the bends in it ahead of time, as it does for a road's.
 //
 // One plan every few frames across the whole force (Officer._fastLine).
-import { boxesNear } from './localplan.js';
+import { boxesNear, obstacleIndex } from './localplan.js';
 
 const FP_CELL = 4;
 const FP_HALF = 124;
@@ -34,12 +34,21 @@ const FP_EXPAND = 1500;
 const FP_GREED = 1.6;
 /** The most of a straight either side of a corner its curve takes, m. */
 const FP_ROUND = 22;
+/** How far from anything solid the middle of a line must stay, m, and the buckets that is looked up in. */
+const FP_CLEAR = 2.6;
+const FP_BUCKET = 8;
+/** Where the car will be before it can do anything about a new line: this many seconds on, between these distances, m. */
+const FP_STUB_T = 0.35;
+const FP_STUB_MIN = 3;
+const FP_STUB_MAX = 16;
 
 const DIRS = [[0, 1], [1, 1], [1, 0], [1, -1], [0, -1], [-1, -1], [-1, 0], [-1, 1]];
 const STEP = DIRS.map(([a, b]) => Math.hypot(a, b) * FP_CELL);
 
 const _hard = new Uint8Array(FP_N * FP_N);
 const _soft = new Uint8Array(FP_N * FP_N);
+let _extra = null;
+let _index = null;
 const _best = new Float32Array(FP_N * FP_N * 8);
 const _from = new Int32Array(FP_N * FP_N * 8);
 const _seen = new Int32Array(FP_N * FP_N * 8);
@@ -66,15 +75,66 @@ function drawBox(b, ox, oz) {
   }
 }
 
-/** Every line of 1.5 m steps between two points clear of the hard grid? */
-function lineClear(ax, az, bx, bz, ox, oz) {
+/**
+ * The grid's cells are 4 m, so "clear of the hard grid" is the middle of a cell 3 m off, and a
+ * line crossing the cell can pass the trunk at 0.2 m. A line is checked against the boxes
+ * themselves, every metre. Every box in each bucket its clearance reaches, built once a world:
+ * drawing them on a 1 m grid each plan took 7 ms against 1.3.
+ */
+function clearIndex(game) {
+  const all = obstacleIndex(game);
+  if (all.clear) return all.clear;
+  const out = new Map(), seen = new Set();
+  for (const list of all.buckets.values()) {
+    for (const b of list) {
+      if (seen.has(b)) continue;
+      seen.add(b);
+      const r = b.rad + FP_CLEAR;
+      for (let i = Math.floor((b.x - r) / FP_BUCKET); i <= Math.floor((b.x + r) / FP_BUCKET); i++) {
+        for (let j = Math.floor((b.z - r) / FP_BUCKET); j <= Math.floor((b.z + r) / FP_BUCKET); j++) {
+          const k = i * 100003 + j;
+          const l = out.get(k);
+          if (l) l.push(b); else out.set(k, [b]);
+        }
+      }
+    }
+  }
+  all.clear = out;
+  return out;
+}
+
+function boxClear(b, x, z) {
+  const dx = x - b.x, dz = z - b.z;
+  const lx = Math.abs(dx * b.c - dz * b.s) - b.hx, lz = Math.abs(dx * b.s + dz * b.c) - b.hz;
+  if (lx >= FP_CLEAR || lz >= FP_CLEAR) return true;
+  const ax = lx > 0 ? lx : 0, az = lz > 0 ? lz : 0;
+  return ax * ax + az * az >= FP_CLEAR * FP_CLEAR;
+}
+
+/** Is this point far enough from anything solid? */
+function fineClear(x, z) {
+  const list = _index.get(Math.floor(x / FP_BUCKET) * 100003 + Math.floor(z / FP_BUCKET));
+  if (list) for (let i = 0; i < list.length; i++) if (!boxClear(list[i], x, z)) return false;
+  if (_extra) for (let i = 0; i < _extra.length; i++) if (!boxClear(_extra[i], x, z)) return false;
+  return true;
+}
+
+/** Every metre of the line between two points clear of what is solid? */
+function lineClear(ax, az, bx, bz) {
   const d = Math.hypot(bx - ax, bz - az);
-  const n = Math.ceil(d / 1.5);
-  for (let t = 1; t <= n; t++) {
-    const i = Math.floor((ax + ((bx - ax) * t) / n - ox) / FP_CELL);
-    const j = Math.floor((az + ((bz - az) * t) / n - oz) / FP_CELL);
-    if (i < 0 || j < 0 || i >= FP_N || j >= FP_N) continue;
-    if (_hard[i * FP_N + j]) return false;
+  const m = Math.ceil(d);
+  for (let t = 1; t <= m; t++) {
+    if (!fineClear(ax + ((bx - ax) * t) / m, az + ((bz - az) * t) / m)) return false;
+  }
+  return true;
+}
+
+/** The rounding of corner q, checked point by point. */
+function curveClear(q, ix, iz, jx, jz, dIn, dOut) {
+  const ax = q.x - ix * dIn, az = q.z - iz * dIn, bx = q.x + jx * dOut, bz = q.z + jz * dOut;
+  for (let t = 0.1; t < 1; t += 0.1) {
+    const u = 1 - t;
+    if (!fineClear(u * u * ax + 2 * u * t * q.x + t * t * bx, u * u * az + 2 * u * t * q.z + t * t * bz)) return false;
   }
   return true;
 }
@@ -121,11 +181,23 @@ export function planFast(game, from, goal, extra = null) {
   const ox = cx - FP_HALF, oz = cz - FP_HALF;
   _hard.fill(0);
   _soft.fill(0);
+  _index = clearIndex(game);
+  _extra = extra;
   for (const b of boxesNear(game, cx, cz, FP_HALF * 1.3)) drawBox(b, ox, oz);
   if (extra) for (const b of extra) drawBox(b, ox, oz);
-  if (lineClear(fx, fz, gx, gz, ox, oz)) return { clear: true };
+  if (lineClear(fx, fz, gx, gz)) return { clear: true };
 
-  const si = Math.floor((fx - ox) / FP_CELL), sj = Math.floor((fz - oz) / FP_CELL);
+  // The line starts where the car will be by the time it can turn, the way it is
+  // already going: from where it is now, the first bend of every new line is one it
+  // has no room for and planSpeed has no way to see.
+  let sx = fx, sz = fz;
+  const vel = from.linvel, vs = vel ? Math.hypot(vel.x, vel.z) : 0;
+  if (vs > 3) {
+    const stub = Math.min(FP_STUB_MAX, Math.max(FP_STUB_MIN, vs * FP_STUB_T));
+    const ex = fx + (vel.x / vs) * stub, ez = fz + (vel.z / vs) * stub;
+    if (lineClear(fx, fz, ex, ez)) { sx = ex; sz = ez; }
+  }
+  const si = Math.floor((sx - ox) / FP_CELL), sj = Math.floor((sz - oz) / FP_CELL);
   const gi = Math.floor((gx - ox) / FP_CELL), gj = Math.floor((gz - oz) / FP_CELL);
   if (si < 0 || sj < 0 || si >= FP_N || sj >= FP_N) return null;
   const heading = Math.atan2(from.forward.x, from.forward.z);
@@ -181,12 +253,12 @@ export function planFast(game, from, goal, extra = null) {
     raw.push({ x: ox + (Math.floor(cell / FP_N) + 0.5) * FP_CELL, z: oz + ((cell % FP_N) + 0.5) * FP_CELL });
   }
   raw.reverse();
-  raw[0] = { x: fx, z: fz };
+  raw[0] = { x: sx, z: sz };
   if (end !== nearest || nearestH < FP_CELL * 1.5) raw.push({ x: gx, z: gz });
-  const tight = [raw[0]];
+  const tight = sx === fx && sz === fz ? [raw[0]] : [{ x: fx, z: fz }, raw[0]];
   for (let i = 0; i < raw.length - 1;) {
     let j = raw.length - 1;
-    while (j > i + 1 && !lineClear(raw[i].x, raw[i].z, raw[j].x, raw[j].z, ox, oz)) j--;
+    while (j > i + 1 && !lineClear(raw[i].x, raw[i].z, raw[j].x, raw[j].z)) j--;
     tight.push(raw[j]);
     i = j;
   }
@@ -197,15 +269,22 @@ export function planFast(game, from, goal, extra = null) {
   for (let i = 1; i < tight.length; i++) {
     const p = tight[i - 1], q = tight[i], r = tight[i + 1];
     const seg = Math.hypot(q.x - p.x, q.z - p.z) || 1;
-    const dIn = r ? Math.min(FP_ROUND, seg * 0.45) : 0;
+    let dIn = r ? Math.min(FP_ROUND, seg * 0.45) : 0;
+    const out = r ? Math.hypot(r.x - q.x, r.z - q.z) || 1 : 1;
+    let dOut = r ? Math.min(FP_ROUND, out * 0.45) : 0;
+    // A curve cuts the corner, and the corner is what the line went wide to miss.
+    // Tighter until it is clear; the corner itself was checked.
+    if (r) {
+      for (let tries = 0; tries < 3 && !curveClear(q, (q.x - p.x) / seg, (q.z - p.z) / seg, (r.x - q.x) / out, (r.z - q.z) / out, dIn, dOut); tries++) {
+        dIn *= 0.5; dOut *= 0.5;
+      }
+    }
     const steps = Math.floor((seg - dIn) / 8);
     for (let k = 1; k <= steps; k++) {
       const t = (k * 8) / seg;
       push(p.x + (q.x - p.x) * t, p.z + (q.z - p.z) * t);
     }
     if (!r) { push(q.x, q.z); break; }
-    const out = Math.hypot(r.x - q.x, r.z - q.z) || 1;
-    const dOut = Math.min(FP_ROUND, out * 0.45);
     const ax = q.x - ((q.x - p.x) / seg) * dIn, az = q.z - ((q.z - p.z) / seg) * dIn;
     const bx = q.x + ((r.x - q.x) / out) * dOut, bz = q.z + ((r.z - q.z) / out) * dOut;
     for (let t = 0; t <= 1.001; t += 0.2) {

@@ -99,7 +99,7 @@ let _stamp = 0;
  * knocked flat stays in here as an obstacle, which is the safe way to be wrong;
  * the drive itself still sweeps for real.
  */
-function obstacleIndex(game) {
+export function obstacleIndex(game) {
   if (game._obstacleIndex) return game._obstacleIndex;
   const B = 24;
   const buckets = new Map();

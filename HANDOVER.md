@@ -207,6 +207,10 @@ scoring, deliberately.
   (`buildLife`, `session.active`), for its frame rate. Single player keeps them.
 * **Suspects in multiplayer** run on the host and are sent like traffic, under
   `v.trafficId`; `Suspects._policePlayers` is the solo player plus remote police players.
+* **A long-range line is checked against the real boxes** (`fineClear`, 2.6 m), not the 4 m grid, which
+  lets a line within 0.2 m of a trunk. `tests/forestline.js` shows how close lines pass and what a car was doing
+  at each knock. Forest hits are still not zero, and within-80-m fell in that rig: README, "Lines that actually
+  miss the trees".
 * **Long-range line planner** (`ai/fastplan.js`, `Officer._fastLine`): off the road on
   Haldon Vale and Wexbury, a planned line driven by `followPath`. Tree hits in the forest
   rig 12 -> 1. Off on Ashfield, where it measured no better. Not used by the fleeing Runner.

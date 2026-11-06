@@ -7976,6 +7976,54 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Lines that actually miss the trees
+
+*"The police cars still do seem to crash quite a lot when you go through dense forests. Can you run some
+tests going through dense forests? ... They did keep on crashing, but yeah, they are insane now."* Speed was
+not to be lost.
+
+`tests/forestline.js` reads every line (`ai/fastplan.js`) as it is handed out, and what the car was doing at
+each knock. 30% of lines came within 3 m of something solid and 4% within 1 m, and the car ran 2.5 m off its
+line on average. Both were the planner's. Clear on the 4 m grid means the middle of a cell is 3 m off, so a line
+across that cell can pass a trunk at 0.2 m; the rounded corners were never checked at all; and a line started
+from where the car was, so its first bend was one it had no room for and `planSpeed` could not see.
+
+Now every metre of a line is checked against the boxes themselves, 2.6 m clear (`fineClear`); a curve that hits
+something is tightened (`curveClear`); and a line starts where the car will be in 0.35 s, the way it is going.
+
+Each old against new on fresh pages at once, Haldon Vale, except the last column, the shipped code alone:
+
+| `tests/force.js`, trees, 120 km/h, 8 runs | old | first version | shipped |
+|---|---|---|---|
+| trees hit | 22 | 8 | 10 |
+| hard hits | 16 | 9 | 6 |
+| walls hit | 7 | 3 | 2 |
+| worst damage | 0.36 | 0 | 0 |
+| all knocks over 4 m/s | 49 | 29 | **68** |
+| mean nearest unit | 140 m | 151 m | 144 m |
+| within 80 m | 33% | 20% | **19%** |
+| held on for | 17.8 s | 13.7 s | 19.4 s |
+| lines within 1 m / 3 m of something | 4% / 31% | 2% / 33% | 2% / 35% |
+| mean off the line | 1.81 m | 1.17 m | 1.65 m |
+
+| `tests/keepup.js`, 8 routes | old | first version | shipped |
+|---|---|---|---|
+| at 120: mean, behind | 102 km/h, 194 m | 95, 225 | 104, 160 |
+| at 120: hits, hard, trees | 34, 8, 6 | 30, 3, 7 | 27, 2, 0 |
+| at 150: mean, behind | 87 km/h, 404 m | 108, 320 | 101, 327 |
+| at 150: hits, hard, trees | 28, 4, 5 | 17, 1, 2 | 30, 4, 5 |
+
+Negatives. Being within 80 m in the forest fell from 33% to 19-20%, in both new columns, while the mean distance
+hardly moved; I do not know why. Small knocks went up in the shipped run, with the worst damage 0, and I did not
+sort them by what they hit. The share of lines passing within 3 m barely changed: the 2.6 m rule allows it.
+At 150 on the keep-up rig the hits and trees are back where they were, and 4 routes of the old code gave 92 and
+110 km/h where 8 gave 102 and 87, so read these for size only. `tests/woods.js`, one unit through the densest copse:
+hits 1 old, 4 new (first version), mean 45 and 48 km/h; that rig barely uses a line, and I would not read
+anything into it. Not all the crashes have gone: 10 trees in 8 runs is still trees.
+
+The first version drew a 1 m grid for each plan: 7 ms against 1.3, one plan every other frame in a chase, for a
+game with hiccups. The lookup is built once a world; 0.6 ms a plan, though timed at a different spot from those.
+
 ### The police as good as they can be
 
 *"The police were really lagging behind. I was in the helicopter, so I had to actually step in, and
