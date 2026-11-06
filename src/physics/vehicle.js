@@ -50,6 +50,8 @@ const HILL_KEEP = 0.985;
  * the ground if you hit them hard ... then they come out of contact, they become 100% grip again."
  */
 const BUMP_BACK = 1.0;
+/** The same after a landing somebody can see (spec.landGrip), s. */
+const LAND_LOOSE_BACK = 1.2;
 const EASE_FROM = 16;
 const EASE_FULL = 28;
 const EASE_SLIP = 0.12;
@@ -574,7 +576,8 @@ export class Vehicle {
         this.world.contactPair(this.collider, o, (m) => { if (m.numContacts() > 0) on = true; });
       });
     }
-    this._bump = on ? 1 : Math.max(0, (this._bump || 0) - dt / BUMP_BACK);
+    if (on) this._bumpLand = false;
+    this._bump = on ? 1 : Math.max(0, (this._bump || 0) - dt / (this._bumpLand ? LAND_LOOSE_BACK : BUMP_BACK));
   }
 
   _guardSpin(dt) {
@@ -777,7 +780,18 @@ export class Vehicle {
     if (window.__noLandingSettle) return;
     const down = this.wheels.some((w) => w.grounded);
     if (down) {
-      if ((this._airFor || 0) > LAND_AIR) this._settleFor = LAND_SETTLE;
+      if ((this._airFor || 0) > LAND_AIR) {
+        this._settleFor = LAND_SETTLE;
+        // Touched down where somebody can see it: it slides, rather than stopping sideways and driving
+        // off. "If it lands next to me, sideways, it just basically stops where it is ... give it
+        // slightly less grip when it has just touched down ... especially if I can see it. Otherwise
+        // keep it the same." Officer._canBeSeen says who can.
+        if (this.spec.landGrip && this.landSeen && !(this._bump > 0)) {
+          this._bump = 1;
+          this._bumpLand = true;
+          this._knocked = Math.max(this._knocked || 0, LAND_LOOSE_BACK);
+        }
+      }
       this._airFor = 0;
     } else {
       this._airFor = (this._airFor || 0) + dt;
@@ -1604,7 +1618,7 @@ export class Vehicle {
       }
       // In a bump: ordinary tyres for the moment. See _bumpPass.
       const bump = this._bump || 0;
-      const bumped = bump > 0 ? 1 - (1 - s.bumpGrip) * bump : 1;
+      const bumped = bump > 0 ? 1 - (1 - (this._bumpLand ? s.landGrip : s.bumpGrip)) * bump : 1;
       if (bump > 0) latStiff = 1 + (latStiff - 1) * (1 - bump);
       const f = tyreForces(tyre, Fs, w.slipRatio, w.slipAngle, w.condition,
         s.gripScale * bias * this._assistGrip(w) * loose * hsGrip * bumped * (this.sim.wetGrip || 1),

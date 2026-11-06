@@ -823,6 +823,8 @@ const AI_POLICE_BRAKE_G = 1.25;
 // A share of its grip while touching another car or about to, and coming back over a second after.
 // 0.6 of 1.39 is a person's 0.93, and measured no more of a push than none: tests/ramslide.js.
 const AI_POLICE_BUMP_GRIP = 0.45;
+// And just after touching down from a jump somebody can see: less of a drop. Vehicle._landingSettle.
+const AI_POLICE_LAND_GRIP = 0.6;
 const HUMAN_POLICE = {};
 for (const k of ['patrol', 'interceptor', 'unmarked', 'suv', 'van']) {
   const s = SPECS[k];
@@ -843,6 +845,7 @@ for (const k of ['patrol', 'interceptor', 'unmarked', 'suv', 'van']) {
     wreckAt: 1,
     sceneryShare: 0.5,
     bumpGrip: AI_POLICE_BUMP_GRIP,
+    landGrip: AI_POLICE_LAND_GRIP,
     steering: Object.assign({}, s.steering, { ease: AI_POLICE_EASE }),
     brakes: Object.assign({}, s.brakes, {
       maxTorque: (s.mass * AI_POLICE_BRAKE_G * 9.81 * s.wheelRadius) / 4,

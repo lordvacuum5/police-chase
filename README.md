@@ -7976,6 +7976,33 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### A landing somebody can see
+
+*"Say a police car does a jump, and then it lands next to me, and it's like sideways, and it just basically stops where it
+is. And then continues on ... give it slightly less like make it look a bit more realistic so it slides a bit more ...
+especially if ... I can see it or another player can see it. Otherwise keep it the same."*
+
+After 0.5 s in the air, on touching down, `spec.landGrip` 0.6 of its grip and back over 1.2 s, with the spin guard off for that
+long, if `Officer._canBeSeen`: within 25 m of this machine's camera, in its picture out to 400 m, or within 200 m of another
+person's car, whose camera this machine does not know. Otherwise as it was. The tyres were half of it. The driver read a nose
+off the way it was going as a corner far too tight and braked, so while this lasts `slideLift` does not apply and the brake
+is held to 0.2 unless something solid is under a second away.
+
+`tests/landslide.js`, in a live chase, 8 landings twice each, nose 60 degrees off at 110 km/h:
+
+| | unseen, as it was | seen |
+|---|---|---|
+| on the brakes in the 1.5 s after | 0.58-1.06 s | 0.27-0.33 s |
+| more than 10 degrees sideways | 0.33-0.48 s | 0.50-0.59 s |
+| speed gone at the slowest | 45-49% | 45-53% |
+
+So it slides longer and brakes far less; it does not keep more speed by the end, the car still having to turn round to its
+target. With nobody at the wheel, the way it was going swung 16 degrees in the first half second, 5 with this.
+
+`tests/force.js` trees, 8 runs: knocks 34, hard 5, trees 15, walls 2. With `landGrip` off, the same day's code: 34, 5, 12, 5.
+So the slide is not costing that, and the 5 trees and no hard hits in the next section were a good run: read the forest as 5-15 trees.
+`tests/keepup.js`: at 120 99 km/h, 220 m behind, with it 13%, 25 knocks, 3 hard, lost it 9x; at 150 101, 379 m, 5%, 33, 4, 10x.
+
 ### Sliding when hit, no fake tail, the invisible wall, and a chance for the Runner
 
 **The back of the car.** *"It was almost the back of the police cars ... it still looks so weird."* `Game._driftLook`,

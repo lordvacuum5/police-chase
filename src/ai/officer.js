@@ -96,6 +96,12 @@ const WRECK_ROLL = 4;
 /** About to hit another car: within this far, m, and this long at the speed they are closing, s. */
 const BUMP_LOOK = 30;
 const BUMP_SOON = 0.2;
+/** Officer._canBeSeen: nearer than this to the camera counts whichever way it faces; in the picture out to this; a person's car this near, m; margin round the picture, rad. */
+const SEEN_NEAR = 25;
+const SEEN_FAR = 400;
+const SEEN_OTHER = 200;
+const SEEN_MARGIN = 0.1;
+const _seen = new THREE.Vector3();
 /** Leaving a road for a line: the target at least this far, m; the road this many times as long; asked this often, s. */
 const SHORT_FROM = 70;
 const SHORT_SAVING = 1.25;
@@ -718,6 +724,8 @@ export class Officer {
     const v = this.vehicle;
     this._record(dt, target);
     v.bumpSoon = this._aboutToHit();
+    // Only asked in the air, which is the only time it is needed.
+    if (v.spec.landGrip && v.grounded === 0) v.landSeen = this._canBeSeen();
     // A "move along" blip of lights and siren runs down whatever else happens
     // (see _warnIfBlocked).
     if (v.blipFor > 0) v.blipFor = Math.max(0, v.blipFor - dt);
@@ -2247,6 +2255,33 @@ export class Officer {
     if (!this._fast || !dr.hasPath) return null;
     this._mode = 'fast';
     return dr.followPath(dt, this._chaseSpeed(), { lane: false });
+  }
+
+  /**
+   * Could anybody see this car land? In the picture on this machine, or near another person's car,
+   * whose camera this machine knows nothing about.
+   */
+  _canBeSeen() {
+    const v = this.vehicle, g = this.game;
+    const cam = g.camera3 && g.camera3.camera;
+    if (cam) {
+      const dx = v.position.x - cam.position.x, dy = v.position.y - cam.position.y, dz = v.position.z - cam.position.z;
+      const d = Math.hypot(dx, dy, dz);
+      if (d < SEEN_NEAR) return true;
+      if (d < SEEN_FAR) {
+        cam.getWorldDirection(_seen);
+        // The width of a landscape picture, and a margin: half the vertical field, widened by the aspect.
+        const half = Math.atan(Math.tan((cam.fov * Math.PI) / 360) * (cam.aspect || 1.6)) + SEEN_MARGIN;
+        if ((dx * _seen.x + dy * _seen.y + dz * _seen.z) / d > Math.cos(half)) return true;
+      }
+    }
+    const list = g.vehicles;
+    for (let i = 0; i < list.length; i++) {
+      const o = list[i];
+      if (o === v || o.removed || !(o.remote || o.humanDriven || o === g.player)) continue;
+      if (Math.hypot(o.position.x - v.position.x, o.position.z - v.position.z) < SEEN_OTHER) return true;
+    }
+    return false;
   }
 
   /** A split second from another car that is not one of ours? Vehicle._bumpPass eases the tyres for it. */

@@ -275,6 +275,9 @@ const OPEN_GRIP = 1.0;
 const OPEN_BRAKE = 1.15;
 /** How much of spec.brakes.maxDecel a stop is planned on. */
 const STOP_PLAN = 0.78;
+/** Off a landing somebody can see: the most brake it uses, and how many seconds off something solid has to be to let it. */
+const LAND_BRAKE = 0.2;
+const LAND_WALL = 1;
 /** The parked tractor: how far off a car allows for it, m; the clearance a line past it must have beyond the car's own width, and the corner it steers for. See _roundParked. */
 const PARKED_LOOK = 90;
 const PARKED_TRIGGER = 1.0;
@@ -819,6 +822,9 @@ export class Driver {
     // faster. Measured in the copse (tests/woods.js) it was slightly worse, 4
     // hits against 3, so it is not in the game.
     if (slip <= 0.20 || v.speed <= 7) return Infinity;
+    // Sliding off a landing is meant to be seen: stamping on the brakes for it is the "just basically
+    // stops where it is" that this looser grip is here to end.
+    if (v._bumpLand && v._bump > 0) return Infinity;
     const severity = clamp01((slip - 0.20) / 0.45);
     const keep = lerp(0.96, 0.68, severity * lerp(1.15, 0.75, this.skill.throttleControl));
     return v.speed * keep;
@@ -2450,6 +2456,14 @@ export class Driver {
         && s.distance < this.flickDist) {
       out.handbrake = 1;
       out.throttle *= 0.3;
+    }
+
+    // Sliding off a landing: off the brakes while it does, unless something solid is coming up. It
+    // was the driver as much as the tyres that stopped a car dead on touching down, tests/landslide.js:
+    // nose off the way it was going reads as a corner far too tight for this speed.
+    if (v._bumpLand && v._bump > 0.25 && !(this.wallNear < v.speed * LAND_WALL)) {
+      out.brake = Math.min(out.brake, LAND_BRAKE);
+      out.handbrake = 0;
     }
 
     out.clutchKick = false;
