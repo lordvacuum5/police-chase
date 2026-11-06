@@ -652,7 +652,7 @@ Object.assign(SPECS, {
 const SUV_PLAYER_BRAKE_TORQUE = 3900;
 
 export function drivablePoliceSpec(key = 'interceptor') {
-  const base = SPECS[key] || SPECS.interceptor;
+  const base = HUMAN_POLICE[key] || SPECS[key] || HUMAN_POLICE.interceptor;
   const spec = Object.assign({}, base, {
     // The Runner's setting, but coming in from 29 km/h rather than 72.
     //
@@ -776,6 +776,34 @@ const BODY_MIDDLE = {
   runner: -0.055, supercar: 0.284, offroad: -0.26, hatchback: -0.255, estate: -0.30, civsuv: -0.14,
 };
 for (const k of Object.keys(BODY_MIDDLE)) SPECS[k].colliderZ = BODY_MIDDLE[k];
+
+/**
+ * The police the computer drives, as good as they can be without cheating outright. "I want
+ * the police as good as they possibly can ... give them more grip than the civilian car has
+ * ... unlimited speed ... I just want them to be fast and quick and route well." Their grip
+ * had come out at 0.93 against a fleeing civilian's 1.2. A person driving one keeps the car as
+ * it was (HUMAN_POLICE, drivablePoliceSpec): this is the opposition, not the handling.
+ */
+const AI_POLICE_GRIP = 1.5;
+const AI_POLICE_POWER = 1.35;
+const AI_POLICE_DRAG = 0.8;
+const HUMAN_POLICE = {};
+for (const k of ['patrol', 'interceptor', 'unmarked', 'suv', 'van']) {
+  const s = SPECS[k];
+  HUMAN_POLICE[k] = s;
+  const gears = s.gears ? s.gears.slice() : null;
+  if (gears) gears[gears.length - 1] *= 0.85;   // A taller top gear: the limiter was the limit.
+  SPECS[k] = Object.assign({}, s, {
+    gripScale: s.gripScale * AI_POLICE_GRIP,
+    highSpeedTyre: { from: 8, to: 30, stiffness: { front: 2.3, rear: 2.9 }, grip: { front: 1.45, rear: 1.47 } },
+    offRoadGrip: s.offRoadGrip * 1.15,
+    engine: Object.assign({}, s.engine, {
+      torqueCurve: s.engine.torqueCurve.map(([rpm, nm]) => [rpm, Math.round(nm * AI_POLICE_POWER)]),
+    }),
+    aero: Object.assign({}, s.aero, { dragArea: s.aero.dragArea * AI_POLICE_DRAG }),
+    topSpeedHint: s.topSpeedHint * 1.25,
+  }, gears ? { gears } : {});
+}
 
 /**
  * The getaway car, when the computer is driving it and you are the police.

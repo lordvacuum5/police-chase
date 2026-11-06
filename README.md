@@ -7976,6 +7976,45 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### The police as good as they can be
+
+*"The police were really lagging behind. I was in the helicopter, so I had to actually step in, and
+otherwise they would have lost it ... I want the police as good as they possibly can without completely
+cheating. Give them more grip than the civilian car ... unlimited speed ... I just want them to follow
+the quickest route. If they decide to stay on roads because they think it's quicker, that's fine."*
+
+**The real fault.** `Officer.aggression`, the closing speed and the catch-up all read `game.heat.tier`, the
+*player's* wanted level. On the police side's open world that is always 0, so a unit after a five-star
+civilian drove at 84% of its pace, closing as little as it ever does, with no catch-up band at all. It now reads
+`chaseTier`: the level of the civilian it is on (`suspectTier`), else the player's.
+
+**The cars.** AI police (`SPECS`, `AI_POLICE_*`): grip 0.93 to 1.39 against a fleeing civilian's 1.2, the
+high-speed tyres, power 1.35 times, drag 0.8 times, a taller top gear. `pace` floor 0.84 to 0.96. A person driving
+one is untouched (`HUMAN_POLICE`, `drivablePoliceSpec`): 0.93 as before. A runner gets chased by all this too.
+
+**The route.** Both on a road, a unit stayed on it. Now `_shortcutThere` asks about once a second how long the
+road is, and takes a long-range line across if that is over 1.25 times the straight way and the target is 70 m+
+off. Otherwise the road, as asked.
+
+`tests/aibust.js`, player away, 100 s a run, nearest unit to the fleeing car:
+
+| | mean nearest | within 60 m | outcome |
+|---|---|---|---|
+| chasing at the player's level (the fault) | not measured | not measured | 2 of 6 caught, 3 lost |
+| chasing at the car's own level | 48-63 m | 56-74% | 6 of 6 still on it at 100 s |
+| **and the cars and the route** | **23-39 m** | **92-100%** | 1 caught, 3 still on it, 1 lost, never having got near |
+
+`tests/keepup.js`, Haldon Vale, 4 routes, at 150: mean 106 to 117 km/h, behind 283 to 233 m, with it 5% to 16%, trees
+3 to 0, hard 1 to 0, no wrecks; spins 1 to 4. At 120: mean 108 to 106, behind 118 to 162 m, with it 25% to 28%, trees 0
+to 1, spins 0 to 6, the ghost not being what they most need to outrun.
+Wexbury, at 90 and 120: mean 62/67 to 68/69 km/h, with it 52%/34% to 80%/48%, behind 80/81 to 87/101 m. Hits up, 18/13 to
+32/28, many on the target itself (18/14), no wrecks, worst damage 0.93 in one run.
+
+*"The busting thing and the tracking takes really long to run out compared with multiplayer."* Tracking was mine, 6 s
+from the round before; `SUSPECT_TRACK` 3, as the player's. The arrest's conditions now match `Heat._checkBust`:
+under 3 km/h within 3.0 m. Its drain was already the same rate, 2.2 a second, so 2.3 s from full; if it still feels
+slow that is not the number.
+
 ### Police who can lose a car, and civilians worth chasing
 
 *"Do the other police cars definitely not know where it is, even when they're searching for it? ...
@@ -7999,7 +8038,7 @@ across country to the junction it wants is 1.25 times shorter (not on Ashfield's
 |---|---|---|---|
 | before, police with the true position | 4 of 4 | 0 | 0 |
 | police not told, heat falling at 1/18 | 0 of 5 | 5, about 26 s each | 0 |
-| **and heat 1/40, 3 cars to start, 6 s tracking (kept)** | **2 of 6** | **3** | **1** |
+| and heat 1/40, 3 cars to start, 6 s tracking | 2 of 6 | 3 | 1 |
 
 *"When the police lose sight of them, I want the tracking thing to appear on my screen ... I can still
 see it on the mini map ... when the tracking thing ends ... it vanishes from the minimap ... there are

@@ -192,6 +192,9 @@ scoring, deliberately.
   the units to arrest (`tests/aibust.js`); `OPEN_WORLD_UNITS` is the larger table.
   Collision boxes are centred on the drawn body with `BODY_MIDDLE` in vehicles.js:
   a new model of very different proportions needs its value re-measuring.
+* **AI police are stronger than a person's police car on purpose** (`AI_POLICE_*`, `HUMAN_POLICE` in
+  vehicles.js), at the player's request. Anything on an Officer that means "how hard is this chase" must read
+  `chaseTier`, never `game.heat.tier`: that was the whole of why they lagged behind civilians.
 * **Units on a suspect are not told where it is** once it is lost: `Suspects._searchPoint`,
   `SUSPECT_TRACK`. Balance of catching and escaping is in `HEAT_FALL`, `OPEN_WORLD_UNITS`,
   `NERVE_*`, `fleeingSpec`; `tests/aibust.js` is the measure, and it moves a lot.

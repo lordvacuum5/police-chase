@@ -32,21 +32,25 @@ window.__runAiBust = async function (runs = 3, seconds = 120) {
       const s = g.suspects.offence(c, 'bolt', null);
       if (!s) { rows.push('refused'); continue; }
       let near = Infinity, maxPin = 0, caught = 0, maxUnits = 0, below = 0;
+      let gapSum = 0, gapN = 0, withIt = 0, after = 0;
       for (let i = 0; i < seconds * 30; i++) {
         p.setControls(ctl);
         g._update(1 / 30);
         if (s.state !== 'run') { if (s.state === 'pull' || s.state === 'parked') caught = i / 30; break; }
+        let closest = Infinity;
         for (const u of s.units) {
           if (!u.vehicle || u.vehicle.removed) continue;
           const r = Math.hypot(u.vehicle.position.x - s.v.position.x, u.vehicle.position.z - s.v.position.z);
           near = Math.min(near, r - (u.vehicle.spec.dims.l + s.v.spec.dims.l) * 0.5);
+          closest = Math.min(closest, r);
         }
+        if (closest < Infinity) { gapSum += closest; gapN++; if (i > 300 && closest < 60) withIt++; if (i > 300) after++; }
         maxPin = Math.max(maxPin, s.pinFor);
         maxUnits = Math.max(maxUnits, s.units.length);
         if (s.v.position.y < g.sim.heightAt(s.v.position.x, s.v.position.z) - 1) below++;
         if (i % 150 === 0) await new Promise((r) => setTimeout(r, 0));
       }
-      rows.push(`run ${run}: ${caught ? `CAUGHT at ${caught.toFixed(0)} s` : `not caught (${s.state})`}, from ${Math.round(far)} m off, nearest gap ${near.toFixed(1)} m, most pin ${maxPin.toFixed(1)} s, units up to ${maxUnits}, level ${(+s.heat).toFixed(1)}, damage ${(+s.v.damage).toFixed(2)}, below ground ${below} frames`);
+      rows.push(`run ${run}: ${caught ? `CAUGHT at ${caught.toFixed(0)} s` : `not caught (${s.state})`}, from ${Math.round(far)} m off, nearest gap ${near.toFixed(1)} m, most pin ${maxPin.toFixed(1)} s, units up to ${maxUnits}, mean nearest unit ${gapN ? Math.round(gapSum / gapN) : '-'} m, within 60 m ${after ? Math.round((withIt / after) * 100) : 0}% after the first 10 s, level ${(+s.heat).toFixed(1)}, damage ${(+s.v.damage).toFixed(2)}, below ground ${below} frames`);
       for (const o of g.suspects.list) if (o.state === 'run') { o.state = 'free'; g.suspects._release(o); }
       await new Promise((r) => setTimeout(r, 0));
     }

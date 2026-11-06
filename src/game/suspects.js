@@ -75,8 +75,8 @@ const MAX_HEAT = 5;
 /** How far a unit can see a suspect, m (with a clear line). */
 const SIGHT = 170;
 /** The arrest: under this speed, m/s, with a unit's bodywork within BUST_GAP m, for BUST_SECONDS. */
-const BUST_SPEED = 1.5;
-const BUST_GAP = 3.2;
+const BUST_SPEED = 3 / 3.6;
+const BUST_GAP = 3.0;
 const BUST_SECONDS = 5;
 /** How fast the arrest runs back once nobody is on it, per second: the same as the player's own (game/heat.js). */
 const BUST_DRAIN = 2.2;
@@ -99,8 +99,8 @@ const HUNTED_NEAR = 250;
 /** A unit searching has got to where it was going within this, m, and looks this far from the last sighting. */
 const SEARCH_REACHED = 25;
 const SEARCH_RANGE = 280;
-/** How long after losing sight of it the force still knows where it is, s. A car off across country has gone by 3, the player's own figure. */
-const SUSPECT_TRACK = 6;
+/** How long after losing sight of it the force still knows where it is, s: as the player's (dispatcher TRACK_SECONDS). "It should be the same as multiplayer." */
+const SUSPECT_TRACK = 3;
 /** A suspect that has not moved for this long, s, can be arrested from this far, m: wherever it has ended up, a unit can walk to it. */
 const STILL_SECONDS = 10;
 const STILL_REACH = 22;
@@ -303,6 +303,7 @@ export class Suspects {
     for (const u of s.units) {
       if (!u.vehicle || u.vehicle.removed) continue;
       u.vehicle.onCall = false;
+      u.suspectTier = undefined;
       u.setRole(ROLE.PATROL);
       this.game.dispatcher.adopt(u);
     }
@@ -337,7 +338,9 @@ export class Suspects {
     // for it? ... it never really escapes." Now as for the player: where it is while seen and
     // for SUSPECT_TRACK after, then where it was last seen, then the roads round there.
     const known = s.seen || s.unseenFor < SUSPECT_TRACK;
+    const level = Math.max(1, Math.min(MAX_HEAT, Math.floor(s.heat)));
     for (const u of s.units) {
+      u.suspectTier = level;
       u.update(dt, known ? v : this._searchPoint(s, u));
       if (known) u._ghost = null;
       const r = dist2(u.vehicle.position.x, u.vehicle.position.z, v.position.x, v.position.z);
@@ -586,6 +589,7 @@ export class Suspects {
         if (!u) continue;
         s.units.splice(s.units.indexOf(u), 1);
         u.vehicle.onCall = false;
+        u.suspectTier = undefined;
         d.adopt(u);
         return;
       }
@@ -608,6 +612,7 @@ export class Suspects {
     if (!pick) return;
     from.units.splice(from.units.indexOf(pick), 1);
     pick.vehicle.onCall = false;
+    pick.suspectTier = undefined;
     d.adopt(pick);
   }
 

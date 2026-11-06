@@ -90,6 +90,10 @@ const FAST_EVERY = 0.8;
 const FAST_GAP = 1 / 30;
 const FAST_OFF = 8;
 const FAST_SHORT = 25;
+/** Leaving a road for a line: the target at least this far, m; the road this many times as long; asked this often, s. */
+const SHORT_FROM = 70;
+const SHORT_SAVING = 1.25;
+const SHORT_EVERY = 1;
 
 /** The parked tractor as the planner's boxes are, wherever it has been shoved to. */
 function parkedBox(rig) {
@@ -495,7 +499,18 @@ export class Officer {
    * the closing speed and the rubber-band boost.
    */
   get aggression() {
-    return clamp01((this.game.heat.tier - 1) / 4);
+    return clamp01((this.chaseTier - 1) / 4);
+  }
+
+  /**
+   * The wanted level this unit is chasing at: the player's, or the level of the civilian it
+   * is on (Suspects sets `suspectTier`). They all read the player's, which on the police
+   * side's open world is always nothing: a unit after a five-star civilian drove at 84% of its
+   * pace, closing at the least it ever does, with no catch-up at all. "The police were really
+   * lagging behind ... I had to actually step in, otherwise they would have lost it."
+   */
+  get chaseTier() {
+    return this.suspectTier === undefined ? this.game.heat.tier : this.suspectTier;
   }
 
   /** Distance to a world point, on the ground plane. */
@@ -1835,7 +1850,7 @@ export class Officer {
    * increase the closing speed and aggression as the wanted level increases."
    */
   get ramAggression() {
-    return clamp01(0.3 + 0.7 * (this.game.heat.tier - 1) / 4);
+    return clamp01(0.3 + 0.7 * (this.chaseTier - 1) / 4);
   }
 
   /**
@@ -2200,7 +2215,10 @@ export class Officer {
     };
     // Not on Ashfield's grid, where it measured no better: README, "A line planned".
     if (window.__noFastPlan || (g.mapDef && g.mapDef.id === 'city') || d < FAST_FROM || v.speed < FAST_SPEED) return drop();
-    if (dr._onCarriageway() && g.sim.surfaceAt(t.x, t.z) !== 0) return drop();
+    // Both on a road, the road, unless going across is a good deal shorter. "I just want them
+    // to follow the quickest route ... if they decide to stay on roads because they think it's
+    // quicker, that's fine."
+    if (dr._onCarriageway() && g.sim.surfaceAt(t.x, t.z) !== 0 && !this._shortcutThere(dt, target, d)) return drop();
     this._fastFor = (this._fastFor || 0) - dt;
     const off = this._fast && dr.hasPath && Math.abs(dr.crossTrack || 0) > FAST_OFF;
     const short = this._fast && dr.remaining() < FAST_SHORT;
@@ -2220,6 +2238,24 @@ export class Officer {
     if (!this._fast || !dr.hasPath) return null;
     this._mode = 'fast';
     return dr.followPath(dt, this._chaseSpeed(), { lane: false });
+  }
+
+  /** Is the road to the target a good deal longer than the way across? Asked about once a second. */
+  _shortcutThere(dt, target, d) {
+    this._shortFor = (this._shortFor || 0) - dt;
+    if (this._shortFor > 0) return this._short;
+    this._shortFor = SHORT_EVERY;
+    this._short = false;
+    if (d < SHORT_FROM) return false;
+    const v = this.vehicle, gr = this.game.graph, t = target.position;
+    const n = gr.nearestNode(t.x, t.z);
+    if (!n) return false;
+    const path = gr.pathFromPosition(v.position.x, v.position.z, v.forward.x, v.forward.z, n.id, 0, Infinity, v.speed, CUT_CORNER);
+    if (!path || path.length < 2) { this._short = true; return true; }
+    let road = 0;
+    for (let i = 1; i < path.length; i++) road += dist2(path[i - 1].x, path[i - 1].z, path[i].x, path[i].z);
+    this._short = road > d * SHORT_SAVING;
+    return this._short;
   }
 
   _holdWoodsAim(dt, target, d) {
@@ -2789,7 +2825,7 @@ export class Officer {
     a.noSpin = window.__noSpin === undefined ? NO_SPIN : window.__noSpin;
     // Nor rolls over. See Vehicle._guardFlip.
     a.noFlip = window.__noFlip !== false;
-    const chasing = target && this.game.heat.tier > 0 && this.role !== ROLE.PATROL;
+    const chasing = target && this.chaseTier > 0 && this.role !== ROLE.PATROL;
     if (!chasing) {
       a.boost = 1; a.grip = 1; a.stability = 0; a.steer = 1; a.rotate = 0;
       a.drift = 0; a.shielded = false;
@@ -2884,7 +2920,7 @@ export class Officer {
   get pace() {
     // Floor raised from 0.74: even at one star the police were too easy to
     // leave behind by simply driving quickly.
-    return lerp(0.84, 1.0, this.aggression);
+    return lerp(0.96, 1.0, this.aggression);
   }
 }
 
