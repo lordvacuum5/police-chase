@@ -745,10 +745,18 @@ export function drivablePoliceSpec(key = 'interceptor') {
  */
 export function fleeingSpec(base) {
   return Object.assign({}, base, {
-    engine: SPECS.runner.engine,
-    brakes: Object.assign({}, base.brakes, { maxTorque: 3200, gripBonus: 1.2 }),
-    gripScale: 1.02,
-    topSpeedHint: 70,
+    // More power than the runner, and the rubber of a police car and then some: "you need
+    // to give them like 100% grip. Basically make them as good as the police cars are, or
+    // better." The driver plans on gripScale, the tyres go on highSpeedTyre (see getawaySpec).
+    engine: Object.assign({}, SPECS.runner.engine, {
+      torqueCurve: SPECS.runner.engine.torqueCurve.map(([rpm, nm]) => [rpm, Math.round(nm * 1.2)]),
+    }),
+    brakes: Object.assign({}, base.brakes, { maxTorque: 3400, gripBonus: 1.45 }),
+    gripScale: 1.2,
+    highSpeedTyre: { from: 8, to: 30, stiffness: { front: 2.3, rear: 2.9 }, grip: { front: 1.3, rear: 1.33 } },
+    offRoadGrip: 2.3,
+    offRoadLatLimit: 18.5,
+    topSpeedHint: 78,
   });
 }
 

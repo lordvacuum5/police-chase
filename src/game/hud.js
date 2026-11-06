@@ -293,13 +293,17 @@ export class Hud {
     // they cannot currently see you: with eyes on you it would sit full the
     // whole time and say nothing.
     const k = dispatcher.knowledge;
-    const tracking = heat.tier > 0 && !k.seen && k.timeSinceSeen < TRACK_SECONDS;
+    // In the open world nobody is wanted, and it is the fleeing car being tracked: "when the
+    // police lose sight of them, I want the tracking thing to appear on my screen."
+    const worldLeft = this.game.openWorld ? this.game.suspects.tracking() : null;
+    const tracking = this.game.openWorld ? worldLeft !== null
+      : heat.tier > 0 && !k.seen && k.timeSinceSeen < TRACK_SECONDS;
     if (tracking !== this._trackShown) {
       this._trackShown = tracking;
       this.trackEl.classList.toggle('on', tracking);
     }
     if (tracking) {
-      const left = clamp01(1 - k.timeSinceSeen / TRACK_SECONDS);
+      const left = worldLeft !== null ? worldLeft : clamp01(1 - k.timeSinceSeen / TRACK_SECONDS);
       this.trackFill.style.width = (left * 100).toFixed(1) + '%';
       this.trackEl.classList.toggle('fading', left < 0.34);
     }
@@ -740,7 +744,9 @@ export class Hud {
     // position is simply where the car is, and drawing it as a guess while the
     // force still has a hard fix says the opposite of what is happening.
     const kn = dispatcher.knowledge;
-    if (heat.tier > 0 && !kn.seen && !dispatcher.inContact && kn.confidence > 0) {
+    // The escapee's own map only. A police player has the suspect's flashing marker in the
+    // same place, and got two circles: "there are like two mini circles ... why are there two?"
+    if (!player.isPolice && heat.tier > 0 && !kn.seen && !dispatcher.inContact && kn.confidence > 0) {
       const p = toMap(kn.position.x, kn.position.z);
       const rad = lerp(70, 12, kn.confidence) * k;
       ctx.strokeStyle = `rgba(255,176,32,${0.25 + kn.confidence * 0.4})`;

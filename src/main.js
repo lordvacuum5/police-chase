@@ -20,7 +20,7 @@ import {
 } from './ai/officer.js';
 import { Driver, SKILL } from './ai/driver.js';
 import { Traffic, trafficPaint } from './game/traffic.js';
-import { Suspects, SUSPECT_SIGHT } from './game/suspects.js';
+import { Suspects, SUSPECT_SIGHT, SUSPECT_TRACK } from './game/suspects.js';
 import { Runner, pickRunnerCar } from './ai/runner.js';
 import { warmLocalPlanner, pumpPlanner, boxesNear } from './ai/localplan.js';
 import { planFast } from './ai/fastplan.js';
@@ -1113,9 +1113,11 @@ class Game {
       const d = dist2(me.position.x, me.position.z, s.v.position.x, s.v.position.z);
       if (d < bd) { bd = d; best = s; }
     }
-    const at = (s) => (s.seen ? s.v.position : (s.unseenFor < SEARCH_SECONDS ? s.lastSeen || null : null));
+    // On the map while seen and while tracking; off it when that runs out and nobody has it
+    // back. "When the tracking thing ends ... then it vanishes from the minimap."
+    const at = (s) => (s.seen || s.unseenFor < SUSPECT_TRACK ? s.v.position : null);
     this.hud.suspect = best ? at(best) : null;
-    this.hud.suspectStale = !!best && !best.seen;
+    this.hud.suspectStale = false;
     // The red ring, round the car while it is seen: how far the police on it
     // can see it.
     this.hud.suspectRange = best && best.seen ? SUSPECT_SIGHT : 0;
@@ -1125,7 +1127,7 @@ class Game {
     for (const s of this.suspects.list) {
       if (s === best || s.state !== 'run' || s.v.removed) continue;
       const p = at(s);
-      if (p) this.hud.moreSuspects.push({ p, stale: !s.seen });
+      if (p) this.hud.moreSuspects.push({ p, stale: false });
     }
     // The busted meter, for whichever arrest is nearest done -- yours or a
     // unit's. The player's own heat is pinned at 0 here, so its meter is free.

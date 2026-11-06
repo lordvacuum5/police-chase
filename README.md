@@ -7976,6 +7976,54 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Police who can lose a car, and civilians worth chasing
+
+*"Do the other police cars definitely not know where it is, even when they're searching for it? ...
+it never really escapes."* They did know. Units on a suspect were handed the car itself every frame
+(`u.update(dt, v)`), seen or not, and new ones spawned round where it really was. Now they have what
+the force has: the car while seen and for `SUSPECT_TRACK` (6 s) after, then where it was last seen,
+then one road junction after another within 280 m of that (`Suspects._searchPoint`); new cars come to
+what is known. Staged with sight forced off: at 6.3 s a unit's aim stopped being the car, and was 200 m
+behind it by 9.3 s.
+
+*"Do they like intentionally give up sometimes? I think the police are too good ... you need to give
+them like 100% grip ... as good as the police cars, or better ... a full police routing system, so
+they don't follow the road."* They did give up: that was the nerve rule, and it was too quick, tailed
+for 40 s; now 100 s, and a knock 0.07 not 0.15. `fleeingSpec`: the Runner's engine and a fifth more, `gripScale`
+1.2, the getaway car's kind of tyres, `offRoadGrip` 2.3. `Runner._planners` leaves the road when the way
+across country to the junction it wants is 1.25 times shorter (not on Ashfield's grid).
+
+`tests/fleeing.js`: mean 70 to 81 km/h. `tests/aibust.js`, player away, 100 s each:
+
+| | caught | got away | still running |
+|---|---|---|---|
+| before, police with the true position | 4 of 4 | 0 | 0 |
+| police not told, heat falling at 1/18 | 0 of 5 | 5, about 26 s each | 0 |
+| **and heat 1/40, 3 cars to start, 6 s tracking (kept)** | **2 of 6** | **3** | **1** |
+
+*"When the police lose sight of them, I want the tracking thing to appear on my screen ... I can still
+see it on the mini map ... when the tracking thing ends ... it vanishes from the minimap ... there are
+like two mini circles showing where it last was. Why are there two?"* In the open world the tracking bar
+reads `Suspects.tracking()`; the marker stays live while it runs and goes when it ends, with no last-seen
+ring at all. Staged: bar and marker both up to 5.3 s, both gone at 6.3 s. The two circles: one was each of
+two suspects in the open world, gone with the rings; for a police player in multiplayer, the orange
+last-known circle and the suspect's flashing marker in the same place, so the orange one is now the
+escapee's own map only. A multiplayer police player keeps the flashing last-seen marker: only the solo side
+was asked about.
+
+*"When I go over large jumps with the police SUV, it just seems to flip a little bit too much. It's just
+because it's so bouncy when it hits the ground."* Dropped on the flat (`tests/landing.js`) nothing is wrong:
+20 m at 160 km/h bounced 0.08 m, 12 degrees, the SUV much like the others. The real jumps do it,
+`tests/quarry.js`: 2 runs in 9 upside down, one off the table at 120 km/h after 6.1 s in the air.
+`Vehicle._landingSettle`, on every car: after 0.5 s in the air, for 0.7 s from touching, upward speed and
+pitch and roll rates are damped (7/s); yaw and speed along the ground left alone. Then: none in 9 upside
+down, 2.0 s in the air for that case. One run ended on its side, wedged. Its slowing is not charged as a
+hit (it was at first: 0.11 to 0.42 damage on a kicker). These runs are chaotic and it is 9 of them, so
+fewer flips, not none.
+
+*"When I'm the helicopter ... there's literally like no traffic spawns."* A car may only appear unseen, and
+from 200 m up that is the map. In the air it now only has to be 160 m off (`SKY_CLEAR`): 17 cars by 8 s.
+
 ### Landing it, crashing it, and the camera at strange angles
 
 *"I can like smash into the ground at like 300 miles an hour, almost at a nosedive, and I'll be

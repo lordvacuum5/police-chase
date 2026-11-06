@@ -19,6 +19,10 @@ const HEDGE_LOSS = 0.40;
 const HEDGE_DRAG = 0.8;
 /** How hard going into one feels to the camera and the sound, as an impact in m/s. */
 const HEDGE_THUMP = 5;
+/** Landing from a jump (_landingSettle): off the ground at least this long, s; for this long after, s; how hard, per s. */
+const LAND_AIR = 0.5;
+const LAND_SETTLE = 0.7;
+const LAND_DAMP = 7;
 const HEDGE_QUERY = groups(0xFFFF, GROUP.HEDGE);
 /** _guardFlip: the tilt it starts at, radians (about 23 degrees), and how hard it rights the car. */
 const FLIP_FROM = 0.4;
@@ -715,6 +719,36 @@ export class Vehicle {
     if (dv > 4) this._knocked = 0.8;
   }
 
+  /**
+   * Coming down from a real jump, the rebound and the tumble are taken out of it.
+   *
+   * "When I go over large jumps with the police SUV, it just seems to flip a little bit too
+   * much. It's just because it's so bouncy when it hits the ground." Springs that suit a
+   * road, handed the whole of a big fall at once, throw the car back up: off the quarry's
+   * table at 120 km/h it was in the air for 6.1 s and ended on its roof. After LAND_AIR s off
+   * the ground, for LAND_SETTLE s from touching: upward speed and pitch and roll rates go
+   * quickly. Yaw and speed along the ground are left alone, so it can still be driven out.
+   */
+  _landingSettle(dt) {
+    if (window.__noLandingSettle) return;
+    const down = this.wheels.some((w) => w.grounded);
+    if (down) {
+      if ((this._airFor || 0) > LAND_AIR) this._settleFor = LAND_SETTLE;
+      this._airFor = 0;
+    } else {
+      this._airFor = (this._airFor || 0) + dt;
+    }
+    if (!(this._settleFor > 0)) return;
+    this._settleFor -= dt;
+    const lv = this.body.linvel(), av = this.body.angvel();
+    const k = Math.exp(-LAND_DAMP * dt);
+    if (lv.y > 0) {
+      this.body.setLinvel({ x: lv.x, y: lv.y * k, z: lv.z }, true);
+      this._prevVel.y = lv.y * k;
+    }
+    this.body.setAngvel({ x: av.x * k, y: av.y, z: av.z * k }, true);
+  }
+
   postStep(dt) {
     this._rideUpHill();
     const lv = this.body.linvel();
@@ -748,6 +782,8 @@ export class Vehicle {
     // contact, which this one always does.
     this.takeImpact(dv > IMPACT_FROM && this._onlyGround() ? dv * GROUND_SHARE : dv);
     this._prevVel.copy(_v1);
+    // After the impact is read, and telling it, so its own slowing is not charged as a hit.
+    this._landingSettle(dt);
 
     this._hedgeDrag(dt);
 

@@ -47,6 +47,7 @@ import { ROLE } from '../ai/officer.js';
 import { dist2 } from '../util/math.js';
 import { groups, GROUP } from '../physics/world.js';
 import { fleeingSpec } from './vehicles.js';
+import * as THREE from 'three';
 import { session, AI_ID } from '../net/session.js';
 
 /** Cars on a suspect by its wanted level, 0-5. */
@@ -56,7 +57,7 @@ const SUSPECT_UNITS = [0, 2, 3, 4, 5, 6];
  * "It's like wanted level 5, and there were like 4 cops ... it's weird."
  * Closer to what those stars mean in the player's own chase (dispatcher TIER).
  */
-const OPEN_WORLD_UNITS = [0, 2, 4, 7, 10, 14];
+const OPEN_WORLD_UNITS = [0, 3, 5, 8, 10, 14];
 /** A patrol this near a suspect with a clear line to it joins the chase, m; never more than JOIN_MAX on one. */
 const JOIN_NEAR = 90;
 const JOIN_MAX = 16;
@@ -66,7 +67,7 @@ const MAX_SUSPECTS = 2;
 const MAX_PARKED = 4;
 /** Its wanted level: up this much a second while seen, down this much once unseen for UNSEEN_GRACE s. */
 const HEAT_RISE = 1 / 45;
-const HEAT_FALL = 1 / 18;
+const HEAT_FALL = 1 / 40;
 const UNSEEN_GRACE = 8;
 /** What a hit on a police car adds, and the most it can be. */
 const HIT_HEAT = 0.4;
@@ -88,11 +89,18 @@ const BUST_DRAIN = 2.2;
  * still going. With a player in the way it stopped against them.
  */
 const NERVE_NEAR = 25;
-const NERVE_TAILED = 1 / 40;
-const NERVE_KNOCK = 0.15;
+// Slower than they were (1/40, 0.15): "do they like intentionally give up sometimes? I think
+// the police are too good." They did, about 40 s after one got close.
+const NERVE_TAILED = 1 / 100;
+const NERVE_KNOCK = 0.07;
 const NERVE_DAMAGE = 0.6;
 /** With a unit this near, m, it drives as if seen. */
 const HUNTED_NEAR = 250;
+/** A unit searching has got to where it was going within this, m, and looks this far from the last sighting. */
+const SEARCH_REACHED = 25;
+const SEARCH_RANGE = 280;
+/** How long after losing sight of it the force still knows where it is, s. A car off across country has gone by 3, the player's own figure. */
+const SUSPECT_TRACK = 6;
 /** A suspect that has not moved for this long, s, can be arrested from this far, m: wherever it has ended up, a unit can walk to it. */
 const STILL_SECONDS = 10;
 const STILL_REACH = 22;
@@ -324,8 +332,14 @@ export class Suspects {
     // Its own units, driven here: they are not on the dispatcher's board.
     s.units = s.units.filter((u) => u.vehicle && !u.vehicle.removed);
     let seen = false, near = Infinity;
+    // Driving at what they know. They were handed the car itself every frame, seen or not:
+    // "do the other police cars definitely not know where it is, even when they're searching
+    // for it? ... it never really escapes." Now as for the player: where it is while seen and
+    // for SUSPECT_TRACK after, then where it was last seen, then the roads round there.
+    const known = s.seen || s.unseenFor < SUSPECT_TRACK;
     for (const u of s.units) {
-      u.update(dt, v);
+      u.update(dt, known ? v : this._searchPoint(s, u));
+      if (known) u._ghost = null;
       const r = dist2(u.vehicle.position.x, u.vehicle.position.z, v.position.x, v.position.z);
       const gap = r - (u.vehicle.spec.dims.l + v.spec.dims.l) * 0.5;
       near = Math.min(near, gap);
@@ -431,6 +445,7 @@ export class Suspects {
     // any to spare and the player is not wanted, otherwise new.
     const tier = Math.max(1, Math.min(5, Math.floor(s.heat)));
     s.acquireFor -= dt;
+    const about = known ? v.position : (s.lastSeen || v.position);
     const wanted = (g.openWorld ? OPEN_WORLD_UNITS : SUSPECT_UNITS)[tier];
     if (s.units.length < wanted && s.acquireFor <= 0) {
       s.acquireFor = g.openWorld ? 1.5 : 3;
@@ -438,16 +453,50 @@ export class Suspects {
       if (g.heat.tier === 0) {
         for (const u of d.units) {
           if (u.human || u.role !== ROLE.PATROL || u.vehicle.disabled) continue;
-          const r = dist2(u.vehicle.position.x, u.vehicle.position.z, v.position.x, v.position.z);
+          const r = dist2(u.vehicle.position.x, u.vehicle.position.z, about.x, about.z);
           if (r < best) { best = r; pick = u; }
         }
       }
       if (pick) this._take(s, pick);
       else {
-        const u = g.spawnPoliceNear(v.position, tier);
+        const u = g.spawnPoliceNear(about, tier);
         if (u) { s.units.push(u); u.setRole(ROLE.PURSUE); u.vehicle.onCall = true; }
       }
     }
+  }
+
+  /**
+   * Where a unit is searching, having lost the car: where it was last seen, then one road
+   * junction after another round there. Shaped as a car, for Officer to chase.
+   */
+  _searchPoint(s, u) {
+    const g = this.game, last = s.lastSeen || s.v.position;
+    let p = u._ghost;
+    if (!p) {
+      p = u._ghost = {
+        position: new THREE.Vector3(last.x, last.y, last.z), linvel: new THREE.Vector3(),
+        forward: s.v.forward, left: s.v.left, forwardSpeed: 0, speed: 0, spec: s.v.spec, yawRate: 0,
+      };
+    } else if (dist2(u.vehicle.position.x, u.vehicle.position.z, p.position.x, p.position.z) < SEARCH_REACHED) {
+      for (let i = 0; i < 20; i++) {
+        const n = g.graph.randomNode(g.rng);
+        if (dist2(n.x, n.z, last.x, last.z) < SEARCH_RANGE) {
+          p.position.set(n.x, g.sim.heightAt(n.x, n.z), n.z);
+          break;
+        }
+      }
+    }
+    return p;
+  }
+
+  /** How long is left of the tracking window on a lost suspect, 0..1, or null: for the HUD. */
+  tracking() {
+    let left = null;
+    for (const s of this.list) {
+      if (s.state !== 'run' || s.seen || !(s.unseenFor < SUSPECT_TRACK)) continue;
+      left = Math.max(left === null ? 0 : left, 1 - s.unseenFor / SUSPECT_TRACK);
+    }
+    return left;
   }
 
   /** Caught: onto the verge, then left there. */
@@ -739,4 +788,4 @@ export class Suspects {
   }
 }
 
-export { SUSPECT_UNITS, SIGHT as SUSPECT_SIGHT };
+export { SUSPECT_UNITS, SIGHT as SUSPECT_SIGHT, SUSPECT_TRACK };

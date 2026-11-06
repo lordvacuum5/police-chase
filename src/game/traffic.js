@@ -47,6 +47,8 @@ const LANE = 2.4;
 const SIM_RANGE = 150;
 /** Nearer anybody than this, m, a car's driver thinks every frame. */
 const DRIVE_NEAR = 90;
+/** How far from a player in the air a car may come on to the road, m. */
+const SKY_CLEAR = 160;
 const SIM_SLACK = 40;
 /**
  * How far past the edge of the road a car pulls over onto the verge, m: short
@@ -294,7 +296,12 @@ export class Traffic {
       const d = dist2(n.x, n.z, w.x, w.z);
       if (d < TRAFFIC_NEAR || d > TRAFFIC_FAR || nearest(n) < TRAFFIC_NEAR) continue;
       const place = g._placeOnRoad(n, through);
-      if (!place || g.seenByAnyone(place.position)) continue;
+      if (!place) continue;
+      // From a helicopter that is most of the map, so nothing ever came: "when I'm the
+      // helicopter ... there's literally no traffic spawns." From up there a car coming on
+      // to a road SKY_CLEAR off is a dot nobody is watching appear.
+      const flying = g.player && g.player.isAircraft;
+      if (flying ? dist2(place.position.x, place.position.z, w.x, w.z) < SKY_CLEAR : g.seenByAnyone(place.position)) continue;
       const id = `t${++this._made}`;
       const kind = KINDS[Math.floor(g.rng() * KINDS.length)];
       const v = g.createVehicle(kind, kind, place.position, place.heading, {

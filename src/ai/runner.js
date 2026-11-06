@@ -124,6 +124,10 @@ const PLAN_SPEED = 10;
 const PLAN_MAX = 6;
 const LINE_FROM = 8;
 const LINE_EVERY = 0.8;
+/** Leaving the road for a line: the junction at least this far off, m, and the road this many times as long; back on the road this near the end of it, m. */
+const CROSS_FROM = 60;
+const CROSS_SAVING = 1.25;
+const LINE_END = 20;
 const PIN_GAP = 7;
 const PIN_SPEED = 2.5;
 const PIN_SECONDS = 1.2;
@@ -486,8 +490,18 @@ export class Runner {
       this._line = null;
       return null;
     };
-    if (d._onCarriageway() || v.speed < LINE_FROM) return dropLine();
+    if (v.speed < LINE_FROM) return dropLine();
+    // On the road it stays on it, unless the way to where it is going across the fields is a
+    // good deal shorter: "put a full police routing system, so they don't follow the road."
+    // Off it, or on a line already, it goes on planning.
+    const onRoad = d._onCarriageway();
+    if (onRoad && (this._line ? d.remaining() < LINE_END : g.mapDef && g.mapDef.id === 'city')) return dropLine();
     this._lineFor = (this._lineFor || 0) - dt;
+    if (onRoad && !this._line) {
+      if (this._lineFor > 0) return null;
+      const straight = Math.hypot(goal.x - v.position.x, goal.z - v.position.z);
+      if (straight < CROSS_FROM || d.remaining() < straight * CROSS_SAVING) { this._lineFor = LINE_EVERY; return null; }
+    }
     if (this._lineFor <= 0 && !(g.clock - (g._fastAt ?? -1) < 1 / 30)) {
       g._fastAt = g.clock;
       this._lineFor = LINE_EVERY;

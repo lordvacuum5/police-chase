@@ -192,6 +192,11 @@ scoring, deliberately.
   the units to arrest (`tests/aibust.js`); `OPEN_WORLD_UNITS` is the larger table.
   Collision boxes are centred on the drawn body with `BODY_MIDDLE` in vehicles.js:
   a new model of very different proportions needs its value re-measuring.
+* **Units on a suspect are not told where it is** once it is lost: `Suspects._searchPoint`,
+  `SUSPECT_TRACK`. Balance of catching and escaping is in `HEAT_FALL`, `OPEN_WORLD_UNITS`,
+  `NERVE_*`, `fleeingSpec`; `tests/aibust.js` is the measure, and it moves a lot.
+* **Rigs in a hidden pane:** Chrome throttles `setTimeout` in a background tab after 5 minutes,
+  to as little as one a minute. A rig that yields with it crawls: shim it with a MessageChannel.
 * **Traffic cars are very tough** (`durability` 11, `wreckPower` 0.7, `neverDisabled` in
   `trafficSpec`), and a fleeing one uses the police's planners (`Runner._planners`,
   `usePlanners`, set in `Suspects.offence`). It stops by nerve, not by wrecking.
