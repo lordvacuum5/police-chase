@@ -430,6 +430,14 @@ export const SPECS = {
    */
   suv: makeSpec({
     name: 'Police SUV',
+    // The new model's roof is 1.3 up where the sum in camera.js hoodEye reads it from dims as
+    // 1.43 at the windscreen, so it climbed to 1.94 before it found the bonnet: well over the roof.
+    // Just ahead of the screen, bonnet from 20 degrees down, the interceptor's figure.
+    hoodSeat: { fwd: 0.55, eye: 1.25 },
+    // And the chase views: 5.1 m long and 2.3 wide with its mirrors, it filled the bottom of the
+    // picture with its bumper at the very edge. "The camera needs to be adjusted because I'm using
+    // a new model now." See Camera.update.
+    chaseFit: { back: 1.3, up: 0.35, look: -0.45 },
     gears: POLICE_GEARS.slice(),
     body: 'suv',
     mass: 2150,

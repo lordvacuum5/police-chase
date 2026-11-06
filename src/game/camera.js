@@ -63,6 +63,8 @@ const _ray = new THREE.Raycaster();
  * and a sweep of rays is not something to do every frame.
  */
 function hoodEye(v) {
+  // A body the sum cannot read says for itself.
+  if (v.spec.hoodSeat) return v.spec.hoodSeat;
   const key = v.specKey || v.spec.name;
   const had = _hoodEye.get(key);
   if (had) return had;
@@ -110,6 +112,15 @@ const CAM_CLEAR = 0.6;
 /** How quickly the air camera swings round behind the aircraft's nose, 1/s. */
 const AIR_FOLLOW = 7;
 const HOOD_CLEAR = 0.3;
+/**
+ * The helicopter's second view: on top of the nose, bolted on. "Create a second camera on a
+ * helicopter ... almost like a bonnet view." Metres from the skids, from the shape of
+ * police_helicopter.glb: the top of the hull is 2.41 here and 1.73 at z 3.4, so the nose fills the
+ * bottom of the picture from about 24 degrees down, as a bonnet does. Under the rotor, at 3.52.
+ */
+const AIR_NOSE = { fwd: 1.6, eye: 2.55, look: -3.2, fov: 70 };
+/** The views of an aircraft, which has its own two. */
+const AIR_MODES = ['chase', 'nose'];
 /** Where round the camera the ground is also sampled for that. */
 const CLEAR_RING = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
@@ -126,9 +137,42 @@ export class ChaseCamera {
     this.buzzFor = 0;
     this.buzzPhase = 0;
     this.orbit = 0;
+    this.airMode = 0;
+    this._inAir = false;
   }
 
-  cycle() { this.mode = (this.mode + 1) % CAM_MODES.length; }
+  cycle() {
+    if (this._inAir) this.airMode = (this.airMode + 1) % AIR_MODES.length;
+    else this.mode = (this.mode + 1) % CAM_MODES.length;
+  }
+
+  /** Bolted to the nose: it pitches and rolls with the aircraft, as a bonnet view does with a car. */
+  _airNose(dt, v, alpha = 1) {
+    _carPos.copy(v.prevPos || v.position).lerp(v.position, alpha);
+    _carQuat.copy(v.prevQuat || v.quaternion).slerp(v.quaternion, alpha);
+    _fwd.copy(AXIS_F).applyQuaternion(_carQuat);
+    _upv.copy(AXIS_U).applyQuaternion(_carQuat);
+    // Kept up to date, so going back to the other view does not swing round.
+    const nose = v.yaw !== undefined ? v.yaw : Math.atan2(v.forward.x, v.forward.z);
+    this.heading = nose;
+    this.pos.copy(_carPos).addScaledVector(_fwd, AIR_NOSE.fwd).addScaledVector(_upv, AIR_NOSE.eye);
+    this.look.copy(this.pos).addScaledVector(_fwd, 30).addScaledVector(_upv, AIR_NOSE.look);
+    this.fov = damp(this.fov, AIR_NOSE.fov, 3.5, dt);
+    this.camera.position.copy(this.pos);
+    if (this.shake > 0.001) {
+      const sk = this.shake * this.shake * 0.2;
+      this.camera.position.x += (Math.random() - 0.5) * sk;
+      this.camera.position.y += (Math.random() - 0.5) * sk;
+      this.camera.position.z += (Math.random() - 0.5) * sk;
+    }
+    this.camera.up.copy(_upv);
+    this.camera.lookAt(this.look);
+    this.camera.up.set(0, 1, 0);
+    if (this.camera.fov !== this.fov) {
+      this.camera.fov = this.fov;
+      this.camera.updateProjectionMatrix();
+    }
+  }
 
   /**
    * Behind and above an aircraft, pointed where its nose is.
@@ -192,7 +236,7 @@ export class ChaseCamera {
       this.camera.updateProjectionMatrix();
     }
   }
-  get modeName() { return CAM_MODES[this.mode]; }
+  get modeName() { return this._inAir ? AIR_MODES[this.airMode] : CAM_MODES[this.mode]; }
 
   /** Add a jolt -- called on impacts. */
   impulse(strength) { this.shake = Math.min(1.2, this.shake + strength); }
@@ -225,7 +269,13 @@ export class ChaseCamera {
     // for something that mostly goes where it points and useless for
     // something that can fly sideways, backwards and straight down. The air
     // camera sits behind the nose and stays there.
-    if (v.isAircraft) { this._rel = this._lookRel = null; this._air(dt, v, alpha); return; }
+    this._inAir = !!v.isAircraft;
+    if (v.isAircraft) {
+      this._rel = this._lookRel = null;
+      if (AIR_MODES[this.airMode] === 'nose') this._airNose(dt, v, alpha);
+      else this._air(dt, v, alpha);
+      return;
+    }
 
     _carPos.copy(v.prevPos).lerp(v.position, alpha);
     _carQuat.copy(v.prevQuat).slerp(v.quaternion, alpha);
@@ -275,8 +325,10 @@ export class ChaseCamera {
       this.fov = damp(this.fov, 52, 3, dt);
     } else {
       const close = mode === 'close';
-      const dist = (close ? 5.6 : 7.4) + clamp(v.speed * 0.075, 0, 3.2);
-      const height = (close ? 2.2 : 3.05) + clamp(v.speed * 0.012, 0, 0.7);
+      // A body bigger than the rest says how much further back: spec.chaseFit.
+      const fit = v.spec.chaseFit;
+      const dist = (close ? 5.6 : 7.4) + clamp(v.speed * 0.075, 0, 3.2) + (fit ? fit.back : 0);
+      const height = (close ? 2.2 : 3.05) + clamp(v.speed * 0.012, 0, 0.7) + (fit ? fit.up : 0);
 
       const sh = Math.sin(this.heading), ch = Math.cos(this.heading);
       // Follow with a spring so kerbs and jumps read as movement -- but a
@@ -301,7 +353,7 @@ export class ChaseCamera {
 
       // Look slightly ahead of the car, further the faster it is going.
       _look.copy(_fwd).multiplyScalar(3.5 + v.speed * 0.16)
-        .add(_tmp.set(0, 1.15, 0))
+        .add(_tmp.set(0, 1.15 + (fit ? fit.look : 0), 0))
         .addScaledVector(_tmp.set(v.linvel.x, v.linvel.y, v.linvel.z), -1 / kLook);
       if (!this._lookRel) this._lookRel = this.look.clone().sub(_carPos);
       this._lookRel.lerp(_look, 1 - Math.exp(-kLook * dt));

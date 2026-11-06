@@ -7976,6 +7976,20 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### A second helicopter camera, and the SUV's
+
+*"Create a second camera on a helicopter ... almost like a bonnet view. Also, with the SUV, the camera needs to be
+adjusted because I'm using a new model now."*
+
+C (or the pause menu) now switches an aircraft between `chase` and `nose`: on top of the nose, bolted on, so it pitches
+and rolls with the aircraft, with the hull along the bottom of the picture and the main rotor going round overhead. Only the
+new view rolls; the chase view is as it was. Checked by looking, on the pad, not yet in flight.
+
+The new SUV is 5.1 m and its roof is 1.3 up. The bonnet seat is worked out from `dims`, which put it above the windscreen, and
+the search then climbed to 1.94, well over the roof, with the bonnet barely in shot. `hoodSeat` {0.55, 1.25}: bonnet from 20
+degrees down, like the interceptor. In the chase views its back bumper was at the very bottom of the picture; `chaseFit`
+puts it 1.3 m further back and 0.35 up, and aims lower. Only the SUV has either.
+
 ### Grip for corners, not for stopping
 
 *"I saw a police car do a massive jump ... it hit the ground and because it has so much grip, it stops. I want them

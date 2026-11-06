@@ -14,7 +14,6 @@
 // see Audio.setHeld.
 
 import { clamp01 } from '../util/math.js';
-import { CAM_MODES } from './camera.js';
 
 const VOL_KEY = 'pc.volume';
 
@@ -117,7 +116,7 @@ export class PauseMenu {
   }
 
   _paintCamera() {
-    const name = CAM_MODES[this.game.camera3.mode] || '';
+    const name = this.game.camera3.modeName || '';
     this.camBtn.textContent = name.toUpperCase();
   }
 
