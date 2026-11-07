@@ -8,6 +8,7 @@
 
 import { clamp, clamp01, lerp } from '../util/math.js';
 import { SEARCH_SECONDS } from '../ai/dispatcher.js';
+import { raycast, groups, GROUP } from '../physics/world.js';
 
 const MAX = 5;
 /** How long you have to be pinned before the arrest lands. */
@@ -20,6 +21,23 @@ const LEDGE_RESET = 60;
 const LEDGE_EDGE = 1.5;
 const LEDGE_ABOVE = 2;
 const LEDGE_CUT = 18;
+/**
+ * Boxed in where a police car cannot reach (Heat._checkBoxedIn): how long, s, before the warning, and how
+ * long it counts; staying within this of one spot, m; a police car at most this far off, m (they give up
+ * trying to reach a wedged car at 40-200 m, tests/wedge.js, so not very close); something solid this near,
+ * m, on two sides at least this far round from each other, radians. How often it looks, s.
+ */
+const BOX_GRACE = 20;
+const BOX_COUNT = 10;
+const BOX_STAY = 10;
+const BOX_POLICE = 300;
+const BOX_SOLID = 4;
+const BOX_ACROSS = 2.3;
+const BOX_LOOK = 0.25;
+const BOX_RAYS = 12;
+const BOX_MASK = groups(0xFFFF, GROUP.BUILDING | GROUP.PROP);
+const _boxO = { x: 0, y: 0, z: 0 };
+const _boxD = { x: 0, y: 0, z: 0 };
 
 /**
  * Seconds of being watched to climb one tier, indexed by the tier you are on.
@@ -135,7 +153,84 @@ export class Heat {
 
     this._checkBust(dt, player, dispatcher);
     this._checkLedges(dt, player);
+    this._checkBoxedIn(dt, player, dispatcher);
   }
+
+  /**
+   * Wedged where they cannot come near enough to arrest you. "You can wedge yourself in between two houses
+   * in certain spots ... and obviously then the police actually can't bust you ... you can kind of fit in
+   * between ... the petrol pumps and stuff, and the police can't actually get to you ... it's only when
+   * they're in between two houses." A helicopter calling an airstrike was the player's first thought, and
+   * not one they liked: so the officers get out and walk. In one small spot, with something solid close on
+   * two opposite sides and a police car near, BOX_GRACE seconds and then a BOX_COUNT countdown to an arrest.
+   * Drive out and it starts again. Out in the open none of this applies: the ordinary arrest does.
+   */
+  _checkBoxedIn(dt, player, dispatcher) {
+    const g = this.game;
+    if (this.value <= 0 || player !== g.player || g.outcome || player.isAircraft) {
+      this.boxTime = 0; this._boxAt = null;
+      return;
+    }
+    const p = player.position;
+    if (!this._boxAt || Math.hypot(p.x - this._boxAt.x, p.z - this._boxAt.z) > BOX_STAY) {
+      this._boxAt = { x: p.x, z: p.z };
+      this.boxTime = 0;
+      this._boxLook = 0;
+    }
+    this._boxLook = (this._boxLook || 0) - dt;
+    if (this._boxLook <= 0) {
+      this._boxLook = BOX_LOOK;
+      this._boxed = this._boxedIn(player, dispatcher);
+    }
+    this.boxTime = this._boxed ? (this.boxTime || 0) + dt : Math.max(0, (this.boxTime || 0) - dt);
+    const t = this.boxTime;
+    if (t < BOX_GRACE) { this._boxSaid = null; return; }
+    const left = Math.ceil(BOX_GRACE + BOX_COUNT - t);
+    if (left <= 0) { this.boxArrest = true; g.onBusted(); return; }
+    if (g.hud && left !== this._boxSaid) {
+      this._boxSaid = left;
+      g.hud.centreLine(`Officers on foot. Drive out or you're arrested: ${left}`);
+    }
+  }
+
+  /** Solid on two sides that face each other, and a police car close by. */
+  _boxedIn(player, dispatcher) {
+    const p = player.position;
+    let near = false;
+    for (const u of dispatcher.units) {
+      if (u.vehicle.disabled) continue;
+      if (u.distanceTo(p) < BOX_POLICE) { near = true; break; }
+    }
+    if (!near) {
+      for (const v of this.game.vehicles) {
+        if (v === player || !v.isPolice || v.disabled || v.removed) continue;
+        if (Math.hypot(v.position.x - p.x, v.position.z - p.z) < BOX_POLICE) { near = true; break; }
+      }
+    }
+    if (!near) return false;
+    _boxO.x = p.x; _boxO.y = p.y + 0.3; _boxO.z = p.z;
+    let boxed = false;
+    const seen = [];
+    for (let k = 0; k < BOX_RAYS && !boxed; k++) {
+      const a = (k / BOX_RAYS) * Math.PI * 2;
+      _boxD.x = Math.sin(a); _boxD.y = 0; _boxD.z = Math.cos(a);
+      if (!raycast(player.world, _boxO, _boxD, BOX_SOLID, BOX_MASK, player.body)) continue;
+      for (const o of seen) {
+        const d = Math.abs(Math.atan2(Math.sin(a - o), Math.cos(a - o)));
+        if (d >= BOX_ACROSS) { boxed = true; break; }
+      }
+      seen.push(a);
+    }
+    return boxed;
+  }
+
+  /** Seconds left on the boxed-in countdown, or null when it is not running. */
+  get wedgeRemaining() {
+    const t = this.boxTime || 0;
+    return t < BOX_GRACE ? null : Math.max(0, BOX_GRACE + BOX_COUNT - t);
+  }
+  get wedgeArrest() { return !!this.boxArrest; }
+  set wedgeArrest(v) { this.boxArrest = v; }
 
   /**
    * Arrest condition: stopped, with a police car right on top of you, for five
@@ -192,6 +287,9 @@ export class Heat {
     this.peak = 0;
     this.ledgeTime = 0;
     this.offLedges = 0;
+    this.boxTime = 0;
+    this.boxArrest = false;
+    this._boxAt = null;
   }
 
   /**

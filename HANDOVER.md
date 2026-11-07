@@ -207,6 +207,8 @@ scoring, deliberately.
   (`buildLife`, `session.active`), for its frame rate. Single player keeps them.
 * **Suspects in multiplayer** run on the host and are sent like traffic, under
   `v.trafficId`; `Suspects._policePlayers` is the solo player plus remote police players.
+* **Wedged between buildings is an arrest on a timer** (`Heat._checkBoxedIn`, `BOX_*`): the gaps themselves were left. A rig
+  casting rays on a fresh page finds nothing until physics has stepped once: tests/wedge.js fell for this.
 * **The quarry rim:** wheels ride whichever is nearer, the ground or the rock's collider, so never lower the real ground
   under the rock to hide it: lower the drawing (`underRock`). `smoothCollar` in terrain.js, `tests/quarryrim.js`.
 * **`Game._driftLook` is off**, at the player's word: it drew a police car's tail swung out up to 34 degrees.

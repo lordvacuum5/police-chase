@@ -7976,6 +7976,31 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Wedged between houses: officers on foot
+
+*"You can wedge yourself in between two houses in certain spots on the map, on each map, and obviously then the police
+actually can't bust you ... if a player is in between two houses for 1 minute and a helicopter is on them, something pops up
+... helicopter is launching airstrike ... probably don't put that because that's not realistic ... by petrol stations ... you can
+kind of fit in between ... the petrol pumps and stuff, and the police can't actually get to you."*
+
+Measured first. `tests/wedge.js` parks a car, at five stars, in the gaps between buildings on Ashfield and Wexbury, narrowest first:
+of 11, 3 were never arrested in 50 s, the nearest unit stopping 41, 100 and 159 m away, and in 5.2 m at Ashfield it never got an
+arrest either. They do not refuse to come in; they cannot route there, and give up some way off.
+
+The gaps were left alone: there are many, and a car can always find another. `Heat._checkBoxedIn`, as the ledges have: within 10 m
+of one spot, something solid within 4 m on two opposite sides, and a police car within 300 m. 20 s, then a line counting down from
+10: *Officers on foot. Drive out or you're arrested.* Drive out and it starts again. No star level or helicopter asked for: a car could
+wedge itself at one star and wait.
+
+| | before | now |
+|---|---|---|
+| 11 gaps: arrested within 50 s | 8 | 11, 7-8 of them on foot, in 30-39 s |
+| parked on the road, 20 places: warned at all | - | 0 |
+
+Not tested: multiplayer, and a car moving about inside 10 m rather than parked. Pumps not reproduced: of the two tightest forecourt spots, 2.9 m at
+Wexbury was arrested the normal way at 24 s, and 5.6 m at Ashfield had no unit within 200 m in 45 s, which is why the range went from 200 to 300,
+not run again since. The first figures are from a run of the earlier settings: 8 of 11 is the count in that run with the rule only reaching 40 m.
+
 ### Where the quarry's stone meets the fields
 
 *"Where it joins from stone to grass ... some of it is really weird, almost points going in ... it doesn't nicely flow into the
