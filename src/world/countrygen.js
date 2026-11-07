@@ -39,6 +39,8 @@ import {
 } from './countryextras.js';
 import { buildLife } from './countrylife.js';
 
+/** The ground drawn lower under the quarry's rock: how far out and in from the floor's edge, and how much, m. */
+const ROCK_OUT = 7, ROCK_IN = 6, ROCK_DROP = 0.35, ROCK_EDGE = 0.05, ROCK_EASE = 4;
 const RIDGEWAY_R = 800;
 /**
  * Whether a hedge is a wall to the AI's driving sweeps (and the local
@@ -166,7 +168,17 @@ export function buildCountry(sim, scene, seed = 4417) {
   // "it almost looks like it's not fully on the ground ... you can see
   // there's a tiny gap in between them and the ground". At 4 m, 2 mm.
   const DS = H_STEP;
-  const drawnV = (i, j) => { const px = i * DS - WORLD_HALF, pz = j * DS - WORLD_HALF; return grid.at(px, pz) - 0.04 - nearRoad(px, pz); };
+  // Under the quarry's rock the ground is drawn lower, so it never shows through and the edge you see
+  // is the rock's own. Drawn only: see terrain.js smoothCollar.
+  const underRock = (x, z) => {
+    if (!quarry) return 0;
+    const d = Math.hypot(x - quarry.x, z - quarry.z);
+    if (d >= quarry.r + ROCK_OUT || d <= quarry.r - ROCK_IN) return 0;
+    // Hardly at all at the edge: a full drop there left a dark band of the rock's side showing.
+    return ROCK_EDGE + (ROCK_DROP - ROCK_EDGE) * Math.min(1, (quarry.r + ROCK_OUT - d) / ROCK_EASE);
+  };
+  const dropped = (x, z) => nearRoad(x, z) + underRock(x, z);
+  const drawnV = (i, j) => { const px = i * DS - WORLD_HALF, pz = j * DS - WORLD_HALF; return grid.at(px, pz) - 0.04 - dropped(px, pz); };
   ctx.drawnAt = (x, z) => {
     const fi = (x + WORLD_HALF) / DS, fj = (z + WORLD_HALF) / DS;
     const i = Math.floor(fi), j = Math.floor(fj), tx = fi - i, tz = fj - j;
@@ -175,7 +187,7 @@ export function buildCountry(sim, scene, seed = 4417) {
     return e + (drawnV(i, j + 1) - e) * (1 - tx) + (drawnV(i + 1, j) - e) * (1 - tz);
   };
   const colour = (x, z, y, c) => groundColour(ctx, fields, x, z, y, c);
-  const terrain = buildTerrainMesh(grid, colour, DS, nearRoad);
+  const terrain = buildTerrainMesh(grid, colour, DS, dropped);
   // Before the pavements, which write no depth: see buildVillagePavements.
   terrain.renderOrder = DRAW_ORDER.ground;
   meshes.push(terrain);

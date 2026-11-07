@@ -207,6 +207,8 @@ scoring, deliberately.
   (`buildLife`, `session.active`), for its frame rate. Single player keeps them.
 * **Suspects in multiplayer** run on the host and are sent like traffic, under
   `v.trafficId`; `Suspects._policePlayers` is the solo player plus remote police players.
+* **The quarry rim:** wheels ride whichever is nearer, the ground or the rock's collider, so never lower the real ground
+  under the rock to hide it: lower the drawing (`underRock`). `smoothCollar` in terrain.js, `tests/quarryrim.js`.
 * **`Game._driftLook` is off**, at the player's word: it drew a police car's tail swung out up to 34 degrees.
   `spec.bumpGrip` loosens the tyres in a bump; `spec.sceneryShare` halves what scenery costs them. `tests/ramslide.js`,
   `tests/hillcharge.js`, `tests/runnergrip.js`. `boxesNear` can return the huge ground slab: check real distance.

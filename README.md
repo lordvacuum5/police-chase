@@ -7976,6 +7976,34 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Where the quarry's stone meets the fields
+
+*"Where it joins from stone to grass ... some of it is really weird, almost points going in ... it doesn't nicely flow into the
+stone ... I think the suspension went too low, and the model just literally hit a bit, and it just went flying."*
+
+Seen from above, the join was a saw edge. The rock's top was drawn sloping down 0.5 m to its outer edge, and the 4 m grid's triangles
+crossed that slope in teeth. The ground just outside was raw hill between the pinned rim and the graded ground beyond it, up to 0.65 m
+in a metre, 5 m out: at 90 km/h that threw a car upward at up to 7.7 m/s.
+
+`terrain.js smoothCollar`: round the ring, a height that changes slowly with the angle, held from the rock out to 2.5 m and easing back
+into the hill by 16; not across the cutting. The rock is read from that (`RIM_READ`) and drawn level, the ground drawn just under it
+(`underRock`), so the edge you see is the rock's own: a thin, clean line of stone. The rock's collider keeps its lip.
+
+Tried: lowering the real ground under the rock as well as a smaller lip, 0.2: the wheels ride whichever is nearer and fell into
+it, and at 90 km/h the nose hit the rock's edge at up to 29 m/s, 8 places in 54. The drawing alone is lowered now.
+
+`tests/quarryrim.js`, a car driven at the rim, head on, at 54 places. Kicked upward over 3 m/s in a moment:
+
+| | before | after |
+|---|---|---|
+| 50 km/h | 1 | 0 |
+| 90 km/h | 3 | 0 |
+| 130 km/h | not run | 0 |
+| worst knock at 90 | 7.5 m/s | 8.5, 14 m out, on a hill, not the rim |
+
+`tests/quarry.js`: off the rim at 60, 90 and 120, off the kicker and table, all landed upright, as before. Not tested: meeting the rim
+at an angle or along it, which may be how the player met it. A few small notches remain near the cutting, where the collar fades out.
+
 ### A landing somebody can see
 
 *"Say a police car does a jump, and then it lands next to me, and it's like sideways, and it just basically stops where it

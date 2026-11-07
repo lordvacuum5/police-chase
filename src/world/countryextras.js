@@ -41,6 +41,9 @@ const FINE_NEAR = 0.7;
 const FINE_PIECES = 4;
 /** The rock face, from inside the floor's edge to beyond it, m: thick enough to hide the grid's own slope, which on a 4 m lattice reaches up to a diagonal (5.7 m) either side of the edge. */
 const FACE_IN = 6, FACE_OUT = 7;
+/** How far outside the rock its height is read, inside the ground's held collar (terrain.js); how far its collider's outer edge is let down, m. */
+const RIM_READ = 1.5;
+const RIM_LIP = HILL_SINK + 0.15;
 /** The terraces: how tall each face is meant to be, m, and how wide each ledge. See buildQuarry. */
 const BENCH_RISE = 8;
 /** The narrowest the floor may be left by the terraces, m: room for the jumps. */
@@ -293,7 +296,7 @@ export function quarryGround(q, base) {
   // toward the track, and its edge was a step of up to 1 m and more cars
   // rolled (tests/trackbank.js, 4 of 20 against 2).
   const skip = { dir: q.open, half: CUT_HALF / q.r };
-  return { flatten, pin: { x: q.x, z: q.z, r0: q.r + 0.01, r1: q.r + 9, above: q.floor + 2.5, skip } };
+  return { flatten, pin: { x: q.x, z: q.z, r0: q.r + 0.01, r1: q.r + 9, above: q.floor + 2.5, skip, collar: { r: q.r + FACE_OUT, sample: q.r + FACE_OUT + 6 } } };
 }
 
 /**
@@ -415,7 +418,7 @@ function quarryRims(ctx, q) {
   const rims = [];
   for (let m = 0; m <= STEPS; m++) {
     const a = (m / STEPS) * TAU;
-    rims.push(ctx.at(q.x + Math.cos(a) * (q.r + FACE_OUT + 0.3), q.z + Math.sin(a) * (q.r + FACE_OUT + 0.3)));
+    rims.push(ctx.at(q.x + Math.cos(a) * (q.r + FACE_OUT + RIM_READ), q.z + Math.sin(a) * (q.r + FACE_OUT + RIM_READ)));
   }
   return rims;
 }
@@ -533,7 +536,7 @@ export function buildQuarry(ctx, q) {
     for (let k = 0; k <= n; k++) {
       const ak = lerp(a0, a1, k / n);
       as.push(ak);
-      hs.push(k === 0 ? h0 : k === n ? h1 : ctx.at(...P(ak, q.r + FACE_OUT + 0.3)));
+      hs.push(k === 0 ? h0 : k === n ? h1 : ctx.at(...P(ak, q.r + FACE_OUT + RIM_READ)));
     }
     for (let i = 0; i < tiers; i++) {
       // Pink-grey limestone, a little different face by face.
@@ -550,13 +553,20 @@ export function buildQuarry(ctx, q) {
         // way round, 0.3-0.7 m. "When I kept on coming to the edge of the
         // quarry, I kept on hitting an invisible barrier. At least the police
         // cars did."
-        const lip = i === tiers - 1 ? HILL_SINK + 0.15 : 0;
+        //
+        // Drawn level, though: drawn let down, the grid's triangles stood over the slope and cut it
+        // in teeth, "almost points going in". Letting the collider down less, 0.2, had the nose
+        // hit it at 26 m/s at 90 km/h: the lip stays.
+        const lip = i === tiers - 1 ? RIM_LIP : 0;
         const c = [
           [ax, lo, az], [bx, lo, bz], [cx, lo, cz], [dx, lo, dz],
           [ax, t0, az], [bx, t1, bz], [cx, t1 - lip, cz], [dx, t0 - lip, dz],
         ];
         addHull(W, c);
-        addPrism(b, c, stone);
+        addPrism(b, [
+          [ax, lo, az], [bx, lo, bz], [cx, lo, cz], [dx, lo, dz],
+          [ax, t0, az], [bx, t1, bz], [cx, t1, cz], [dx, t0, dz],
+        ], stone);
         // A band of darker bedding across the face, a little proud of it.
         const b0 = q.floor + (Math.min(h0, h1) - q.floor) * (i + 0.45) / tiers;
         const [ex, ez] = P(p0, ra - 0.08), [fx2, fz2] = P(p1, rb - 0.08);

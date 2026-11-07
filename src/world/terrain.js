@@ -398,9 +398,73 @@ export function buildHeightGrid(base, { half = 1000, graph = null, flatten = [],
       ? a + (b - a) * tx + (c - a) * tz
       : d + (c - d) * (1 - tx) + (b - d) * (1 - tz);
   };
+  for (const p of pins) if (p.collar) smoothCollar(p, H, n, half, at);
   let max = 0, min = 0;
   for (let k = 0; k < H.length; k++) { if (H[k] > max) max = H[k]; if (H[k] < min) min = H[k]; }
   return { n, half, step: H_STEP, H, at, max, min };
+}
+
+/**
+ * The ground round a ring of rock, made to flow into it. "Where it joins from stone to grass ... really
+ * weird, almost points going in ... it doesn't nicely flow into the stone." A 4 m grid, standing a little
+ * over a sloping top, cuts it in teeth wherever the two cross, and what was left of the raw hill between
+ * the rim and the graded ground beyond it was a step of 0.65 m in a metre, 5 m out.
+ *
+ * So: round the ring, a height that changes slowly with the angle; on that from the rock's edge out to
+ * COLLAR_HOLD, easing back into the hill by COLLAR_OUT; and no higher than that under the rock. Lowering it
+ * further under the rock was tried, and the wheels (which ride whichever is nearer) fell into it and the
+ * nose hit the rock's edge at 26 m/s: the drawing is lowered instead, countrygen.js `underRock`. Not at the
+ * wedge `skip` leaves.
+ */
+const COLLAR_HOLD = 2.5;
+const COLLAR_OUT = 16;
+const COLLAR_ANGLE = 180;
+const COLLAR_SPREAD = 5;
+
+function smoothCollar(p, H, n, half, at) {
+  const { r, sample } = p.collar;
+  const rim = new Float32Array(COLLAR_ANGLE);
+  for (let m = 0; m < COLLAR_ANGLE; m++) {
+    const a = (m / COLLAR_ANGLE) * Math.PI * 2;
+    rim[m] = at(p.x + Math.cos(a) * sample, p.z + Math.sin(a) * sample);
+  }
+  const smooth = new Float32Array(COLLAR_ANGLE);
+  for (let m = 0; m < COLLAR_ANGLE; m++) {
+    let sum = 0;
+    for (let k = -COLLAR_SPREAD; k <= COLLAR_SPREAD; k++) sum += rim[(m + k + COLLAR_ANGLE) % COLLAR_ANGLE];
+    smooth[m] = sum / (COLLAR_SPREAD * 2 + 1);
+  }
+  const rimAt = (a) => {
+    const f = ((((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) / (Math.PI * 2)) * COLLAR_ANGLE;
+    const m = Math.floor(f) % COLLAR_ANGLE, u = f - Math.floor(f);
+    return smooth[m] + (smooth[(m + 1) % COLLAR_ANGLE] - smooth[m]) * u;
+  };
+  const inner = p.r0 - 1, outer = r + COLLAR_OUT;
+  for (let j = 0; j < n; j++) {
+    const pz = j * H_STEP - half;
+    if (Math.abs(pz - p.z) > outer) continue;
+    for (let i = 0; i < n; i++) {
+      const px = i * H_STEP - half;
+      const d = Math.hypot(px - p.x, pz - p.z);
+      if (d < inner || d > outer) continue;
+      const a = Math.atan2(pz - p.z, px - p.x);
+      // Fading out toward the cutting's wedge.
+      let w = 1;
+      if (p.skip) {
+        const off = Math.abs(Math.atan2(Math.sin(a - p.skip.dir), Math.cos(a - p.skip.dir)));
+        w = clamp((off - p.skip.half) / 0.2, 0, 1);
+        w = w * w * (3 - 2 * w);
+      }
+      if (w <= 0) continue;
+      const k = j * n + i;
+      const t = clamp((d - (r + COLLAR_HOLD)) / (COLLAR_OUT - COLLAR_HOLD), 0, 1);
+      const s = t * t * (3 - 2 * t);
+      const rh = rimAt(a);
+      // Level right up under the rock, or the last cell slopes away and leaves its side showing.
+      const want = d < r ? (d > p.r0 + 1 ? rh : Math.min(H[k], rh)) : rh + (H[k] - rh) * s;
+      H[k] += (want - H[k]) * w;
+    }
+  }
 }
 
 /**
