@@ -128,6 +128,8 @@ const SLOW_EASE = 0.3;
 const SLOW_SHOTS = 4;
 const SLOW_EVERY = 12;
 const SLOW_CLOSING = 12;
+/** Your own speed must be over this, m/s (50 mph): "only appear when I'm going over ~50 mph. Otherwise, don't do it." */
+const SLOW_SPEED = 22.35;
 const SLOW_AHEAD = 0.45;
 const SLOW_OUT = 7;
 /** Game._netTrain: further out than this, s, the train jumps to the host's; nearer, it closes the gap at this rate, 1/s. */
@@ -2082,7 +2084,7 @@ class Game {
     }
     if (window.__noSlowMo || !slowMoOn() || this._slowCool > 0 || !p || p.isAircraft || p.isPolice || this.outcome
       || this.paused || session.active || this.replay.playing) return dt;
-    const v = this._aboutToHit(p);
+    const v = Math.hypot(p.linvel.x, p.linvel.z) > SLOW_SPEED ? this._aboutToHit(p) : null;
     if (v) {
       // A different way of looking at it each time: "it doesn't always have to be from the same angle."
       this._slowShot = ((this._slowShot || 0) + 1 + Math.floor(Math.random() * 2)) % SLOW_SHOTS;

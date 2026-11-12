@@ -11,9 +11,11 @@ import * as THREE from 'three';
 /** Knocks under this, m/s, leave no mark; this is how deep a knock of DENT_HARD m/s goes, m; never further in than this from the original; over this radius, m. */
 const DENT_FROM = 7;
 const DENT_HARD = 30;
-const DENT_DEEP = 0.16;
-const DENT_DEEPEST = 0.3;
-const DENT_RADIUS = 0.95;
+const DENT_DEEP = 0.34;
+const DENT_DEEPEST = 0.55;
+const DENT_RADIUS = 1.0;
+/** How much of a dent's depth varies from point to point, so it looks crumpled. */
+const DENT_ROUGH = 0.4;
 /** Only these: the player's own car, and any within this many metres of it. */
 const DENT_NEAR = 70;
 
@@ -111,7 +113,9 @@ export class Dents {
         const d2 = dx * dx + dy * dy + dz * dz;
         if (d2 > r * r) continue;
         const k = 1 - Math.sqrt(d2) / r;
-        const push = deep * k * k;
+        // Crumpled, not smooth: a smooth one read as the car's own styling. The roughness goes by where the
+        // point was made, so two points made in the same place (a seam) go the same way and nothing splits.
+        const push = deep * k * k * (1 - DENT_ROUGH + 2 * DENT_ROUGH * rough(rest[i], rest[i + 1], rest[i + 2], scale));
         let nx = a[i] + dir.x * push, ny = a[i + 1] + dir.y * push, nz = a[i + 2] + dir.z * push;
         // No deeper than DENT_DEEPEST from where it was made.
         const ox = nx - rest[i], oy = ny - rest[i + 1], oz = nz - rest[i + 2];
@@ -160,4 +164,10 @@ function shadeAgain(geo, hit) {
     if (l > 1e-12) { n[i * 3] = x / l; n[i * 3 + 1] = y / l; n[i * 3 + 2] = z / l; }
   }
   nrm.needsUpdate = true;
+}
+
+/** 0..1, smooth, the same for the same place, rising and falling every 30 cm or so. */
+function rough(x, y, z, scale) {
+  const k = 1 / scale;
+  return 0.5 + 0.5 * Math.sin(x * k * 19 + 1.3) * Math.sin(y * k * 23 + 0.4) * Math.sin(z * k * 17 + 2.1);
 }

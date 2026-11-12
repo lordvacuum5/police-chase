@@ -7976,6 +7976,29 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Bigger dents, crash cam over 50 mph, flashers in the light bar
+
+*"It's not a big enough ... you can't tell. It needs to be a bigger dent."* Twice as deep (0.34 m at 30 m/s, at most 0.55 m from how it
+was made), 1.0 m across, and crumpled: each point goes in by 60-140% of the dent's depth, varying smoothly every 30 cm or so, worked out from
+where the point was made so a seam never splits. Tried first: the roughness in 10 cm steps. It tore the whole runner into spikes, roof
+and all, and took 168 ms for three hits. With the smooth ripple, 34 then 19 ms for the first two hits on a fresh page. Measured: the
+side pushed in 0.32 m.
+
+*"Crash cam only ... when I'm going over ~50 mph. Otherwise, don't do it."* Your car must be over 22.35 m/s (`SLOW_SPEED`) for it to
+start.
+
+*"The flashing bits ... need to be moved very slightly backwards on basically every single police car ... because they don't actually go
+over the actual sirens. It'd be kind of nice if they were kind of sank slightly into the siren ... take screenshots of each car."* Each
+police model has its own light bar, and `findLightBar` found the roof instead and put the flashers behind the windscreen: 0.40 m ahead of
+the bar's middle on the patrol car, 0.47 on the interceptor, 0.60 on the SUV and 0.58 on the van, sitting just above it. Now it finds the
+bar (the highest thing, over 0.8 m across and under 0.7 m long) and, by a ray straight down every centimetre at each lamp, how long and
+how high it is there. The lamps go in its middle with their centres 2 cm under its top. Checked by rendering each car from either side
+with the lamps in flat green, with and without the car. Patrol, SUV and van show 33-35% of each lamp above the bar, as meant (4 cm of
+12), with no part out past its ends. The interceptor shows 38%: its bar is 0.20 m long and a lamp 0.22, so 1 cm overhangs at each end.
+Two tries that measured wrong, on the way: the highest point (an end cap on three of the four, the interceptor's 3.5 cm proud) and the
+corner points (a box has none across its middle; it found the patrol car's roof 16 cm below, and buried the lamps). The screenshots asked
+for could not be taken: the browser pane was hidden and showed stale frames, so pixels were counted instead.
+
 ### Crash dents; the crash camera
 
 *"Do the crash dents, single player only."* Asked with a worry about lag, so it is made at the moment of a hit and costs nothing between

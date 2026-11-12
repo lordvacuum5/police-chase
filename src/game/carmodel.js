@@ -293,6 +293,18 @@ function fitByBox(scene, targetGeometry) {
  * the height of the roof *at that end*. That is where a crew fits a bar, and
  * it is right whether or not the model has one.
  */
+/** A light bar: everything within BAR_FLAT of the top, m, spanning over BAR_WIDE across and under BAR_LONG along. */
+const BAR_FLAT = 0.03;
+const BAR_WIDE = 0.8;
+const BAR_LONG = 0.7;
+/** The flashers' middle this far under the top of the bar, m: they are 0.12 tall, so 4 cm shows above it. */
+const BAR_SINK = 0.02;
+const _ray = new THREE.Raycaster();
+const _down = new THREE.Vector3(0, -1, 0);
+const _from = new THREE.Vector3();
+/** Down a ray, anything within this of the bar's top, m, is the bar. */
+const BAR_HIGH = 0.08;
+
 function findLightBar(scene, fitted) {
   const top = fitted.max.y;
   const p = new THREE.Vector3();
@@ -316,6 +328,43 @@ function findLightBar(scene, fitted) {
       new THREE.Vector3(+0.38, top + 0.04, -0.14),
       new THREE.Vector3(-0.38, top + 0.04, -0.14),
     ];
+  }
+
+  // The model's own light bar, if it has one: the highest thing on the car, flat across most of its width
+  // and short front to back. The lamps go in it, not ahead of it. "The actual flashing bits ... need to be
+  // moved very slightly backwards on basically every single police car ... because they don't actually go
+  // over the actual sirens. It'd be kind of nice if they were kind of sank slightly into the siren." Found
+  // by the roof method below they were 0.40 m ahead of the bar on the patrol car, 0.47 on the interceptor,
+  // 0.60 on the SUV and 0.58 on the van, and floating just over it.
+  let barTop = -Infinity;
+  for (const q of upper) if (Math.abs(q.x) < 1 && q.y > barTop) barTop = q.y;
+  const bar = upper.filter((q) => q.y > barTop - BAR_FLAT);
+  if (bar.length) {
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const q of bar) { x0 = Math.min(x0, q.x); x1 = Math.max(x1, q.x); z0 = Math.min(z0, q.z); z1 = Math.max(z1, q.z); }
+    if (x1 - x0 > BAR_WIDE && z1 - z0 < BAR_LONG) {
+      // Its length and height where each lamp is, by rays straight down every centimetre along it: not its
+      // highest point, which is an end cap on three of the four (the interceptor's 3.5 cm proud), and not its
+      // corner points, which is all a box has -- across its middle there are none, and the van's spread over
+      // 0.54 m when its bar, at the lamps, is 0.28.
+      const at = (x) => {
+        let best = null, run = null;
+        for (let z = z0 - 0.1; z <= z1 + 0.1; z += 0.01) {
+          _ray.set(_from.set(x, barTop + 1, z), _down);
+          const hit = _ray.intersectObject(scene, true)[0];
+          if (hit && hit.point.y > barTop - BAR_HIGH) {
+            if (!run) run = { a: z, b: z, y: hit.point.y };
+            run.b = z;
+            run.y = Math.max(run.y, hit.point.y);
+            if (!best || run.b - run.a > best.b - best.a) best = run;
+          } else run = null;
+        }
+        if (!best) return new THREE.Vector3(x, barTop - BAR_SINK, (z0 + z1) / 2);
+        // The top of the bar along most of it, which is where the lamps' tops should be judged from.
+        return new THREE.Vector3(x, best.y - BAR_SINK, (best.a + best.b) / 2);
+      };
+      return [at(+0.34), at(-0.34)];
+    }
   }
 
   // The front edge of the roof is where the windscreen meets it: the furthest
