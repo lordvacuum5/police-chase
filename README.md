@@ -7976,6 +7976,22 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### A police player disguised, a police car that was a civilian, and the nose view
+
+*"So you can't normally ... when the criminal player is not in a pursuit, then I want it so they can't actually see who is the
+other police player on the map ... But when they're in a pursuit, I want them to be able to see it."* On the escapee's map, out of a
+chase, a police player is drawn as one more patrol car: no ring, no flashing for their siren. In a chase, as before.
+
+*"I saw a civilian car for some reason just like running away on its own, and there were no police near it, but I could still see it
+on the map as a police car."* On the wire, an AI police car was `#` and its callsign number, and a traffic car `#` and its own number:
+the same series, so one id could be both, and the other machine drew the police car wherever the civilian went. Now `#p` and `#t`.
+And a car that comes back under its id as another kind is replaced rather than moved. Found by reading the code; not reproduced, and
+not tested with two machines.
+
+*"Can you make it look very, very slightly up? And it's also glitched through the actual nose."* The helicopter's nose view: 0.4 m
+higher and further back, looking 3 degrees down instead of 6. It was 0.14 m above the hull with the near plane 0.4 m out. Checked on
+the pad by screenshot.
+
 ### Wedged between houses: officers on foot
 
 *"You can wedge yourself in between two houses in certain spots on the map, on each map, and obviously then the police

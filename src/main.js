@@ -279,7 +279,7 @@ class RemoteUnit {
     // An AI car's id is its callsign number behind the AI marker, and the
     // number is what the officer on the other machine answers to: U5 there
     // should be U5 here, not "5".
-    return id.startsWith(AI_ID) ? `U${id.slice(1)}` : `U${id.slice(0, 2)}`;
+    return id.startsWith(AI_ID) ? `U${id.slice(AI_ID.length + 1)}` : `U${id.slice(0, 2)}`;
   }
 
   get position() { return this.vehicle.position; }
@@ -2694,12 +2694,26 @@ class Game {
       // nothing more.
       if (car.kind === 'helicopter') { this._netRemoteAir(car, dt); continue; }
       let v = this.netCars.get(car.id);
+      // And should an id ever come back as a different car, the old one goes rather than wearing the
+      // new one's position.
+      if (v && (v.specKey !== car.kind || v.isPolice !== ((car.flags & FLAG.POLICE) !== 0))) {
+        this.netCars.delete(car.id);
+        const old = this.netUnits.get(car.id);
+        if (old) {
+          const i = this.dispatcher.units.indexOf(old);
+          if (i >= 0) this.dispatcher.units.splice(i, 1);
+          this.netUnits.delete(car.id);
+        }
+        if (this.netSuspect === v) this.netSuspect = null;
+        this.removeVehicle(v);
+        v = null;
+      }
       if (!v) {
         const police = (car.flags & FLAG.POLICE) !== 0;
         v = this.createVehicle(car.kind, car.kind, { x: car.x, y: car.y, z: car.z }, 0, {
           police, unmarked: (car.flags & FLAG.UNMARKED) !== 0, remote: true,
           // Traffic: its colour from its id, as on the machine that made it.
-          paint: SPECS[car.kind] && SPECS[car.kind].traffic ? trafficPaint(String(car.id).slice(AI_ID.length)) : undefined,
+          paint: SPECS[car.kind] && SPECS[car.kind].traffic ? trafficPaint(String(car.id).slice(AI_ID.length + 1)) : undefined,
         });
         v.lampPhase = this.rng();
         v.netId = car.id;
@@ -3037,11 +3051,11 @@ class Game {
     if (id === session.id) {
       v = this.player;
     } else if (id.startsWith(AI_ID) && session.isHost) {
-      const key = id.slice(1);
-      const unit = this.dispatcher.units.concat(this.suspects.units()).find((u) => !u.human && u.vehicle
+      const kind = id.charAt(AI_ID.length), key = id.slice(AI_ID.length + 1);
+      const unit = kind === 'p' && this.dispatcher.units.concat(this.suspects.units()).find((u) => !u.human && u.vehicle
         && String(u.callsignId || u.vehicle.id) === key);
-      const car = !unit && this.traffic.cars.find((c) => c.id === key);
-      const out = !unit && !car && this.suspects.list.find((s) => s.v.trafficId === key);
+      const car = kind === 't' && this.traffic.cars.find((c) => String(c.id) === key);
+      const out = kind === 't' && !car && this.suspects.list.find((s) => String(s.v.trafficId) === key);
       v = (unit && unit.vehicle) || (car && car.v) || (out && out.v);
     }
     if (!v) return;
@@ -3146,6 +3160,11 @@ class Game {
     const inSight = (v) => watchers.some(
       (w) => dist2(v.position.x, v.position.z, w.x, w.z) < NET_RANGE);
 
+    // Police and traffic numbered apart, 'p' and 't' after AI_ID. They were one series: a unit's
+    // callsign number and a traffic car's could be the same, and on the other machine the one id
+    // was both, a police car drawn wherever the civilian was. "I saw a civilian car ... running
+    // away on its own, and there were no police near it, but I could still see it on the map as a
+    // police car."
     // An AI car four hundred metres from every human is a dot nobody can see,
     // and sending it costs the same as one they are looking at. Half the pack
     // is usually out there. It comes back the moment somebody drives near it.
@@ -3153,11 +3172,11 @@ class Game {
     for (const u of this.dispatcher.units) {
       if (u.human || !u.vehicle || u.vehicle.remote) continue;
       if (!inSight(u.vehicle)) continue;
-      cars.push(packCar(AI_ID + (u.callsignId || u.vehicle.id), u.vehicle));
+      cars.push(packCar(AI_ID + 'p' + (u.callsignId || u.vehicle.id), u.vehicle));
     }
     // Traffic, the same way. Its id carries its colour (trafficPaint).
     for (const c of this.traffic.cars) {
-      if (inSight(c.v)) cars.push(packCar(AI_ID + c.id, c.v));
+      if (inSight(c.v)) cars.push(packCar(AI_ID + 't' + c.id, c.v));
     }
     // Traffic that has been let out of it, under the same id so it does not pop:
     // one fleeing, wherever it is, for the police players' maps; one pulled over,
@@ -3166,10 +3185,10 @@ class Game {
     // screen were simply gone.
     for (const s of this.suspects.list) {
       if (s.v.removed || s.v.trafficId === undefined) continue;
-      if (s.state === 'run' || inSight(s.v)) cars.push(packCar(AI_ID + s.v.trafficId, s.v));
+      if (s.state === 'run' || inSight(s.v)) cars.push(packCar(AI_ID + 't' + s.v.trafficId, s.v));
       for (const u of s.units) {
         if (u.vehicle && !u.vehicle.removed && inSight(u.vehicle)) {
-          cars.push(packCar(AI_ID + (u.callsignId || u.vehicle.id), u.vehicle));
+          cars.push(packCar(AI_ID + 'p' + (u.callsignId || u.vehicle.id), u.vehicle));
         }
       }
     }

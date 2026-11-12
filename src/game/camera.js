@@ -118,7 +118,10 @@ const HOOD_CLEAR = 0.3;
  * police_helicopter.glb: the top of the hull is 2.41 here and 1.73 at z 3.4, so the nose fills the
  * bottom of the picture from about 24 degrees down, as a bonnet does. Under the rotor, at 3.52.
  */
-const AIR_NOSE = { fwd: 1.6, eye: 2.55, look: -3.2, fov: 70 };
+// Then a little higher and further back, looking a little higher: "Can you make it look very, very slightly
+// up? And it's also glitched through the actual nose ... slightly." 0.14 m over the hull let the near plane
+// through it as the aircraft rocked (the near plane is 0.4 m out); 0.5 does not. Looking 3 degrees down rather than 6.
+const AIR_NOSE = { fwd: 1.2, eye: 2.95, look: -1.6, fov: 70 };
 /** The views of an aircraft, which has its own two. */
 const AIR_MODES = ['chase', 'nose'];
 /** Where round the camera the ground is also sampled for that. */

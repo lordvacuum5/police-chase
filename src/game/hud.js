@@ -10,7 +10,7 @@ import { ROAD_KIND } from '../world/roadgraph.js';
 import { WORLD_HALF } from '../world/common.js';
 import { TRACK_SECONDS } from '../ai/dispatcher.js';
 import { ENDURANCE as AIR_TANK } from './flyheli.js';
-import { AI_ID } from '../net/session.js';
+import { AI_ID, session } from '../net/session.js';
 
 const MAP_PX = 1200;          // offscreen map resolution
 const MAP_SPAN = 470;         // metres visible on the minimap
@@ -908,12 +908,18 @@ export class Hud {
       // the same ringed dot the escapee is on a police player's map, in blue.
       // "I want it to be a blue for if it's a person playing as a police
       // officer."
-      const person = u.human && u.netId != null && !String(u.netId).startsWith(AI_ID);
+      let person = u.human && u.netId != null && !String(u.netId).startsWith(AI_ID);
+      // To the escapee, out of a chase, a police player is one more patrol car on the map: "when the
+      // criminal player is not in a pursuit ... they can't actually see who is the other police player
+      // on the map. But when they're in a pursuit, I want them to be able to see it." Their siren
+      // does not give them away either.
+      const masked = person && session.active && session.role !== 'police' && !(heat.value > 0);
+      if (masked) person = false;
       // A remote unit carries no role worth reading (it is always PURSUE), so
       // it counts as chasing whenever the force is.
-      const chasing = onSuspect.has(u)
-        || (u.human ? heat.tier > 0 || u.vehicle.sirenOn : u.role !== 'patrol' && u.role !== 'hold');
-      const role = u.role === 'intercept' ? '#ffb020'
+      const chasing = !masked && (onSuspect.has(u)
+        || (u.human ? heat.tier > 0 || u.vehicle.sirenOn : u.role !== 'patrol' && u.role !== 'hold'));
+      const role = masked ? '#4ea3ff' : u.role === 'intercept' ? '#ffb020'
         : (u.role === 'pit' || u.role === 'box') ? '#ff3b30' : '#4ea3ff';
       ctx.fillStyle = chasing ? (flashRed ? '#ff3b30' : '#2f7bff') : person ? '#2f7bff' : role;
       ctx.beginPath();
