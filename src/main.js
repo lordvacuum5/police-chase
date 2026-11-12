@@ -1142,6 +1142,9 @@ class Game {
       const p = at(s);
       if (p) this.hud.moreSuspects.push({ p, stale: false, range: s.seen ? SUSPECT_SIGHT : 0 });
     }
+    // And any that got away, still counting down to being traffic again (Suspects._free): flashing, as a
+    // car the force has lost. "You can see it."
+    for (const s of this.suspects.escaped()) this.hud.moreSuspects.push({ p: s.v.position, stale: true });
     // The busted meter, for whichever arrest is nearest done -- yours or a
     // unit's. The player's own heat is pinned at 0 here, so its meter is free.
     const b = this.suspects.bust();

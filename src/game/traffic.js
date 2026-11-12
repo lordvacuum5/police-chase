@@ -28,6 +28,7 @@ import { Driver, SKILL } from '../ai/driver.js';
 import { ROLE } from '../ai/officer.js';
 import { dist2 } from '../util/math.js';
 import { DRIVE_SIDE } from '../world/roadgraph.js';
+import { groups, GROUP } from '../physics/world.js';
 
 /** Which maps have traffic. */
 export const TRAFFIC_MAPS = ['haldon', 'wexbury'];
@@ -462,6 +463,24 @@ export class Traffic {
   }
 
   /** Its record in `cars`, for a traffic vehicle. */
+  /**
+   * A car back from the suspects (Suspects._free): traffic again, under its old id, on its old spec,
+   * routed on from where it is. False if this map has no traffic.
+   */
+  adopt(v, id, spec) {
+    if (!this.enabled || !v || v.removed) return false;
+    if (spec) v.spec = spec;
+    v.isTraffic = true;
+    v.fleeing = false;
+    // Traffic's bodywork ignores the hills, as when it was made (Vehicle, and Suspects._groundIt).
+    if (this.game.sim.terrainAt) v.collider.setCollisionGroups(groups(GROUP.VEHICLE, 0xFFFF & ~GROUP.HILL));
+    const rideY = RIDE + (v.spec.wheelRadius - 0.32);
+    const c = { v, driver: new Driver(v, SKILL.regular), id: id || `t${++this._made}`, stuckFor: 0, pullFor: 0, rideY };
+    this.cars.push(c);
+    this._route(c);
+    return true;
+  }
+
   recordOf(v) {
     return this.cars.find((c) => c.v === v) || null;
   }

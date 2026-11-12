@@ -69,6 +69,8 @@ const MAX_PARKED = 4;
 const HEAT_RISE = 1 / 45;
 const HEAT_FALL = 1 / 40;
 const UNSEEN_GRACE = 8;
+/** Seconds a civilian that got away goes on as a getaway car, on the map, before it is traffic again (Suspects._free). */
+const FREE_FOR = 50;
 /** What a hit on a police car adds, and the most it can be. */
 const HIT_HEAT = 0.4;
 const MAX_HEAT = 5;
@@ -167,7 +169,12 @@ export class Suspects {
    */
   statusLine() {
     const run = this.list.filter((s) => s.state === 'run');
-    if (!run.length) return null;
+    if (!run.length) {
+      const free = this.escaped();
+      if (!free.length) return null;
+      const left = Math.max(0, Math.ceil(FREE_FOR - Math.max(...free.map((x) => x.freeFor))));
+      return { text: `VEHICLE GOT AWAY — ${left}s`, cls: 'searching' };
+    }
     const seen = run.find((s) => s.seen);
     const s = seen || run[0];
     const n = s.units.filter((u) => u.vehicle && !u.vehicle.disabled).length;
@@ -231,9 +238,10 @@ export class Suspects {
     // its nerve, or by not being able to move.
     runner.neverPinned = true;
     runner.usePlanners = true;
+    const baseSpec = v.spec;
     v.spec = fleeingSpec(v.spec);
     const s = { v, runner, why, heat: 1, units: [], seen: true, unseenFor: 0, pinFor: 0,
-      state: 'run', want: 0, acquireFor: 0, pullFor: 0, goneFor: 0 };
+      state: 'run', want: 0, acquireFor: 0, pullFor: 0, goneFor: 0, baseSpec, freeFor: 0 };
     s.lastSeen = v.position.clone();
     runner.threats = () => this._threats(s);
     this.list.push(s);
@@ -403,6 +411,9 @@ export class Suspects {
     if (s.gaveUp) s.heat = Math.max(s.heat, 1);
     else if (s.heat <= 0 || !s.units.length && s.unseenFor > UNSEEN_GRACE) {
       s.state = 'free';
+      s.freeFor = 0;
+      // Not chased any more: off every other machine's map as a fleeing car too.
+      v.fleeing = false;
       this._release(s);
       g.say('suspectLost', [
         () => 'Control, all units, lost the vehicle. Resume patrol.',
@@ -572,13 +583,31 @@ export class Suspects {
   }
 
   /** Got away: drives on, and goes once nobody can see it. */
+  /**
+   * Got away. "Once it escapes, properly, then the 50-second timer should start. You can see it, and after
+   * that 50 seconds, it just goes back to normal car movements. It can despawn as long as it's nowhere near
+   * you after it escapes." FREE_FOR seconds still driving like a getaway car, on the map and counted down on
+   * the status line (statusLine, Game._openWorldMarker); then a traffic car again, on traffic's rules, its
+   * own spec back. Gone before that if it is far off and nobody can see it, as it always was.
+   */
   _free(s, dt) {
     const g = this.game, v = s.v;
     s.runner.hunted = false;
     s.runner.update(dt);
+    s.freeFor += dt;
     const far = g.watcherDistance(v.position) > GONE;
     s.goneFor = far && !g.seenByAnyone(v.position) ? s.goneFor + dt : 0;
-    if (s.goneFor > 2) { g.removeVehicle(v); s.state = 'gone'; }
+    if (s.goneFor > 2) { g.removeVehicle(v); s.state = 'gone'; return; }
+    if (s.freeFor >= FREE_FOR && g.traffic && g.traffic.adopt(v, s.v.trafficId, s.baseSpec)) {
+      s.runner.dispose && s.runner.dispose();
+      v.isSuspect = false;
+      s.state = 'gone';
+    }
+  }
+
+  /** Cars that got away and are still counting down, for the map and the status line. */
+  escaped() {
+    return this.list.filter((x) => x.state === 'free' && !x.v.removed);
   }
 
   /**

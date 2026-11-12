@@ -7976,6 +7976,20 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### A civilian that got away, 50 seconds on; police launched off hills (not fixed)
+
+*"Once it escapes, like properly, I think then the 50-second timer should start. You can see it, and after that 50 seconds, it just
+goes back to normal car movements. It can despawn as long as it's nowhere near you after it escapes."* `Suspects._free`: for `FREE_FOR`
+(50 s) after its chase ends it goes on as a getaway car, flashing on the map, the status line counting down, VEHICLE GOT AWAY; then
+`Traffic.adopt` makes it a traffic car again, its own spec back, routed on. Gone sooner if far off and unseen, as before. It is no
+longer flagged fleeing to other machines once free. Staged on the police side: free at once, the line read 50 s, at 52 s a hatchback
+on grip 0.92 in traffic doing 46 km/h.
+
+*"I still see police cars going really, really fast, and they go up a hill and they just hit something invisible, and they just go
+flying."* Not fixed. `tests/hillcharge.js`, 40 slopes at 150 and 180 km/h: no stop by the ground alone in 80 runs, but a second in the
+air on average and up to 22 m/s upward, most of it off crests. Tried: holding the upward speed the keel's contact gives to what the
+slope asks. Air time and launch speed unchanged (1.08 against 1.02 s, 18 against 19 m/s at 150), rollovers 1 to 5 of 80: not in.
+
 ### The invisible wall on a hill, at last; every civilian ringed; the train in step
 
 *"The main biggest thing is hitting that invisible wall when you go up a really steep hill really fast. Only happens when it's that.
