@@ -7986,9 +7986,21 @@ longer flagged fleeing to other machines once free. Staged on the police side: f
 on grip 0.92 in traffic doing 46 km/h.
 
 *"I still see police cars going really, really fast, and they go up a hill and they just hit something invisible, and they just go
-flying."* Not fixed. `tests/hillcharge.js`, 40 slopes at 150 and 180 km/h: no stop by the ground alone in 80 runs, but a second in the
-air on average and up to 22 m/s upward, most of it off crests. Tried: holding the upward speed the keel's contact gives to what the
-slope asks. Air time and launch speed unchanged (1.08 against 1.02 s, 18 against 19 m/s at 150), rollovers 1 to 5 of 80: not in.
+flying."* Found by watching every police car in real chases rather than staging slopes: `tests/launch.js`, 16 chases at 150 and 180 km/h
+on Haldon Vale, every physics step. A police car was kicked upward 10-17 m/s within a 120th of a second 63 times, 57 of them touching
+nothing but the hill with its keel, often with the springs through: the solver pushing the keel out of the slope in one go. A first try,
+holding the kick to what the slope asks, was far too loose (a 57% slope at 176 km/h "asks" 28 m/s) and changed nothing. `Vehicle._keelKick`
+now lets the ground alone add at most 1.2 m/s upward in one step: the car still rises out of the slope, over a few steps.
+
+| `launch.js` + `keepup.js`, 16 chases each | before | after |
+|---|---|---|
+| kicked upward over 4 m/s in a step | 63 (57 on the keel alone) | 9 (5) |
+| mean at 150 / 180 km/h | 93 / 100 km/h | 96 / 113 |
+| `hillcharge.js` police, 80 runs at 150 and 180: rolled | 5 | 3 |
+
+The computer's police only. On the player's car it made things worse: 40 slopes at 130 km/h, rolled 2 and stopped dead by the ground 2,
+against none, so `spec.keelKick` is on the AI police alone. One run at 180 km/h pitched a police car 74 degrees nose up, past anything
+before. Not yet watched in a chase with people playing.
 
 ### The invisible wall on a hill, at last; every civilian ringed; the train in step
 

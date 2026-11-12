@@ -846,6 +846,7 @@ for (const k of ['patrol', 'interceptor', 'unmarked', 'suv', 'van']) {
     sceneryShare: 0.5,
     bumpGrip: AI_POLICE_BUMP_GRIP,
     landGrip: AI_POLICE_LAND_GRIP,
+    keelKick: true,
     steering: Object.assign({}, s.steering, { ease: AI_POLICE_EASE }),
     brakes: Object.assign({}, s.brakes, {
       maxTorque: (s.mass * AI_POLICE_BRAKE_G * 9.81 * s.wheelRadius) / 4,

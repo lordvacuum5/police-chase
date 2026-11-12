@@ -50,6 +50,9 @@ const HILL_KEEP = 0.985;
  * the ground if you hit them hard ... then they come out of contact, they become 100% grip again."
  */
 const BUMP_BACK = 1.0;
+/** Vehicle._keelKick: the most upward speed the ground alone may add in one physics step, m/s; not below this speed, m/s. */
+const KICK_STEP = 1.2;
+const KICK_SPEED = 12;
 /** The same after a landing somebody can see (spec.landGrip), s. */
 const LAND_LOOSE_BACK = 1.2;
 const EASE_FROM = 16;
@@ -854,8 +857,41 @@ export class Vehicle {
     this.body.setLinvel({ x: lv.x * k, y: lv.y, z: lv.z * k }, true);
   }
 
+  /**
+   * Lifted by the hill, not thrown by it. "Police cars going really, really fast ... go up a hill and they
+   * just hit something invisible, and they just go flying." tests/launch.js, watching every police car in
+   * 16 chases at 150-180 km/h on Haldon Vale: 59 times a car was kicked upward 10-17 m/s in a single
+   * physics step (a 120th of a second), touching nothing but the hill with its keel, the springs often
+   * through. The solver pushes the keel out of the slope all at once, and at that speed all at once is a
+   * launch. Touching only the ground, upright, the upward speed gained in one step is held to KICK_STEP:
+   * the car still rises out of the slope, over a few steps instead of one, while its wheels carry it.
+   * The computer's police only (spec.keelKick): on the player's car, 40 steep slopes at 130 km/h, it
+   * stopped the car dead twice and rolled it twice, against none.
+   */
+  _keelKick() {
+    if (!this.keel || !this._hillFree || !this.spec.keelKick || window.__noKeelKick) return;
+    const lv = this.body.linvel(), pv = this._prevVel;
+    const most = pv.y + KICK_STEP;
+    if (lv.y <= most) return;
+    if (Math.hypot(lv.x, lv.z) < KICK_SPEED) return;
+    let ground = false, other = false;
+    for (const c of [this.keel, this.collider]) {
+      this.world.contactPairsWith(c, (o) => {
+        if (o === this.collider || o === this.keel) return;
+        let t = false;
+        this.world.contactPair(c, o, (m) => { if (m.numContacts() > 0) t = true; });
+        if (!t) return;
+        if (((o.collisionGroups() >>> 16) & 0xFFFF) & (GROUP.HILL | GROUP.TERRAIN)) ground = true;
+        else other = true;
+      });
+    }
+    if (!ground || other) return;
+    this.body.setLinvel({ x: lv.x, y: most, z: lv.z }, true);
+  }
+
   postStep(dt) {
     this._rideUpHill();
+    this._keelKick();
     this._keepLanding(dt);
     const lv = this.body.linvel();
     _v1.set(lv.x, lv.y, lv.z);
