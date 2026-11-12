@@ -69,6 +69,7 @@ import { Score } from './game/score.js';
 import { loadCarModels } from './game/carmodel.js';
 import { Weather } from './game/weather.js';
 import { ChaseCamera } from './game/camera.js';
+import { Replay } from './game/replay.js';
 import { Hud } from './game/hud.js';
 import { PauseMenu, savedVolume } from './game/pausemenu.js';
 import { Input } from './core/input.js';
@@ -450,6 +451,11 @@ class Game {
     this.input = new Input();
     this.touch = new TouchControls(this);
     this.camera3 = new ChaseCamera(this.camera);
+    this.replay = new Replay(this);
+    // When it has run out: the arrest's screen back, or the game carrying on.
+    this.replay.onEnd = () => { if (this.outcome) this.hud.overlay.classList.add('show'); };
+    const replayBtn = typeof document !== 'undefined' && document.getElementById('replaybtn');
+    if (replayBtn) replayBtn.addEventListener('click', () => this.toggleReplay());
     this.camera3.groundAt = (x, z) => (this.sim.heightAt ? this.sim.heightAt(x, z) : this.groundAt(x, z));
     this.camera3.snapTo(this.player);
     this.pauseMenu = new PauseMenu(this);
@@ -2028,6 +2034,12 @@ class Game {
     ], {}, true);
   }
 
+  /** Start the replay, or stop the one running. */
+  toggleReplay() {
+    if (this.replay.playing) { this.replay.stop(); return; }
+    if (this.replay.play()) this.hud.overlay.classList.remove('show');
+  }
+
   onBusted() {
     if (this.outcome) return;
     this.outcome = 'busted';
@@ -2078,6 +2090,7 @@ class Game {
       this.runner ? `Pursued for <b>${held.toFixed(1)}s</b>` : `Evaded for <b>${held.toFixed(1)}s</b>`,
       `Peak heat <b>${this.heat.peak.toFixed(1)}</b>`,
       this.runner ? 'They got away' : 'They have lost you',
+      'V to watch it again',
     ].join(' &nbsp;·&nbsp; '));
     this.say('escaped', [
       'Control, no further contact. Resume patrol.',
@@ -2398,6 +2411,7 @@ class Game {
     this.props.reset();
     this.signals.reset();
     this.commentary.reset();
+    this.replay.reset();
     this.player.repair();
     this.player.teleport(this.startPlace.position, this.startPlace.heading);
     this.skids.clear();
@@ -2449,12 +2463,15 @@ class Game {
     // only, and it took a report to find because nothing anywhere said a word.
     // So now it says so: the frame still draws, and the error is surfaced
     // rather than swallowed.
-    if (!this.paused) {
+    // Watching the replay, the game holds still: nothing is simulated to play it (game/replay.js).
+    const replaying = this.replay.playing && this.replay.advance(dt);
+    if (!this.paused && !replaying) {
       try {
         this._update(dt);
       } catch (e) {
         this._updateBroke(e);
       }
+      if (!this.outcome) this.replay.record(dt);
     }
 
     this._render(dt);
@@ -2546,6 +2563,8 @@ class Game {
       }
     }
     if (i.tapped('KeyC')) this.camera3.cycle();
+    // The last ten seconds again: V to watch, V again to stop. See game/replay.js.
+    if (i.tapped('KeyV')) this.toggleReplay();
     // Lights and siren on your own police car. "Can we add on the phone like
     // a tiny button at the side named sirens, and it can turn off and on the
     // sirens ... and on keyboard ... Is Q a good key?" Q is bound to nothing,
@@ -3712,11 +3731,16 @@ class Game {
     // Room for every car's wheels, with some to spare so it is not rebuilt
     // for each car that turns up. See _wheelPool.
     if (this.vehicles.length * 4 > this.wheelCap) this._wheelPool(this.vehicles.length + 16);
+    const replaying = this.replay.playing;
     for (const v of this.vehicles) {
-      v.view.position.lerpVectors(v.prevPos, v.position, alpha);
-      v.view.quaternion.copy(v.prevQuat).slerp(v.quaternion, alpha);
-      if (lookOn && v.isPolice && v !== this.player) this._driftLook(v, dt);
-      if (v.isPolice && v !== this.player && !v.remote) this._leanLook(v, dt);
+      if (replaying) {
+        if (!this.replay.pose(v)) continue;
+      } else {
+        v.view.position.lerpVectors(v.prevPos, v.position, alpha);
+        v.view.quaternion.copy(v.prevQuat).slerp(v.quaternion, alpha);
+        if (lookOn && v.isPolice && v !== this.player) this._driftLook(v, dt);
+        if (v.isPolice && v !== this.player && !v.remote) this._leanLook(v, dt);
+      }
       // The wheels, the lamps and the camera all have to agree with the body
       // they are attached to, so everything below works off the drawn pose.
       _drawn.position = v.view.position;
@@ -3767,6 +3791,7 @@ class Game {
     }
 
     this.wheelMesh.count = wi;
+    if (replaying) this.replay.aim(this.camera);
     this.wheelMesh.instanceMatrix.needsUpdate = true;
     this.lights.end();
     this.hazards.end();

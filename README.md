@@ -7976,7 +7976,17 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
-### A civilian that got away, 50 seconds on; police launched off hills (not fixed)
+### The replay
+
+*"Do the replay one"*, from a list of ideas that would not cost performance. `game/replay.js`: 20 times a second, the place and
+turn of every car within 220 m of yours, the last 10 s of them in a ring. BUSTED has a WATCH REPLAY button, and V starts it any
+time (the escape banner says so) and stops it. While it plays the game holds still, the drawn cars are put where they were, any
+car that was not there is hidden, a camera circles your car, and a REPLAY tag is at the top. At the end the BUSTED screen comes
+back, or the game carries on. Checked on Haldon Vale: 12 s of driving, 138 frames over 9.9 s with 10 cars, played through, the
+screen back after it, every car shown again. Not measured for cost, which is small by construction. Not in the helicopter. The
+dials and the map show the moment you are in, not the replay's.
+
+### A civilian that got away, 50 seconds on; police launched off hills
 
 *"Once it escapes, like properly, I think then the 50-second timer should start. You can see it, and after that 50 seconds, it just
 goes back to normal car movements. It can despawn as long as it's nowhere near you after it escapes."* `Suspects._free`: for `FREE_FOR`

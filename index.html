@@ -163,6 +163,13 @@
     background: rgba(4, 6, 9, .82); text-align: center;
   }
   #overlay.show { display: flex; }
+  #replaybtn { margin-top: 18px; pointer-events: auto; }
+  #replaytag {
+    position: absolute; top: 14px; left: 50%; transform: translateX(-50%); display: none;
+    padding: 6px 14px; border-radius: 6px; background: rgba(4, 6, 9, .7); color: #ff3b30;
+    font: 700 13px ui-monospace, Consolas, monospace; letter-spacing: .2em;
+  }
+  body.replaying #replaytag { display: block; }
 
   /* A star landing. Three quick pulses of the whole wanted panel, and the
      stars themselves swelling and burning brighter, so it is visible out of
@@ -845,7 +852,9 @@
     <h1 id="otitle">BUSTED</h1>
     <div id="osub"></div>
     <div id="ohint">Press <b>R</b> to run again</div>
+    <button id="replaybtn" class="setbtn" type="button">WATCH REPLAY (V)</button>
   </div>
+  <div id="replaytag">REPLAY &nbsp;·&nbsp; V to stop</div>
 </div>
 
 <div id="applesay" aria-live="polite"></div>
