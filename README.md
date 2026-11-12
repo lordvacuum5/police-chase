@@ -7982,10 +7982,13 @@ player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve th
 symbol."* On an arrest the replay goes round and round under the BUSTED screen, which is see-through while it does. WATCH REPLAY or V
 brings it to the front from the start; when that ends it goes back underneath. Checked: 142 frames, playing behind, the screen at 0.38.
 
-*"When you move the mouse really fast and you stop the mouse, it keeps on trying to get to that position that the mouse almost was
-... I want it so you move the mouse up, and then you stop, it stops going in that direction ... make it play like Battlefield."* The
-mouse was a position stick that the airframe chased with its weight, so a flick was a lean it went on arriving at. Now the mouse turns
-it directly, 0.0035 rad a pixel, and nothing more when it stops; nothing levels it either. The arrow keys and the pad are as they were.
+*"When you move the mouse really fast and you stop the mouse, it keeps on trying to get to that position that the mouse almost was."*
+Turning the helicopter by the mouse directly was tried first, and was wrong: *"OMG, you've destroyed the helicopter ... on the touchpad it
+needs to be so much less sensitive ... it was great how it was on touchpad before ... if it's a mouse, then just make it that when you
+stop moving the mouse it says it's at current position."* So the stick is a position stick again, as it was, and the one change is that
+after a flick (over 1500 px/s, which a touchpad does not do) the stick is put where the aircraft has got to once the mouse has been still
+for 70 ms, and its turn stopped (`Input.settleCyclic`, `FlyingHelicopter.settle`). Checked by feeding it moves: a flick then stop, the
+aircraft stayed level and the stick read 0; the same move slowly, as a touchpad would, leant it 4 degrees as before.
 
 *"You shouldn't have to tilt ... 90 degrees ... to actually go fast. You should be able to tilt it quite a lot to go really fast, but
 not that much. And you should start to fall out of the sky much quicker if you're going at that angle."* Its push along the ground counts

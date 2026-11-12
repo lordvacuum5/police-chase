@@ -3399,6 +3399,12 @@ class Game {
       const stick = this.outcome
         ? { collective: -1, pitch: 0, roll: 0, yaw: 0 }
         : this.input.sampleAir(dt);
+      if (stick.settle && player.settle) {
+        const at = player.settle();
+        this.input.settleCyclic(at.pitch, at.roll);
+        stick.pitch = at.pitch;
+        stick.roll = at.roll;
+      }
       player.update(dt, stick);
     } else if (this.outcome) {
       player.setControls({ throttle: 0, brake: 1, steer: 0, handbrake: 1 });

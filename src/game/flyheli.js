@@ -147,8 +147,6 @@ const CYCLIC_RATE = 0.95;        // radians a second toward the demanded lean
 const CYCLIC_ACCEL = 2.2;        // radians a second, per second
 const CYCLIC_GAIN = 3;           // rate asked for per radian still to go
 const LEVEL_RATE = 1.3;
-/** The mouse turns it by this much a pixel, rad: 0.5 m of a 1000 dpi mouse is about 40 degrees. */
-const MOUSE_TURN = 0.0035;
 /** Its push along the ground counts this many times; and with S down, never less than this share of a hover's. */
 const FWD_GAIN = 1.6;
 const SINK_KEEP = 0.8;
@@ -610,6 +608,16 @@ export class FlyingHelicopter {
    * `c` is the control set: collective -1..1, pitch -1..1 (positive is nose
    * down, which is how a cyclic works -- push to go), roll -1..1, yaw -1..1.
    */
+  /**
+   * Stopped where it has got to: the stick, as a share of the full lean, for Input.settleCyclic; and the
+   * turn that was carrying it on, gone. See Input.sampleAir.
+   */
+  settle() {
+    this.pitchRate = 0;
+    this.rollRate = 0;
+    return { pitch: this.pitch / MAX_PITCH, roll: this.roll / MAX_ROLL };
+  }
+
   update(dt, c) {
     this.prevPos.copy(this.position);
     this.prevQuat.copy(this.quaternion);
@@ -660,15 +668,6 @@ export class FlyingHelicopter {
       if (cold || !c.roll) this.roll = damp(this.roll, 0, cold ? 8 : LEVEL, dt);
       this.pitchRate = 0;
       this.rollRate = 0;
-    } else if (c.mouse && !dead && !window.__heliOld) {
-      // Turned by the mouse directly: as far as it moved, no further, held where it was left. See
-      // Input.sampleAir. Nothing levels it either; that is the pilot's, as in Battlefield.
-      this.pitch = clamp(this.pitch - (c.mouseDY || 0) * MOUSE_TURN, -MAX_PITCH, MAX_PITCH);
-      this.roll = clamp(this.roll + (c.mouseDX || 0) * MOUSE_TURN, -MAX_ROLL, MAX_ROLL);
-      this.pitchRate = 0;
-      this.rollRate = 0;
-      this._askPitch = this.pitch;
-      this._askRoll = this.roll;
     } else if (dead) {
       // No rotor and nobody flying it: over on one side, and it stays there.
       this.pitchRate = 0;

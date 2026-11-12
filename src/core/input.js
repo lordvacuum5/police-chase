@@ -51,6 +51,9 @@ const KEYMAP = {
 const CYCLIC_PX = 3400;
 /** Look-around: radians a pixel of mouse, radians a second at full stick; a right click moving less than this many pixels is a click. */
 const LOOK_MOUSE = 0.006;
+/** A mouse move faster than this, px/s, is a flick; still for this long, ms, and it has stopped. */
+const FLICK_PX = 1500;
+const FLICK_STOP = 70;
 const LOOK_STICK = 2.6;
 const LOOK_CLICK = 6;
 
@@ -118,10 +121,13 @@ export class Input {
       // the stick, so it is negated -- without that, pulling back flew you
       // forwards and the whole thing felt inside out.
       this.cyclicY = clamp(this.cyclicY - (e.movementY || 0) / CYCLIC_PX, -1, 1);
-      // And the raw movement, for the aircraft to turn by directly: see sampleAir.
-      this.mouseDX = (this.mouseDX || 0) + (e.movementX || 0);
-      this.mouseDY = (this.mouseDY || 0) + (e.movementY || 0);
-      this._movedAt = performance.now();
+      // A flick: fast enough to be a mouse thrown across the desk rather than a finger on a touchpad.
+      // When it stops, the aircraft is to stop where it has got to: see sampleAir.
+      const now = performance.now();
+      const gap = Math.max(1, now - (this._movedAt || 0));
+      const px = Math.hypot(e.movementX || 0, e.movementY || 0);
+      if (gap < 100 && (px / gap) * 1000 > FLICK_PX) this._flick = true;
+      this._movedAt = now;
     };
     this._onLockChange = () => {
       this.pointerHeld = document.pointerLockElement != null;
@@ -296,21 +302,18 @@ export class Input {
     const out = {
       collective: (this.down('climb') ? 1 : 0) + (this.down('sink') ? -1 : 0),
       yaw: (this.down('yawLeft') ? 1 : 0) + (this.down('yawRight') ? -1 : 0),
-      pitch: keyPitch,
-      roll: keyRoll,
+      pitch: keyPitch || this.cyclicY,
+      roll: keyRoll || this.cyclicX,
     };
-    // The mouse turns the aircraft by what it moved, and stopping it stops the turn. "When you move the
-    // mouse really fast and you stop the mouse, it keeps on trying to get to that position that the
-    // mouse almost was ... I want it so you move the mouse up, and then you stop, it stops going in that
-    // direction ... play like Battlefield." It was a position stick the airframe chased with its weight,
-    // so a flick was a promise the aircraft went on keeping. See FlyingHelicopter.update.
-    if (this.pointerHeld && !keyPitch && !keyRoll) {
-      out.mouse = true;
-      out.mouseDX = this.mouseDX || 0;
-      out.mouseDY = this.mouseDY || 0;
+    // A fast flick of the mouse, now stopped: the stick is to be put where the aircraft has got to, so it
+    // stops there rather than going on to where the mouse went. "If it's a mouse, then just make it that
+    // when you stop moving the mouse it says it's at current position. So it doesn't try to keep up with
+    // where the mouse is moved." A touchpad, slower, is left alone: "it was great how it was on touchpad."
+    // Game._update does the putting, knowing the aircraft (settleCyclic).
+    if (this.pointerHeld && this._flick && performance.now() - (this._movedAt || 0) > FLICK_STOP) {
+      this._flick = false;
+      out.settle = true;
     }
-    this.mouseDX = 0;
-    this.mouseDY = 0;
 
     // ---- the pad ----
     //
@@ -379,6 +382,12 @@ export class Input {
    * crash, respawn on the pad, and the stick is still asking for whatever was
    * being asked for at the moment it all went wrong. See FlyingHelicopter.
    */
+  /** Put the stick where the aircraft is, as a lean of -1..1 each way. See sampleAir. */
+  settleCyclic(pitch, roll) {
+    this.cyclicY = clamp(pitch, -1, 1);
+    this.cyclicX = clamp(roll, -1, 1);
+  }
+
   centreCyclic() {
     this.cyclicX = 0;
     this.cyclicY = 0;
