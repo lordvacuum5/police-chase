@@ -7976,6 +7976,18 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Dents knocked out in the garage; birds a little longer
+
+*"When I'm repairing, I want it to slowly, like, undent."* The garage never called `Vehicle.repair` -- it takes the damage down 0.05 a
+second -- so dents stayed until a restart. Now, while it works, every moved point goes back to where it was made over the time the
+damage takes (at least 3 s), eased into the end, and the shared shape is put back when it is done (`Dents._undent`). Driven out half
+done, it stays half done. Checked by calling it with the bay forced on, two dents, damage 0.3: deepest 32 cm, 23 at 1 s, 15 at 2, 8 at
+3, 4 at 4, 1 at 5, none at 6, then the shared shape back. 0.5 ms a frame (median), 3.6 when the light on it is redone (every 0.2 s), 9
+at the start.
+
+*"Make the birds sound slightly longer. Like, just very slightly."* 15-26 wing beats instead of 10-19, fading a little slower, starts
+spread over 0.5 s not 0.35, and two to four calls instead of one to three. *"The train thing sounds amazing."*
+
 ### Dents you can see on real hits; the train, crossings, birds and crows
 
 *"I still can't [see] suitable damage if I hit a police car. Or a tree or anything."* The dents were scaled for knocks of 7-30 m/s,

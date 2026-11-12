@@ -303,12 +303,12 @@ export class Ambience {
       const pan = ctx.createStereoPanner();
       pan.pan.value = Math.random() * 1.6 - 0.8;
       pan.connect(a.master);
-      const start = now + Math.random() * 0.35;
+      const start = now + Math.random() * 0.5;
       // Wings: quick soft beats, fast at first, slowing and fading as it gets away.
       let t = start, gap = 0.035 + Math.random() * 0.015;
-      const beats = 10 + Math.floor(Math.random() * 10);
+      const beats = 15 + Math.floor(Math.random() * 12);   // "slightly longer": was 10-19
       for (let i = 0; i < beats; i++) {
-        const lvl = 0.16 * loud * (1 - i / beats) ** 1.5;
+        const lvl = 0.16 * loud * (1 - i / beats) ** 1.3;
         if (lvl > 0.002) this._wing(a, pan, t, lvl);
         t += gap;
         gap *= 1.05 + Math.random() * 0.06;
@@ -316,7 +316,7 @@ export class Ambience {
       // A call or two from some of them.
       if (Math.random() < 0.7) {
         let c = start + 0.05 + Math.random() * 0.2;
-        const calls = 1 + Math.floor(Math.random() * 3);
+        const calls = 2 + Math.floor(Math.random() * 3);
         const hz = 3000 + Math.random() * 1800;
         for (let i = 0; i < calls; i++) {
           this._chirp(a, pan, c, hz, 0.04 * loud);

@@ -16,6 +16,10 @@ const DENT_DEEPEST = 0.55;
 const DENT_RADIUS = 1.0;
 /** How much of a dent's depth varies from point to point, so it looks crumpled. */
 const DENT_ROUGH = 0.4;
+/** Undenting in the garage: over at least this many seconds; damage goes at this a second (Garage RATE); light redone every this. */
+const UNDENT_MIN = 3;
+const UNDENT_RATE = 0.05;
+const UNDENT_SHADE = 0.2;
 /** Only these: the player's own car, and any within this many metres of it. */
 const DENT_NEAR = 70;
 
@@ -31,7 +35,7 @@ export class Dents {
   }
 
   /** After each frame's physics: any new hard knocks, and anything mended. */
-  update(online) {
+  update(online, dt = 0) {
     const g = this.game, p = g.player;
     if (!p) return;
     for (const v of g.vehicles) {
@@ -51,6 +55,68 @@ export class Dents {
     for (const v of this.dented) {
       if (!g.vehicles.includes(v)) { this.dented.delete(v); continue; }
       if ((v.repairs || 0) !== v._dentRepairs) this.mend(v);
+    }
+    this._undent(p, dt);
+  }
+
+  /**
+   * Knocked back out in the garage's bay, bit by bit as it works: "when I'm repairing, I want it to
+   * slowly, like, undent." Garage.update takes the damage down at its RATE and never calls repair(), so the
+   * dents stayed until a restart. Over the time the damage takes, and no less than UNDENT_MIN s, each moved
+   * point goes back in a straight line to where it was made; the light on it is worked out again every
+   * UNDENT_SHADE s rather than every frame. Driven out half done, it stays half done.
+   */
+  _undent(p, dt) {
+    const gar = this.game.garage;
+    const u = p._undent;
+    const going = gar && this.dented.has(p)
+      && (gar.repairing || (u && gar.inBay(p) && (p.damage || 0) < 0.001));
+    if (!going) {
+      if (u) { this._shade(u, true); p._undent = null; }
+      return;
+    }
+    if (!u) {
+      const parts = [];
+      p.view.traverse((o) => {
+        if (!o.isMesh || !o.userData.dentRest) return;
+        const a = o.geometry.attributes.position.array, r = o.userData.dentRest;
+        const idx = [];
+        for (let i = 0; i < a.length; i += 3) {
+          if (Math.abs(a[i] - r[i]) + Math.abs(a[i + 1] - r[i + 1]) + Math.abs(a[i + 2] - r[i + 2]) > 1e-5) idx.push(i);
+        }
+        if (idx.length) parts.push({ o, idx: Uint32Array.from(idx), from: a.slice() });
+      });
+      p._undent = { parts, done: 0, time: Math.max(UNDENT_MIN, (p.damage || 0) / UNDENT_RATE), shadeIn: 0 };
+      return;
+    }
+    u.done = Math.min(1, u.done + dt / u.time);
+    // Eased, so it slows into the last of it rather than snapping flat.
+    const k = 1 - (1 - u.done) * (1 - u.done);
+    for (const { o, idx, from } of u.parts) {
+      const a = o.geometry.attributes.position.array, r = o.userData.dentRest;
+      if (!r) continue;
+      for (let j = 0; j < idx.length; j++) {
+        const i = idx[j];
+        a[i] = from[i] + (r[i] - from[i]) * k;
+        a[i + 1] = from[i + 1] + (r[i + 1] - from[i + 1]) * k;
+        a[i + 2] = from[i + 2] + (r[i + 2] - from[i + 2]) * k;
+      }
+      o.geometry.attributes.position.needsUpdate = true;
+    }
+    u.shadeIn -= dt;
+    if (u.shadeIn <= 0) { u.shadeIn = UNDENT_SHADE; this._shade(u, false); }
+    if (u.done >= 1) {
+      p._undent = null;
+      this.mend(p);
+    }
+  }
+
+  _shade(u) {
+    for (const { o, idx } of u.parts) {
+      if (!o.userData.dentRest) continue;
+      const hit = new Uint8Array(o.geometry.attributes.position.count);
+      for (let j = 0; j < idx.length; j++) hit[idx[j] / 3] = 1;
+      shadeAgain(o.geometry, hit);
     }
   }
 

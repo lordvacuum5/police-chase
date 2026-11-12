@@ -2600,7 +2600,7 @@ class Game {
         this._updateBroke(e);
       }
       if (!this.outcome) this.replay.record(dt);
-      this.dents.update(session.active);
+      this.dents.update(session.active, dt);
     }
 
     this._render(dt);
