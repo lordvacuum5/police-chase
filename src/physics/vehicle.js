@@ -432,6 +432,9 @@ export class Vehicle {
     const k = want / now;
     // What it keeps along the ground it does not also get upward: the solver's bounce on top of the
     // speed threw a car 30 m/s into the air and on to its roof. No more than the slope asks.
+    // Holding it to at least what the slope asks as well was tried, for a car stopped dead with the
+    // springs through (63 km/h to 6 on a 39% slope): it threw cars, and rolled 3 police cars in 120
+    // runs of tests/hillcharge.js against none.
     let vy = lv.y;
     if (vy > 0 && this.sim.heightAt) {
       const ux = (lv.x / now), uz = (lv.z / now), px = this.position.x, pz = this.position.z;

@@ -212,7 +212,7 @@ export class Hud {
 
     // The police side's open world: what the suspects are doing, since nobody
     // is after you.
-    const st = (this.game.openWorld && this.game.suspects.statusLine()) || dispatcher.statusLine();
+    const st = (this.game.openWorld && this.game.suspects.statusLine()) || this.game.netStatus || dispatcher.statusLine();
     if (this.statusEl.textContent !== st.text) this.statusEl.textContent = st.text;
     if (this.statusEl.className !== st.cls) this.statusEl.className = st.cls;
 

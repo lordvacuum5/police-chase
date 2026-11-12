@@ -1144,6 +1144,48 @@ class Game {
   }
 
   /**
+   * A civilian on the run, on a police player's map in a game with other people in it. "When you're
+   * pursuing them ... in multiplayer ... no red circles around them ... and on my screen showing no
+   * active pursuit." Only the police side's game alone (_openWorldMarker) drew them. The host has its
+   * own Suspects; anybody else has the cars the host sends flagged as fleeing. With the player's own
+   * chase on, that one has the marker and the ring, and these are dots beside it.
+   */
+  _netCivilians() {
+    this.netStatus = null;
+    if (!this.player || !this.player.isPolice) return;
+    const me = this.player.position;
+    const cars = [];
+    if (session.isHost) {
+      for (const s of this.suspects.list) if (s.state === 'run' && !s.v.removed) cars.push(s.v);
+    } else if (this.netCars) {
+      for (const v of this.netCars.values()) if (v.fleeing && !v.disabled && !v.removed) cars.push(v);
+    }
+    if (!cars.length) {
+      // Its marker goes with it, unless the player's own chase has the marker now.
+      if (this._netCivShown && !(this.heat.value > 0)) { this.hud.suspect = null; this.hud.suspectRange = 0; this.hud.moreSuspects = []; }
+      this._netCivShown = false;
+      return;
+    }
+    this._netCivShown = true;
+    cars.sort((a, b) => dist2(me.x, me.z, a.position.x, a.position.z) - dist2(me.x, me.z, b.position.x, b.position.z));
+    const chaseOn = this.heat.value > 0;
+    this.hud.moreSuspects = [];
+    for (let i = 0; i < cars.length; i++) {
+      if (i === 0 && !chaseOn) {
+        this.hud.suspect = cars[0].position;
+        this.hud.suspectStale = false;
+        this.hud.suspectRange = SUSPECT_SIGHT;
+      } else {
+        this.hud.moreSuspects.push({ p: cars[i].position, stale: false });
+      }
+    }
+    if (!chaseOn) {
+      const n = cars.length;
+      this.netStatus = { text: n > 1 ? `PURSUIT — ${n} VEHICLES FLEEING` : 'PURSUIT — VEHICLE FLEEING', cls: 'spotted' };
+    }
+  }
+
+  /**
    * How far to draw a tipped car up so nothing of it is under the ground,
    * eased in as it tips so it does not jump. See Game._render.
    */
@@ -2591,10 +2633,36 @@ class Game {
     if (a.view) {
       a.view.position.copy(a.pos);
       a.view.quaternion.copy(a.quat);
+      this._netAirWreck(a, car, dt);
       const ud = a.view.userData;
-      if (ud.main) ud.main.rotation[ud.mainAxis || 'z'] = a.rotor;
-      if (ud.tail) ud.tail.rotation[ud.tailAxis || 'y'] = a.rotor * 1.7;
+      if (ud.main && !a.wreck) ud.main.rotation[ud.mainAxis || 'z'] = a.rotor;
+      if (ud.tail && !a.wreck) ud.tail.rotation[ud.tailAxis || 'y'] = a.rotor * 1.7;
     }
+  }
+
+  /**
+   * Somebody else's helicopter in pieces, here as well. "When the helicopter crashes and breaks into
+   * pieces, I want it to show the same on their screen. It doesn't have to show the same position of
+   * pieces, but I need to show it's broken." The pilot's own break-up (FlyingHelicopter._shed and
+   * _updateParts) run on a stand-in with what the packets say, so the rotor goes up and away and the
+   * skids drop off, landing wherever they land here; put back when it is flying again.
+   */
+  _netAirWreck(a, car, dt) {
+    const broken = (car.flags & FLAG.WRECK) !== 0;
+    if (broken && !a.wreck) {
+      const q = a.quat;
+      a.wreck = {
+        view: a.view, game: this, position: a.pos, quaternion: q, roll: 0,
+        yaw: Math.atan2(2 * (q.w * q.y + q.x * q.z), 1 - 2 * (q.y * q.y + q.x * q.x)),
+        linvel: new THREE.Vector3(car.vx || 0, car.vy || 0, car.vz || 0),
+        left: new THREE.Vector3(1, 0, 0).applyQuaternion(q),
+      };
+      FlyingHelicopter.prototype._shed.call(a.wreck);
+    } else if (!broken && a.wreck) {
+      FlyingHelicopter.prototype._restoreParts.call(a.wreck);
+      a.wreck = null;
+    }
+    if (a.wreck) FlyingHelicopter.prototype._updateParts.call(a.wreck, dt);
   }
 
   /**
@@ -2633,6 +2701,8 @@ class Game {
     const a = this.netAir && this.netAir.get(id);
     if (!a) return;
     if (a.parked) { this.world.removeRigidBody(a.parked); a.parked = null; }
+    // Its pieces are loose in the scene: back on it, and gone with it.
+    if (a.wreck) { FlyingHelicopter.prototype._restoreParts.call(a.wreck); a.wreck = null; }
     if (a.view) this.scene.remove(a.view);
     this.netAir.delete(id);
   }
@@ -3279,6 +3349,7 @@ class Game {
       this.heat.bustPinned = (session.bust || 0) > 0;
     }
     if (session.active) this._netUpdate(dt);
+    if (session.active) this._netCivilians();
 
     // ---- physics ----
     this.accumulator += dt;

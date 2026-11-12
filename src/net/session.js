@@ -84,7 +84,7 @@ const KINDS = ['runner', 'supercar', 'offroad', 'patrol', 'interceptor', 'suv', 
   // Traffic (game/traffic.js).
   'hatchback', 'estate', 'civsuv'];
 
-export const FLAG = { POLICE: 1, UNMARKED: 2, DISABLED: 4, BLIP: 8, SIREN: 16, SUSPECT: 32, HAZARD: 64 };
+export const FLAG = { POLICE: 1, UNMARKED: 2, DISABLED: 4, BLIP: 8, SIREN: 16, SUSPECT: 32, HAZARD: 64, WRECK: 128 };
 
 /** A car, as it goes on the wire: fifteen numbers and an id. */
 /**
@@ -110,6 +110,8 @@ export function packCar(id, v, extra = {}) {
   if (v.sirenOn || v.onCall) flags |= FLAG.SIREN;
   if (v.fleeing) flags |= FLAG.SUSPECT;
   if (v.hazards) flags |= FLAG.HAZARD;
+  // A helicopter in pieces (FlyingHelicopter._shed), for everybody else to break theirs.
+  if (v.partsOff) flags |= FLAG.WRECK;
   const r2 = (n) => Math.round(n * 100) / 100;
   const r3 = (n) => Math.round(n * 1000) / 1000;
   return [

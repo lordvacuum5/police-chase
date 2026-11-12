@@ -7976,6 +7976,28 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Multiplayer: civilian chases, a wrecked helicopter, a car stuck reversing, the hills
+
+*"There's a lot of bugs generally with the traffic. When you're pursuing them ... in multiplayer. Just like with no red circles around
+them ... and on my screen showing no active pursuit."* Only the police side's game alone drew a fleeing civilian's marker, ring and
+status. `Game._netCivilians`: on any police player's map, the nearest fleeing civilian gets the marker and red ring, others a dot,
+and the status line says PURSUIT — VEHICLE FLEEING; the host from its own suspects, everybody else from the cars it sends flagged
+fleeing. With the player's own chase on, that keeps the marker. Not tested with two machines.
+
+*"When the helicopter crashes and breaks into pieces, I want it to show the same on their screen. It doesn't have to show the same
+position of pieces."* A new packet flag, `WRECK`, from `partsOff`; `Game._netAirWreck` runs the pilot's own break-up on a stand-in
+there. Checked in one page with made-up packets: rotor and four skid pieces off and flying, all back on when the flag clears.
+
+*"Sometimes when we're in pursuit of a civilian car, they just start going backwards, and they just stay going backwards."*
+`tests/backwards.js`, 6 chases of 90 s, solo: one stretch of 4.5 s, reversing out of a tight spot on a local plan, as it should. Not
+caught, so a guard: 5 s of going backwards and a getaway driver drops what it was doing and is routed again (`BACK_MAX`).
+
+*"The suspension goes down so far that the actual base of the body of the car hits the hill, and it just makes us flip backwards."*
+`tests/hillcharge.js`, now with the player's own car (which has none of the police's guards against tipping): 40 slopes at 40, 70 and 110 km/h,
+nose up past the slope at most 16-29 degrees, never over 50; no flip either way. Found instead: on a 39% slope with the springs through,
+the keel stopped a car from 63 km/h to 6 in a frame. Pushing it up the slope instead threw cars and rolled 3 police cars in 120 runs, so
+it is not in. Neither the flip nor a fix for that stop.
+
 ### A police player disguised, a police car that was a civilian, and the nose view
 
 *"So you can't normally ... when the criminal player is not in a pursuit, then I want it so they can't actually see who is the

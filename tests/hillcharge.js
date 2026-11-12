@@ -24,7 +24,7 @@ function slopeAt(g, x, z) {
   return { s: Math.hypot(dx, dz), dx, dz };
 }
 
-window.__runHillCharge = async function (kph = 150, spots = 40, keep = null) {
+window.__runHillCharge = async function (kph = 150, spots = 40, keep = null, mine = false) {
   window.__res = null;
   try {
     for (let i = 0; i < 200 && !(window.__game && window.__game.player); i++) await new Promise((r) => setTimeout(r, 100));
@@ -54,11 +54,17 @@ window.__runHillCharge = async function (kph = 150, spots = 40, keep = null) {
       if (clear) pick.push({ ...a, ux, uz });
     }
     if (!pick.length) { window.__res = `no clear slope in ${all.length}`; return window.__res; }
-    const idle = { throttle: 0, brake: 1, steer: 0, handbrake: 1 };
-    p.teleport({ x: 900, y: g.sim.heightAt(900, 900) + 2, z: 900 }, 0);
-    const u = g.spawnPoliceNear({ x: pick[0].x, y: 0, z: pick[0].z }, 5);
-    const v = u.vehicle;
-    v.assist.shielded = false;
+    // `mine`: the player's own car, which has none of the police's guards against tipping.
+    const idle = mine ? { throttle: 1, brake: 0, steer: 0, handbrake: 0 } : { throttle: 0, brake: 1, steer: 0, handbrake: 1 };
+    let v;
+    if (mine) {
+      v = p;
+    } else {
+      p.teleport({ x: 900, y: g.sim.heightAt(900, 900) + 2, z: 900 }, 0);
+      v = g.spawnPoliceNear({ x: pick[0].x, y: 0, z: pick[0].z }, 5).vehicle;
+      v.assist.shielded = false;
+    }
+    let pitchMax = 0, backFlips = 0;
     if (keep) keep(v);
     const speed = kph / 3.6;
     let stopped = 0, flipped = 0, worst = [], lost = 0;
@@ -71,7 +77,7 @@ window.__runHillCharge = async function (kph = 150, spots = 40, keep = null) {
       v.setVelocity({ x: a.ux * speed, y: 0, z: a.uz * speed });
       v._readState();
       const hs = [];
-      let worstDrop = 0, at = null, minUp = 1, keel = 0, body = 0, maxVy = -99, ground0 = 0;
+      let worstDrop = 0, at = null, minUp = 1, keel = 0, body = 0, maxVy = -99, ground0 = 0, nose = 0;
       for (let i = 0; i < 150; i++) {
         v.setControls({ throttle: 1, brake: 0, steer: 0, handbrake: 0 });
         g.heat.value = 0;
@@ -79,6 +85,10 @@ window.__runHillCharge = async function (kph = 150, spots = 40, keep = null) {
         const s = Math.hypot(v.linvel.x, v.linvel.z);
         hs.push(s);
         minUp = Math.min(minUp, v.up.y);
+        // Nose up past the slope it is on: tipping over backwards.
+        const pitch = Math.asin(Math.max(-1, Math.min(1, v.forward.y))) * 57.3;
+        const slopeHere = Math.atan(slopeAt(g, v.position.x, v.position.z).s) * 57.3;
+        nose = Math.max(nose, pitch - slopeHere);
         maxVy = Math.max(maxVy, v.linvel.y);
         if (v.grounded === 0) ground0++;
         for (const c of v.keel ? [v.collider, v.keel] : [v.collider]) {
@@ -100,12 +110,14 @@ window.__runHillCharge = async function (kph = 150, spots = 40, keep = null) {
       const isStop = worstDrop > 0.25;
       if (isStop) stopped++;
       if (minUp < 0.2) flipped++;
+      pitchMax = Math.max(pitchMax, nose);
+      if (nose > 50) backFlips++;
       lost += hs.length ? 1 - hs[hs.length - 1] / speed : 0;
       worst.push({ drop: +worstDrop.toFixed(2), slope: +(a.s * 100).toFixed(0), at, minUp: +minUp.toFixed(2), keel, body, air: +(ground0 / 60).toFixed(2), maxVy: +maxVy.toFixed(1), where: [Math.round(a.x), Math.round(a.z)] });
       await new Promise((r) => setTimeout(r, 0));
     }
     worst.sort((m, n) => n.drop - m.drop);
-    rows.push(`${pick.length} slopes (steepest ${(pick[0].s * 100).toFixed(0)}%) at ${kph} km/h: thrown back ${stopped}, on its roof or side ${flipped}, mean speed lost by the end ${Math.round((lost / pick.length) * 100)}%, mean air ${(worst.reduce((s, x) => s + x.air, 0) / pick.length).toFixed(2)} s, up to ${Math.max(...worst.map((x) => x.maxVy))} m/s upward`);
+    rows.push(`${pick.length} slopes (steepest ${(pick[0].s * 100).toFixed(0)}%) at ${kph} km/h: thrown back ${stopped}, on its roof or side ${flipped}, mean speed lost by the end ${Math.round((lost / pick.length) * 100)}%, mean air ${(worst.reduce((s, x) => s + x.air, 0) / pick.length).toFixed(2)} s, up to ${Math.max(...worst.map((x) => x.maxVy))} m/s upward; nose up past the slope at most ${pitchMax.toFixed(0)} deg, over 50 deg ${backFlips} times`);
     for (const w of worst.slice(0, 8)) rows.push(JSON.stringify(w));
     window.__res = rows.join('\n');
   } catch (e) {

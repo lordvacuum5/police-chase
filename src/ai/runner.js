@@ -37,6 +37,8 @@ import { clamp, dist2 } from '../util/math.js';
  * dithers at junctions. Twenty-two is roughly a quarter of the way across
  * either map at the speed one of these actually travels.
  */
+/** Seconds of going backwards before a getaway driver gives up on whatever it was doing (Runner.update). */
+const BACK_MAX = 5;
 const HORIZON = 22;
 
 /**
@@ -359,6 +361,25 @@ export class Runner {
       return;
     }
     this.recoverTimer = 0;
+
+    // Going backwards for longer than any way out of a corner takes: "sometimes when we're in pursuit of
+    // a civilian car, they just start going backwards, and they just stay going backwards." Not caught
+    // in a rig (tests/backwards.js: 6 chases, one 4.5 s reverse out of a tight spot), so a guard rather
+    // than a fix: whatever it was doing is dropped and it is routed again, forwards.
+    this._backFor = v.forwardSpeed < -1.5 ? (this._backFor || 0) + dt : 0;
+    if (this._backFor > BACK_MAX) {
+      this._backFor = 0;
+      const d = this.driver;
+      d.reverseTimer = 0;
+      d.turnRoundState = null;
+      d.stuckTimer = 0;
+      this._lp = null;
+      this._lpTicket = null;
+      this._line = null;
+      d.planned = false; d.trustRoute = false; d.freeLined = false;
+      d.setPath([]);
+      this.repathTimer = 0;
+    }
 
     // The break. Counted while it is still behaving; once it goes it stays
     // gone. See BREAK_MIN.
