@@ -8010,6 +8010,12 @@ with a camera low and side on to the two of them, once every 12 s at most (`Game
 whose cars would carry on at full speed, and not in a police car or the helicopter. The trigger checked by calling it; not seen in a real
 crash yet.
 
+*"Can you make this slow motion ... a little bit longer? Especially if I'm about to hit more vehicles. It doesn't always have to be from the
+same angle, and make it an option in settings so I can turn it off."* 2.6 s now, and while it runs another police car about to meet yours
+keeps it going, up to 6 s in all. Four ways of looking, taken in turn with a skip now and then: low and side on, out ahead of your car with
+the other coming at the lens, from above, and swinging round them. SLOW-MO ON/OFF in the pause menu, remembered. Checked by calling it: on,
+then a second car coming in put it on for longer (hits 2, 1.6 s more at 1.7 s in); off in the menu, it did not start.
+
 *"On controller, the non-steering joystick ... I want that to control it ... the whole camera swivels around ... and you can go up,
 down ... when you press down on that same joystick, snap back to normal position ... and figure out a way for keyboard and mouse. Don't
 do it for phone."* The right stick swings the chase camera round the car and up and down, and clicking it in puts it back

@@ -71,7 +71,7 @@ import { Weather } from './game/weather.js';
 import { ChaseCamera } from './game/camera.js';
 import { Replay } from './game/replay.js';
 import { Hud } from './game/hud.js';
-import { PauseMenu, savedVolume } from './game/pausemenu.js';
+import { PauseMenu, savedVolume, slowMoOn } from './game/pausemenu.js';
 import { Input } from './core/input.js';
 import { TouchControls } from './core/touch.js';
 import { SkidMarks, LightBars, HazardLights } from './game/effects.js';
@@ -120,7 +120,11 @@ const NET_PULL = 10;     // m/s
 const NET_SPIN = 6;      // rad/s
 /** Game._slowMoCheck: how much slower, for how long and how often, s; how fast closing, m/s, and how soon a hit, s; the camera out from the two, m. */
 const SLOW_SCALE = 0.25;
-const SLOW_FOR = 1.6;
+const SLOW_FOR = 2.6;
+/** The most it runs, s, however many cars are about to meet yours; how long it takes to go in and out, s; how many ways of looking. */
+const SLOW_MOST = 6;
+const SLOW_EASE = 0.3;
+const SLOW_SHOTS = 4;
 const SLOW_EVERY = 12;
 const SLOW_CLOSING = 12;
 const SLOW_AHEAD = 0.45;
@@ -2058,15 +2062,37 @@ class Game {
     const p = this.player;
     this._slowCool = Math.max(0, (this._slowCool || 0) - dt);
     if (this.slowMo) {
-      this.slowMo.left -= dt;
-      if (this.slowMo.left <= 0 || this.outcome || this.paused) { this.slowMo = null; return dt; }
+      const s = this.slowMo;
+      s.left -= dt;
+      s.age += dt;
+      if (s.left <= 0 || this.outcome || this.paused) { this.slowMo = null; return dt; }
+      // Another car about to meet yours, or the one it is on: it goes on, up to SLOW_MOST in all. "Especially
+      // if I'm about to hit more vehicles."
+      const next = this._aboutToHit(p);
+      if (next && s.age + SLOW_FOR * 0.5 < SLOW_MOST) {
+        if (next !== s.b) { s.b = next; s.hits++; }
+        s.left = Math.max(s.left, SLOW_FOR * 0.6);
+      }
       // In and out of it, not a switch.
-      const t = this.slowMo.left / SLOW_FOR;
-      const ease = Math.min(1, Math.min(t, 1 - t) * 6);
+      const t = s.age / SLOW_EASE, u = s.left / SLOW_EASE;
+      const ease = Math.min(1, t, u);
       return dt * (1 - (1 - SLOW_SCALE) * ease);
     }
-    if (window.__noSlowMo || this._slowCool > 0 || !p || p.isAircraft || p.isPolice || this.outcome || this.paused
-      || session.active || this.replay.playing) return dt;
+    if (window.__noSlowMo || !slowMoOn() || this._slowCool > 0 || !p || p.isAircraft || p.isPolice || this.outcome
+      || this.paused || session.active || this.replay.playing) return dt;
+    const v = this._aboutToHit(p);
+    if (v) {
+      // A different way of looking at it each time: "it doesn't always have to be from the same angle."
+      this._slowShot = ((this._slowShot || 0) + 1 + Math.floor(Math.random() * 2)) % SLOW_SHOTS;
+      this.slowMo = { a: p, b: v, left: SLOW_FOR, age: 0, hits: 1, shot: this._slowShot, side: Math.random() < 0.5 ? 1 : -1 };
+      this._slowCool = SLOW_EVERY;
+    }
+    return dt;
+  }
+
+  /** A police car your car is about to hit hard, or null. */
+  _aboutToHit(p) {
+    let best = null, soonest = SLOW_AHEAD;
     for (const v of this.vehicles) {
       if (v === p || !v.isPolice || v.removed || v.disabled) continue;
       const dx = v.position.x - p.position.x, dz = v.position.z - p.position.z;
@@ -2074,29 +2100,49 @@ class Game {
       if (d > 30 || d < 0.5) continue;
       const closing = ((p.linvel.x - v.linvel.x) * dx + (p.linvel.z - v.linvel.z) * dz) / d;
       if (closing < SLOW_CLOSING) continue;
-      const gap = d - (p.spec.dims.l + v.spec.dims.l) * 0.35;
-      if (gap / closing > SLOW_AHEAD) continue;
-      this.slowMo = { a: p, b: v, left: SLOW_FOR, side: Math.random() < 0.5 ? 1 : -1 };
-      this._slowCool = SLOW_EVERY;
-      break;
+      const when = (d - (p.spec.dims.l + v.spec.dims.l) * 0.35) / closing;
+      if (when < soonest) { soonest = when; best = v; }
     }
-    return dt;
+    return best;
   }
 
-  /** The camera for it: low, close, side on to the two of them. */
+  /**
+   * The camera for it, one of SLOW_SHOTS: low and side on; down at the bumpers from ahead of your car;
+   * high above the two of them; or swinging slowly round them.
+   */
   _slowMoAim() {
-    const { a, b, side } = this.slowMo;
+    const s = this.slowMo;
+    const { a, b, side } = s;
     const ax = a.view.position, bx = b.view.position;
     const mx = (ax.x + bx.x) / 2, my = (ax.y + bx.y) / 2, mz = (ax.z + bx.z) / 2;
     let dx = bx.x - ax.x, dz = bx.z - ax.z;
     const l = Math.hypot(dx, dz) || 1;
     dx /= l; dz /= l;
     const cam = this.camera;
-    cam.position.set(mx - dz * side * SLOW_OUT, my + 1.4, mz + dx * side * SLOW_OUT);
+    if (s.shot === 1) {
+      // Out ahead of your car and off to one side, low: the other car coming at the lens.
+      cam.position.set(ax.x + dx * 4 - dz * side * 3.2, my + 0.7, ax.z + dz * 4 + dx * side * 3.2);
+      cam.lookAt(ax.x, ax.y + 0.6, ax.z);
+    } else if (s.shot === 2) {
+      // From above, a little off the line.
+      cam.position.set(mx - dz * side * 4, my + 11, mz + dx * side * 4);
+      cam.lookAt(mx, my, mz);
+    } else if (s.shot === 3) {
+      // Going round them as it happens.
+      const a0 = Math.atan2(-dz * side, dx * side) + s.age * 0.9;
+      cam.position.set(mx + Math.cos(a0) * SLOW_OUT, my + 2.2, mz + Math.sin(a0) * SLOW_OUT);
+      cam.lookAt(mx, my + 0.5, mz);
+    } else {
+      // Low and side on.
+      cam.position.set(mx - dz * side * SLOW_OUT, my + 1.4, mz + dx * side * SLOW_OUT);
+      cam.lookAt(mx, my + 0.5, mz);
+    }
     const h = this.sim && this.sim.heightAt;
-    if (h) cam.position.y = Math.max(cam.position.y, h(cam.position.x, cam.position.z) + 0.8);
+    if (h) {
+      const floor = h(cam.position.x, cam.position.z) + 0.6;
+      if (cam.position.y < floor) { cam.position.y = floor; cam.lookAt(mx, my + 0.5, mz); }
+    }
     cam.up.set(0, 1, 0);
-    cam.lookAt(mx, my + 0.5, mz);
   }
 
   /** Start the replay, or stop the one running. */

@@ -16,6 +16,12 @@
 import { clamp01 } from '../util/math.js';
 
 const VOL_KEY = 'pc.volume';
+const SLOW_KEY = 'pc.slowmo';
+
+/** Is slow motion before a hit wanted? On unless turned off in the pause menu. */
+export function slowMoOn() {
+  try { return localStorage.getItem(SLOW_KEY) !== '0'; } catch (e) { return true; }
+}
 
 /** The volume last chosen, 0 to 1. Defaults to the mix the game ships with. */
 export function savedVolume() {
@@ -56,6 +62,17 @@ export class PauseMenu {
       try { localStorage.setItem(VOL_KEY, String(v)); } catch (e) { /* blocked */ }
       this._paintSound();
     });
+
+    // Slow motion before a hit (Game._slowMoCheck): "make it an option in settings so I can turn it off."
+    this.slowBtn = document.getElementById('slowbtn');
+    if (this.slowBtn) {
+      this._paintSlow();
+      this.slowBtn.addEventListener('click', () => {
+        const on = !slowMoOn();
+        try { localStorage.setItem(SLOW_KEY, on ? '1' : '0'); } catch (e) { /* blocked */ }
+        this._paintSlow();
+      });
+    }
 
     this.soundBtn.addEventListener('click', () => {
       if (!this.game.audio) return;
@@ -106,6 +123,13 @@ export class PauseMenu {
 
   _paintVolume(v) {
     if (this.volVal) this.volVal.textContent = `${Math.round(v * 100)}%`;
+  }
+
+  _paintSlow() {
+    const on = slowMoOn();
+    this.slowBtn.textContent = on ? 'ON' : 'OFF';
+    this.slowBtn.classList.toggle('on', on);
+    this.slowBtn.classList.toggle('off', !on);
   }
 
   _paintSound() {
