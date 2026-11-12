@@ -49,6 +49,10 @@ const KEYMAP = {
  * degrees, so the travel has to cover that range at a pace a hand can aim.
  */
 const CYCLIC_PX = 3400;
+/** Look-around: radians a pixel of mouse, radians a second at full stick; a right click moving less than this many pixels is a click. */
+const LOOK_MOUSE = 0.006;
+const LOOK_STICK = 2.6;
+const LOOK_CLICK = 6;
 
 export class Input {
   constructor() {
@@ -84,7 +88,29 @@ export class Input {
     window.addEventListener('blur', this._onBlur);
     // Mouse cyclic. Only while the pointer is actually locked to the page --
     // otherwise moving the mouse to reach a menu would fly the aircraft.
+    // Look-around on the mouse: hold the right button and move. A click of it without moving puts the
+    // view back. "Figure out a way for keyboard and mouse." See sampleLook.
+    this.lookDX = 0;
+    this.lookDY = 0;
+    this._onMouseDown = (e) => {
+      if (e.button !== 2) return;
+      this.lookHeld = true;
+      this._lookMoved = 0;
+    };
+    this._onMouseUp = (e) => {
+      if (e.button !== 2) return;
+      if (this.lookHeld && this._lookMoved < LOOK_CLICK) this._lookReset = true;
+      this.lookHeld = false;
+    };
+    window.addEventListener('mousedown', this._onMouseDown);
+    window.addEventListener('mouseup', this._onMouseUp);
     this._onMove = (e) => {
+      if (this.lookHeld) {
+        this.lookDX += e.movementX || 0;
+        this.lookDY += e.movementY || 0;
+        this._lookMoved += Math.abs(e.movementX || 0) + Math.abs(e.movementY || 0);
+        return;
+      }
       if (!this.pointerHeld) return;
       this.cyclicX = clamp(this.cyclicX + (e.movementX || 0) / CYCLIC_PX, -1, 1);
       // Push the mouse away to put the nose down and go. movementY is
@@ -92,6 +118,9 @@ export class Input {
       // the stick, so it is negated -- without that, pulling back flew you
       // forwards and the whole thing felt inside out.
       this.cyclicY = clamp(this.cyclicY - (e.movementY || 0) / CYCLIC_PX, -1, 1);
+      // And the raw movement, for the aircraft to turn by directly: see sampleAir.
+      this.mouseDX = (this.mouseDX || 0) + (e.movementX || 0);
+      this.mouseDY = (this.mouseDY || 0) + (e.movementY || 0);
       this._movedAt = performance.now();
     };
     this._onLockChange = () => {
@@ -106,6 +135,34 @@ export class Input {
   }
 
   down(action) { return KEYMAP[action].some((k) => this.keys.has(k)); }
+
+  /**
+   * How far to swing the camera round this frame, radians, and whether to put it back.
+   *
+   * "On controller, the non-steering joystick that basically does nothing at the moment, I want that to
+   * control it ... the whole camera kind of swivels around ... and you can go up, down ... when you press
+   * down on that same joystick, can you make it snap back to normal position?" The right stick, in a car
+   * (in the air it is the cyclic), clicked in to snap back; on the mouse, the right button held and moved,
+   * clicked to snap back. Not on a phone.
+   */
+  sampleLook(dt, flying) {
+    const out = { yaw: this.lookDX * LOOK_MOUSE, pitch: this.lookDY * LOOK_MOUSE, reset: !!this._lookReset };
+    this.lookDX = 0;
+    this.lookDY = 0;
+    this._lookReset = false;
+    const pad = this._pad();
+    if (pad) {
+      const press = !!(pad.buttons[11] && pad.buttons[11].pressed);
+      if (press && !this._r3) out.reset = true;
+      this._r3 = press;
+      if (!flying) {
+        const dead = (v) => (Math.abs(v) < 0.18 ? 0 : (v - Math.sign(v) * 0.18) / 0.82);
+        out.yaw += dead(pad.axes[2] || 0) * LOOK_STICK * dt;
+        out.pitch += dead(pad.axes[3] || 0) * LOOK_STICK * dt;
+      }
+    }
+    return out;
+  }
 
   /**
    * Has this word just been typed?
@@ -239,9 +296,21 @@ export class Input {
     const out = {
       collective: (this.down('climb') ? 1 : 0) + (this.down('sink') ? -1 : 0),
       yaw: (this.down('yawLeft') ? 1 : 0) + (this.down('yawRight') ? -1 : 0),
-      pitch: keyPitch || this.cyclicY,
-      roll: keyRoll || this.cyclicX,
+      pitch: keyPitch,
+      roll: keyRoll,
     };
+    // The mouse turns the aircraft by what it moved, and stopping it stops the turn. "When you move the
+    // mouse really fast and you stop the mouse, it keeps on trying to get to that position that the
+    // mouse almost was ... I want it so you move the mouse up, and then you stop, it stops going in that
+    // direction ... play like Battlefield." It was a position stick the airframe chased with its weight,
+    // so a flick was a promise the aircraft went on keeping. See FlyingHelicopter.update.
+    if (this.pointerHeld && !keyPitch && !keyRoll) {
+      out.mouse = true;
+      out.mouseDX = this.mouseDX || 0;
+      out.mouseDY = this.mouseDY || 0;
+    }
+    this.mouseDX = 0;
+    this.mouseDY = 0;
 
     // ---- the pad ----
     //

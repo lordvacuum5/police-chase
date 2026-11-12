@@ -112,6 +112,9 @@ const CAM_CLEAR = 0.6;
 /** How quickly the air camera swings round behind the aircraft's nose, 1/s. */
 const AIR_FOLLOW = 7;
 const HOOD_CLEAR = 0.3;
+/** How far the view may be swung down below and up above the usual, rad. */
+const LOOK_LOW = -0.25;
+const LOOK_HIGH = 1.1;
 /**
  * The helicopter's second view: on top of the nose, bolted on. "Create a second camera on a
  * helicopter ... almost like a bonnet view." Metres from the skids, from the shape of
@@ -142,7 +145,19 @@ export class ChaseCamera {
     this.orbit = 0;
     this.airMode = 0;
     this._inAir = false;
+    // Swung round by the player (Input.sampleLook): yaw round the car, and up or down. See look().
+    this.lookYaw = 0;
+    this.lookPitch = 0;
   }
+
+  /** Swing the view round by this much, radians. */
+  swing(yaw, pitch) {
+    this.lookYaw = ((this.lookYaw + yaw + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+    this.lookPitch = clamp(this.lookPitch + pitch, LOOK_LOW, LOOK_HIGH);
+  }
+
+  /** Back behind the car. */
+  resetSwing() { this.lookYaw = 0; this.lookPitch = 0; }
 
   cycle() {
     if (this._inAir) this.airMode = (this.airMode + 1) % AIR_MODES.length;
@@ -208,11 +223,12 @@ export class ChaseCamera {
     // by a third of a second, which is a view from the side as well.
     this.heading += angleDelta(this.heading, nose) * (1 - Math.exp(-AIR_FOLLOW * dt));
 
-    const sh = Math.sin(this.heading), ch = Math.cos(this.heading);
+    const sh = Math.sin(this.heading + this.lookYaw), ch = Math.cos(this.heading + this.lookYaw);
     // Rise with speed so the ground stays in shot in a dash across town, and
     // drop in the hover where the pilot is looking at something below.
-    const lift = up + smoothstep(10, 60, v.speed) * 3.5;
-    this.pos.set(_carPos.x - sh * back, _carPos.y + lift, _carPos.z - ch * back);
+    const lift = up + smoothstep(10, 60, v.speed) * 3.5 + Math.sin(this.lookPitch) * back;
+    const reach = back * Math.cos(this.lookPitch);
+    this.pos.set(_carPos.x - sh * reach, _carPos.y + lift, _carPos.z - ch * reach);
     // Look a little past the aircraft and a little down, which puts the
     // ground -- the thing the job is about -- in the middle of the screen.
     this.look.copy(_carPos).addScaledVector(AXIS_F.clone().set(sh, 0, ch), 12);
@@ -333,7 +349,8 @@ export class ChaseCamera {
       const dist = (close ? 5.6 : 7.4) + clamp(v.speed * 0.075, 0, 3.2) + (fit ? fit.back : 0);
       const height = (close ? 2.2 : 3.05) + clamp(v.speed * 0.012, 0, 0.7) + (fit ? fit.up : 0);
 
-      const sh = Math.sin(this.heading), ch = Math.cos(this.heading);
+      // Swung round by the player, as far as they have swung it: see swing().
+      const sh = Math.sin(this.heading + this.lookYaw), ch = Math.cos(this.heading + this.lookYaw);
       // Follow with a spring so kerbs and jumps read as movement -- but a
       // spring on the car's offset, not on where the car is in the world.
       //
@@ -348,7 +365,7 @@ export class ChaseCamera {
       // the trail the old spring settled to put in by hand (the velocity over
       // the rate), keeps the same picture without the shake.
       const kPos = close ? 11 : 8.5, kLook = 9;
-      _pos.set(-sh * dist, height, -ch * dist)
+      _pos.set(-sh * dist * Math.cos(this.lookPitch), height + Math.sin(this.lookPitch) * dist, -ch * dist * Math.cos(this.lookPitch))
         .addScaledVector(_tmp.set(v.linvel.x, v.linvel.y, v.linvel.z), -1 / kPos);
       if (!this._rel) this._rel = this.pos.clone().sub(_carPos);
       this._rel.lerp(_pos, 1 - Math.exp(-kPos * dt));

@@ -7976,6 +7976,44 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Busted with the replay behind it, a helicopter that flies like Battlefield, slow motion, looking round
+
+*"When you get busted, it kind of just shows you a replay of the last 10 seconds ... in the background, so it still has a busted
+symbol."* On an arrest the replay goes round and round under the BUSTED screen, which is see-through while it does. WATCH REPLAY or V
+brings it to the front from the start; when that ends it goes back underneath. Checked: 142 frames, playing behind, the screen at 0.38.
+
+*"When you move the mouse really fast and you stop the mouse, it keeps on trying to get to that position that the mouse almost was
+... I want it so you move the mouse up, and then you stop, it stops going in that direction ... make it play like Battlefield."* The
+mouse was a position stick that the airframe chased with its weight, so a flick was a lean it went on arriving at. Now the mouse turns
+it directly, 0.0035 rad a pixel, and nothing more when it stops; nothing levels it either. The arrow keys and the pad are as they were.
+
+*"You shouldn't have to tilt ... 90 degrees ... to actually go fast. You should be able to tilt it quite a lot to go really fast, but
+not that much. And you should start to fall out of the sky much quicker if you're going at that angle."* Its push along the ground counts
+`FWD_GAIN` 1.6 times, and past 49 degrees of lean it sinks, up to 0.7 g more at 90. *"When you start pressing S to go down, and you're
+still going forwards, I still want it to propel you forwards ... not quite as fast."* Along the ground it keeps 0.8 of a hover's push
+with S down. 12 s at each lean, collective 0.3, from 250 m:
+
+| lean | was | now |
+|---|---|---|
+| 20 degrees | 94 km/h | 134 |
+| 35 | 139 | 190 |
+| 50 | 169, 39 m down | 227, 42 m down |
+| 70 | 192, 121 m down | 256, 198 m down |
+| 35 with S, 6 s | 1 km/h | 109 |
+
+*"The slow-motion thing would actually be insane. When you are maybe about to hit a police car, it kind of goes into cinematic camera,
+close up, side view."* Your car closing on a police car at 12 m/s or more, under 0.45 s from it: 1.6 s eased down to a quarter speed,
+with a camera low and side on to the two of them, once every 12 s at most (`Game._slowMoCheck`). Not in a game with other people in it,
+whose cars would carry on at full speed, and not in a police car or the helicopter. The trigger checked by calling it; not seen in a real
+crash yet.
+
+*"On controller, the non-steering joystick ... I want that to control it ... the whole camera swivels around ... and you can go up,
+down ... when you press down on that same joystick, snap back to normal position ... and figure out a way for keyboard and mouse. Don't
+do it for phone."* The right stick swings the chase camera round the car and up and down, and clicking it in puts it back
+(`Input.sampleLook`, `ChaseCamera.swing`). In the helicopter the right stick is the cyclic, so there the stick click still snaps back but
+the stick does not look. On the mouse, hold the right button and move; click it without moving to put the view back. Checked by setting a
+swing: the camera went 48 degrees round toward the 69 asked for in 0.8 s, and back. Not tried on a real pad.
+
 ### The replay
 
 *"Do the replay one"*, from a list of ideas that would not cost performance. `game/replay.js`: 20 times a second, the place and

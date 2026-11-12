@@ -29,7 +29,7 @@ export class Replay {
   }
 
   reset() {
-    this.stop();
+    this.stop(true);
     this.frames = [];
     this.clock = 0;
     this._next = 0;
@@ -57,29 +57,42 @@ export class Replay {
 
   get available() { return this.frames.length > REPLAY_HZ; }
 
-  play() {
-    if (!this.available || this.playing) return false;
+  /**
+   * `behind`: under the BUSTED screen, round and round, with the screen still up. "When you get busted, it
+   * kind of just shows you a replay of the last 10 seconds ... in the background, so it still has a busted
+   * symbol."
+   */
+  play(behind = false) {
+    if (!this.available) return false;
     this.playing = true;
+    this.behind = behind;
     this.t = this.frames[0].t;
     this.end = this.frames[this.frames.length - 1].t;
     this.orbit = 0;
-    document.body.classList.add('replaying');
+    document.body.classList.toggle('replaying', !behind);
+    document.body.classList.toggle('replay-behind', behind);
     return true;
   }
 
-  stop() {
+  stop(quiet = false) {
     if (!this.playing) return;
     this.playing = false;
+    this.behind = false;
     document.body.classList.remove('replaying');
+    document.body.classList.remove('replay-behind');
     for (const v of this.game.vehicles) if (v.view) v.view.visible = true;
-    if (this.onEnd) this.onEnd();
+    if (this.onEnd && !quiet) this.onEnd();
   }
 
   /** Move the replay on; false once it has run out. */
   advance(dt) {
     if (!this.playing) return false;
     this.t += dt;
-    if (this.t >= this.end) { this.stop(); return false; }
+    if (this.t >= this.end) {
+      // Behind the BUSTED screen it goes round again; watched on its own, it ends.
+      if (this.behind) this.t = this.frames[0].t;
+      else { this.stop(); return false; }
+    }
     // The frame either side of now.
     const f = this.frames;
     let i = 0;

@@ -170,6 +170,8 @@
     font: 700 13px ui-monospace, Consolas, monospace; letter-spacing: .2em;
   }
   body.replaying #replaytag { display: block; }
+  /* Under the BUSTED screen, the replay shows through. */
+  body.replay-behind #overlay { background: rgba(4, 6, 9, .38); }
 
   /* A star landing. Three quick pulses of the whole wanted panel, and the
      stars themselves swelling and burning brighter, so it is visible out of

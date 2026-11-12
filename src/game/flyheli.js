@@ -147,6 +147,14 @@ const CYCLIC_RATE = 0.95;        // radians a second toward the demanded lean
 const CYCLIC_ACCEL = 2.2;        // radians a second, per second
 const CYCLIC_GAIN = 3;           // rate asked for per radian still to go
 const LEVEL_RATE = 1.3;
+/** The mouse turns it by this much a pixel, rad: 0.5 m of a 1000 dpi mouse is about 40 degrees. */
+const MOUSE_TURN = 0.0035;
+/** Its push along the ground counts this many times; and with S down, never less than this share of a hover's. */
+const FWD_GAIN = 1.6;
+const SINK_KEEP = 0.8;
+/** Past this lean, rad, it starts to drop, up to this many g more at 90 degrees. */
+const STEEP_FROM = 0.85;
+const STEEP_SINK = 0.7;
 
 /**
  * How hard it returns to level with no input. This is the training-wheels
@@ -652,6 +660,15 @@ export class FlyingHelicopter {
       if (cold || !c.roll) this.roll = damp(this.roll, 0, cold ? 8 : LEVEL, dt);
       this.pitchRate = 0;
       this.rollRate = 0;
+    } else if (c.mouse && !dead && !window.__heliOld) {
+      // Turned by the mouse directly: as far as it moved, no further, held where it was left. See
+      // Input.sampleAir. Nothing levels it either; that is the pilot's, as in Battlefield.
+      this.pitch = clamp(this.pitch - (c.mouseDY || 0) * MOUSE_TURN, -MAX_PITCH, MAX_PITCH);
+      this.roll = clamp(this.roll + (c.mouseDX || 0) * MOUSE_TURN, -MAX_ROLL, MAX_ROLL);
+      this.pitchRate = 0;
+      this.rollRate = 0;
+      this._askPitch = this.pitch;
+      this._askRoll = this.roll;
     } else if (dead) {
       // No rotor and nobody flying it: over on one side, and it stays there.
       this.pitchRate = 0;
@@ -698,7 +715,24 @@ export class FlyingHelicopter {
     thrust *= 1 + LIFT_GAIN * clamp01(flat / LIFT_SPEED);
 
     _up.set(0, 1, 0).applyQuaternion(this.quaternion);
-    this.linvel.addScaledVector(_up, thrust * dt);
+    if (window.__heliOld) {
+      this.linvel.addScaledVector(_up, thrust * dt);
+    } else {
+      // Fast without standing it on its nose, and dropping out of the sky when it is. "You shouldn't have
+      // to tilt ... 90 degrees ... to actually go fast. You should be able to tilt it quite a lot to go
+      // really fast ... and you should start to fall out the sky much quicker if you're going at that
+      // angle." The rotor's push along the ground counts FWD_GAIN times. And the collective down is for
+      // coming down, not for stopping: "pressing S to go down, and you're still going forwards, I still
+      // want it to propel you forwards ... just not quite as fast." Along the ground, the push is never
+      // less than SINK_KEEP of a hover's.
+      const along = Math.max(this.collective, ask < 0 && live ? HOVER * SINK_KEEP : 0) * THRUST * G * (1 + LIFT_GAIN * clamp01(flat / LIFT_SPEED));
+      this.linvel.x += _up.x * along * FWD_GAIN * dt;
+      this.linvel.z += _up.z * along * FWD_GAIN * dt;
+      this.linvel.y += _up.y * thrust * dt;
+      // Past STEEP_FROM of lean, the rotor holds less and less of it up.
+      const tilt = Math.acos(clamp(_up.y, -1, 1));
+      if (tilt > STEEP_FROM) this.linvel.y -= STEEP_SINK * G * Math.min(1, (tilt - STEEP_FROM) / (Math.PI / 2 - STEEP_FROM)) * dt;
+    }
     this.linvel.y -= G * dt;
 
     // Drag, lighter on the vertical so a deliberate descent still feels like

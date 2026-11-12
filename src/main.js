@@ -118,6 +118,13 @@ const BLOCK_MAX = 220;
 const NET_SNAP = 5;      // m
 const NET_PULL = 10;     // m/s
 const NET_SPIN = 6;      // rad/s
+/** Game._slowMoCheck: how much slower, for how long and how often, s; how fast closing, m/s, and how soon a hit, s; the camera out from the two, m. */
+const SLOW_SCALE = 0.25;
+const SLOW_FOR = 1.6;
+const SLOW_EVERY = 12;
+const SLOW_CLOSING = 12;
+const SLOW_AHEAD = 0.45;
+const SLOW_OUT = 7;
 /** Game._netTrain: further out than this, s, the train jumps to the host's; nearer, it closes the gap at this rate, 1/s. */
 const TRAIN_SNAP = 2;
 const TRAIN_EASE = 1.5;
@@ -453,7 +460,12 @@ class Game {
     this.camera3 = new ChaseCamera(this.camera);
     this.replay = new Replay(this);
     // When it has run out: the arrest's screen back, or the game carrying on.
-    this.replay.onEnd = () => { if (this.outcome) this.hud.overlay.classList.add('show'); };
+    // Watched on its own after an arrest, it goes back under the BUSTED screen when it ends.
+    this.replay.onEnd = () => {
+      if (this.outcome) { this.hud.overlay.classList.add('show'); this.replay.play(true); }
+    };
+    // The right button is for looking round (Input.sampleLook), not for the browser's menu.
+    if (typeof window !== 'undefined') window.addEventListener('contextmenu', (e) => { if (e.target && e.target.tagName === 'CANVAS') e.preventDefault(); });
     const replayBtn = typeof document !== 'undefined' && document.getElementById('replaybtn');
     if (replayBtn) replayBtn.addEventListener('click', () => this.toggleReplay());
     this.camera3.groundAt = (x, z) => (this.sim.heightAt ? this.sim.heightAt(x, z) : this.groundAt(x, z));
@@ -2034,9 +2046,63 @@ class Game {
     ], {}, true);
   }
 
+  /**
+   * About to hit a police car hard: the moment slowed down and seen side on. "The slow-motion thing would
+   * actually be insane. Like, when you are maybe about to hit a police car, it kind of goes into cinematic
+   * camera, close up, side view sort of." Your car, closing on a police car at SLOW_CLOSING or more, under
+   * SLOW_AHEAD seconds from touching: SLOW_FOR seconds at SLOW_SCALE speed, then once every SLOW_EVERY at
+   * most. Not with other people in the game: their cars would carry on at full speed.
+   * Returns the frame's time, slowed or not.
+   */
+  _slowMoCheck(dt) {
+    const p = this.player;
+    this._slowCool = Math.max(0, (this._slowCool || 0) - dt);
+    if (this.slowMo) {
+      this.slowMo.left -= dt;
+      if (this.slowMo.left <= 0 || this.outcome || this.paused) { this.slowMo = null; return dt; }
+      // In and out of it, not a switch.
+      const t = this.slowMo.left / SLOW_FOR;
+      const ease = Math.min(1, Math.min(t, 1 - t) * 6);
+      return dt * (1 - (1 - SLOW_SCALE) * ease);
+    }
+    if (window.__noSlowMo || this._slowCool > 0 || !p || p.isAircraft || p.isPolice || this.outcome || this.paused
+      || session.active || this.replay.playing) return dt;
+    for (const v of this.vehicles) {
+      if (v === p || !v.isPolice || v.removed || v.disabled) continue;
+      const dx = v.position.x - p.position.x, dz = v.position.z - p.position.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 30 || d < 0.5) continue;
+      const closing = ((p.linvel.x - v.linvel.x) * dx + (p.linvel.z - v.linvel.z) * dz) / d;
+      if (closing < SLOW_CLOSING) continue;
+      const gap = d - (p.spec.dims.l + v.spec.dims.l) * 0.35;
+      if (gap / closing > SLOW_AHEAD) continue;
+      this.slowMo = { a: p, b: v, left: SLOW_FOR, side: Math.random() < 0.5 ? 1 : -1 };
+      this._slowCool = SLOW_EVERY;
+      break;
+    }
+    return dt;
+  }
+
+  /** The camera for it: low, close, side on to the two of them. */
+  _slowMoAim() {
+    const { a, b, side } = this.slowMo;
+    const ax = a.view.position, bx = b.view.position;
+    const mx = (ax.x + bx.x) / 2, my = (ax.y + bx.y) / 2, mz = (ax.z + bx.z) / 2;
+    let dx = bx.x - ax.x, dz = bx.z - ax.z;
+    const l = Math.hypot(dx, dz) || 1;
+    dx /= l; dz /= l;
+    const cam = this.camera;
+    cam.position.set(mx - dz * side * SLOW_OUT, my + 1.4, mz + dx * side * SLOW_OUT);
+    const h = this.sim && this.sim.heightAt;
+    if (h) cam.position.y = Math.max(cam.position.y, h(cam.position.x, cam.position.z) + 0.8);
+    cam.up.set(0, 1, 0);
+    cam.lookAt(mx, my + 0.5, mz);
+  }
+
   /** Start the replay, or stop the one running. */
   toggleReplay() {
-    if (this.replay.playing) { this.replay.stop(); return; }
+    // Behind the BUSTED screen: brought to the front, from the start.
+    if (this.replay.playing && !this.replay.behind) { this.replay.stop(); return; }
     if (this.replay.play()) this.hud.overlay.classList.remove('show');
   }
 
@@ -2066,6 +2132,7 @@ class Game {
       `Damage <b>${(this.player.damage * 100).toFixed(0)}%</b>`,
     ].join(' &nbsp;·&nbsp; '));
     this.commentary.onBusted();
+    this.replay.play(true);
     this.radio('Control, received. All units, stand down.', true, { final: true });
     if (session.active && session.isHost) session.sendEvent('busted');
   }
@@ -2438,6 +2505,14 @@ class Game {
     // instead, and the first sign of it is a fuel tank with eighteen billion
     // seconds in it.
     if (!(dt > 0)) dt = 0;
+    // Looking round, from the right stick or the right mouse button: see Input.sampleLook.
+    if (this.player && !this.paused) {
+      const look = this.input.sampleLook(dt, !!this.player.isAircraft);
+      if (look.reset) this.camera3.resetSwing();
+      else if (look.yaw || look.pitch) this.camera3.swing(-look.yaw, look.pitch);
+    }
+    // A big hit about to happen, slowed down and seen from the side: see _slowMoCheck.
+    dt = this._slowMoCheck(dt);
 
     this._trackPerformance(dt);
     this._recordDrive(dt);
@@ -3792,6 +3867,7 @@ class Game {
 
     this.wheelMesh.count = wi;
     if (replaying) this.replay.aim(this.camera);
+    else if (this.slowMo) this._slowMoAim();
     this.wheelMesh.instanceMatrix.needsUpdate = true;
     this.lights.end();
     this.hazards.end();
