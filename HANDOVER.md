@@ -67,7 +67,9 @@ src/
     tactics.js    PIT and the rolling box
   game/           vehicle specs, heat, HUD, audio, garage, roadblocks,
                   helicopter (AI) and flyheli.js (the flyable one), score,
-                  commentary, weather, props
+                  commentary, weather, props, replay.js (the last 10 s),
+                  dents.js (body dents at hard hits, single player only;
+                  undone by Vehicle.repair)
   world/          map generation: citygen.js, towngen.js, countrygen.js
                   (Haldon Vale), terrain.js (hills: height grid, heightfield,
                   ground mesh), roadgraph.js, cutgraph.js, common.js

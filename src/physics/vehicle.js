@@ -50,6 +50,8 @@ const HILL_KEEP = 0.985;
  * the ground if you hit them hard ... then they come out of contact, they become 100% grip again."
  */
 const BUMP_BACK = 1.0;
+/** A knock harder than this, m/s, is kept as lastHit, with its direction, for anything that wants to show it. */
+const HIT_KEEP = 6;
 /** Vehicle._keelKick: the most upward speed the ground alone may add in one physics step, m/s; not below this speed, m/s. */
 const KICK_STEP = 1.2;
 const KICK_SPEED = 12;
@@ -918,6 +920,8 @@ export class Vehicle {
     let dy = _v1.y - this._prevVel.y;
     if (dy > 0 && this._prevVel.y < 0) dy *= window.__landingShare === undefined ? LANDING_SHARE : window.__landingShare;
     const dv = Math.hypot(dx, dy, dz) + spinStop;
+    // A hard one, kept with the way it pushed the car, for the dents (game/dents.js).
+    if (dv > HIT_KEEP) this.lastHit = { x: dx, y: dy, z: dz, dv, ground: this._onlyGround(), at: performance.now() };
     // Below this a knock is just a knock: kerbs, cones, a scrape along a wall
     // and the ordinary bumping of a pack of cars all sit under it. Raised
     // along with `durability` so bodywork survives a chase that involves
@@ -1949,6 +1953,7 @@ export class Vehicle {
 
   repair() {
     this.damage = 0;
+    this.repairs = (this.repairs || 0) + 1;     // game/dents.js knocks the dents out on this
     this.disabled = false;
     for (const w of this.wheels) { w.condition = 1; w.punctured = false; }
   }

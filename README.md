@@ -7976,6 +7976,33 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Crash dents; the crash camera
+
+*"Do the crash dents, single player only."* Asked with a worry about lag, so it is made at the moment of a hit and costs nothing between
+hits. `Vehicle.postStep` keeps any knock over 6 m/s as `lastHit`, with its direction; `game/dents.js` takes a knock of 7 m/s or more,
+not off the ground alone, on your car or one within 70 m of it, and pushes the body in where the line from the middle against the knock
+leaves the car's box: 0.95 m across, in by up to 0.16 m at 30 m/s, never more than 0.3 m from how it was made however often it is hit
+there. A car's shape is shared by every car of its kind, so a dented one is given its own copy first; repaired (`Vehicle.repair`, the
+garage and a restart) it has the shared one back. Never in a game with other people in it, nor on an aircraft.
+
+Cost on the runner (26,641 points in three parts), measured by calling it:
+
+| | ms |
+|---|---|
+| a dent, whole-body `computeVertexNormals` | 63, 36 |
+| a dent, normals worked out again only round the moved points | 35, 22, 4 |
+| the same, flat arrays | first 18-48, then 4 every time |
+| a fresh dent after a repair (copying the body again) | 8-26 |
+| a repair | 0.6 |
+
+The whole-body normals were also wrong for a bought-in model: they smooth every hard edge it was made with, so `shadeAgain` redoes only
+the points that moved. Tried and taken out: denting the player's car once out of sight at the start, to have the first real one cheap.
+The first real one still took 48 ms. So the first crash of a run can drop two or three frames. Seen: rear lights crushed in and the side
+pushed in after three 24-30 m/s knocks, and back as it was on repair. Not yet seen in a real crash; the GPU's cost of taking the new
+shape is not measured.
+
+*"Instead of slow-mo, call it ... Crash camera."* The pause menu says CRASH CAM.
+
 ### Busted with the replay behind it, a helicopter that flies like Battlefield, slow motion, looking round
 
 *"When you get busted, it kind of just shows you a replay of the last 10 seconds ... in the background, so it still has a busted

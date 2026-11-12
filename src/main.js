@@ -70,6 +70,7 @@ import { loadCarModels } from './game/carmodel.js';
 import { Weather } from './game/weather.js';
 import { ChaseCamera } from './game/camera.js';
 import { Replay } from './game/replay.js';
+import { Dents } from './game/dents.js';
 import { Hud } from './game/hud.js';
 import { PauseMenu, savedVolume, slowMoOn } from './game/pausemenu.js';
 import { Input } from './core/input.js';
@@ -463,6 +464,7 @@ class Game {
     this.touch = new TouchControls(this);
     this.camera3 = new ChaseCamera(this.camera);
     this.replay = new Replay(this);
+    this.dents = new Dents(this);
     // When it has run out: the arrest's screen back, or the game carrying on.
     // Watched on its own after an arrest, it goes back under the BUSTED screen when it ends.
     this.replay.onEnd = () => {
@@ -2593,6 +2595,7 @@ class Game {
         this._updateBroke(e);
       }
       if (!this.outcome) this.replay.record(dt);
+      this.dents.update(session.active);
     }
 
     this._render(dt);
