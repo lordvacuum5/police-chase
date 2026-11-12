@@ -538,6 +538,8 @@ class Session {
         // civilian: both are worked out on the host.
         this.sightRange = msg.r || 0;
         this.suspectBust = msg.sb || 0;
+        // Where the host's train is in its timetable, and when we heard: see Game._netTrain.
+        if (msg.tc !== undefined) { this.trainClock = msg.tc; this.trainAt = at; }
         const live = new Set();
         for (const packed of msg.c) {
           const car = unpackCar(packed);
@@ -615,7 +617,7 @@ class Session {
     return true;
   }
 
-  sendWorld(cars, heat, seen, bust, range = 0, suspectBust = 0) {
+  sendWorld(cars, heat, seen, bust, range = 0, suspectBust = 0, trainClock = undefined) {
     if (!this.active || !this.transport) return;
     this.transport.send({
       t: 'w', from: this.id, c: cars, h: heat, s: seen ? 1 : 0,
@@ -624,6 +626,7 @@ class Session {
       b: Math.round((bust || 0) * 100) / 100,
       r: Math.round(range || 0),
       sb: Math.round((suspectBust || 0) * 100) / 100,
+      tc: trainClock === undefined ? undefined : Math.round(trainClock * 100) / 100,
     });
   }
 

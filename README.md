@@ -7976,6 +7976,36 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### The invisible wall on a hill, at last; every civilian ringed; the train in step
+
+*"The main biggest thing is hitting that invisible wall when you go up a really steep hill really fast. Only happens when it's that.
+... definitely make sure that you fix that."* Found by watching it frame by frame on one slope (39%, from 70 km/h): the springs
+went through, the keel met the slope, and the car went from 57 km/h to under 1 in a single physics step. `_rideUpHill`, which is
+there for exactly this, then did nothing, because it only ever put the speed back along the way the car was still going, and a car
+under 0.5 m/s was not going anywhere. It now puts it back along the way it was going a step before.
+
+`tests/hillcharge.js` now counts only stops with nothing but the ground touching: the wall. 40 slopes at 70, 110 and 150 km/h in the
+player's car and 150 in a police car, old and new on one page:
+
+| | before | after |
+|---|---|---|
+| stopped by nothing but the ground, player's car, 120 runs | 1 (58 to 1 km/h) | 0 |
+| police car, 40 runs | 0 | 1 (130 to 25), not a dead stop, not reproduced when run again |
+| on the roof or side, all 160 | 1 | 3 |
+
+Two of the three rollovers are police at 150 km/h, where the runs differ by chance as well as by this. Two other tries made it worse
+and are not in: holding the climb to what the slope asks (cars thrown, 3 police rolled in 120), and a bump stop that went on
+pushing once the springs were through (more stops, and one car over on its back, 74 degrees).
+
+*"Every single civilian car needs to have a red circle around it, just like normal."* Every chased civilian that is seen now has its
+own ring, alone or in multiplayer, not only the nearest.
+
+*"It sometimes is out of sync on different machines, and it judders a lot ... sometimes it looks like my friend is going through
+the train."* Each machine ran the train's timetable from its own computer's clock, which no two agree on. The host now sends its train
+clock with the world, and the others ease to it, or jump if more than 2 s out (`Game._netTrain`); checked in one page by feeding it
+a clock. And the train is drawn from its timetable at the moment the cars are drawn, not from where the last physics step left it,
+which was up to a step out of time with them. Not tested on two machines.
+
 ### Multiplayer: civilian chases, a wrecked helicopter, a car stuck reversing, the hills
 
 *"There's a lot of bugs generally with the traffic. When you're pursuing them ... in multiplayer. Just like with no red circles around

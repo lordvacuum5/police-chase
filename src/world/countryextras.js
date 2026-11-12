@@ -1416,6 +1416,18 @@ export class Railway {
     return { x: p.x, z: p.z, y };
   }
 
+  /** Carriage `i` with the front at `f`: its middle and its turn. Into _pos and _q. */
+  _carPose(i, f, flip) {
+    const sc = f.s - f.dir * (i * (CAR_LEN + CAR_GAP) + CAR_LEN * 0.5);
+    const a = this._pose(sc + f.dir * 8), b = this._pose(sc - f.dir * 8);
+    const dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
+    const yaw = Math.atan2(dx, dz) + (flip ? Math.PI : 0);
+    const pitch = Math.atan2(dy, Math.hypot(dx, dz)) * (flip ? -1 : 1);
+    _e.set(-pitch, yaw, 0, 'YXZ');
+    _q.setFromEuler(_e);
+    _pos.x = (a.x + b.x) * 0.5; _pos.y = (a.y + b.y) * 0.5 + 1.88; _pos.z = (a.z + b.z) * 0.5;
+  }
+
   step(dt) {
     this.clock += dt;
     const f = this.frontAt(this.clock);
@@ -1425,14 +1437,8 @@ export class Railway {
         if (!car.away) { car.body.setTranslation({ x: 0, y: -60, z: 0 }, false); car.away = true; }
         continue;
       }
-      const sc = f.s - f.dir * (i * (CAR_LEN + CAR_GAP) + CAR_LEN * 0.5);
-      const a = this._pose(sc + f.dir * 8), b = this._pose(sc - f.dir * 8);
-      const dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
-      const yaw = Math.atan2(dx, dz) + (car.flip ? Math.PI : 0);
-      const pitch = Math.atan2(dy, Math.hypot(dx, dz)) * (car.flip ? -1 : 1);
-      _e.set(-pitch, yaw, 0, 'YXZ');
-      _q.setFromEuler(_e);
-      const pos = { x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5 + 1.88, z: (a.z + b.z) * 0.5 };
+      this._carPose(i, f, car.flip);
+      const pos = { x: _pos.x, y: _pos.y, z: _pos.z };
       const rot = { x: _q.x, y: _q.y, z: _q.z, w: _q.w };
       if (car.away) {
         car.body.setTranslation(pos, true);
@@ -1447,12 +1453,25 @@ export class Railway {
 
   /** Drawn: the train where its bodies are, and the crossings. */
   update(game) {
-    for (const car of this.cars) {
+    // Drawn from the timetable at the moment being drawn, not from where the last physics step left
+    // the bodies: a frame between two steps showed the train where it was, and then where it is, and
+    // it juddered against cars drawn in between (Game._render). "It judders a lot."
+    // At the same moment the cars are drawn, a step behind the physics and part way through the next.
+    const ahead = game && game.fixedStep ? game.accumulator - game.fixedStep : 0;
+    const fd = this.frontAt(this.clock + ahead);
+    for (let i = 0; i < this.cars.length; i++) {
+      const car = this.cars[i];
       car.mesh.visible = !car.away;
       if (car.away) continue;
-      const t = car.body.translation(), r = car.body.rotation();
-      car.mesh.position.set(t.x, t.y, t.z);
-      car.mesh.quaternion.set(r.x, r.y, r.z, r.w);
+      if (fd) {
+        this._carPose(i, fd, car.flip);
+        car.mesh.position.set(_pos.x, _pos.y, _pos.z);
+        car.mesh.quaternion.copy(_q);
+      } else {
+        const t = car.body.translation(), r = car.body.rotation();
+        car.mesh.position.set(t.x, t.y, t.z);
+        car.mesh.quaternion.set(r.x, r.y, r.z, r.w);
+      }
     }
     const flash = Math.floor(this.clock * 3) % 2;
     for (const c of this.crossings) {
@@ -1696,3 +1715,4 @@ export class Railway {
 
 const _e = new THREE.Euler();
 const _q = new THREE.Quaternion();
+const _pos = { x: 0, y: 0, z: 0 };

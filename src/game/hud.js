@@ -720,23 +720,29 @@ export class Hud {
     // chased brings its own range (Game._openWorldMarker).
     const ringRange = this.suspectRange
       || (heat.tier > 0 && dispatcher.inContact && dispatcher.sightRange);
-    if (at && ringRange) {
-      const rad = ringRange * k;
+    const ring = (c, range) => {
+      const rad = range * k;
       ctx.save();
       ctx.beginPath();
-      ctx.arc(at.x, at.y, rad, 0, Math.PI * 2);
+      ctx.arc(c.x, c.y, rad, 0, Math.PI * 2);
       ctx.strokeStyle = 'rgba(255,59,48,0.55)';
       ctx.lineWidth = 2;
       ctx.setLineDash([7, 6]);
       ctx.stroke();
       ctx.setLineDash([]);
       // A wash inside it, so "inside the ring" reads at a glance.
-      const grd = ctx.createRadialGradient(at.x, at.y, rad * 0.55, at.x, at.y, rad);
+      const grd = ctx.createRadialGradient(c.x, c.y, rad * 0.55, c.x, c.y, rad);
       grd.addColorStop(0, 'rgba(255,59,48,0)');
       grd.addColorStop(1, 'rgba(255,59,48,0.13)');
       ctx.fillStyle = grd;
       ctx.fill();
       ctx.restore();
+    };
+    if (at && ringRange) ring(at, ringRange);
+    // And every other car being chased that is seen. "Every single civilian car needs to have a red
+    // circle around it, just like normal."
+    if (player.isPolice && this.moreSuspects) {
+      for (const mk of this.moreSuspects) if (mk.range && !mk.stale) ring(toMap(mk.p.x, mk.p.z), mk.range);
     }
 
     // ---- last known position, if they have lost you ----

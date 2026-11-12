@@ -411,7 +411,7 @@ export class Vehicle {
     const lv = this.body.linvel();
     const now = Math.hypot(lv.x, lv.z);
     const want = before * HILL_KEEP;
-    if (now >= want || now < 0.5) return;
+    if (now >= want) return;
     let hill = false, other = false;
     this.world.contactPairsWith(this.keel, (o) => {
       let t = false;
@@ -429,7 +429,13 @@ export class Vehicle {
       if (t) other = true;
     });
     if (other) return;
-    const k = want / now;
+    // Stopped dead -- 57 km/h to under 1 in one step, the car on its keel with the springs through --
+    // was left alone, for want of a direction to put the speed back along: the commonest case of the
+    // very thing this is for. "When you go up a really steep hill really fast ... hitting that
+    // invisible wall." The way it was going, then.
+    const dead = now < 0.5;
+    const bx = dead ? pv.x : lv.x, bz = dead ? pv.z : lv.z, bl = dead ? before : now;
+    const k = want / bl;
     // What it keeps along the ground it does not also get upward: the solver's bounce on top of the
     // speed threw a car 30 m/s into the air and on to its roof. No more than the slope asks.
     // Holding it to at least what the slope asks as well was tried, for a car stopped dead with the
@@ -437,11 +443,11 @@ export class Vehicle {
     // runs of tests/hillcharge.js against none.
     let vy = lv.y;
     if (vy > 0 && this.sim.heightAt) {
-      const ux = (lv.x / now), uz = (lv.z / now), px = this.position.x, pz = this.position.z;
+      const ux = bx / bl, uz = bz / bl, px = this.position.x, pz = this.position.z;
       const grade = Math.max(0, (this.sim.heightAt(px + ux * 3, pz + uz * 3) - this.sim.heightAt(px, pz)) / 3);
       vy = Math.min(vy, want * grade + 1);
     }
-    this.body.setLinvel({ x: lv.x * k, y: vy, z: lv.z * k }, true);
+    this.body.setLinvel({ x: bx * k, y: vy, z: bz * k }, true);
   }
 
   /**

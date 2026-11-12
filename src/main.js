@@ -117,6 +117,9 @@ const BLOCK_MAX = 220;
 const NET_SNAP = 5;      // m
 const NET_PULL = 10;     // m/s
 const NET_SPIN = 6;      // rad/s
+/** Game._netTrain: further out than this, s, the train jumps to the host's; nearer, it closes the gap at this rate, 1/s. */
+const TRAIN_SNAP = 2;
+const TRAIN_EASE = 1.5;
 /** How near a human a car has to be for the host to bother sending it. */
 const NET_RANGE = 400;   // m
 /** Within this of your own car, a followed car is treated as in contact. */
@@ -295,6 +298,8 @@ class Game {
     this.paused = false;
     this.debug = false;
     this.accumulator = 0;
+    // For anything drawn from its own clock rather than a body: see Railway.update.
+    this.fixedStep = FIXED;
     this.frames = 0;
     this.fps = 60;
     this.fpsAccum = 0;
@@ -1129,18 +1134,37 @@ class Game {
     // can see it.
     this.hud.suspectRange = best && best.seen ? SUSPECT_SIGHT : 0;
     // Any other car being chased at the same time is on the map too: "I want
-    // just two dots ... on the map." Marker only; the ring stays on the nearest.
+    // just two dots ... on the map." With its own ring while seen: "every single civilian car needs to
+    // have a red circle around it."
     this.hud.moreSuspects = [];
     for (const s of this.suspects.list) {
       if (s === best || s.state !== 'run' || s.v.removed) continue;
       const p = at(s);
-      if (p) this.hud.moreSuspects.push({ p, stale: false });
+      if (p) this.hud.moreSuspects.push({ p, stale: false, range: s.seen ? SUSPECT_SIGHT : 0 });
     }
     // The busted meter, for whichever arrest is nearest done -- yours or a
     // unit's. The player's own heat is pinned at 0 here, so its meter is free.
     const b = this.suspects.bust();
     this.heat.bustTimer = b.timer;
     this.heat.bustPinned = b.pinned;
+  }
+
+  /**
+   * The train, where the host has it. "It sometimes is out of sync on different machines ... sometimes
+   * it looks like my friend is going through the train." Each machine ran the timetable from its own
+   * clock (Date.now()), which no two machines agree on, and from frames that each one drops differently.
+   * The host sends its train clock with the world; here it is eased toward that, snapped when it is far
+   * out. Latency is not allowed for, so this one is a fraction of a second behind.
+   */
+  _netTrain(dt) {
+    const r = this.world.__map && this.world.__map.railway;
+    if (!r || session.trainClock === undefined) return;
+    const target = session.trainClock + (performance.now() - session.trainAt) / 1000;
+    let diff = target - r.clock;
+    // The timetable goes round: the short way.
+    if (r.period) diff -= Math.round(diff / r.period) * r.period;
+    if (Math.abs(diff) > TRAIN_SNAP) r.clock += diff;
+    else r.clock += diff * Math.min(1, dt * TRAIN_EASE);
   }
 
   /**
@@ -1176,7 +1200,7 @@ class Game {
         this.hud.suspectStale = false;
         this.hud.suspectRange = SUSPECT_SIGHT;
       } else {
-        this.hud.moreSuspects.push({ p: cars[i].position, stale: false });
+        this.hud.moreSuspects.push({ p: cars[i].position, stale: false, range: SUSPECT_SIGHT });
       }
     }
     if (!chaseOn) {
@@ -3263,7 +3287,7 @@ class Game {
       }
     }
     session.sendWorld(cars, this.heat.value, this.dispatcher.inContact, this.heat.bustTimer,
-      this.dispatcher.sightRange, this.suspects.bust().timer);
+      this.dispatcher.sightRange, this.suspects.bust().timer, this.world.__map && this.world.__map.railway ? this.world.__map.railway.clock : undefined);
   }
 
   _update(dt) {
@@ -3350,6 +3374,7 @@ class Game {
     }
     if (session.active) this._netUpdate(dt);
     if (session.active) this._netCivilians();
+    if (session.active && !session.isHost) this._netTrain(dt);
 
     // ---- physics ----
     this.accumulator += dt;

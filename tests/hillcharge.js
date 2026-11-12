@@ -8,6 +8,7 @@
 //   await import('/tests/hillcharge.js');
 //   await __runHillCharge(150, 40);
 import { boxesNear } from '../src/ai/localplan.js';
+import { GROUP } from '../src/physics/world.js';
 
 function solidNear(g, x, z, r) {
   for (const b of boxesNear(g, x, z, r)) {
@@ -64,7 +65,8 @@ window.__runHillCharge = async function (kph = 150, spots = 40, keep = null, min
       v = g.spawnPoliceNear({ x: pick[0].x, y: 0, z: pick[0].z }, 5).vehicle;
       v.assist.shielded = false;
     }
-    let pitchMax = 0, backFlips = 0;
+    let pitchMax = 0, backFlips = 0, walls = 0;
+    const wallList = [];
     if (keep) keep(v);
     const speed = kph / 3.6;
     let stopped = 0, flipped = 0, worst = [], lost = 0;
@@ -78,6 +80,9 @@ window.__runHillCharge = async function (kph = 150, spots = 40, keep = null, min
       v._readState();
       const hs = [];
       let worstDrop = 0, at = null, minUp = 1, keel = 0, body = 0, maxVy = -99, ground0 = 0, nose = 0;
+      // Whether anything but the ground was touched in each frame: a stop with nothing else there is the wall.
+      const solid = [];
+      let atWall = null;
       for (let i = 0; i < 150; i++) {
         v.setControls({ throttle: 1, brake: 0, steer: 0, handbrake: 0 });
         g.heat.value = 0;
@@ -91,16 +96,22 @@ window.__runHillCharge = async function (kph = 150, spots = 40, keep = null, min
         nose = Math.max(nose, pitch - slopeHere);
         maxVy = Math.max(maxVy, v.linvel.y);
         if (v.grounded === 0) ground0++;
+        let hitSolid = false;
         for (const c of v.keel ? [v.collider, v.keel] : [v.collider]) {
           v.world.contactPairsWith(c, (o) => {
             if (o === v.collider || o === v.keel) return;
             let t = false;
             v.world.contactPair(c, o, (m) => { if (m.numContacts() > 0) t = true; });
-            if (t) { if (c === v.keel) keel++; else body++; }
+            if (t) {
+              if (c === v.keel) keel++; else body++;
+              if (!(((o.collisionGroups() >>> 16) & 0xFFFF) & (GROUP.HILL | GROUP.TERRAIN))) hitSolid = true;
+            }
           });
         }
+        solid.push(hitSolid);
         if (i >= 12 && hs[i - 12] > 8) {
           const drop = 1 - s / hs[i - 12];
+          if (drop > 0.6 && !solid.slice(-14).some(Boolean) && hs[i - 12] > 15 && !atWall) atWall = { from: Math.round(hs[i - 12] * 3.6), to: Math.round(s * 3.6), at: [Math.round(v.position.x), Math.round(v.position.z)] };
           if (drop > worstDrop) {
             worstDrop = drop;
             at = { t: +(i / 60).toFixed(2), from: Math.round(hs[i - 12] * 3.6), to: Math.round(s * 3.6), slope: +(slopeAt(g, v.position.x, v.position.z).s * 100).toFixed(0), vy: +v.linvel.y.toFixed(1), y: +(v.position.y - g.sim.heightAt(v.position.x, v.position.z)).toFixed(2), imp: +(v.lastImpact || 0).toFixed(0), up: +v.up.y.toFixed(2), wheels: v.grounded };
@@ -110,6 +121,7 @@ window.__runHillCharge = async function (kph = 150, spots = 40, keep = null, min
       const isStop = worstDrop > 0.25;
       if (isStop) stopped++;
       if (minUp < 0.2) flipped++;
+      if (atWall) { walls++; wallList.push(atWall); }
       pitchMax = Math.max(pitchMax, nose);
       if (nose > 50) backFlips++;
       lost += hs.length ? 1 - hs[hs.length - 1] / speed : 0;
@@ -117,7 +129,7 @@ window.__runHillCharge = async function (kph = 150, spots = 40, keep = null, min
       await new Promise((r) => setTimeout(r, 0));
     }
     worst.sort((m, n) => n.drop - m.drop);
-    rows.push(`${pick.length} slopes (steepest ${(pick[0].s * 100).toFixed(0)}%) at ${kph} km/h: thrown back ${stopped}, on its roof or side ${flipped}, mean speed lost by the end ${Math.round((lost / pick.length) * 100)}%, mean air ${(worst.reduce((s, x) => s + x.air, 0) / pick.length).toFixed(2)} s, up to ${Math.max(...worst.map((x) => x.maxVy))} m/s upward; nose up past the slope at most ${pitchMax.toFixed(0)} deg, over 50 deg ${backFlips} times`);
+    rows.push(`${pick.length} slopes (steepest ${(pick[0].s * 100).toFixed(0)}%) at ${kph} km/h: thrown back ${stopped}, on its roof or side ${flipped}, mean speed lost by the end ${Math.round((lost / pick.length) * 100)}%, mean air ${(worst.reduce((s, x) => s + x.air, 0) / pick.length).toFixed(2)} s, up to ${Math.max(...worst.map((x) => x.maxVy))} m/s upward; nose up past the slope at most ${pitchMax.toFixed(0)} deg, over 50 deg ${backFlips} times; stopped by nothing but the ground ${walls}: ${JSON.stringify(wallList.slice(0, 6))}`);
     for (const w of worst.slice(0, 8)) rows.push(JSON.stringify(w));
     window.__res = rows.join('\n');
   } catch (e) {
