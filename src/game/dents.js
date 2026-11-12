@@ -9,8 +9,8 @@
 import * as THREE from 'three';
 
 /** Knocks under this, m/s, leave no mark; this is how deep a knock of DENT_HARD m/s goes, m; never further in than this from the original; over this radius, m. */
-const DENT_FROM = 7;
-const DENT_HARD = 30;
+const DENT_FROM = 4.5;
+const DENT_HARD = 15;
 const DENT_DEEP = 0.34;
 const DENT_DEEPEST = 0.55;
 const DENT_RADIUS = 1.0;
@@ -27,6 +27,7 @@ export class Dents {
   constructor(game) {
     this.game = game;
     this.dented = new Set();
+    this.queue = [];
   }
 
   /** After each frame's physics: any new hard knocks, and anything mended. */
@@ -40,10 +41,13 @@ export class Dents {
         if (!this.dented.has(v)) v._dentRepairs = v.repairs || 0;
         if (!online && !window.__noDents && !h.ground && h.dv >= DENT_FROM && v.view && !v.isAircraft
           && (v === p || Math.hypot(v.position.x - p.position.x, v.position.z - p.position.z) < DENT_NEAR)) {
-          this._dent(v, h);
+          this.queue.push([v, h]);
         }
       }
     }
+    // One car a frame: both cars in a crash on the same frame took 55 ms, a stutter; one is about half.
+    const next = this.queue.shift();
+    if (next && g.vehicles.includes(next[0])) this._dent(next[0], next[1]);
     for (const v of this.dented) {
       if (!g.vehicles.includes(v)) { this.dented.delete(v); continue; }
       if ((v.repairs || 0) !== v._dentRepairs) this.mend(v);

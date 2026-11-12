@@ -7976,6 +7976,37 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Dents you can see on real hits; the train, crossings, birds and crows
+
+*"I still can't [see] suitable damage if I hit a police car. Or a tree or anything."* The dents were scaled for knocks of 7-30 m/s,
+and a real crash is not that hard. Measured in the step, police car and runner on Haldon Vale:
+
+| crash | your car, m/s | police car, m/s | dent then, yours | now, yours / theirs |
+|---|---|---|---|---|
+| into the back of a parked one at 60 km/h | 8.5 | 6.8 | 3 cm | 13 / 8 cm |
+| side of a parked one at 80 | 14.1 | 11.9 | 15 cm | 33 / 20 cm |
+| a police car rams you at 70 | 10.9 | 9.1 | 8 cm | 22 / 16 cm |
+| a police car rams you at 50 | 9.7 | 8.0 | 6 cm | 18 / 13 cm |
+| a tree at 60 | 19.5 | | | 46 cm |
+
+Now from 4.5 m/s (`HIT_KEEP` 4 in vehicle.js) with the full 0.34 m at 15. Both cars denting on the same frame took 55 ms, so it is one
+car a frame. Warm, a crash costs 6-13 ms; the first of a page still about 50.
+
+*"Can you add any sounds ... train sounds, maybe a few bird sounds when they take off ... crows."* `game/ambience.js`, all made from
+oscillators and noise like the rest:
+
+* The train, heard from 650 m (half at 90): a low rumble, a roar of steel, a clack pair at each rail joint, and its two-tone horn twice
+  when its front is within 320 m and coming your way, once in 30 s at most (`Railway.hear`).
+* A level crossing's two-tone warble while its lights flash, within 220 m.
+* Birds bursting out of cover, by day on Haldon Vale: drive through a hedge, hit something, or pass within 7 m of a tree or hedge over
+  17 m/s (a one-in-three chance, looked at twice a second). Three to six birds, wing beats slowing as they go, alarm calls, and sometimes
+  crows going up complaining. Once in 7 s at most.
+* Crows calling from across the fields every 14-38 s by day, a third as often in town, never in the city. A tawny owl at night.
+
+Levels set by rendering each offline against a middling crash (peak 0.13): the horn was 0.39 at 140 m at first, now about 0.14; the
+crows 0.045 peak, raised; the train at 60 m 0.10. Not heard by anyone yet: the browser here has no ears. `__amb('crows')`, `'flush'`,
+`'owl'` and `'horn'` in the console play them.
+
 ### Bigger dents, crash cam over 50 mph, flashers in the light bar
 
 *"It's not a big enough ... you can't tell. It needs to be a bigger dent."* Twice as deep (0.34 m at 30 m/s, at most 0.55 m from how it

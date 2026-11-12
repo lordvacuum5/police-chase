@@ -51,7 +51,7 @@ const HILL_KEEP = 0.985;
  */
 const BUMP_BACK = 1.0;
 /** A knock harder than this, m/s, is kept as lastHit, with its direction, for anything that wants to show it. */
-const HIT_KEEP = 6;
+const HIT_KEEP = 4;
 /** Vehicle._keelKick: the most upward speed the ground alone may add in one physics step, m/s; not below this speed, m/s. */
 const KICK_STEP = 1.2;
 const KICK_SPEED = 12;
@@ -973,6 +973,7 @@ export class Vehicle {
         const top = hedges.get(other.handle);
         if (top !== undefined && this.collider.translation().y - this.spec.dims.h * 0.5 < top) {
           inHedge = true;
+          this.hedgeAt = performance.now();   // birds out of it: game/ambience.js
           return false;
         }
         return true;

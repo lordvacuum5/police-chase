@@ -1451,6 +1451,34 @@ export class Railway {
     }
   }
 
+  /**
+   * For the sound (game/ambience.js): the nearest carriage to (x, z) and how far, which way the front is
+   * going, and the nearest crossing that is ringing. Nothing is made; null where there is none.
+   */
+  hear(x, z) {
+    const f = this.frontAt(this.clock);
+    let train = null;
+    if (f) {
+      for (let i = 0; i < this.cars.length; i++) {
+        this._carPose(i, f, false);
+        const d = Math.hypot(_pos.x - x, _pos.z - z);
+        if (!train || d < train.d) train = { d, x: _pos.x, z: _pos.z };
+      }
+      const a = this._pose(f.s), b = this._pose(f.s - f.dir * 5);
+      const dx = a.x - b.x, dz = a.z - b.z, l = Math.hypot(dx, dz) || 1;
+      train.front = { x: a.x, z: a.z, dx: dx / l, dz: dz / l };
+      train.speed = TRAIN_SPEED;
+    }
+    let bell = null;
+    for (const c of this.crossings) {
+      if (!c.lit) continue;
+      const p = railPoint(this.rail, c.s);
+      const d = Math.hypot(p.x - x, p.z - z);
+      if (!bell || d < bell.d) bell = { d, x: p.x, z: p.z };
+    }
+    return { train, bell };
+  }
+
   /** Drawn: the train where its bodies are, and the crossings. */
   update(game) {
     // Drawn from the timetable at the moment being drawn, not from where the last physics step left

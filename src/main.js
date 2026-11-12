@@ -71,6 +71,7 @@ import { Weather } from './game/weather.js';
 import { ChaseCamera } from './game/camera.js';
 import { Replay } from './game/replay.js';
 import { Dents } from './game/dents.js';
+import { Ambience, soundCheck } from './game/ambience.js';
 import { Hud } from './game/hud.js';
 import { PauseMenu, savedVolume, slowMoOn } from './game/pausemenu.js';
 import { Input } from './core/input.js';
@@ -467,6 +468,8 @@ class Game {
     this.camera3 = new ChaseCamera(this.camera);
     this.replay = new Replay(this);
     this.dents = new Dents(this);
+    this.ambience = new Ambience(this);
+    soundCheck(this.ambience);
     // When it has run out: the arrest's screen back, or the game carrying on.
     // Watched on its own after an arrest, it goes back under the BUSTED screen when it ends.
     this.replay.onEnd = () => {
@@ -3594,6 +3597,7 @@ class Game {
 
     this._airSpotting(dt);
     if (this.audio) this.audio.update(dt, player, this.dispatcher, this.heat);
+    if (this.audio) this.ambience.update(dt);
     this.hud.update(dt, player, this.heat, this.dispatcher);
   }
 
