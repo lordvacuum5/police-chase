@@ -665,6 +665,10 @@ Object.assign(SPECS, {
  */
 /** The player's SUV's brake torque, Nm; the AI's stays at SPECS.suv's 4400. */
 const SUV_PLAYER_BRAKE_TORQUE = 3900;
+/** The interceptor you drive: its engine pulls this much harder, and it takes this much more to wreck. */
+const INTERCEPTOR_PULL = 1.2;
+const INTERCEPTOR_DRIVE = 'awd';
+const INTERCEPTOR_TOUGH = 1.5;
 
 export function drivablePoliceSpec(key = 'interceptor') {
   const base = HUMAN_POLICE[key] || SPECS[key] || HUMAN_POLICE.interceptor;
@@ -735,6 +739,18 @@ export function drivablePoliceSpec(key = 'interceptor') {
   // (tests/policeturn.js, the `lock` set). More lock than this only made the
   // back end scrub without turning any tighter. The AI's SUVs are untouched,
   // as with everything else here.
+  // The interceptor you drive, as quick as the Stiletto and much harder to break. "Make the new interceptor
+  // as fast as the criminal [Stiletto], the one that's really weak. But give it ... quite a lot more health."
+  // Measured (tests/fastcop.js): it already topped the Stiletto, 248 km/h to 238, and already took 36 shunts
+  // to wreck to the Stiletto's 5; where it lost was getting there, 0-60 in 5.53 s to 4.87 and 0-200 in 17.7
+  // to 14.6, carrying 1.94 t to 1.39. So more pull, and half as much health again.
+  if (key === 'interceptor') {
+    spec.engine = Object.assign({}, spec.engine, {
+      torqueCurve: spec.engine.torqueCurve.map(([rpm, nm]) => [rpm, Math.round(nm * INTERCEPTOR_PULL)]),
+    });
+    spec.durability = base.durability * INTERCEPTOR_TOUGH;
+    spec.drive = INTERCEPTOR_DRIVE;
+  }
   if (key === 'suv') {
     spec.steering = Object.assign({}, base.steering, { maxAngle: 0.62 });
     spec.gripBias = { front: spec.gripBias.front + 0.10, rear: spec.gripBias.rear };

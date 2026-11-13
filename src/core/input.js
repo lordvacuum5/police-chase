@@ -16,6 +16,8 @@ import { clamp, moveTowards } from '../util/math.js';
  * PlayStation one.
  */
 const PAD_TAPS = {
+  0: 'KeyQ',        // A: sirens on, and A again off. "Make it to turn on sirens on control ... press A and
+                    // then A again to turn them off." It was the handbrake, which moved to X.
   3: 'KeyC',        // Y: change view
 };
 
@@ -237,8 +239,10 @@ export class Input {
       const steer = dead(pad.axes[0] || 0);
       const rt = pad.buttons[7] ? pad.buttons[7].value : 0;
       const lt = pad.buttons[6] ? pad.buttons[6].value : 0;
-      const hb = pad.buttons[0] && pad.buttons[0].pressed ? 1 : 0;
-      const kick = !!(pad.buttons[2] && pad.buttons[2].pressed);
+      // X the handbrake ("move the handbrake to X"), so A can be the sirens; the clutch kick, which was
+      // X, is B.
+      const hb = pad.buttons[2] && pad.buttons[2].pressed ? 1 : 0;
+      const kick = !!(pad.buttons[1] && pad.buttons[1].pressed);
       if (rt > 0.05 || lt > 0.05 || Math.abs(steer) > 0.05) this.usingPad = true;
       if (this.usingPad) {
         this.steerAxis = -steer;    // pad right = steer right = negative in our frame

@@ -127,10 +127,12 @@ export const POLICE_CARS = [
     colour: '#16233c',
     shape: 'saloon',
     stats: [
-      ['Top speed', 152, 'mph'],
-      ['0-60', 5.6, 's', true],
+      // Top speed and 0-60 from tests/fastcop.js, after it was made as quick as the Stiletto; toughness is
+      // the old 15 hits times INTERCEPTOR_TOUGH. Grip not re-measured since it went four-wheel drive.
+      ['Top speed', 156, 'mph'],
+      ['0-60', 4.8, 's', true],
       ['Grip', 1.55, 'g'],
-      ['Toughness', 15, 'hits'],
+      ['Toughness', 22, 'hits'],
     ],
   },
   {

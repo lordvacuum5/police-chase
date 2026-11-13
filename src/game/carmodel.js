@@ -44,7 +44,7 @@ import { SPECS } from './vehicles.js';
  */
 export const CAR_MODELS = {
   patrol: { url: 'resources/models/police-patrol.glb', police: true, yaw: 0, lift: 0, lamps: null },
-  interceptor: { url: 'resources/models/police-interceptor.glb', police: true, yaw: 0, lift: 0, lamps: null },
+  interceptor: { url: 'resources/models/police-interceptor-new.glb', police: true, yaw: 0, lift: 0, lamps: null },
   suv: { url: 'resources/models/police-suv.glb?v=2', police: true, yaw: 0, lift: 0, lamps: null },
   van: { url: 'resources/models/police-van.glb', police: true, yaw: 0, lift: 0, lamps: null },
   supercar: { url: 'resources/models/supercar.glb', police: false, yaw: 0, lift: 0, lamps: null },

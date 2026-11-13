@@ -766,8 +766,10 @@ The other number words: *"when I type in the 1 to level, I want like 4, 1, 2,
 doesn't work."* Only `five` was ever a word; the digit keys did work. Now
 `zero`, `one`, `two`, `three` and `four` do too.
 
-A gamepad works too: left stick steers, triggers are throttle and brake, `A`
-handbrake, `X` clutch kick, **`Y` changes the view**. Held controls are sampled
+A gamepad works too: left stick steers, triggers are throttle and brake, `X`
+handbrake, `B` clutch kick, **`Y` changes the view**, and in a police car **`A` turns the sirens on, and
+off again** (*"make it to turn on sirens on control ... press A and then A again to turn them off ...
+[it clashes] with the handbrake, so move the handbrake to X"*; the clutch kick, on X before, went to B). Held controls are sampled
 with the driving; the face buttons that act like a key press are read once a
 frame and go through the same path the keyboard and the on-screen buttons use,
 so nothing downstream has to know where a tap came from.
@@ -7975,6 +7977,36 @@ longest stall 5.3-5.7 s, now 3.2 s; time stopped 3% to 1%; mean 72 to 70 km/h, t
 noise, so the planners have not made them measurably quicker, only less stuck. Caught with the
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
+
+### The new interceptor; A for the sirens; as quick as the Stiletto
+
+**The model.** *"I've put it in ... remeasure everything because it might have done some funny stuff. Because I told it just make it look
+good instead of like doing what you said."* `police-interceptor-new.glb` (renamed from `police-interceptor new.glb`; the old
+`police-interceptor.glb` is still in the folder, unused). Measured from the file: 8,794 triangles, one material, one PNG texture, no
+animation, cameras or compression; four wheels named as asked, wheelbase 2.92 m, track 1.62, tyre radius 0.34 -- the brief's numbers
+exactly, so it fits by its wheels at scale 1. Body 4.77 m long, 2.08 wide (the collider is 1.96, so it is 6 cm wider each side than it
+collides), nose along +Z. Its own light bar is the highest thing on it, 1.04 m across and 0.28 long, and `findLightBar` puts the
+flashers in it; 51-52% of each flasher shows above it, against 33-35% on the others, because the bar is thin and sits on a roof that
+falls away to the sides. Looked at: low, wedge-nosed, black with white flanks, POLICE INTERCEPTOR on the doors, red and blue lenses on its
+bar. The menu photos are retaken everywhere (`VERSION` 2 in `game/cards.js`). The AI's interceptors wear it too.
+
+**Controller.** *"Make it to turn on sirens on control ... press A and then A again to turn them off ... [it clashes] with the handbrake,
+so move the handbrake to X."* A presses the siren key (Q) once a press; X is the handbrake; the clutch kick, which was X, is B. Checked
+with a fake pad: A pressed Q once and not again while held, X gave handbrake 1 and no kick, B the kick and no handbrake.
+
+**Speed.** *"Make the new interceptor as fast as the criminal [Stiletto], the one that's really weak. But give it ... quite a lot more
+health."* The one you drive (`drivablePoliceSpec`); the AI's are as they were. `tests/fastcop.js`, flat plate:
+
+| | 0-60 mph | 0-200 km/h | top | shunts at 50 km/h to wreck |
+|---|---|---|---|---|
+| Stiletto | 4.87 s | 14.63 s | 238 km/h | 5 |
+| your interceptor, was | 5.53 | 17.73 | 248 | 36 |
+| 30% more pull | 5.27 | 13.80 | 250 | 54 (with health +50%) |
+| 20% more pull, four-wheel drive | 4.78 | 14.55 | 251 | 53 |
+
+It was already faster at the top and already seven times as hard to break; it lost getting going, carrying 1.94 t to 1.39. More
+pull alone only spun the rears off the line, so it went four-wheel drive, as the car it now looks like is. Health is half as much again
+(`INTERCEPTOR_TOUGH`). Not yet checked: how four-wheel drive changes the way it corners for you.
 
 ### The police cards show the real cars
 
