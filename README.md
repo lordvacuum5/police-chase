@@ -7976,6 +7976,18 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### A crash that sounds like a crash
+
+*"It sounds like a taser ... when you hit stuff. It's kind of bad, but I'm worried that if you add something else that sounds more
+realistic, it will kind of also sound bad ... Maybe try."* It was one burst of white noise under a falling lowpass: a hiss, nothing
+under it, nothing after it. `GameAudio._crash` now has four parts: a low thump falling from about 100 Hz to 38 (the weight stopping);
+three to seven short knocks of noise through a resonant band, a few milliseconds apart (a panel folding); five partials that are not
+one note, ringing off (the shell); and, on a hard one, a scatter of bright pings (glass). Rendered offline against the old one, the same
+peak at each strength (0.11 / 0.17 / 0.24 against 0.09 / 0.17 / 0.26 at 0.2 / 0.5 / 0.9), most of its energy now under 200 Hz (63-75%
+against 8-11%), and it lasts 160-430 ms instead of about 130. The first try was two to four times louder than the old at its peak,
+nearly all thump, and was turned down. Not heard by a person yet. `window.__oldCrash = true` in the console puts the old one back, to
+compare.
+
 ### Dents knocked out in the garage; birds a little longer
 
 *"When I'm repairing, I want it to slowly, like, undent."* The garage never called `Vehicle.repair` -- it takes the damage down 0.05 a

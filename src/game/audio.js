@@ -1365,8 +1365,103 @@ export class GameAudio {
   }
 
   /** A short thud whose weight scales with the impact. */
+  /**
+   * A crash. "It sounds like a taser ... when you hit stuff." It was one burst of white noise with a
+   * falling lowpass: a hiss with nothing under it and nothing after it, which is static, not a car. Now
+   * four parts, all from the shared noise and a few oscillators, as before:
+   *   thump   the weight of it: a low sine dropping in pitch, the car's mass stopping
+   *   crunch  a few short knocks of noise through a resonant band, a panel folding, not one smooth hiss
+   *   metal   inharmonic partials ringing off, the body shell; louder and longer the harder the hit
+   *   glass   on a hard one, a scatter of bright high pings, something breaking
+   * `window.__oldCrash = true` puts the old one back, to compare.
+   */
   impact(strength) {
     if (!this.ready || this.muted || this.ctx.state !== 'running') return;
+    if (window.__oldCrash) { this._impactOld(strength); return; }
+    this._crash(this.ctx, this.master, this.noiseBuffer, clamp01(strength), this.ctx.currentTime);
+  }
+
+  _crash(ctx, out, noise, s, now) {
+    const bus = ctx.createGain();
+    bus.gain.value = 1;
+    bus.connect(out);
+
+    // thump
+    const th = ctx.createOscillator();
+    th.type = 'sine';
+    th.frequency.setValueAtTime(95 + s * 30, now);
+    th.frequency.exponentialRampToValueAtTime(38, now + 0.22);
+    const thg = ctx.createGain();
+    thg.gain.setValueAtTime(0.0001, now);
+    thg.gain.exponentialRampToValueAtTime(0.07 + s * 0.15, now + 0.008);
+    thg.gain.exponentialRampToValueAtTime(0.0001, now + 0.18 + s * 0.12);
+    th.connect(thg); thg.connect(bus);
+    th.start(now); th.stop(now + 0.5);
+
+    // crunch: knocks a few milliseconds apart, each a little lower, the first the loudest
+    const knocks = 3 + Math.round(s * 4);
+    let t = now;
+    for (let i = 0; i < knocks; i++) {
+      const src = ctx.createBufferSource();
+      src.buffer = noise;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = (700 + Math.random() * 900) * (1 - i * 0.06);
+      bp.Q.value = 2.2;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 2600 + s * 1500;
+      const g = ctx.createGain();
+      const lvl = (0.06 + s * 0.22) * Math.pow(0.72, i) * (0.7 + Math.random() * 0.5);
+      const len = 0.035 + Math.random() * 0.05;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(lvl, t + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+      src.connect(bp); bp.connect(lp); lp.connect(g); g.connect(bus);
+      src.start(t, Math.random() * 1.5);
+      src.stop(t + len + 0.02);
+      t += 0.012 + Math.random() * 0.03 * (1 + s);
+    }
+
+    // metal: a few partials that do not belong to one note, decaying at different rates
+    const ring = 0.25 + s * 0.6;
+    const base = 180 + Math.random() * 90;
+    for (const [mul, lv] of [[1, 1], [2.32, 0.7], [3.71, 0.5], [5.13, 0.35], [6.9, 0.22]]) {
+      const o = ctx.createOscillator();
+      o.type = 'triangle';
+      o.frequency.value = base * mul * (0.98 + Math.random() * 0.04);
+      const g = ctx.createGain();
+      const lvl = (0.012 + s * 0.05) * lv;
+      const dur = ring / Math.sqrt(mul);
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(lvl, now + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+      o.connect(g); g.connect(bus);
+      o.start(now); o.stop(now + dur + 0.02);
+    }
+
+    // glass, on the harder ones
+    if (s > 0.45) {
+      const bits = Math.round(4 + (s - 0.45) * 22);
+      for (let i = 0; i < bits; i++) {
+        const at = now + 0.02 + Math.random() * (0.18 + s * 0.25);
+        const o = ctx.createOscillator();
+        o.type = 'sine';
+        o.frequency.value = 3200 + Math.random() * 4200;
+        const g = ctx.createGain();
+        const lvl = 0.012 + Math.random() * 0.02 * s;
+        g.gain.setValueAtTime(0.0001, at);
+        g.gain.exponentialRampToValueAtTime(lvl, at + 0.002);
+        g.gain.exponentialRampToValueAtTime(0.0001, at + 0.04 + Math.random() * 0.08);
+        o.connect(g); g.connect(bus);
+        o.start(at); o.stop(at + 0.15);
+      }
+    }
+    setTimeout(() => bus.disconnect(), 2000);
+  }
+
+  /** The crash as it was, for comparing: `window.__oldCrash = true`. */
+  _impactOld(strength) {
     const ctx = this.ctx;
     const now = ctx.currentTime;
     const s = clamp01(strength);
