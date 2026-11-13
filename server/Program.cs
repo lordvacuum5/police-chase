@@ -93,6 +93,7 @@ var dailyDir = Path.Combine(
     "data", "daily");
 Directory.CreateDirectory(dailyDir);
 var dailyLock = new object();
+var namesPath = Path.Combine(dailyDir, "names.json");
 // How many lines of a day's table are kept, and how many are sent back.
 const int DailyKeep = 200;
 const int DailyShow = 20;
@@ -121,8 +122,25 @@ app.MapPost("/api/daily", async (HttpContext http) =>
     if (name.Length is 0 or > 16) return Results.BadRequest();
     if (double.IsNaN(post.Time) || post.Time < 15 || post.Time > 900) return Results.BadRequest();
     var car = post.Car is "runner" or "supercar" or "offroad" ? post.Car : "runner";
+    // A name belongs to the device that first posted with it: "How would you know it's you? ... We don't
+    // want to have accounts." Each device makes a random key once and keeps it (src/game/daily.js); the
+    // first time a name is used, the key's hash is kept against it, and after that only that key may post
+    // under that name. Only the hash is stored.
+    var key = post.Key ?? string.Empty;
+    if (key.Length is < 16 or > 64 || !key.All(c => char.IsAsciiLetterOrDigit(c) || c == '-')) return Results.BadRequest();
+    var keyHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(key)));
     lock (dailyLock)
     {
+        var names = NamesRead(namesPath);
+        if (names.TryGetValue(name, out var owner))
+        {
+            if (owner != keyHash) return Results.Conflict(new { error = "taken" });
+        }
+        else
+        {
+            names[name] = keyHash;
+            File.WriteAllText(namesPath, System.Text.Json.JsonSerializer.Serialize(names));
+        }
         var rows = DailyRead(dailyDir, post.Day!);
         // One line a name: their best.
         var mine = rows.FindIndex(r => r.Name == name);
@@ -139,6 +157,20 @@ static bool DailyDayOk(string? day) =>
     day is { Length: 10 }
     && DateTime.TryParseExact(day, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
         System.Globalization.DateTimeStyles.None, out _);
+
+static Dictionary<string, string> NamesRead(string path)
+{
+    if (!File.Exists(path)) return new Dictionary<string, string>();
+    try
+    {
+        return System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(path))
+            ?? new Dictionary<string, string>();
+    }
+    catch
+    {
+        return new Dictionary<string, string>();
+    }
+}
 
 static List<DailyEntry> DailyRead(string dir, string day)
 {
@@ -278,7 +310,7 @@ static async Task Broadcast(Rooms.Room room, object message, CancellationToken t
 app.Run();
 
 /// <summary>A time sent in: the day, a name, seconds, and the day's car.</summary>
-record DailyPost(string? Day, string? Name, double Time, string? Car);
+record DailyPost(string? Day, string? Name, double Time, string? Car, string? Key);
 
 /// <summary>One line of a day's table.</summary>
 record DailyEntry(string Name, double Time, string Car);

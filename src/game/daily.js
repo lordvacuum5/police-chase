@@ -27,6 +27,7 @@ import { makeRng, clamp } from '../util/math.js';
 const DAILY_KEY = 'pc.daily';
 const BEST_KEY = 'pc.dailybest';
 const NAME_KEY = 'pc.name';
+const KEY_KEY = 'pc.key';
 
 /** The cars a day can give you, and how fast each covers a route on average, m/s, for the clock (DAILY_PACE). */
 export const DAILY_CARS = ['runner', 'supercar', 'offroad'];
@@ -117,13 +118,32 @@ export async function fetchBoard(day = dayKey()) {
   } catch (e) { return []; }
 }
 
+/**
+ * This device's key: random, made once, kept. The server locks a name to the first key that posts with it
+ * (server/Program.cs), so nobody else can post under your name. Clearing the browser's data loses it, and
+ * with it the name.
+ */
+function deviceKey() {
+  try {
+    let k = localStorage.getItem(KEY_KEY);
+    if (!k) {
+      k = (crypto.randomUUID ? crypto.randomUUID()
+        : Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join(''));
+      localStorage.setItem(KEY_KEY, k);
+    }
+    return k;
+  } catch (e) { return ''; }
+}
+
+/** Rows on success, 'taken' if the name is someone else's, null if it could not be sent. */
 async function postTime(day, name, time, car) {
   try {
     const r = await fetch('/api/daily', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ day, name, time, car }),
+      body: JSON.stringify({ day, name, time, car, key: deviceKey() }),
     });
+    if (r.status === 409) return 'taken';
     if (!r.ok) return null;
     const j = await r.json();
     return Array.isArray(j) ? j : null;
@@ -405,10 +425,17 @@ export class DailyChallenge {
     btn.addEventListener('click', async () => {
       const name = box.value.trim().toUpperCase().replace(/[^A-Z0-9 _-]/g, '').slice(0, 16);
       if (!name) { box.focus(); return; }
-      saveName(name);
       btn.disabled = true;
       btn.textContent = 'SENDING…';
       const rows = await postTime(this.day, name, t, this.plan.car);
+      if (rows === 'taken') {
+        btn.textContent = 'NAME TAKEN';
+        btn.disabled = false;
+        box.focus();
+        box.select();
+        return;
+      }
+      saveName(name);
       btn.textContent = rows ? 'POSTED' : 'COULD NOT POST';
       if (!rows) btn.disabled = false;
       if (rows && table) table.innerHTML = boardHtml(rows, name);

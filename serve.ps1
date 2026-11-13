@@ -127,6 +127,14 @@ try {
                     $name = ([string]$post.name).Trim().ToUpperInvariant() -replace '[^A-Z0-9 _-]', ''
                     if ($name.Length -gt 16) { $name = $name.Substring(0, 16) }
                     $t = [double]$post.time
+                    # The name lock, as on the live server: first key to use a name keeps it.
+                    $namesFile = Join-Path $dir 'names.json'
+                    $names = @{}
+                    if (Test-Path -LiteralPath $namesFile) { (Get-Content -LiteralPath $namesFile -Raw | ConvertFrom-Json).psobject.Properties | ForEach-Object { $names[$_.Name] = $_.Value } }
+                    $key = [string]$post.key
+                    if ($key.Length -lt 16) { $res.StatusCode = 400; $res.Close(); continue }
+                    if ($names.ContainsKey($name) -and $names[$name] -ne $key) { $res.StatusCode = 409; $res.Close(); continue }
+                    if (-not $names.ContainsKey($name)) { $names[$name] = $key; [System.IO.File]::WriteAllText($namesFile, (ConvertTo-Json $names -Compress)) }
                     if ($name -and $t -ge 15 -and $t -le 900) {
                         $old = $rows | Where-Object { $_.name -eq $name }
                         if (-not $old -or $old.time -gt $t) {

@@ -8016,7 +8016,14 @@ than that, with five stars after you. Today: 1.41 km, 79 s, in the Badger. Not y
 **The table.** Finished, you type a name (letters, digits, up to 16) and post the time. `server/Program.cs`, `/api/daily`: one JSON
 file a day under `HOME` (the App Service site's own persistent storage: no database, nothing that costs), each name's best kept, the
 fastest 20 sent back. Only today's or yesterday's day is accepted, and times from 15 s to 15 min. Nothing stops someone posting a
-made-up time with a script. The menu's DAILY CHALLENGE shows the day's map, car, rules, your best on this machine and the table.
+made-up time with a script.
+
+*"How do you know it's you though? Because we don't have accounts ... We don't want to have accounts."* Locked names: each device makes
+a random key once and keeps it (`pc.key`); the first post with a name keeps a SHA-256 of that key against it (`names.json` beside the
+day files), and after that only that key can post under that name -- anyone else gets NAME TAKEN and can pick another. Only the hash is
+stored. Clearing the browser's data, or another device, loses the name. Checked against the local server: no key refused, first key
+claimed LOCKTEST, a second key refused (409), the first posted again; in the game, LOCKTEST came back NAME TAKEN and a new name
+posted. The menu's DAILY CHALLENGE shows the day's map, car, rules, your best on this machine and the table.
 `serve.ps1` has the same endpoint for trying it locally (in the temp folder). The server side could not be compiled here (no .NET):
 checked by the deploy build.
 
