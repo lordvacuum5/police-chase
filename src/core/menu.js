@@ -57,6 +57,7 @@ import {
  * so the cards read as a trade rather than a rating. Re-run the test and
  * update these if a spec changes.
  */
+// All five cards re-measured 2026-11-13 (tests/supercar.js, tests/policecars.js): see README, "Interceptor 5".
 export const CARS = [
   {
     id: 'runner',
@@ -65,9 +66,9 @@ export const CARS = [
     colour: '#d94f16',
     shape: 'saloon',
     stats: [
-      ['Top speed', 134, 'mph'],
-      ['0-60', 6.3, 's', true],
-      ['Grip', 1.41, 'g'],
+      ['Top speed', 125, 'mph'],
+      ['0-60', 6.4, 's', true],
+      ['Grip', 1.49, 'g'],
       ['Toughness', 11, 'hits'],
     ],
   },
@@ -78,7 +79,7 @@ export const CARS = [
     colour: '#b3101e',
     shape: 'wedge',
     stats: [
-      ['Top speed', 149, 'mph'],
+      ['Top speed', 148, 'mph'],
       ['0-60', 4.9, 's', true],
       ['Grip', 1.59, 'g'],
       ['Toughness', 5, 'hits'],
@@ -95,7 +96,7 @@ export const CARS = [
       ['Top speed', 88, 'mph'],
       ['0-60', 9.1, 's', true],
       ['Grip', 1.08, 'g'],
-      ['Toughness', 19, 'hits'],
+      ['Toughness', 18, 'hits'],
     ],
   },
 ];
@@ -127,12 +128,10 @@ export const POLICE_CARS = [
     colour: '#16233c',
     shape: 'saloon',
     stats: [
-      // Top speed and 0-60 from tests/fastcop.js, after it was made as quick as the Stiletto; toughness is
-      // the old 15 hits times INTERCEPTOR_TOUGH. Grip not re-measured since it went four-wheel drive.
-      ['Top speed', 156, 'mph'],
-      ['0-60', 4.8, 's', true],
+      ['Top speed', 162, 'mph'],
+      ['0-60', 4.5, 's', true],
       ['Grip', 1.55, 'g'],
-      ['Toughness', 22, 'hits'],
+      ['Toughness', 14, 'hits'],
     ],
   },
   {
@@ -143,8 +142,8 @@ export const POLICE_CARS = [
     roof: '#13233f',
     shape: 'suv',
     stats: [
-      ['Top speed', 145, 'mph'],
-      ['0-60', 6.5, 's', true],
+      ['Top speed', 148, 'mph'],
+      ['0-60', 6.1, 's', true],
       ['Grip', 1.53, 'g'],
       ['Toughness', 22, 'hits'],
     ],

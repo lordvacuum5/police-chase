@@ -666,9 +666,11 @@ Object.assign(SPECS, {
 /** The player's SUV's brake torque, Nm; the AI's stays at SPECS.suv's 4400. */
 const SUV_PLAYER_BRAKE_TORQUE = 3900;
 /** The interceptor you drive: its engine pulls this much harder, and it takes this much more to wreck. */
-const INTERCEPTOR_PULL = 1.2;
+const INTERCEPTOR_PULL = 1.3;
 const INTERCEPTOR_DRIVE = 'awd';
-const INTERCEPTOR_TOUGH = 1.5;
+/** Its top gear this much taller, for a higher top speed. */
+const INTERCEPTOR_TOP = 0.96;
+const INTERCEPTOR_TOUGH = 1.0;
 
 export function drivablePoliceSpec(key = 'interceptor') {
   const base = HUMAN_POLICE[key] || SPECS[key] || HUMAN_POLICE.interceptor;
@@ -750,6 +752,11 @@ export function drivablePoliceSpec(key = 'interceptor') {
     });
     spec.durability = base.durability * INTERCEPTOR_TOUGH;
     spec.drive = INTERCEPTOR_DRIVE;
+    // "Make the interceptor slightly faster." More pull alone left it at 251 km/h on the limiter in top.
+    if (spec.gears) {
+      spec.gears = spec.gears.slice();
+      spec.gears[spec.gears.length - 1] *= INTERCEPTOR_TOP;
+    }
   }
   if (key === 'suv') {
     spec.steering = Object.assign({}, base.steering, { maxAngle: 0.62 });

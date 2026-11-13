@@ -7978,6 +7978,32 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Interceptor 5; a bit weaker and quicker; every card re-measured
+
+*"I've put a new interceptor car in, remeasure the stuff, and just double check it all stacks up still ... it's called ... interceptor
+5."* `police-interceptor-5.glb` (renamed, no space): 9,756 triangles, one material, one PNG, no animation or compression, wheels named
+and placed exactly as the last one (wheelbase 2.92, track 1.62, radius 0.34), fitted by its wheels at scale 1, 4.75 x 2.08 m, nose +Z.
+Its bar is again the highest thing, 1.04 m across and 0.28 long, and the flashers land in it as before. Looked at on its menu photo:
+wheels in the arches, POLICE INTERCEPTOR on the door, bar on the roof. Photos retaken everywhere (`VERSION` 3). The two earlier files are
+still in the folder, unused.
+
+*"At the moment it says like 20 hits ... That's as powerful as the SUV ... make it weaker ... make the interceptor slightly faster."*
+Health back to what it was before the last change (`INTERCEPTOR_TOUGH` 1.0), pull up from 1.2 to 1.3, and its top gear 4% taller
+(`INTERCEPTOR_TOP`): 30% more pull alone left it at 251 km/h on the limiter; 8% taller gave 273 km/h (169 mph), more than "slightly",
+so 4%. Now 262 km/h (162 mph), 0-60 in 4.45 s, 14 shunts to wreck against the SUV's 22.
+
+The cards, all five measured again on the same day (`tests/supercar.js`, `tests/policecars.js`; grip at 120 km/h):
+
+| car | top speed, card was / is | 0-60 | grip | toughness |
+|---|---|---|---|---|
+| Runner | 134 / **125** mph | 6.3 / 6.4 s | 1.41 / 1.49 g | 11 |
+| Stiletto | 149 / 148 | 4.9 | 1.59 | 5 |
+| Badger | 88 | 9.1 | 1.08 | 19 / 18 |
+| Interceptor | 156 / 162 | 4.8 / 4.5 | 1.55 | 22 / 14 |
+| Police SUV | 145 / 148 | 6.5 / 6.1 | 1.53 | 22 |
+
+The Runner's card had drifted furthest: 9 mph more top speed than it has.
+
 ### The new interceptor; A for the sirens; as quick as the Stiletto
 
 **The model.** *"I've put it in ... remeasure everything because it might have done some funny stuff. Because I told it just make it look

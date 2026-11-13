@@ -20,7 +20,7 @@ import * as THREE from 'three';
 
 const KEY = 'pc.cards';
 /** Bumped when the framing changes, to retake pictures that are still fine. */
-const VERSION = 2;
+const VERSION = 3;
 /** The card's canvas: 620 x 168 backing pixels for a 310 px wide card. */
 const W = 620, H = 168;
 /**
