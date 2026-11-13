@@ -2107,7 +2107,7 @@ class Game {
       return dt * (1 - (1 - SLOW_SCALE) * ease);
     }
     if (window.__noSlowMo || !slowMoOn() || this._slowCool > 0 || !p || p.isAircraft || p.isPolice || this.outcome
-      || this.paused || session.active || this.replay.playing) return dt;
+      || this.paused || session.active || this.replay.playing || this.daily) return dt;
     const v = Math.hypot(p.linvel.x, p.linvel.z) > SLOW_SPEED ? this._aboutToHit(p) : null;
     if (v) {
       // A different way of looking at it each time: "it doesn't always have to be from the same angle."

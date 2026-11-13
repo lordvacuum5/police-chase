@@ -8000,6 +8000,11 @@ at 9 m/s: a building and a tree ended it, a lamp post did not.
 damage [as] at the moment."* Police cars no longer end it on touch: they cost damage as in any chase, and 100% ends it ("Wrecked").
 Traffic cars still end it. Checked: a police car driven into your side at 15 m/s cost 6% and the run went on; damage at 100% failed it.
 
+*"Even if I hit a building, I don't want you to instantly end it ... make it so the [crash camera] is disabled."* Nothing ends the run
+on touch now: every hit costs damage as in any chase, and 100% ends it. The crash camera is off in the challenge. Checked: into a building
+at 14 m/s cost 14% and the run went on; a police car closing head on at 30 m/s started the crash camera in an ordinary game and not in
+the challenge.
+
 *"I managed to escape the helicopter before it could even lock onto me, and I just did the entire run ... make sure the helicopter is
 already there and it's locked onto me as I started."* It came in from 420 m off, as it does in a chase, so a quick start was clear of it
 before it arrived. Now the run starts with it 25 m behind you at its height, full of fuel, light on the car (`Helicopter.overhead`), and

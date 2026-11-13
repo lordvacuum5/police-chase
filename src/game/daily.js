@@ -14,9 +14,8 @@
 //
 // The rules (DailyChallenge.update):
 //   * five stars from the start, helicopter and all, and they stay at five;
-//   * touching a building, a tree, a barrier or a traffic car ends it. Street furniture (lamp posts,
-//     bollards, bins, signs: GROUP.STREET), hedges, cones and the ground do not. Police cars do not either:
-//     they cost damage as in any chase, and 100% damage ends it;
+//   * hitting things costs damage as in any chase, and 100% damage ends it. (It used to end on touching a
+//     building, a tree or another car; the player had that taken out.)
 //   * busted ends it; so does the clock;
 //   * the finish is the end of the blue line.
 import * as THREE from 'three';
@@ -292,8 +291,9 @@ export class DailyChallenge {
     this._track(p);
     this._obstacles();
 
-    const hit = this._hitWhat(p);
-    if (hit) { this._fail(hit); return; }
+    // Nothing ends it on touch any more: "even if I hit a building, I don't want you to instantly end it."
+    // A hit costs damage as it does in any chase, and 100% is the end. (_hitWhat is kept for tests/daily.js,
+    // which counts what the game's own driver touches.)
     if ((p.damage || 0) >= 0.999 || p.disabled) { this._fail('wrecked'); return; }
     if (g.outcome === 'busted') { this._fail('busted'); return; }
     if (this.state === 'running' && this.time > this.limit) { this._fail('time'); return; }
