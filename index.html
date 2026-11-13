@@ -50,6 +50,32 @@
 
   /* ---- wanted / heat, top left ---- */
   #heat { position: absolute; top: 14px; left: 14px; padding: 10px 12px; min-width: 210px; }
+  /* The daily challenge's clock (game/daily.js): top middle, over everything else up there. */
+  #daily { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); padding: 8px 16px;
+    font-size: 18px; letter-spacing: 1px; white-space: nowrap; z-index: 5; }
+  #daily[hidden] { display: none; }
+  #daily b { color: #3fa9ff; margin-right: 6px; }
+  #daily span { font-variant-numeric: tabular-nums; font-weight: 700; }
+  #daily span.warn { color: #ff4d3d; }
+  #daily small { opacity: 0.7; margin-left: 8px; font-size: 13px; }
+  body.touch #daily { top: calc(8px + var(--safe-t)); font-size: 15px; padding: 5px 10px; }
+  .dwin { margin-bottom: 10px; }
+  .dsend { display: flex; gap: 8px; justify-content: center; margin: 8px 0 10px; }
+  .dsend input { background: #0d1116; color: #fff; border: 1px solid #3a4655; border-radius: 4px; padding: 7px 10px;
+    font: inherit; text-transform: uppercase; width: 180px; }
+  .dboard { list-style: none; counter-reset: d; margin: 0 auto; padding: 0; max-width: 320px; text-align: left; }
+  .dboard li { counter-increment: d; display: flex; justify-content: space-between; padding: 3px 6px; font-size: 14px; }
+  .dboard li::before { content: counter(d) '.'; width: 26px; opacity: 0.6; }
+  .dboard li span { flex: 1; }
+  .dboard li.me { background: rgba(63,169,255,0.18); border-radius: 3px; }
+  .dnone { opacity: 0.6; font-size: 13px; }
+  #dailypanel { max-width: 560px; margin: 10px auto; text-align: center; }
+  #dailypanel[hidden] { display: none; }
+  #dailypanel .dhead { font-size: 15px; letter-spacing: 1px; margin-bottom: 6px; }
+  #dailypanel .dhead b { color: #3fa9ff; }
+  #dailypanel .drules { font-size: 13px; opacity: 0.8; line-height: 1.45; margin-bottom: 8px; }
+  #dailypanel .dbest { font-size: 14px; margin-bottom: 8px; }
+  #dailypanel .dtable { font-size: 13px; }
   #stars { font-size: 20px; letter-spacing: 3px; line-height: 1; color: #3a4450; }
   #stars b { color: var(--hot); font-weight: 400; text-shadow: 0 0 10px rgba(255,59,48,.6); }
   #heatbar { height: 4px; margin-top: 8px; background: #1b2028; border-radius: 2px; overflow: hidden; }
@@ -767,6 +793,7 @@
 <canvas id="view"></canvas>
 
 <div id="hud">
+  <div id="daily" class="panel" hidden></div>
   <div id="heat" class="panel">
     <div id="stars">☆☆☆☆☆</div>
     <div id="heatbar"><div id="heatfill"></div></div>
@@ -900,6 +927,7 @@
     </div>
     <div id="netstatus"></div>
   </div>
+  <div id="dailypanel" hidden></div>
   <div class="menusub" id="carsub">CHOOSE YOUR CAR</div>
   <div id="cars" role="radiogroup" aria-label="Car"></div>
   <!-- Joining: the host has already chosen the ground and the weather, so the

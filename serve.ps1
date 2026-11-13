@@ -100,6 +100,52 @@ try {
                 continue
             }
 
+            # The daily challenge's table, as server/Program.cs keeps it on the live site, so the game can be
+            # tried here. Kept in the temp folder, not the project.
+            if ($req.Url.AbsolutePath -eq '/api/daily') {
+                $dir = Join-Path $env:TEMP 'police-chase-daily'
+                if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
+                $rows = @()
+                $day = $req.QueryString['day']
+                $post = $null
+                if ($req.HttpMethod -eq 'POST') {
+                    $reader = New-Object System.IO.StreamReader($req.InputStream, $req.ContentEncoding)
+                    $post = $reader.ReadToEnd() | ConvertFrom-Json
+                    $reader.Close()
+                    $day = [string]$post.day
+                }
+                if ($day -notmatch '^\d{4}-\d{2}-\d{2}$') {
+                    $res.StatusCode = 400
+                    $res.Close()
+                    continue
+                }
+                $file = Join-Path $dir "$day.json"
+                # Windows PowerShell hands a JSON array back as one object; unrolled, it is the rows.
+                if (Test-Path -LiteralPath $file) { $rows = @((Get-Content -LiteralPath $file -Raw | ConvertFrom-Json) | ForEach-Object { $_ }) }
+                $toJson = { param($list) '[' + ((@($list) | ForEach-Object { '{"name":' + (ConvertTo-Json ([string]$_.name)) + ',"time":' + ([double]$_.time).ToString([System.Globalization.CultureInfo]::InvariantCulture) + ',"car":' + (ConvertTo-Json ([string]$_.car)) + '}' }) -join ',') + ']' }
+                if ($post) {
+                    $name = ([string]$post.name).Trim().ToUpperInvariant() -replace '[^A-Z0-9 _-]', ''
+                    if ($name.Length -gt 16) { $name = $name.Substring(0, 16) }
+                    $t = [double]$post.time
+                    if ($name -and $t -ge 15 -and $t -le 900) {
+                        $old = $rows | Where-Object { $_.name -eq $name }
+                        if (-not $old -or $old.time -gt $t) {
+                            $rows = @($rows | Where-Object { $_.name -ne $name })
+                            $rows += [pscustomobject]@{ name = $name; time = [math]::Round($t, 2); car = [string]$post.car }
+                            $rows = @($rows | Sort-Object time)
+                            [System.IO.File]::WriteAllText($file, (& $toJson $rows))
+                        }
+                    }
+                }
+                $body = [System.Text.Encoding]::UTF8.GetBytes((& $toJson ($rows | Select-Object -First 20)))
+                $res.ContentType = 'application/json; charset=utf-8'
+                $res.ContentLength64 = $body.Length
+                $res.OutputStream.Write($body, 0, $body.Length)
+                Write-Host ("  200  /api/daily {0}" -f $day) -ForegroundColor DarkGray
+                $res.Close()
+                continue
+            }
+
             $rel = [System.Uri]::UnescapeDataString($req.Url.AbsolutePath).TrimStart('/')
             if ([string]::IsNullOrWhiteSpace($rel)) { $rel = 'index.html' }
             $rel = $rel -replace '/', '\'

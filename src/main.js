@@ -72,6 +72,7 @@ import { ChaseCamera } from './game/camera.js';
 import { Replay } from './game/replay.js';
 import { Dents } from './game/dents.js';
 import { Ambience, soundCheck } from './game/ambience.js';
+import { DailyChallenge, dailyActive } from './game/daily.js';
 import { Hud } from './game/hud.js';
 import { PauseMenu, savedVolume, slowMoOn } from './game/pausemenu.js';
 import { Input } from './core/input.js';
@@ -354,6 +355,9 @@ class Game {
     // by which point the menu has recorded the choice -- see menu.soloRole.
     this.soloPolice = !session.active && !SOLO_AIR && soloRole() === 'police';
     this.openWorld = this.soloPolice;
+    // The daily challenge (game/daily.js): on your own, in the getaway car, on the day's map.
+    this.dailyDay = !session.active && !SOLO_AIR ? dailyActive() : null;
+    if (this.dailyDay) { this.soloPolice = false; this.openWorld = false; }
     boot.set(0.05, 'starting physics…');
     await initPhysics();
 
@@ -456,7 +460,8 @@ class Game {
     // the host chose them, because the weather belongs to the game and not to
     // the player: rain changes grip, so two people in different weather are
     // not driving on the same roads. After the props, whose lamp posts it lights.
-    this.weather = new Weather(this, session.conditions || undefined);
+    // The daily challenge is always in clear daylight: one run for everyone.
+    this.weather = new Weather(this, session.conditions || (this.daily ? { night: false, rain: false } : undefined));
     // Night on the map itself: Haldon Vale's windows and the train's.
     if (this.world.__map && this.world.__map.setNight) this.world.__map.setNight(this.weather.night);
     this.weather.lightStreets(this.props);
@@ -502,6 +507,7 @@ class Game {
     // Photographs of the cars for the menu's cards, taken once and kept, while
     // the boot screen is still up and nothing is happening. See game/cards.js.
     takeCarCards(this);
+    if (this.daily) this.daily.begin();
 
     boot.set(1, 'ready');
     await frame();
@@ -602,6 +608,21 @@ class Game {
   }
 
   _initPlayer() {
+    // The day's car, at the start of the day's route. If the route cannot be found (it always has been),
+    // an ordinary run instead.
+    if (this.dailyDay) {
+      const d = new DailyChallenge(this, this.dailyDay);
+      if (this.mapDef && this.mapDef.id === d.plan.mapId && d.build()) {
+        this.daily = d;
+        const car = d.plan.car;
+        this.player = this.createVehicle(car, car, d.route.start.position, d.route.start.heading, {});
+        this._syncApple();
+        this.startPlace = d.route.start;
+        return;
+      }
+      d.dispose();
+      this.dailyDay = null;
+    }
     let place = null;
     for (let i = 0; i < 40 && !place; i++) {
       const node = i === 0
@@ -2542,6 +2563,8 @@ class Game {
       'Control, all quiet. Routine patrol.',
       'Control, nothing outstanding.',
     ]);
+    // R in the daily challenge: the same run from the top.
+    if (this.daily) this.daily.begin();
   }
 
   // =================================================================== loop
@@ -3512,6 +3535,8 @@ class Game {
         this._checkRedLight();
       }
       this.commentary.update(dt);
+      // After the heat, so an arrest is seen the frame it happens and the stars are put back to five.
+      if (this.daily) this.daily.update(dt);
     } else {
       this.props.update(dt);
       this.signals.update(dt);

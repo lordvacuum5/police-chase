@@ -7978,6 +7978,44 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### The daily challenge
+
+*"Daily challenges ... everyone is on the same thing ... It would have to be hard though ... level 5 with the helicopter ... you can't
+hit anything almost ... you can hit streetlights and stuff, but if you hit a building, tree, any other car [it's over] ... a route system
+... a little blue line on the mini-map of which way to go ... rolling roadblocks and spike strips quite often along that route. And ...
+give me like a minute almost to get across the map."* Asked: a shared table of everyone's times, and the same car for everyone.
+
+**Same for everyone, without the server.** `game/daily.js` works the whole day out from the date (UTC) on each machine: the map, the car
+(Runner, Stiletto or Badger), a start and a finish 1.1-1.5 km of road apart on the road graph, and where the obstacles go. The maps are
+built from fixed seeds, so the same date picks the same nodes everywhere. The next week, as checked: Wexbury/Badger, Haldon/Runner,
+Wexbury/Stiletto, city/Badger, Haldon/Badger, city/Runner, city/Badger. Always clear daylight.
+
+**The rules.** Five stars and the helicopter from the start, held at five. The run ends on touching anything in `GROUP.BUILDING` or
+`GROUP.PROP` (houses, walls, the train, trees, barriers, posts) or any other car, police or not, read off the car's contact pairs
+(`DailyChallenge._hitWhat`). Lamp posts, bollards, bins and signs (`GROUP.STREET`), hedges, cones and the ground do not end it. Nor does
+being busted, or running out of clock, which starts on your first touch of the throttle or brake. Checked by driving the car into each
+at 9 m/s: a building and a tree ended it, a lamp post did not.
+
+**The route.** A blue line on the minimap (and the big map) from where you are to a ring at the finish, and a pale blue column standing
+over the finish in the world. The clock and the distance left are at the top of the screen.
+
+**Obstacles.** Every 200-260 m along the route, by the day's numbers: a stinger over 60% of the road from one kerb, with cones before
+it, or two police cars parked across one half with cones. Never the whole road, since touching a car ends the run; a narrow road gets one
+car. They go in 330 m ahead and come out 70 m behind (`RoadblockManager.buildDaily`). Today's route: block, stinger, block, stinger,
+stinger. The ordinary roadblocks are off, and rolling roadblocks come every 7 s instead of 14, without waiting to see which road you are
+on (`DAILY_BLOCK_EVERY`).
+
+**The clock.** The route's length over 21 m/s (Runner), 24 (Stiletto) or 18 (Badger). The game's own driver, with no police and no
+traffic, kept 16.7 / 17.1 / 17.4 m/s down 1.62 km of Wexbury in the three (`tests/daily.js`), so the clock asks for a run 8-38% quicker
+than that, with five stars after you. Today: 1.41 km, 79 s, in the Badger. Not yet tried by a person; it may need loosening.
+
+**The table.** Finished, you type a name (letters, digits, up to 16) and post the time. `server/Program.cs`, `/api/daily`: one JSON
+file a day under `HOME` (the App Service site's own persistent storage: no database, nothing that costs), each name's best kept, the
+fastest 20 sent back. Only today's or yesterday's day is accepted, and times from 15 s to 15 min. Nothing stops someone posting a
+made-up time with a script. The menu's DAILY CHALLENGE shows the day's map, car, rules, your best on this machine and the table.
+`serve.ps1` has the same endpoint for trying it locally (in the temp folder). The server side could not be compiled here (no .NET):
+checked by the deploy build.
+
 ### Interceptor 5; a bit weaker and quicker; every card re-measured
 
 *"I've put a new interceptor car in, remeasure the stuff, and just double check it all stacks up still ... it's called ... interceptor

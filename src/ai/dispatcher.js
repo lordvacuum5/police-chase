@@ -62,6 +62,8 @@ const AIR_MARK_HOLD = 0.6;
  * dead ahead of the car is worth than one to the side (one behind is worth
  * 1 - CONTAIN_AHEAD).
  */
+/** Seconds between rolling blocks in the daily challenge, against 14 in an ordinary chase. */
+const DAILY_BLOCK_EVERY = 7;
 /** Seconds on one heading before a rolling block is put down ahead. */
 const BLOCK_COMMIT = 2;
 
@@ -891,11 +893,13 @@ export class Dispatcher {
     // Only on a road the car has committed to, as with the van: put down ahead
     // of a car about to turn off, a block is a block on the wrong road.
     const committed = typeof window !== 'undefined' && window.__oldBlockSite
-      ? true : this.straightFor > BLOCK_COMMIT;
+      ? true : this.straightFor > BLOCK_COMMIT || !!this.game.daily;
     if (this.tier >= 2 && k.seen && !this.blockUnit && !this.blockMates.length
         && this.blockCooldown <= 0 && committed
         && this.contactCooldown <= 0 && Math.abs(target.forwardSpeed) > 12) {
-      this.blockCooldown = 14;
+      // The daily challenge's route is known, so there is no waiting to see which road it is on, and they
+      // come "quite often" (game/daily.js).
+      this.blockCooldown = this.game.daily ? DAILY_BLOCK_EVERY : 14;
       this.blockStats.tried++;
       const u = this.game.spawnPoliceAhead(target, this.tier);
       if (u) this.blockStats.placed++;

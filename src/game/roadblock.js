@@ -23,6 +23,8 @@ import { SPECS } from './vehicles.js';
 import { dist2, clamp } from '../util/math.js';
 
 const MAX_BLOCKS = 2;
+/** A daily challenge's stinger covers this much of the road, from one kerb (buildDaily). */
+const DAILY_SPIKE_SHARE = 0.6;
 /** Closest and furthest a site may be, in metres; the window itself scales with speed (see _findSite). */
 const SPAWN_MIN = 170, SPAWN_MAX = 260;
 const DESPAWN = 200;                      // metres behind before it is removed
@@ -62,7 +64,8 @@ export class RoadblockManager {
    * sight for a second.
    */
   get canPlace() {
-    return this.allowed && this.game.dispatcher.knowledge.seen;
+    // Not in the daily challenge, whose blocks are its own and the same for everyone (game/daily.js).
+    return this.allowed && this.game.dispatcher.knowledge.seen && !this.game.daily;
   }
 
   update(dt, target) {
@@ -78,6 +81,8 @@ export class RoadblockManager {
         if (b.units[j].role !== ROLE.HOLD) b.units.splice(j, 1);
       }
 
+      // The daily challenge's own come and go with the challenge (buildDaily, dropDaily).
+      if (b.daily) continue;
       const d = dist2(b.x, b.z, target.position.x, target.position.z);
       // Only remove it once it is well behind -- never while it is on screen.
       if (d > DESPAWN || !this.allowed) {
@@ -407,6 +412,78 @@ export class RoadblockManager {
     // dispatcher.
     for (const u of b.units) this.game.dispatcher.retire(u);
     b.units.length = 0;
+  }
+
+  /**
+   * One of the daily challenge's obstacles, at a point on its route (game/daily.js). Never the whole road:
+   * the challenge ends on touching a car, so a block kerb to kerb would be a wall. `side` is which half
+   * (+1 left of the direction of travel, -1 right) is closed.
+   *   'stinger'  a stinger over DAILY_SPIKE_SHARE of the road from that kerb, warning cones before it
+   *   'block'    two police cars parked across that half, and cones; the other half open
+   */
+  buildDaily(site, kind, side) {
+    const game = this.game;
+    const { x, z, tx, tz } = site;
+    const width = Math.max(7, site.width);
+    const nx = -tz, nz = tx;
+    const heading = Math.atan2(tx, tz);
+    const block = { x, z, meshes: [], units: [], cones: [], spikes: null, daily: true };
+    const coneMat = game.coneMaterial();
+    if (!this.coneGeo) this.coneGeo = new THREE.ConeGeometry(0.30, 0.75, 7);
+    const cone = (cx, cz) => {
+      const m = new THREE.Mesh(this.coneGeo, coneMat);
+      m.castShadow = true;
+      game.scene.add(m);
+      block.cones.push({ mesh: m, body: addCone(game.world, cx, 0.02 + game.groundAt(cx, cz), cz, 0.30, 0.75) });
+    };
+    const half = width * 0.5;
+    if (kind === 'stinger') {
+      const len = width * DAILY_SPIKE_SHARE;
+      const off = side * (half - len * 0.5 - 0.2);
+      const sx = x + nx * off, sz = z + nz * off;
+      const mesh = new THREE.Mesh(spikeStripGeometry(len), game.stingerMaterial
+        || (game.stingerMaterial = vertexColorMaterial()));
+      mesh.position.set(sx, 0.012 + game.groundAt(sx, sz), sz);
+      mesh.rotation.y = heading;
+      mesh.receiveShadow = true;
+      game.scene.add(mesh);
+      block.meshes.push(mesh);
+      block.spikes = { x: sx, z: sz, tx, tz, halfLen: len * 0.5, halfDepth: 0.45 };
+      for (let i = 0; i < 3; i++) {
+        if (half - 1 - i * 1.6 < 0.8) break;      // never on the open half
+        const a = side * (half - 1 - i * 1.6);
+        cone(x + nx * a - tx * 14, z + nz * a - tz * 14);
+      }
+    } else {
+      const ANG = Math.PI * 0.42;
+      for (let i = 0; i < 2; i++) {
+        if (half - 1.6 - i * 2.6 < 1.0) break;    // a narrow road gets one car, and keeps its open half
+        const a = side * (half - 1.6 - i * 2.6);
+        const back = i ? 3 : -3;
+        const px = x + nx * a + tx * back, pz = z + nz * a + tz * back;
+        const unit = game.spawnPoliceAt({ x: px, y: 0.95 + game.groundAt(px, pz), z: pz }, heading + ANG * (i ? 1 : -1), 5);
+        if (!unit) continue;
+        unit.setRole(ROLE.HOLD, { site: { x, z }, approach: { x: -tx, z: -tz }, sawItFrom: 130 });
+        game.dispatcher.adopt(unit);
+        block.units.push(unit);
+      }
+      for (let i = 0; i < 3; i++) {
+        if (half - 0.8 - i * 1.8 < 0.8) break;
+        const a = side * (half - 0.8 - i * 1.8);
+        cone(x + nx * a - tx * 11, z + nz * a - tz * 11);
+      }
+      if (!block.units.length && !block.cones.length) return null;
+    }
+    this.blocks.push(block);
+    return block;
+  }
+
+  dropDaily(b) {
+    // Already gone if reset() took everything down first (Game.restart).
+    const i = this.blocks.indexOf(b);
+    if (i < 0) return;
+    this.blocks.splice(i, 1);
+    this._dispose(b);
   }
 
   reset() {

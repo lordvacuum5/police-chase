@@ -82,6 +82,78 @@ app.UseStaticFiles(new StaticFileOptions
 // but this is cheap and says something specific.
 app.MapGet("/healthz", () => Results.Text("ok", "text/plain"));
 
+// --------------------------------------------------------- daily challenge
+//
+// The day's table of times (src/game/daily.js). The challenge itself is worked out from the date on each
+// player's machine; only the times come here. Kept as one small JSON file a day under HOME, which on App
+// Service is the site's own persistent storage -- no database, nothing to pay for.
+
+var dailyDir = Path.Combine(
+    Environment.GetEnvironmentVariable("HOME") is { Length: > 0 } home && Directory.Exists(home) ? home : AppContext.BaseDirectory,
+    "data", "daily");
+Directory.CreateDirectory(dailyDir);
+var dailyLock = new object();
+// How many lines of a day's table are kept, and how many are sent back.
+const int DailyKeep = 200;
+const int DailyShow = 20;
+
+app.MapGet("/api/daily", (string? day) =>
+{
+    if (!DailyDayOk(day)) return Results.BadRequest();
+    lock (dailyLock)
+    {
+        return Results.Json(DailyRead(dailyDir, day!).Take(DailyShow).ToList());
+    }
+});
+
+app.MapPost("/api/daily", async (HttpContext http) =>
+{
+    DailyPost? post;
+    try { post = await http.Request.ReadFromJsonAsync<DailyPost>(); }
+    catch { return Results.BadRequest(); }
+    if (post is null || !DailyDayOk(post.Day)) return Results.BadRequest();
+    // Only today's run, or yesterday's for one finished just after midnight.
+    var today = DateTime.UtcNow.Date;
+    var day = DateTime.ParseExact(post.Day!, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+    if (day != today && day != today.AddDays(-1)) return Results.BadRequest();
+    var name = new string((post.Name ?? string.Empty).Trim().ToUpperInvariant()
+        .Where(c => char.IsAsciiLetterOrDigit(c) || c == ' ' || c == '_' || c == '-').ToArray());
+    if (name.Length is 0 or > 16) return Results.BadRequest();
+    if (double.IsNaN(post.Time) || post.Time < 15 || post.Time > 900) return Results.BadRequest();
+    var car = post.Car is "runner" or "supercar" or "offroad" ? post.Car : "runner";
+    lock (dailyLock)
+    {
+        var rows = DailyRead(dailyDir, post.Day!);
+        // One line a name: their best.
+        var mine = rows.FindIndex(r => r.Name == name);
+        if (mine >= 0 && rows[mine].Time <= post.Time) return Results.Json(rows.Take(DailyShow).ToList());
+        if (mine >= 0) rows.RemoveAt(mine);
+        rows.Add(new DailyEntry(name, Math.Round(post.Time, 2), car));
+        rows = rows.OrderBy(r => r.Time).Take(DailyKeep).ToList();
+        File.WriteAllText(Path.Combine(dailyDir, post.Day + ".json"), System.Text.Json.JsonSerializer.Serialize(rows));
+        return Results.Json(rows.Take(DailyShow).ToList());
+    }
+});
+
+static bool DailyDayOk(string? day) =>
+    day is { Length: 10 }
+    && DateTime.TryParseExact(day, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+        System.Globalization.DateTimeStyles.None, out _);
+
+static List<DailyEntry> DailyRead(string dir, string day)
+{
+    var path = Path.Combine(dir, day + ".json");
+    if (!File.Exists(path)) return new List<DailyEntry>();
+    try
+    {
+        return System.Text.Json.JsonSerializer.Deserialize<List<DailyEntry>>(File.ReadAllText(path)) ?? new List<DailyEntry>();
+    }
+    catch
+    {
+        return new List<DailyEntry>();
+    }
+}
+
 // ------------------------------------------------------------- multiplayer
 
 app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(30) });
@@ -204,3 +276,9 @@ static async Task Broadcast(Rooms.Room room, object message, CancellationToken t
 }
 
 app.Run();
+
+/// <summary>A time sent in: the day, a name, seconds, and the day's car.</summary>
+record DailyPost(string? Day, string? Name, double Time, string? Car);
+
+/// <summary>One line of a day's table.</summary>
+record DailyEntry(string Name, double Time, string Car);

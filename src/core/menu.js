@@ -41,6 +41,7 @@ import { appleMode, realApple, setAppleMode } from './platform.js';
 import { bestScores } from '../game/score.js';
 import { chosenConditions, setConditions } from '../game/weather.js';
 import { carCards } from '../game/cards.js';
+import { dailyPlan, dailyBest, setDaily, fetchBoard, boardHtml, fmtTime, savedName } from '../game/daily.js';
 import { makeRng, TAU } from '../util/math.js';
 import {
   englishVoices, pickVoices, voiceChoices, setVoiceChoice, speakSample, SPEAKER_NAMES,
@@ -519,10 +520,12 @@ function netStatus(text, kind) {
 }
 
 const START_LABEL = {
+  daily: 'START THE CHALLENGE',
   single: 'START THE RUN', chase: 'START THE PURSUIT',
   create: 'CREATE & START', join: 'JOIN GAME',
 };
 const MODE_HINT = {
+  daily: 'The same run for everyone today. Five stars from the start, and only street furniture may be touched.',
   single: 'You are the getaway driver, on your own against the whole force.',
   chase: 'You are the police. The getaway car drives itself.',
   create: 'You run. Everyone who joins is a police unit chasing you.',
@@ -550,6 +553,9 @@ function buildModes(onPick) {
     ['WITH FRIENDS', [
       ['HOST A GAME', 'create', 'you run, they chase'],
       ['JOIN A GAME', 'join', 'you are one of the police'],
+    ]],
+    ['TODAY', [
+      ['DAILY CHALLENGE', 'daily', 'the same run for everyone'],
     ]],
   ];
   const modes = [];
@@ -585,6 +591,7 @@ function buildModes(onPick) {
     // Recorded here rather than on START, so a refresh restores the side even
     // though `launch` never asks the menu anything.
     setSoloRole(mode === 'chase' ? 'police' : 'runner');
+    const daily = mode === 'daily';
     buttons.forEach((b, i) => b.classList.toggle('on', modes[i][1] === mode));
 
     // Two of the four put you in a police car; the others pick the escapee's.
@@ -602,12 +609,16 @@ function buildModes(onPick) {
       el.hidden = !on;
       if (text !== undefined) el.textContent = text;
     };
-    show('netpanel', mode !== 'single' && mode !== 'chase');
+    show('netpanel', mode !== 'single' && mode !== 'chase' && !daily);
+    // The day picks the car, the ground and the weather: nothing to choose but whether to go.
+    show('cars', !daily);
+    show('dailypanel', daily);
+    if (daily) paintDaily();
     show('netlabel', true, mode === 'create' ? 'NAME YOUR GAME' : 'GAME TO JOIN');
-    show('carsub', true, police ? 'CHOOSE YOUR POLICE CAR' : 'CHOOSE YOUR CAR');
-    show('conditions', !joining);
-    show('menusub', !joining);
-    show('maps', !joining);
+    show('carsub', !daily, police ? 'CHOOSE YOUR POLICE CAR' : 'CHOOSE YOUR CAR');
+    show('conditions', !joining && !daily);
+    show('menusub', !joining && !daily);
+    show('maps', !joining && !daily);
     const note = document.getElementById('joinnote');
     if (note) {
       note.hidden = !joining && mode !== 'chase';
@@ -628,6 +639,15 @@ function buildModes(onPick) {
     if (starting) return;
     // Both of the offline modes start the same way; which side you are on is
     // read back off `soloRole()` once the game is building itself.
+    if (netMode === 'daily') {
+      const plan = dailyPlan();
+      setDaily(plan.day);
+      setSoloRole('runner');
+      hideMenu();
+      onPick(mapById(plan.mapId) || MAPS[0]);
+      return;
+    }
+    setDaily(null);
     if (netMode === 'single' || netMode === 'chase') {
       hideMenu();
       onPick(mapById(chosenMap()) || MAPS[0]);
@@ -675,6 +695,22 @@ function buildModes(onPick) {
     };
   }
   setMode('single');
+}
+
+/** Today's challenge on the menu: where, in what, your best, and the table. */
+async function paintDaily() {
+  const el = document.getElementById('dailypanel');
+  if (!el) return;
+  const plan = dailyPlan();
+  const best = dailyBest(plan.day);
+  el.innerHTML = `<div class="dhead">${plan.day} &nbsp;·&nbsp; <b>${plan.mapName}</b> &nbsp;·&nbsp; <b>${plan.carName}</b></div>`
+    + '<div class="drules">Five stars and the helicopter from the start. Follow the blue line to the finish before the clock runs out. '
+    + 'Hit a building, a tree or any car and it is over; lamp posts, bins and signs are fine. Spikes and blocks on the way.</div>'
+    + `<div class="dbest">${best !== null ? `Your best today <b>${fmtTime(best)}</b>` : 'Not finished yet today'}</div>`
+    + '<div class="dtable">Loading today&rsquo;s times…</div>';
+  const rows = await fetchBoard(plan.day);
+  const t = el.querySelector('.dtable');
+  if (t) t.innerHTML = boardHtml(rows, savedName());
 }
 
 function buildConditions() {

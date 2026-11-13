@@ -695,6 +695,37 @@ export class Hud {
       return { x: W / 2 + right * k, y: W / 2 - fwd * k };
     };
 
+    // ---- the daily challenge's route ----
+    // "A little blue line on the mini-map of which way to go." Under everything else, from where you are on
+    // it to the finish, and a ring round the finish.
+    const dl = this.game.daily;
+    if (dl && dl.route) {
+      const pts = dl.route.pts;
+      ctx.save();
+      ctx.beginPath();
+      for (let i = Math.max(0, dl._idx - 2); i < pts.length; i++) {
+        const q = toMap(pts[i].x, pts[i].z);
+        if (i === Math.max(0, dl._idx - 2)) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y);
+      }
+      ctx.strokeStyle = 'rgba(10,30,60,0.9)';
+      ctx.lineWidth = big ? 6 : 7;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.stroke();
+      ctx.strokeStyle = '#3fa9ff';
+      ctx.lineWidth = big ? 3 : 4;
+      ctx.stroke();
+      const end = toMap(pts[pts.length - 1].x, pts[pts.length - 1].z);
+      ctx.beginPath();
+      ctx.arc(end.x, end.y, big ? 6 : 8, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#3fa9ff';
+      ctx.stroke();
+      ctx.restore();
+    }
+
     // ---- detection ring ----
     // How far the force can see you right now, centred on your own marker.
     // Only up while they actually have contact: once they are searching, the
