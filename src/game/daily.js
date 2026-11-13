@@ -14,8 +14,9 @@
 //
 // The rules (DailyChallenge.update):
 //   * five stars from the start, helicopter and all, and they stay at five;
-//   * touching a building, a tree, a barrier or another car -- any car -- ends it. Street furniture
-//     (lamp posts, bollards, bins, signs: GROUP.STREET), hedges, cones and the ground do not;
+//   * touching a building, a tree, a barrier or a traffic car ends it. Street furniture (lamp posts,
+//     bollards, bins, signs: GROUP.STREET), hedges, cones and the ground do not. Police cars do not either:
+//     they cost damage as in any chase, and 100% damage ends it;
 //   * busted ends it; so does the clock;
 //   * the finish is the end of the blue line.
 import * as THREE from 'three';
@@ -262,6 +263,7 @@ export class DailyChallenge {
 
     const hit = this._hitWhat(p);
     if (hit) { this._fail(hit); return; }
+    if ((p.damage || 0) >= 0.999 || p.disabled) { this._fail('wrecked'); return; }
     if (g.outcome === 'busted') { this._fail('busted'); return; }
     if (this.state === 'running' && this.time > this.limit) { this._fail('time'); return; }
     const end = this.route.pts[this.route.pts.length - 1];
@@ -342,7 +344,10 @@ export class DailyChallenge {
         let touching = false;
         w.contactPair(c, o, (m) => { if (m.numContacts() > 0) touching = true; });
         if (!touching) return;
-        if (o.__vehicle && o.__vehicle !== p) { what = o.__vehicle.isPolice ? 'a police car' : 'a car'; return; }
+        // Police cars are allowed to hit you, and you them: what they cost is damage, and at 100% it is
+        // over (update). "When you get to 100% damage, you fail the challenge ... make police cars do the
+        // same amount of damage [as] at the moment." Any other car still ends it.
+        if (o.__vehicle && o.__vehicle !== p) { if (!o.__vehicle.isPolice) what = 'a car'; return; }
         const member = o.collisionGroups ? (o.collisionGroups() >>> 16) : 0;
         if (member & GROUP.BUILDING) what = 'a building';
         else if (member & GROUP.PROP) what = 'a tree';
@@ -358,6 +363,7 @@ export class DailyChallenge {
     if (!g.outcome) g.outcome = 'daily';
     const line = why === 'time' ? `Out of time at <b>${fmtTime(this.limit)}</b>`
       : why === 'busted' ? 'Busted'
+        : why === 'wrecked' ? 'Wrecked: <b>100%</b> damage'
         : `You hit <b>${why}</b>`;
     const best = dailyBest(this.day);
     g.hud.showOverlay('CHALLENGE FAILED', [

@@ -7996,6 +7996,10 @@ Wexbury/Stiletto, city/Badger, Haldon/Badger, city/Runner, city/Badger. Always c
 being busted, or running out of clock, which starts on your first touch of the throttle or brake. Checked by driving the car into each
 at 9 m/s: a building and a tree ended it, a lamp post did not.
 
+*"Make it so ... the police cars, when you get to 100% damage, you fail the challenge ... make police cars do the same amount of
+damage [as] at the moment."* Police cars no longer end it on touch: they cost damage as in any chase, and 100% ends it ("Wrecked").
+Traffic cars still end it. Checked: a police car driven into your side at 15 m/s cost 6% and the run went on; damage at 100% failed it.
+
 **The route.** A blue line on the minimap (and the big map) from where you are to a ring at the finish, and a pale blue column standing
 over the finish in the world. The clock and the distance left are at the top of the screen.
 

@@ -705,7 +705,7 @@ async function paintDaily() {
   const best = dailyBest(plan.day);
   el.innerHTML = `<div class="dhead">${plan.day} &nbsp;·&nbsp; <b>${plan.mapName}</b> &nbsp;·&nbsp; <b>${plan.carName}</b></div>`
     + '<div class="drules">Five stars and the helicopter from the start. Follow the blue line to the finish before the clock runs out. '
-    + 'Hit a building, a tree or any car and it is over; lamp posts, bins and signs are fine. Spikes and blocks on the way.</div>'
+    + 'Hit a building, a tree or a traffic car and it is over; lamp posts, bins and signs are fine. Police cars cost damage, and 100% is over. Spikes and blocks on the way.</div>'
     + `<div class="dbest">${best !== null ? `Your best today <b>${fmtTime(best)}</b>` : 'Not finished yet today'}</div>`
     + '<div class="dtable">Loading today&rsquo;s times…</div>';
   const rows = await fetchBoard(plan.day);
