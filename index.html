@@ -61,6 +61,9 @@
   body.touch #daily { top: calc(8px + var(--safe-t)); font-size: 15px; padding: 5px 10px; }
   .dwin { margin-bottom: 10px; }
   .dsend { display: flex; gap: 8px; justify-content: center; margin: 8px 0 10px; }
+  /* The HUD lets clicks through to the game (pointer-events: none on #hud); the name box and its button
+     have to take them, or the name cannot be typed: "I can't type in my name." */
+  .dsend input, .dsend button { pointer-events: auto; }
   .dsend input { background: #0d1116; color: #fff; border: 1px solid #3a4655; border-radius: 4px; padding: 7px 10px;
     font: inherit; text-transform: uppercase; width: 180px; }
   .dboard { list-style: none; counter-reset: d; margin: 0 auto; padding: 0; max-width: 320px; text-align: left; }
