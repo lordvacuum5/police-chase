@@ -172,6 +172,27 @@ export class Helicopter {
     ], {}, true);
   }
 
+  /**
+   * Already up, full of fuel, just behind the target and with the light on it: for the daily challenge,
+   * which starts with the chase already on. "I managed to escape the helicopter before it could even lock
+   * onto me ... make sure the helicopter is already there and it's locked onto me as I started."
+   */
+  overhead(target) {
+    this.refuelTimer = 0;
+    this.fuel = ENDURANCE;
+    this._warned = false;
+    if (!this.active) this.launch(target);
+    const x = target.position.x - target.forward.x * 25, z = target.position.z - target.forward.z * 25;
+    const ground = this.game.groundAt ? this.game.groundAt(x, z) : 0;
+    this.pos.set(x, ALTITUDE + ground, z);
+    this.vel.set(0, 0, 0);
+    this.heading = Math.atan2(target.forward.x, target.forward.z);
+    this.beam.set(target.position.x, 0, target.position.z);
+    this.beamLocked = true;
+    this.spotlight = 1;
+    this._syncMesh();
+  }
+
   stand_down(why) {
     if (!this.active) return;
     this.active = false;

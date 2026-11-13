@@ -8000,6 +8000,12 @@ at 9 m/s: a building and a tree ended it, a lamp post did not.
 damage [as] at the moment."* Police cars no longer end it on touch: they cost damage as in any chase, and 100% ends it ("Wrecked").
 Traffic cars still end it. Checked: a police car driven into your side at 15 m/s cost 6% and the run went on; damage at 100% failed it.
 
+*"I managed to escape the helicopter before it could even lock onto me, and I just did the entire run ... make sure the helicopter is
+already there and it's locked onto me as I started."* It came in from 420 m off, as it does in a chase, so a quick start was clear of it
+before it arrived. Now the run starts with it 25 m behind you at its height, full of fuel, light on the car (`Helicopter.overhead`), and
+the force told where you are. Checked: seen from the first frame, and the game's driver taking the car down the route for 12 s, up to
+76 km/h, was never out of its light; the same after R.
+
 **The route.** A blue line on the minimap (and the big map) from where you are to a ring at the finish, and a pale blue column standing
 over the finish in the world. The clock and the distance left are at the top of the screen.
 

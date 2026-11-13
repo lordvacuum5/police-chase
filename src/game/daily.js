@@ -261,6 +261,17 @@ export class DailyChallenge {
     if (g.heat.value <= 0) g.heat.bump(1, 'the daily challenge');
     g.heat.value = 5;
     g.heat.peak = Math.max(g.heat.peak, 5);
+    // And already on you: the helicopter overhead with its light on the car, and the force knowing where
+    // you are, from the first frame. A run started by getting clear before it locked on.
+    if (g.helicopter && g.player) g.helicopter.overhead(g.player);
+    const k = g.dispatcher && g.dispatcher.knowledge;
+    if (k && g.player) {
+      k.seen = true;
+      k.position.copy(g.player.position);
+      k.velocity.set(0, 0, 0);
+      k.confidence = 1;
+      k.timeSinceSeen = 0;
+    }
     this._paint();
   }
 
