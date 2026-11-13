@@ -177,17 +177,23 @@ export class Helicopter {
    * which starts with the chase already on. "I managed to escape the helicopter before it could even lock
    * onto me ... make sure the helicopter is already there and it's locked onto me as I started."
    */
-  overhead(target) {
+  overhead(target, at = null) {
     this.refuelTimer = 0;
     this.fuel = ENDURANCE;
     this._warned = false;
     if (!this.active) this.launch(target);
-    const x = target.position.x - target.forward.x * 25, z = target.position.z - target.forward.z * 25;
+    // `at` is where the car is being put ({ position, heading }): after R the car has been teleported but
+    // its position does not read back until the next physics step, so `target` still says where it was
+    // busted. Put over that, the helicopter was left the far side of the map: "I respawn, and there's no
+    // helicopter near me."
+    const px = at ? at.position.x : target.position.x, pz = at ? at.position.z : target.position.z;
+    const fx = at ? Math.sin(at.heading) : target.forward.x, fz = at ? Math.cos(at.heading) : target.forward.z;
+    const x = px - fx * 25, z = pz - fz * 25;
     const ground = this.game.groundAt ? this.game.groundAt(x, z) : 0;
     this.pos.set(x, ALTITUDE + ground, z);
     this.vel.set(0, 0, 0);
-    this.heading = Math.atan2(target.forward.x, target.forward.z);
-    this.beam.set(target.position.x, 0, target.position.z);
+    this.heading = Math.atan2(fx, fz);
+    this.beam.set(px, 0, pz);
     this.beamLocked = true;
     this.spotlight = 1;
     this._syncMesh();

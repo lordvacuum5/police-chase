@@ -8008,7 +8008,10 @@ the challenge.
 *"I managed to escape the helicopter before it could even lock onto me, and I just did the entire run ... make sure the helicopter is
 already there and it's locked onto me as I started."* It came in from 420 m off, as it does in a chase, so a quick start was clear of it
 before it arrived. Now the run starts with it 25 m behind you at its height, full of fuel, light on the car (`Helicopter.overhead`), and
-the force told where you are. Checked: seen from the first frame, and the game's driver taking the car down the route for 12 s, up to
+the force told where you are. *"If I go really far away ... then I intentionally get myself busted ... respawn quickly, and the
+helicopter ... is still the other side of the map."* R teleports the car, but its position does not read back until the next physics
+step, so the helicopter was put over where you had been busted. It goes over the route's start now. Checked: busted 1.36 km from the
+start, R, the helicopter 25 m from the start, and 8 m from the car with the light on it 2 s later. Seen from the first frame, and the game's driver taking the car down the route for 12 s, up to
 76 km/h, was never out of its light; the same after R.
 
 **The route.** A blue line on the minimap (and the big map) from where you are to a ring at the finish, and a pale blue column standing

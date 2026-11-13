@@ -262,11 +262,13 @@ export class DailyChallenge {
     g.heat.peak = Math.max(g.heat.peak, 5);
     // And already on you: the helicopter overhead with its light on the car, and the force knowing where
     // you are, from the first frame. A run started by getting clear before it locked on.
-    if (g.helicopter && g.player) g.helicopter.overhead(g.player);
+    // Over the start, not over g.player.position, which after R still says where the last run ended.
+    const at = this.route.start;
+    if (g.helicopter && g.player) g.helicopter.overhead(g.player, at);
     const k = g.dispatcher && g.dispatcher.knowledge;
     if (k && g.player) {
       k.seen = true;
-      k.position.copy(g.player.position);
+      k.position.set(at.position.x, at.position.y, at.position.z);
       k.velocity.set(0, 0, 0);
       k.confidence = 1;
       k.timeSinceSeen = 0;
