@@ -31,8 +31,13 @@ const KEY_KEY = 'pc.key';
 /** The cars a day can give you, and how fast each covers a route on average, m/s, for the clock (DAILY_PACE). */
 export const DAILY_CARS = ['runner', 'supercar', 'offroad'];
 const CAR_NAMES = { runner: 'Runner', supercar: 'Stiletto', offroad: 'Badger' };
-/** The clock, as a share of the route's length over DAILY_PACE: 1, as it is. */
-const DAILY_SLACK = 1.0;
+/** The clock, as a share of the route's length over DAILY_PACE. Was 1: "the time limit seems a little bit too easy." */
+const DAILY_SLACK = 0.85;
+/** Gates to drive through along the route, this far apart, m; this many standing ahead of you at once. */
+const GATE_EVERY = 90;
+const GATES_SHOWN = 3;
+/** Further than this from the line, m, and OFF ROUTE comes up: "you can deviate quite a lot, but if you deviate loads ..." */
+const OFF_ROUTE = 55;
 /** How long a route, m: about a minute of driving. */
 const ROUTE_MIN = 1100, ROUTE_MAX = 1500;
 /** The first obstacle this far along, then one every OBSTACLE_EVERY, none in the last OBSTACLE_END. */
@@ -226,7 +231,51 @@ export class DailyChallenge {
       this.obstacles.push({ s, kind: orng() < 0.5 ? 'stinger' : 'block', side: orng() < 0.5 ? 1 : -1, block: null, done: false });
     }
     this._finishMarker();
+    this._buildGates();
     return true;
+  }
+
+  /**
+   * "Big visuals so you know which way to go ... things that you can go through." An arch across the road
+   * every GATE_EVERY metres of the route, the next GATES_SHOWN of them standing at once, the nearest
+   * brightest. Three meshes, moved along as you pass them: nothing per gate, nothing that collides.
+   */
+  _buildGates() {
+    this.gates = [];
+    for (let s = 60; s < this.route.length - 40; s += GATE_EVERY) this.gates.push(s);
+    const geo = new THREE.TorusGeometry(1, 0.045, 8, 40, Math.PI);
+    this.gateMeshes = [];
+    for (let i = 0; i < GATES_SHOWN; i++) {
+      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+        color: 0x3fa9ff, transparent: true, opacity: 0.7 - i * 0.2, depthWrite: false, fog: false,
+      }));
+      m.frustumCulled = false;
+      m.visible = false;
+      this.game.scene.add(m);
+      this.gateMeshes.push(m);
+    }
+    this._gateFrom = -1;
+  }
+
+  /** The next gates ahead of `progress`, put where they stand. */
+  _placeGates() {
+    if (!this.gateMeshes) return;
+    let first = this.gates.findIndex((s) => s > this.progress + 2);
+    if (first < 0) first = this.gates.length;
+    if (first === this._gateFrom) return;
+    this._gateFrom = first;
+    for (let i = 0; i < this.gateMeshes.length; i++) {
+      const m = this.gateMeshes[i];
+      const s = this.gates[first + i];
+      if (s === undefined) { m.visible = false; continue; }
+      const site = this._siteAt(s);
+      // Half a torus standing on the road, spanning it: the ring's plane across the direction of travel.
+      const r = Math.max(4, site.width * 0.5 + 0.5);
+      m.scale.setScalar(r);
+      m.position.set(site.x, this.game.groundAt(site.x, site.z), site.z);
+      m.rotation.set(0, Math.atan2(site.tx, site.tz), 0);
+      m.visible = true;
+    }
   }
 
   /** Average speed down a route in each car, m/s: see DAILY_PACE and tests/daily.js. */
@@ -253,6 +302,10 @@ export class DailyChallenge {
     this.progress = 0;
     this._idx = 0;
     for (const o of this.obstacles) { this._drop(o); o.done = false; }
+    this._gateFrom = -1;
+    this._wasOff = true;
+    this.offRoute = 0;
+    this._offRoute();
     g.score && g.score.freeze && g.score.freeze();
     // Five stars, with the helicopter: through bump() so the chase starts properly. Game._setWanted
     // grounds the helicopter for stars that were typed in; these were not.
@@ -292,6 +345,8 @@ export class DailyChallenge {
 
     this._track(p);
     this._obstacles();
+    this._placeGates();
+    this._offRoute();
 
     // Nothing ends it on touch any more: "even if I hit a building, I don't want you to instantly end it."
     // A hit costs damage as it does in any chase, and 100% is the end. (_hitWhat is kept for tests/daily.js,
@@ -345,6 +400,15 @@ export class DailyChallenge {
     }
   }
 
+  /** OFF ROUTE, up while you are far from the line, and gone once you are back near it. */
+  _offRoute() {
+    const off = this.state === 'running' && this.offRoute > OFF_ROUTE;
+    if (off === this._wasOff) return;
+    this._wasOff = off;
+    const w = document.getElementById('dailywarn');
+    if (w) w.hidden = !off;
+  }
+
   _drop(o) {
     if (o.block) this.game.roadblocks.dropDaily(o.block);
     o.block = null;
@@ -392,6 +456,7 @@ export class DailyChallenge {
   _fail(why) {
     const g = this.game;
     this.state = 'failed';
+    this._offRoute();
     this.failedBy = why;
     if (!g.outcome) g.outcome = 'daily';
     const line = why === 'time' ? `Out of time at <b>${fmtTime(this.limit)}</b>`
@@ -411,6 +476,7 @@ export class DailyChallenge {
   _win() {
     const g = this.game;
     this.state = 'won';
+    this._offRoute();
     if (!g.outcome) g.outcome = 'daily';
     const t = Math.round(this.time * 100) / 100;
     const before = dailyBest(this.day);
@@ -476,6 +542,10 @@ export class DailyChallenge {
       this.marker.material.dispose();
     }
     if (this.el) this.el.hidden = true;
+    for (const m of this.gateMeshes || []) { this.game.scene.remove(m); m.material.dispose(); }
+    if (this.gateMeshes && this.gateMeshes[0]) this.gateMeshes[0].geometry.dispose();
+    const w = document.getElementById('dailywarn');
+    if (w) w.hidden = true;
   }
 }
 

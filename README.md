@@ -8014,6 +8014,14 @@ step, so the helicopter was put over where you had been busted. It goes over the
 start, R, the helicopter 25 m from the start, and 8 m from the car with the light on it 2 s later. Seen from the first frame, and the game's driver taking the car down the route for 12 s, up to
 76 km/h, was never out of its light; the same after R.
 
+*"The time limit seems a little bit too easy ... big visuals so you know which way to go ... things that you can go through. And if you
+deviate too much from the path ... I want it to like pop up ... otherwise ... it seems less about driving skill, more about just luck and
+finding the best route."* The clock is 85% of what it was (`DAILY_SLACK`): today's 79 s is 67. Blue arches stand across the road every
+90 m of the route, the next three at once, the nearest brightest (`_placeGates`: three meshes moved along, nothing that collides). More
+than 55 m from the line and OFF ROUTE comes up in the middle of the screen until you are back near it (`OFF_ROUTE`); it is a warning
+and nothing more. Checked: 15 gates on today's 1.41 km, three standing; 117 m off the line brought up the warning, back at the start
+it went. Looked at: the arches across the road ahead, the next bending with the route.
+
 **The route.** A blue line on the minimap (and the big map) from where you are to a ring at the finish, and a pale blue column standing
 over the finish in the world. The clock and the distance left are at the top of the screen.
 

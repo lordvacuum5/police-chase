@@ -59,6 +59,14 @@
   #daily span.warn { color: #ff4d3d; }
   #daily small { opacity: 0.7; margin-left: 8px; font-size: 13px; }
   body.touch #daily { top: calc(8px + var(--safe-t)); font-size: 15px; padding: 5px 10px; }
+  /* Far from the route (game/daily.js, OFF_ROUTE). */
+  #dailywarn { position: absolute; top: 22%; left: 50%; transform: translateX(-50%); text-align: center;
+    color: #ff4d3d; font: 800 44px ui-monospace, Consolas, monospace; letter-spacing: .12em;
+    text-shadow: 0 2px 14px rgba(0,0,0,.8); animation: dwarn 0.9s ease-in-out infinite alternate; z-index: 6; }
+  #dailywarn[hidden] { display: none; }
+  #dailywarn small { display: block; font-size: 15px; letter-spacing: .2em; color: #fff; opacity: .85; margin-top: 4px; }
+  @keyframes dwarn { from { opacity: 1; } to { opacity: .45; } }
+  body.touch #dailywarn { font-size: 28px; }
   .dwin { margin-bottom: 10px; }
   .dsend { display: flex; gap: 8px; justify-content: center; margin: 8px 0 10px; }
   /* The HUD lets clicks through to the game (pointer-events: none on #hud); the name box and its button
@@ -797,6 +805,7 @@
 
 <div id="hud">
   <div id="daily" class="panel" hidden></div>
+  <div id="dailywarn" hidden>OFF ROUTE<small>back to the blue line</small></div>
   <div id="heat" class="panel">
     <div id="stars">☆☆☆☆☆</div>
     <div id="heatbar"><div id="heatfill"></div></div>
