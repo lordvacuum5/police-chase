@@ -20,7 +20,7 @@
 //
 // `variants` are named changes to the spec, so a proposed setting can be
 // measured against the one in the game in a single run.
-// `set` picks what is being tried: 'tyre' for the grip balance that fixed the
+// `set` picks what is being tried: 'drive' for four-wheel against rear drive, 'tyre' for the grip balance that fixed the
 // interceptor's understeer at 50-100 km/h, 'lock' for how tightly a car will
 // come round at crawling speed, where the steering lock and not the tyres is
 // what runs out first.
@@ -66,7 +66,12 @@ window.__runPoliceTurn = async function (kind = 'interceptor', speeds = [50, 70,
       steering: Object.assign({}, base.steering, { maxAngle: angle }),
       gripBias: { front: front || base.gripBias.front, rear: base.gripBias.rear },
     });
-    const variants = set === 'lock' ? [
+    // 'drive': four-wheel drive, as the interceptor you drive now is, against the rear drive it had.
+    // "Measure how it corners now it's four-wheel drive." (vehicles.js INTERCEPTOR_DRIVE)
+    const variants = set === 'drive' ? [
+      ['awd (now)', base],
+      ['rwd (was)', Object.assign({}, base, { drive: 'rwd' })],
+    ] : set === 'lock' ? [
       ['now', base],
       ['0.62+0.06', lock(0.62, base.gripBias.front + 0.06)],
       ['0.62+0.10', lock(0.62, base.gripBias.front + 0.10)],

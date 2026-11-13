@@ -44,11 +44,13 @@ window.__runDrivable = async function (kinds = ['runner', 'supercar', 'intercept
     for (const kind of kinds) {
       for (const kph of speeds) {
         for (const mode of ['turnIn', 'powerOn', 'liftOff']) {
-          const v = g.createVehicle(kind, kind, { x: 1015, y: 0.9, z: -1000 }, 0, {});
+          // Given to createVehicle, not swapped in after: the drive, mass and inertia are built into the
+          // car once, and a spec set afterwards measured four-wheel drive identical to rear drive.
+          const tune = kind === 'interceptor' && window.__drivableTune;
+          const v = g.createVehicle(kind, kind, { x: 1015, y: 0.9, z: -1000 }, 0, tune ? { spec: tune, police: true } : {});
           v.assist.boost = 1; v.assist.grip = 1;
           // The car a person drives in a police game is not the one the AI
           // drives; measure what the player actually gets.
-          if (kind === 'interceptor' && window.__drivableTune) v.spec = window.__drivableTune;
           subject = v;
           controls = { throttle: 0, brake: 1, steer: 0, handbrake: 1 };
           g.stepHeadless(0.8);

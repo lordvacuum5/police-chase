@@ -8006,7 +8006,24 @@ health."* The one you drive (`drivablePoliceSpec`); the AI's are as they were. `
 
 It was already faster at the top and already seven times as hard to break; it lost getting going, carrying 1.94 t to 1.39. More
 pull alone only spun the rears off the line, so it went four-wheel drive, as the car it now looks like is. Health is half as much again
-(`INTERCEPTOR_TOUGH`). Not yet checked: how four-wheel drive changes the way it corners for you.
+(`INTERCEPTOR_TOUGH`).
+
+How four-wheel drive corners, against the same car with rear drive (both with the extra pull and health; "yes, check it").
+`tests/policeturn.js` set `'drive'`, full lock at a held speed:
+
+| km/h | radius, awd | radius, rwd | slip, awd | slip, rwd |
+|---|---|---|---|---|
+| 30 | 5.9 m | 6.6 | 12.2 | 11.0 |
+| 50 | 14.9 | 17.0 | 3.8 | 3.4 |
+| 70 | 27.1 | 27.5 | 1.5 | 10.8, and down to 61 km/h |
+| 90 | 42.5 | 45.2 | 0.6 | 0.6 |
+| 110 | 61.1 | 63.1 | 0.3 | 0.2 |
+
+and `tests/drivable.js`, a person's three ways of losing it: floored at full lock, the worst slip at 40 / 60 / 80 km/h was 4.0 / 2.3 /
+1.2 degrees with four-wheel drive against 9.9 / 5.1 / 5.7 with rear, coming out at 75 / 92 / 106 km/h against 54 / 76 / 93; lifting
+off and turning in were within half a degree of each other; nothing spun and everything came back. Tighter everywhere and calmer under
+power, so it stays. The rig used to set the car's spec after building it, so the drive (built in once) never changed: it measured the
+two identical. It now hands the spec to `createVehicle`.
 
 ### The police cards show the real cars
 
