@@ -23,6 +23,12 @@ const KEY = 'pc.cards';
 const VERSION = 1;
 /** The card's canvas: 620 x 168 backing pixels for a 310 px wide card. */
 const W = 620, H = 168;
+/**
+ * The police cars too. "On the ... Badger and Fast Car and Runner ... it shows what they actually look like.
+ * Can you do that for the police cars as well? Because when you say be the police, it just looks like an
+ * old sort of version." The helicopter keeps its drawing: it is not a car, and createVehicle does not make it.
+ */
+const POLICE = ['interceptor', 'suv'];
 
 /** The pictures taken last time, as { runner: dataUrl, ... }. */
 export function carCards() {
@@ -43,7 +49,7 @@ export function carCards() {
  * full, a car that will not build -- leaves the menu drawing its schematic,
  * which is what it did before any of this existed.
  */
-export function takeCarCards(game, kinds = ['runner', 'supercar', 'offroad']) {
+export function takeCarCards(game, kinds = ['runner', 'supercar', 'offroad', ...POLICE]) {
   const have = carCards();
   if (kinds.every((k) => have[k])) return false;
 
@@ -77,7 +83,7 @@ export function takeCarCards(game, kinds = ['runner', 'supercar', 'offroad']) {
 }
 
 function shoot(game, renderer, kind) {
-  const v = game.createVehicle(kind, kind, { x: 1040, y: 0.9, z: -420 }, 0, {});
+  const v = game.createVehicle(kind, kind, { x: 1040, y: 0.9, z: -420 }, 0, { police: POLICE.includes(kind) });
   try {
     v.setVelocity({ x: 0, y: 0, z: 0 });
     // Settle it on its springs, so it sits at the height it really sits at and

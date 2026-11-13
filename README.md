@@ -7976,6 +7976,15 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### The police cards show the real cars
+
+*"On the ... Badger and Fast Car and Runner ... it shows what they actually look like. Can you do that for the police cars as well?
+Because when you say be the police, it just looks like an old sort of version."* `takeCarCards` photographed only the three getaway
+cars, so the police cards fell back to the drawn schematic. The interceptor and the SUV are photographed now too, in their police
+livery, the same way: 8 and 9 KB, framed to the same width as the others (pixels 148-471 and 146-473 of 620, against 136-487 for the
+runner). Looked at: black-and-white liveries, POLICE on the doors, the SUV's light bar. Taken once, on the first load after this goes
+up. The helicopter keeps its drawing: it is not a car.
+
 ### A crash that sounds like a crash
 
 *"It sounds like a taser ... when you hit stuff. It's kind of bad, but I'm worried that if you add something else that sounds more
