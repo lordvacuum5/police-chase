@@ -2714,7 +2714,11 @@ class Game {
         this.hud.toggleHelp();
       }
     }
-    if (i.tapped('KeyC')) this.camera3.cycle();
+    // In a replay, C goes round the replay's own views as well: see Replay.cycleView.
+    if (i.tapped('KeyC')) {
+      if (this.replay.playing && !this.replay.behind) this.replay.cycleView();
+      else this.camera3.cycle();
+    }
     // The last ten seconds again: V to watch, V again to stop. See game/replay.js.
     if (i.tapped('KeyV')) this.toggleReplay();
     // Lights and siren on your own police car. "Can we add on the phone like
@@ -3504,7 +3508,8 @@ class Game {
       // The getaway driver before the force, so the force is reacting to
       // where the car went this frame rather than to where it was last one.
       if (this.runner) this.runner.update(dt);
-      this.dispatcher.update(dt, hunted);
+      // A daily challenge that is over leaves the force where it stopped (DailyChallenge._halt).
+      if (!(this.daily && this.daily.over)) this.dispatcher.update(dt, hunted);
       // A few milliseconds of route planning for whichever units have asked --
       // see the queue in ai/localplan.js, which is why a plan no longer lands
       // on one frame as a hitch.
@@ -3952,7 +3957,7 @@ class Game {
     }
 
     this.wheelMesh.count = wi;
-    if (replaying) this.replay.aim(this.camera);
+    if (replaying) this.replay.aim(this.camera, dt);
     else if (this.slowMo) this._slowMoAim();
     this.wheelMesh.instanceMatrix.needsUpdate = true;
     this.lights.end();

@@ -115,6 +115,8 @@ const HOOD_CLEAR = 0.3;
 /** How far the view may be swung down below and up above the usual, rad. */
 const LOOK_LOW = -0.25;
 const LOOK_HIGH = 1.1;
+/** Swung this far, rad, and the look-around is a plain orbit round the car (see update). */
+const ORBIT_FROM = 0.5;
 /**
  * The helicopter's second view: on top of the nose, bolted on. "Create a second camera on a
  * helicopter ... almost like a bonnet view." Metres from the skids, from the shape of
@@ -365,16 +367,24 @@ export class ChaseCamera {
       // the trail the old spring settled to put in by hand (the velocity over
       // the rate), keeps the same picture without the shake.
       const kPos = close ? 11 : 8.5, kLook = 9;
+      // Swung round, it orbits the car itself: the trail behind the car and the look ahead of it, which
+      // make the usual view, fade out as the view is swung, so the car stays in the middle whichever way
+      // the camera points. "If I'm going fast, I can't actually see the front of my car ... it needs to
+      // just be able to orbit 360 degrees completely ... completely symmetrically, in all directions."
+      // At 150 km/h, swung to the front, the camera sat ahead of the car looking at a point 10 m further
+      // ahead still, away from it.
+      const swung = clamp01(Math.max(Math.abs(this.lookYaw) / ORBIT_FROM, Math.abs(this.lookPitch) / ORBIT_FROM));
+      const plain = 1 - swung;
       _pos.set(-sh * dist * Math.cos(this.lookPitch), height + Math.sin(this.lookPitch) * dist, -ch * dist * Math.cos(this.lookPitch))
-        .addScaledVector(_tmp.set(v.linvel.x, v.linvel.y, v.linvel.z), -1 / kPos);
+        .addScaledVector(_tmp.set(v.linvel.x, v.linvel.y, v.linvel.z), -plain / kPos);
       if (!this._rel) this._rel = this.pos.clone().sub(_carPos);
       this._rel.lerp(_pos, 1 - Math.exp(-kPos * dt));
       this.pos.copy(_carPos).add(this._rel);
 
       // Look slightly ahead of the car, further the faster it is going.
-      _look.copy(_fwd).multiplyScalar(3.5 + v.speed * 0.16)
+      _look.copy(_fwd).multiplyScalar((3.5 + v.speed * 0.16) * plain)
         .add(_tmp.set(0, 1.15 + (fit ? fit.look : 0), 0))
-        .addScaledVector(_tmp.set(v.linvel.x, v.linvel.y, v.linvel.z), -1 / kLook);
+        .addScaledVector(_tmp.set(v.linvel.x, v.linvel.y, v.linvel.z), -plain / kLook);
       if (!this._lookRel) this._lookRel = this.look.clone().sub(_carPos);
       this._lookRel.lerp(_look, 1 - Math.exp(-kLook * dt));
       this.look.copy(_carPos).add(this._lookRel);

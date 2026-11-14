@@ -282,6 +282,7 @@ export class DailyChallenge {
     const prev = this._prevPos, cur = { x: p.position.x, z: p.position.z };
     this._prevPos = cur;
     if (!prev || Math.hypot(cur.x - prev.x, cur.z - prev.z) > 40) return;   // put somewhere, not driven
+    const half = p.spec && p.spec.dims ? p.spec.dims.w * 0.5 : 1;
     for (const g of this.gates) {
       if (g.passed || Math.hypot(cur.x - g.x, cur.z - g.z) > g.r + 40) continue;
       const a0 = (prev.x - g.x) * g.tx + (prev.z - g.z) * g.tz;
@@ -289,7 +290,9 @@ export class DailyChallenge {
       if ((a0 > 0) === (a1 > 0)) continue;
       const t = Math.abs(a1 - a0) > 1e-6 ? a0 / (a0 - a1) : 0;
       const x = prev.x + (cur.x - prev.x) * t, z = prev.z + (cur.z - prev.z) * t;
-      if (Math.hypot(x - g.x, z - g.z) <= g.r) {
+      // Through it, or clipping its edge with the car: "as long as you clip the edge with your car, that's
+      // fine." So the arch's reach plus half the car's width.
+      if (Math.hypot(x - g.x, z - g.z) <= g.r + half) {
         g.passed = true;
         this._gateFrom = -1;
       }
@@ -375,11 +378,27 @@ export class DailyChallenge {
     this._paint();
   }
 
+  /** Finished or failed: the force stops where it is (see Game._update and _halt). */
+  get over() { return this.state === 'won' || this.state === 'failed'; }
+
+  /**
+   * Every police car on the brakes, and the force not told anything more: "when I completed the daily
+   * challenge or I ran out of time, I wanted to stop all the police because otherwise they keep moving and
+   * keep pushing me." Game._update skips the dispatcher while `over`, so these are the last controls they get.
+   */
+  _halt() {
+    for (const v of this.game.vehicles) {
+      if (v.isPolice && v !== this.game.player) v.setControls({ throttle: 0, brake: 1, steer: 0, handbrake: 1 });
+    }
+  }
+
   /** Once a frame, after the physics. */
   update(dt) {
     const g = this.game, p = g.player;
     if (!p || !this.route) return;
-    if (this.state === 'won' || this.state === 'failed') { this._paint(); return; }
+    // Every frame, not once: the police chasing the day's other suspects are driven by game/suspects.js,
+    // not the dispatcher, and went on at full throttle. This runs after both, before the physics.
+    if (this.state === 'won' || this.state === 'failed') { this._halt(); this._paint(); return; }
     // The clock starts when you do.
     // Off the throttle or the brake, or moving properly: not the car settling on its springs, which
     // started it at once.
@@ -513,6 +532,7 @@ export class DailyChallenge {
   _fail(why) {
     const g = this.game;
     this.state = 'failed';
+    this._halt();
     this._offRoute();
     this.failedBy = why;
     if (!g.outcome) g.outcome = 'daily';
@@ -533,6 +553,7 @@ export class DailyChallenge {
   _win() {
     const g = this.game;
     this.state = 'won';
+    this._halt();
     this._offRoute();
     if (!g.outcome) g.outcome = 'daily';
     const t = Math.round(this.time * 100) / 100;

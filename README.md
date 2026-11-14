@@ -8036,6 +8036,29 @@ puts them all back.
 now claimed for the day only, in a file per day beside the times (`{day}.names.json`), so yesterday's names are free again today, like
 the table. Checked locally: a name claimed yesterday by one key was taken today by another, and refused to the first today.
 
+*"When I completed the daily challenge or I ran out of time, I wanted to stop all the police ... they keep moving and keep pushing
+me."* At the end, won or failed, every police car is put on the brakes and the handbrake every frame, and the force is not run
+(`DailyChallenge._halt`, `over`). Every frame because the police chasing the day's other suspect cars are driven by `game/suspects.js`,
+not the force: set once, five of them went on at full throttle. Checked: 16 police, 11 of them over 3 m/s at the end; still moving
+after 1-6 s: 2, 2, 2, 1, 0, 0, none on the throttle.
+
+*"Records the entire thing instead of just the last 10 seconds ... have a look at your entire run."* In the daily challenge the replay
+keeps the whole run (up to 15 minutes), and finds its place in it from the last frame rather than from the start. Checked: a 30 s run
+recorded 29.9 s. *"When you're in replay ... fully look around ... keep it on cinematic ... but allow me to switch between any camera
+view."* It starts on its own camera going round the car; C goes on through chase, close, bonnet and cinematic, each following the car
+as the replay has it (`Replay._carNow`, a stand-in car for the game's camera); the look-around swings every one, the replay's own as
+well. The REPLAY tag says which view. Checked: all five, each pointed at the car (within 2-13 degrees, 7-16 m; the bonnet from inside it).
+
+*"If I'm going fast, I can't actually see the front of my car ... it needs to just be able to orbit 360 degrees completely ... completely
+symmetrically, in all directions."* Swung, the chase camera kept trailing the car by its speed and looking 3.5 m plus a sixth of the
+speed ahead of it: swung to the front at 150 km/h it sat ahead of the car looking away from it. Both fade out as the view is swung
+(fully by 0.5 rad, `ORBIT_FROM`), so it orbits the car itself. Checked at 133-151 km/h: swung 90, 178 and -90 degrees, the car within
+5.8-6.0 degrees of the middle, 10.7-11.1 m away, the same each way.
+
+*"As long as you clip the edge with your car, that's fine. But if you actually don't even touch [them] ... it doesn't count and it ...
+pops up on screen."* A gate now counts to its reach plus half the car's width. Checked on a 13 m arch with a 1.9 m car: through the
+middle, just inside and clipping the edge counted; 0.6 m clear of it did not.
+
 **The route.** A blue line on the minimap (and the big map) from where you are to a ring at the finish, and a pale blue column standing
 over the finish in the world. The clock and the distance left are at the top of the screen.
 
