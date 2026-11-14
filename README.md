@@ -8059,6 +8059,9 @@ speed ahead of it: swung to the front at 150 km/h it sat ahead of the car lookin
 pops up on screen."* A gate now counts to its reach plus half the car's width. Checked on a 13 m arch with a 1.9 m car: through the
 middle, just inside and clipping the edge counted; 0.6 m clear of it did not.
 
+*"Add like 10 more seconds onto the timer because it is really hard now."* Ten seconds on top of the clock (`DAILY_EXTRA`): today's
+56 s on Haldon Vale in the Runner is 66.
+
 **The route.** A blue line on the minimap (and the big map) from where you are to a ring at the finish, and a pale blue column standing
 over the finish in the world. The clock and the distance left are at the top of the screen.
 

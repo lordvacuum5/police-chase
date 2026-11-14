@@ -33,6 +33,8 @@ export const DAILY_CARS = ['runner', 'supercar', 'offroad'];
 const CAR_NAMES = { runner: 'Runner', supercar: 'Stiletto', offroad: 'Badger' };
 /** The clock, as a share of the route's length over DAILY_PACE. Was 1: "the time limit seems a little bit too easy." */
 const DAILY_SLACK = 0.85;
+/** And this many seconds on top: "add like 10 more seconds onto the timer because it is really hard now." */
+const DAILY_EXTRA = 10;
 /** Gates to drive through along the route, this far apart, m; this many standing ahead of you at once. */
 const GATE_EVERY = 90;
 const GATES_SHOWN = 3;
@@ -227,7 +229,7 @@ export class DailyChallenge {
     pts[0].s = 0;
     for (let i = 1; i < pts.length; i++) pts[i].s = pts[i - 1].s + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z);
     this.route.length = pts[pts.length - 1].s;
-    this.limit = Math.round(this.route.length / this._pace() * DAILY_SLACK);
+    this.limit = Math.round(this.route.length / this._pace() * DAILY_SLACK) + DAILY_EXTRA;
     // The obstacles, by the same numbers: a stinger or a half-block, on alternate sides.
     const orng = makeRng(hash(`obstacles:${this.day}`));
     for (let s = OBSTACLE_FIRST; s < this.route.length - OBSTACLE_END; s += OBSTACLE_EVERY * (0.85 + orng() * 0.3)) {
