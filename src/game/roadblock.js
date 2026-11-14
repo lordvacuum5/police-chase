@@ -428,6 +428,11 @@ export class RoadblockManager {
       const b = this._build(site);
       if (!b) return null;
       b.daily = true;
+      // Without the stinger: "can you remove the spike strips on a daily challenge?" Its mesh is the only
+      // one _build puts in `meshes`; the cars and cones stay.
+      for (const m of b.meshes) { game.scene.remove(m); m.geometry.dispose(); }
+      b.meshes.length = 0;
+      b.spikes = null;
       this.blocks.push(b);
       return b;
     }

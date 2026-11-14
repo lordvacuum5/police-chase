@@ -8144,6 +8144,10 @@ stinger or the cars is left out. The half-road blocks and lone stingers are gone
 two cars, seven cones and a 9.6 m stinger on a 10 m road, straight before them, the nearest gate 51-60 m off; seen from 50 m back,
 the cars and cones across the road in plain view.
 
+*"Can you remove the spike strips on a daily challenge?"* Its roadblocks are now cars and cones only (`buildDaily` takes the stinger
+off what `_build` made); the roadblocks of an ordinary chase keep theirs. Checked: today's three, two cars and seven cones each, no
+stinger.
+
 **The route.** A blue line on the minimap (and the big map) from where you are to a ring at the finish, and a pale blue column standing
 over the finish in the world. The clock and the distance left are at the top of the screen.
 
