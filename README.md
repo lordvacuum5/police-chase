@@ -7978,6 +7978,17 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### The menu, simpler
+
+*"The menu now is super confusing and has way too much writing on it ... say like multiplayer or single player ... if you choose single
+player ... be the police or ... run from the police ... if you choose multiplayer ... be the criminal (host game) or be the police (join
+game) ... also have daily challenge there, so it's very obvious ... a nice fresh new look."* Two questions, one after the other: three big
+tiles (SINGLE PLAYER, MULTIPLAYER, DAILY CHALLENGE in gold), then, for the first two, a row of two: RUN FROM THE POLICE / BE THE POLICE,
+or BE THE CRIMINAL (host game) / BE THE POLICE (join game). Each row remembers the side last picked. The small lines under every button,
+the paragraph about joining and chasing, the hint line for the offline modes and the map cards' descriptions are gone; the daily panel's
+rules are one line. The title is bigger, with a red and blue light bar flashing under it, the background has a red and blue glow, and
+START is a solid blue button. Checked every path (start label, car list, what is shown) and on a phone-sized screen.
+
 ### PITs at speed
 
 *"Why aren't they like constantly trying to pit maneuver me and like ram me? ... it seems like [it's] only when I'm slow, but when I'm

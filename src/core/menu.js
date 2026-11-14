@@ -545,44 +545,58 @@ function buildModes(onPick) {
   netMode = 'single';
   starting = false;
 
-  const groups = [
-    ['ON YOUR OWN', [
-      ['RUN FROM THE POLICE', 'single', 'you are the getaway driver'],
-      ['BE THE POLICE', 'chase', 'the getaway car drives itself'],
-    ]],
-    ['WITH FRIENDS', [
-      ['HOST A GAME', 'create', 'you run, they chase'],
-      ['JOIN A GAME', 'join', 'you are one of the police'],
-    ]],
-    ['TODAY', [
-      ['DAILY CHALLENGE', 'daily', 'the same run for everyone'],
-    ]],
+  // Two questions, asked one at a time: "say like multiplayer or single player ... if you choose single
+  // player, it'll be the police or ... run from the police ... if you choose multiplayer ... be the criminal
+  // (host game) ... or be the police (join game) ... also have daily challenge there, so it's very obvious."
+  // The first row is how you are playing; the second, under it, which side, for the two that have one.
+  const TOP = [
+    ['SINGLE PLAYER', 'solo'],
+    ['MULTIPLAYER', 'multi'],
+    ['DAILY CHALLENGE', 'daily'],
   ];
-  const modes = [];
-  const buttons = [];
-  for (const [caption, entries] of groups) {
-    const wrap = document.createElement('div');
-    wrap.className = 'modegroup';
-    const cap = document.createElement('div');
-    cap.className = 'modecap';
-    cap.textContent = caption;
-    wrap.appendChild(cap);
-    const seg = document.createElement('div');
-    seg.className = 'seg';
-    for (const [label, value, sub] of entries) {
+  const SIDES = {
+    solo: [['RUN FROM THE POLICE', 'single'], ['BE THE POLICE', 'chase']],
+    multi: [['BE THE CRIMINAL', 'create', 'host game'], ['BE THE POLICE', 'join', 'join game']],
+  };
+  const TOP_OF = { single: 'solo', chase: 'solo', create: 'multi', join: 'multi', daily: 'daily' };
+  const top = document.createElement('div');
+  top.className = 'modetop';
+  const sub = document.createElement('div');
+  sub.className = 'modeside';
+  holder.appendChild(top);
+  holder.appendChild(sub);
+  const topButtons = TOP.map(([label, value]) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `toptile t-${value}`;
+    b.textContent = label;
+    b.addEventListener('click', () => {
+      if (value === 'daily') { setMode('daily'); return; }
+      // The side last used on that row, or its first.
+      const last = lastSide[value] || SIDES[value][0][1];
+      setMode(last);
+    });
+    top.appendChild(b);
+    return [value, b];
+  });
+  const lastSide = {};
+  let sideButtons = [];
+  const paintSides = (group, mode) => {
+    sub.innerHTML = '';
+    sideButtons = [];
+    sub.hidden = !SIDES[group];
+    if (!SIDES[group]) return;
+    for (const [label, value, small] of SIDES[group]) {
       const b = document.createElement('button');
       b.type = 'button';
-      // The small line is the whole point of the regrouping: which side this
-      // button puts you on, said on the button rather than discovered later.
-      b.innerHTML = `${label}<small>${sub}</small>`;
+      b.className = 'sidetile';
+      b.innerHTML = small ? `${label}<small>${small}</small>` : label;
+      b.classList.toggle('on', value === mode);
       b.addEventListener('click', () => setMode(value));
-      seg.appendChild(b);
-      modes.push([label, value]);
-      buttons.push(b);
+      sub.appendChild(b);
+      sideButtons.push(b);
     }
-    wrap.appendChild(seg);
-    holder.appendChild(wrap);
-  }
+  };
 
   function setMode(mode) {
     netMode = mode;
@@ -592,7 +606,10 @@ function buildModes(onPick) {
     // though `launch` never asks the menu anything.
     setSoloRole(mode === 'chase' ? 'police' : 'runner');
     const daily = mode === 'daily';
-    buttons.forEach((b, i) => b.classList.toggle('on', modes[i][1] === mode));
+    const group = TOP_OF[mode];
+    if (SIDES[group]) lastSide[group] = mode;
+    for (const [value, b] of topButtons) b.classList.toggle('on', value === group);
+    paintSides(group, mode);
 
     // Two of the four put you in a police car; the others pick the escapee's.
     const police = !!POLICE_SIDE[mode];
@@ -619,9 +636,11 @@ function buildModes(onPick) {
     show('conditions', !joining && !daily);
     show('menusub', !joining && !daily);
     show('maps', !joining && !daily);
+    // Kept short: "the menu ... has way too much writing on it." The note that explained joining and chasing
+    // is gone; the buttons say it.
     const note = document.getElementById('joinnote');
     if (note) {
-      note.hidden = !joining && mode !== 'chase';
+      note.hidden = true;
       note.innerHTML = joining
         ? 'The host is the escapee, and picks the ground and the weather. '
           + 'You are <b>a police unit in their game</b> &mdash; all you choose is the car you turn up in.'
@@ -631,7 +650,7 @@ function buildModes(onPick) {
     }
     if (nameBox) nameBox.placeholder = mode === 'create' ? 'NEW GAME NAME' : 'GAME NAME';
     startBtn.textContent = START_LABEL[mode];
-    netStatus(MODE_HINT[mode]);
+    netStatus(mode === 'create' || mode === 'join' ? MODE_HINT[mode] : '');
     if (mode !== 'single' && nameBox) nameBox.focus();
   }
 
@@ -704,8 +723,7 @@ async function paintDaily() {
   const plan = dailyPlan();
   const best = dailyBest(plan.day);
   el.innerHTML = `<div class="dhead">${plan.day} &nbsp;·&nbsp; <b>${plan.mapName}</b> &nbsp;·&nbsp; <b>${plan.carName}</b></div>`
-    + '<div class="drules">Five stars and the helicopter from the start. Follow the blue line to the finish before the clock runs out. '
-    + 'Every hit costs damage, and 100% is over. Spikes and blocks on the way.</div>'
+    + '<div class="drules">Five stars from the start. Through every gate to the finish before the clock runs out.</div>'
     + `<div class="dbest">${best !== null ? `Your best today <b>${fmtTime(best)}</b>` : 'Not finished yet today'}</div>`
     + '<div class="dtable">Loading today&rsquo;s times…</div>';
   const rows = await fetchBoard(plan.day);
