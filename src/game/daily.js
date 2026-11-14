@@ -49,7 +49,15 @@ const OFF_ROUTE = 55;
 /** How long a route, m: about a minute of driving. */
 const ROUTE_MIN = 1100, ROUTE_MAX = 1500;
 /** The first obstacle this far along, then one every OBSTACLE_EVERY, none in the last OBSTACLE_END. */
-const OBSTACLE_FIRST = 200, OBSTACLE_EVERY = 150, OBSTACLE_END = 120;
+const OBSTACLE_FIRST = 220, OBSTACLE_EVERY = 240, OBSTACLE_END = 120;
+/** A roadblock wants the route straight for this far before it, m, no part of it more than STRAIGHT_DEG off; and looks this far either side of where it was wanted for such a place, m. */
+// Haldon Vale's lanes wind: 110 m within 10 degrees was one spot in 115 on its route of 14 November, 70 m
+// within 20 degrees 25. At 20 m/s that is three and a half seconds of a block in view.
+const OBSTACLE_SIGHT = 70;
+const STRAIGHT_DEG = 20;
+const OBSTACLE_SEARCH = 90;
+/** How far before a roadblock's cars its stinger lies, m (RoadblockManager._build's SPIKE_BACK). */
+const STINGER_BACK = 19;
 /** No obstacle within this of a gate, m: "don't set up spike strips like right next to a marker." */
 const OBSTACLE_GATE_GAP = 30;
 /** Put down this far ahead of you along the route, taken away this far behind. */
@@ -237,17 +245,30 @@ export class DailyChallenge {
     this.limit = Math.round(this.route.length / this._pace() * DAILY_SLACK) + DAILY_EXTRA;
     // The obstacles, by the same numbers: a stinger or a half-block, on alternate sides.
     const orng = makeRng(hash(`obstacles:${this.day}`));
-    this._buildGates();
-    // "Lots of roadblocks": one every OBSTACLE_EVERY or so, more blocks than stingers, and none on top of a
-    // gate, where it would make you go over the spikes or through the cars to get through it. Moved to
-    // halfway between the two gates either side when it falls too close to one.
+    // Proper roadblocks, the way the force puts them down in a chase: cars across the road, cones, and a
+    // stinger kerb to kerb in front (RoadblockManager._build). "There are some spike strips ... way too hard.
+    // I keep on forgetting they're there ... make sure they're on a straight road so you actually see them.
+    // And make sure they're next to police cars ... more like normal roadblocks with spike strips fully
+    // blocking the road ... not on very tight 90-degree corners, and also not right next to those ... hoops."
+    // Each wanted spot moves to the nearest one, within OBSTACLE_SEARCH, where the route runs straight for
+    // OBSTACLE_SIGHT before it; and no gate within OBSTACLE_GATE_GAP of the stinger or the cars (the gates
+    // are placed after, round them: _buildGates).
+    let lastAt = -Infinity;
     for (let s = OBSTACLE_FIRST; s < this.route.length - OBSTACLE_END; s += OBSTACLE_EVERY * (0.85 + orng() * 0.3)) {
-      let at = s;
-      const near = this.gates.find((gt) => Math.abs(gt.s - at) < OBSTACLE_GATE_GAP);
-      if (near) at = near.s + (at >= near.s ? 1 : -1) * GATE_EVERY * 0.5;
-      if (at >= this.route.length - OBSTACLE_END || at < 80) continue;
-      this.obstacles.push({ s: at, kind: orng() < 0.4 ? 'stinger' : 'block', side: orng() < 0.5 ? 1 : -1, block: null, done: false });
+      let at = null;
+      for (let k = 0; k <= OBSTACLE_SEARCH && at === null; k += 10) {
+        for (const c of k ? [s + k, s - k] : [s]) {
+          if (c < OBSTACLE_SIGHT || c > this.route.length - OBSTACLE_END || c - lastAt < OBSTACLE_EVERY * 0.7) continue;
+          if (!this._straight(c - OBSTACLE_SIGHT, c + 15)) continue;
+          at = c;
+          break;
+        }
+      }
+      if (at === null) continue;
+      lastAt = at;
+      this.obstacles.push({ s: at, kind: 'full', side: 1, block: null, done: false });
     }
+    this._buildGates();
     this._finishMarker();
     return true;
   }
@@ -263,6 +284,9 @@ export class DailyChallenge {
   _buildGates() {
     this.gates = [];
     for (let s = 60; s < this.route.length - 40; s += GATE_EVERY) {
+      // Not on a roadblock: one whose stinger or cars it would stand in is left out; the block is on the
+      // route itself.
+      if (this.obstacles.some((o) => s > o.s - STINGER_BACK - OBSTACLE_GATE_GAP && s < o.s + OBSTACLE_GATE_GAP)) continue;
       const site = this._siteAt(s);
       // Kerb to kerb and a little more: "make sure they fully go over the road."
       const r = Math.max(5, site.width * 0.5 + GATE_SPARE);
@@ -336,6 +360,17 @@ export class DailyChallenge {
       shown++;
     }
     for (let i = shown; i < this.gateMeshes.length; i++) this.gateMeshes[i].visible = false;
+  }
+
+  /** Does the route run straight from `a` to `b` metres along it: no stretch of it more than STRAIGHT_DEG off the line at `b`? */
+  _straight(a, b) {
+    const end = this._siteAt(b);
+    const cos = Math.cos(STRAIGHT_DEG * Math.PI / 180);
+    for (let s = Math.max(0, a); s <= b; s += 10) {
+      const q = this._siteAt(s);
+      if (q.tx * end.tx + q.tz * end.tz < cos) return false;
+    }
+    return true;
   }
 
   /** Average speed down a route in each car, m/s: see DAILY_PACE and tests/daily.js. */

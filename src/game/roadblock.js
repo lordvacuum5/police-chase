@@ -423,6 +423,14 @@ export class RoadblockManager {
    */
   buildDaily(site, kind, side) {
     const game = this.game;
+    // A whole roadblock, as in a chase: see DailyChallenge.build.
+    if (kind === 'full') {
+      const b = this._build(site);
+      if (!b) return null;
+      b.daily = true;
+      this.blocks.push(b);
+      return b;
+    }
     const { x, z, tx, tz } = site;
     const width = Math.max(7, site.width);
     const nx = -tz, nz = tx;

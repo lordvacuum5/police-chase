@@ -8134,6 +8134,16 @@ vans were put on whatever road the force's forward search found. In the challeng
 blocks 160-270 m ahead in your lane going your way, vans 220-340 m ahead coming the other way. Checked: the two rolling blocks of a run
 down today's route went in 4 m from the line (the lane), 146 and 162 m ahead.
 
+*"There are some spike strips ... way too hard. I keep on forgetting they're there ... make sure they're on a straight road so you
+actually see them. And make sure they're next to police cars ... more like normal roadblocks with spike strips fully blocking the road
+... not on very tight 90-degree corners, and also not right next to those ... hoops."* The challenge's obstacles are now the force's own
+roadblocks (`RoadblockManager._build`): cars across the road, cones, a stinger kerb to kerb 19 m in front. One every 240 m or so, each
+moved to the nearest place within 90 m where the route has run within 20 degrees of straight for 70 m before it (`_straight`; Haldon
+Vale's lanes wind -- 110 m within 10 degrees was one spot in 115). The gates are laid after, and any that would stand within 30 m of a
+stinger or the cars is left out. The half-road blocks and lone stingers are gone. Checked on 14 November's route: three roadblocks, each
+two cars, seven cones and a 9.6 m stinger on a 10 m road, straight before them, the nearest gate 51-60 m off; seen from 50 m back,
+the cars and cones across the road in plain view.
+
 **The route.** A blue line on the minimap (and the big map) from where you are to a ring at the finish, and a pale blue column standing
 over the finish in the world. The clock and the distance left are at the top of the screen.
 
