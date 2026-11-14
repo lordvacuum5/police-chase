@@ -234,6 +234,17 @@ const ARC_LEAD_SHARE = 0.6;
 const ARC_LEAD = false;
 
 const BAND_REACH = 130;
+/** How hard a chasing unit presses, as a share of its car, at one to five stars (Officer.pace); and the road limit it may exceed by. */
+const TIER_PACE = [0.8, 0.8, 0.86, 0.94, 0.98, 1.0];
+const TIER_LIMIT = [1.7, 1.7, 2.2, 3.0, 3.0, 3.0];
+
+/** TIER_PACE / TIER_LIMIT at a wanted level that need not be whole. */
+function tierAt(table, h) {
+  const x = clamp(h, 1, 5);
+  const i = Math.floor(x), u = x - i;
+  return i >= 5 ? table[5] : lerp(table[i], table[i + 1], u);
+}
+function paceAt(h) { return tierAt(TIER_PACE, h); }
 
 /**
  * How much extra grip a unit at full stretch of the rubber band gets, on top of
@@ -828,9 +839,11 @@ export class Officer {
     // A patrol car obeys the limit; a unit responding to a shout does not.
     // Without this the pursuit can never close a gap on a speeding target,
     // because every unit politely sticks to the posted speed.
+    // And by how much, with the wanted level: three times it from three stars, less below. See TIER_LIMIT.
     this.driver.limitScale = this.role === ROLE.PATROL ? 1.0
       : this.role === ROLE.SEARCH ? 1.5
-        : 3.0;
+        : typeof window !== 'undefined' && window.__oldPace ? 3.0
+        : tierAt(TIER_LIMIT, this.suspectTier === undefined ? this.game.heat.value : this.suspectTier);
 
     // Anything that is not pottering about on its beat may cut a corner, put
     // two wheels on the verge, or take a line straight across open ground. A
@@ -2983,8 +2996,13 @@ export class Officer {
    */
   get pace() {
     // Floor raised from 0.74: even at one star the police were too easy to
-    // leave behind by simply driving quickly.
-    return lerp(0.96, 1.0, this.aggression);
+    // leave behind by simply driving quickly. And then too hard: "make the wanted level 1 police a bit slower
+    // because they're kind of insane. And like wanted level 2, make it more progressive." 0.96 at one star
+    // and the same at two. Now a ramp over the wanted level itself, not its whole stars, so two stars climbs
+    // through the level rather than stepping: TIER_PACE at each whole star, in between in between.
+    if (typeof window !== 'undefined' && window.__oldPace) return lerp(0.96, 1.0, this.aggression);
+    const h = this.suspectTier === undefined ? this.game.heat.value : this.suspectTier;
+    return paceAt(h);
   }
 }
 

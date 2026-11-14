@@ -330,7 +330,8 @@ function chase(kph, seconds, tweak, which) {
     p.body.setAngvel({ x: 0, y: yaw, z: 0 }, true);
     p._readState();
 
-    g.heat.value = 5;
+    // Five stars, or `window.__kuHeat` for the lower levels (Officer.pace).
+    g.heat.value = window.__kuHeat || 5;
     const k = g.dispatcher.knowledge;
     k.seen = true;
     k.position.copy(p.position);

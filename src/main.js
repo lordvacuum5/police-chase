@@ -1610,6 +1610,21 @@ class Game {
    */
   spawnPoliceAhead(target, tier) {
     if (this.carCount() >= this.vehicleLimit) return null;
+    // In the daily challenge, up the route itself, which is where you are going: see DailyChallenge.siteAhead.
+    if (this.daily) {
+      for (const ahead of [190, 230, 160, 270]) {
+        const site = this.daily.siteAhead(ahead);
+        if (!site) break;
+        const pos = { x: site.x, y: 0.95 + this.groundAt(site.x, site.z), z: site.z };
+        const kind = tier >= 4 ? 'interceptor' : 'patrol';
+        const v = this.createVehicle(kind, kind, pos, site.heading, { police: true, spawn: true });
+        if (!v) continue;
+        v.lampPhase = this.rng();
+        v.setVelocity({ x: Math.sin(site.heading) * 18, y: 0, z: Math.cos(site.heading) * 18 });
+        return new Officer(this, v, { skill: SKILL.advanced, kind });
+      }
+      return null;
+    }
     const g = this.graph;
 
     let dx = target.linvel.x, dz = target.linvel.z;
@@ -1892,6 +1907,20 @@ class Game {
    */
   spawnRhino(target, tier) {
     if (this.carCount() >= this.vehicleLimit) return null;
+    // In the daily challenge, coming down the route at you: see DailyChallenge.siteAhead.
+    if (this.daily) {
+      for (const ahead of [300, 260, 340, 220]) {
+        const site = this.daily.siteAhead(ahead, true);
+        if (!site) break;
+        const pos = { x: site.x, y: 0.95 + this.groundAt(site.x, site.z), z: site.z };
+        const v = this.createVehicle('van', 'van', pos, site.heading, { police: true, spawn: true });
+        if (!v) continue;
+        v.lampPhase = this.rng();
+        v.setVelocity({ x: Math.sin(site.heading) * 24, y: 0, z: Math.cos(site.heading) * 24 });
+        return new Officer(this, v, { skill: SKILL.advanced, kind: 'van' });
+      }
+      return null;
+    }
     const g = this.graph;
 
     let dx = target.linvel.x, dz = target.linvel.z;
@@ -3509,7 +3538,7 @@ class Game {
       // where the car went this frame rather than to where it was last one.
       if (this.runner) this.runner.update(dt);
       // A daily challenge that is over leaves the force where it stopped (DailyChallenge._halt).
-      if (!(this.daily && this.daily.over)) this.dispatcher.update(dt, hunted);
+      if (!(this.daily && this.daily.frozen)) this.dispatcher.update(dt, hunted);
       // A few milliseconds of route planning for whichever units have asked --
       // see the queue in ai/localplan.js, which is why a plan no longer lands
       // on one frame as a hitch.

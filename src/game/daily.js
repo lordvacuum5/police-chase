@@ -35,6 +35,9 @@ const CAR_NAMES = { runner: 'Runner', supercar: 'Stiletto', offroad: 'Badger' };
 const DAILY_SLACK = 0.85;
 /** And this many seconds on top: "add like 10 more seconds onto the timer because it is really hard now." */
 const DAILY_EXTRA = 10;
+/** The countdown at the start, s; and how long GO stays up once the clock is running, s. */
+const COUNT_FROM = 3;
+const GO_FOR = 0.8;
 /** Gates to drive through along the route, this far apart, m; this many standing ahead of you at once. */
 const GATE_EVERY = 90;
 const GATES_SHOWN = 3;
@@ -356,7 +359,11 @@ export class DailyChallenge {
     // No train: "disable the train, because it just ruined my run ... I had to wait for it to pass."
     const rail = g.world && g.world.__map && g.world.__map.railway;
     if (rail) rail.off = true;
-    this.state = 'ready';
+    // Three, two, one first: "when you first load into the daily challenge ... 3, 2, 1 ... on phone you
+    // have to press full screen, it takes a bit of time, and obviously otherwise you lose out time." Car and
+    // police held, the clock not running, until GO.
+    this.state = 'countdown';
+    this.count = COUNT_FROM;
     this.failedBy = null;
     this.time = 0;
     this.progress = 0;
@@ -395,6 +402,26 @@ export class DailyChallenge {
   /** Finished or failed: the force stops where it is (see Game._update and _halt). */
   get over() { return this.state === 'won' || this.state === 'failed'; }
 
+  /** Over, or still counting down: the force is held where it is either way. */
+  get frozen() { return this.over || this.state === 'countdown'; }
+
+  /**
+   * A point on the route `ahead` metres past where you are, on the left-hand lane going your way (`back`
+   * false) or the other way (`back` true), for a car to be put down at: Game.spawnPoliceAhead and
+   * Game.spawnRhino ask here in the challenge. "Some of the police were still not spawning ... on the
+   * route. They were like spawning in random places." Null past the end of it.
+   */
+  siteAhead(ahead, back = false) {
+    const s = this.progress + ahead;
+    if (!this.route || s > this.route.length - 20) return null;
+    const q = this._siteAt(s);
+    const lane = Math.min(3, q.width * 0.25) * (back ? -1 : 1);
+    // Left-hand traffic: the lane going your way is to the left of the line (+x of the direction of travel).
+    const x = q.x + q.tz * lane, z = q.z - q.tx * lane;
+    const heading = back ? Math.atan2(-q.tx, -q.tz) : Math.atan2(q.tx, q.tz);
+    return { x, z, heading };
+  }
+
   /**
    * Every police car on the brakes, and the force not told anything more: "when I completed the daily
    * challenge or I ran out of time, I wanted to stop all the police because otherwise they keep moving and
@@ -413,11 +440,19 @@ export class DailyChallenge {
     // Every frame, not once: the police chasing the day's other suspects are driven by game/suspects.js,
     // not the dispatcher, and went on at full throttle. This runs after both, before the physics.
     if (this.state === 'won' || this.state === 'failed') { this._halt(); this._paint(); return; }
+    if (this.state === 'countdown') {
+      this.count -= dt;
+      p.setControls({ throttle: 0, brake: 1, steer: 0, handbrake: 1 });
+      this._halt();
+      if (g.heat.value < 5) g.heat.value = 5;
+      this._showCount();
+      if (this.count <= 0) this.state = 'running';
+      this._paint();
+      return;
+    }
+    this._showCount();
     // The clock starts when you do.
-    // Off the throttle or the brake, or moving properly: not the car settling on its springs, which
-    // started it at once.
-    const c = p.controls || {};
-    if (this.state === 'ready' && (c.throttle > 0.05 || c.brake > 0.05 || p.speed > 3)) this.state = 'running';
+    // (The clock starts at GO now, after the countdown, rather than on the first touch of the pedals.)
     if (this.state === 'running') this.time += dt;
     // And the stars stay where they were put.
     if (g.heat.value < 5) g.heat.value = 5;
@@ -481,6 +516,23 @@ export class DailyChallenge {
         o.done = true;
       }
     }
+  }
+
+  /** 3, 2, 1, GO in the middle of the screen; GO stays a moment after the clock starts. */
+  _showCount() {
+    const el = document.getElementById('dailycount');
+    if (!el) return;
+    let text = '';
+    if (this.state === 'countdown') text = String(Math.max(1, Math.ceil(this.count)));
+    else if (this.state === 'running' && this.time < GO_FOR) text = 'GO';
+    if (text === this._countShown) return;
+    this._countShown = text;
+    el.hidden = !text;
+    el.textContent = text;
+    // Each number pops in afresh.
+    el.classList.remove('pop');
+    void el.offsetWidth;
+    if (text) el.classList.add('pop');
   }
 
   /**
@@ -638,6 +690,8 @@ export class DailyChallenge {
     if (this.gateMeshes && this.gateMeshes[0]) this.gateMeshes[0].geometry.dispose();
     const w = document.getElementById('dailywarn');
     if (w) w.hidden = true;
+    const c = document.getElementById('dailycount');
+    if (c) c.hidden = true;
   }
 }
 

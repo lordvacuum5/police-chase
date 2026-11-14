@@ -7993,7 +7993,37 @@ rear quarter read as a corner (65-140 km/h), the road bending 100-200 m ahead (9
 tried and measured no better, and are not in: extra engine power while setting up (1.45 times; it is not the engine), the course read as
 straight as yours (took the arc limit away; the bend ahead then held it), and looking 380 m ahead instead of 220 (no change to the travel
 limit). Letting police drive faster than their planner allows is a change to all their driving, with the crashes this README has
-measured whenever it was loosened; not done here.
+measured whenever it was loosened.
+
+*"Let police drive faster on fast roads, at the risk of more crashes? Yes, try it."* Tried, and taken out again: a "commitment" on the
+planner's safe speed for any chasing unit, nothing below 90 km/h and all of it from 150. `tests/keepup.js`, city, three routes behind a
+ghost car, 40 s each:
+
+| ghost | | mean | with it (within 60 m) | behind at the end | hits (hard) | lost the back end |
+|---|---|---|---|---|---|---|
+| 150 km/h | as it is | 86 km/h | 17% | 186 m | 20 (1) | 1x |
+| | commitment 1.2 | 88 | 15% | 140 | 17 (1) | 2x |
+| | commitment 1.4 | 85 | 9% | 141 | 14 (1) | 2x |
+| 180 km/h | as it is | 85 | 16% | 166 | 24 (3) | 4x |
+| | commitment 1.2 | 74 | 12% | 247 | 21 (3), 2 wrecked | 3x |
+| | commitment 1.4 | 81 | 11% | 177 | 26 (3), 2 wrecked | 9x |
+
+No pace for it, less time with you, and more cars losing it: the city's police are held by what is round the next corner (the
+"capped by" columns: clear road ahead 28-41%, line of travel 25-32%), and driving past that only crashes them.
+
+### Wanted level 1 slower, level 2 a ramp
+
+*"Make the wanted level 1 police a bit slower because they're kind of insane. And like wanted level 2, make it more progressive."* A
+chasing unit pressed at 96% of its car at one star and 97% at two, and could go at three times the posted limit at any level. Now both
+follow the wanted level itself, not its whole stars, so two stars climbs as the heat does (`TIER_PACE` 0.80 / 0.86 / 0.94 / 0.98 / 1.0,
+`TIER_LIMIT` 1.7 / 2.2 / 3 / 3 / 3 at one to five). `tests/keepup.js`, ghost at 110 km/h, three routes (`window.__kuHeat` sets the level,
+`window.__oldPace` puts the old numbers back):
+
+| | mean | with it | behind | hits |
+|---|---|---|---|---|
+| one star, as it was | 84 km/h | 29% | 98 m | 4 |
+| one star, now | 73 | 22% | 121 | 4 |
+| two stars, now | 83 | 19% | 87 | 4 |
 
 ### Level crossings: barriers down longer, traffic waits for them
 
@@ -8093,6 +8123,16 @@ middle, just inside and clipping the edge counted; 0.6 m clear of it did not.
 the next (`OBSTACLE_GATE_GAP`). Rolling blocks every 4 s instead of 7, head-on vans every 12 s instead of 30 and without waiting for a
 straight, and 3 s between any two things that come at you instead of 9 (`DAILY_CONTACT_GAP`, which also lets PITs come oftener). No train
 in the challenge (`Railway.off`). Checked on today's route: 8 obstacles where there were 5, the nearest 33 m from a gate; no carriages.
+
+*"When you first load into the daily challenge ... 3, 2, 1 ... on phone you have to press full screen, it takes a bit of time, and
+obviously otherwise you lose out time."* Every run, and every R, starts with 3, 2, 1, GO in the middle of the screen: your car held on the
+brakes whatever you press, the police held too, the clock starting at GO. Checked with the throttle held down from the start: still at
+3, 2, 1, the car at rest, the clock at 0; moving and the clock running from GO.
+
+*"Some of the police were still not spawning ... on the route. They were like spawning in random places."* Rolling blocks and head-on
+vans were put on whatever road the force's forward search found. In the challenge they go on the route itself (`siteAhead`): rolling
+blocks 160-270 m ahead in your lane going your way, vans 220-340 m ahead coming the other way. Checked: the two rolling blocks of a run
+down today's route went in 4 m from the line (the lane), 146 and 162 m ahead.
 
 **The route.** A blue line on the minimap (and the big map) from where you are to a ring at the finish, and a pale blue column standing
 over the finish in the world. The clock and the distance left are at the top of the screen.
