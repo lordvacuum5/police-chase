@@ -7978,6 +7978,23 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### PITs at speed
+
+*"Why aren't they like constantly trying to pit maneuver me and like ram me? ... it seems like [it's] only when I'm slow, but when I'm
+going pretty fast they don't seem to."* `tests/fastpit.js`: on the city's longest near-straight run (3.2 km), your car held at 60 km/h
+until a police car is on its tail, then at the speed asked for, five stars, the force always knowing where you are. (Cars put down
+behind you were taken off the board within 2 s, so it uses the force's own; past the map edge the force drives oddly, so it stays on the
+map; the game's own driver lost the road at 140, so the rig steers by a plain look-ahead.)
+
+Two reasons, measured. A PIT was only ever ordered under 158 km/h (`PIT.MAX_SPEED` 44 m/s): at 170 a unit sat 15 m behind with nothing
+ordered. That limit is now 62 m/s, past every car's top speed. But ordering is not arriving: at 170, the unit setting a PIT up fell from
+147 km/h to 121 while you went from 150 to 161, and timed out 50-70 m back. Its own speed planner holds it -- the arc to an aim off your
+rear quarter read as a corner (65-140 km/h), the road bending 100-200 m ahead (92-140), and how far it may see (160). Three things were
+tried and measured no better, and are not in: extra engine power while setting up (1.45 times; it is not the engine), the course read as
+straight as yours (took the arc limit away; the bend ahead then held it), and looking 380 m ahead instead of 220 (no change to the travel
+limit). Letting police drive faster than their planner allows is a change to all their driving, with the crashes this README has
+measured whenever it was loosened; not done here.
+
 ### Level crossings: barriers down longer, traffic waits for them
 
 *"The barriers lift up instantly ... make it so it's like longer until the barriers lift up. And also the actual civilian cars actually

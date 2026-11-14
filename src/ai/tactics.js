@@ -34,7 +34,13 @@ export function relativeTo(target, unit) {
 export const PIT = {
   /** Speeds outside this window either do nothing or kill everyone involved. */
   MIN_SPEED: 7,
-  MAX_SPEED: 44,
+  // Was 44 (158 km/h), and over it a PIT was never ordered at all: "why aren't they like constantly trying
+  // to pit maneuver me ... it seems like [it's] only when I'm slow." tests/fastpit.js: at 170 km/h a unit
+  // sat 15 m behind with nothing ordered. 62 m/s is 223 km/h, past the top speed of every car you drive.
+  // Ordering is not arriving, though: at 170 the unit setting one up is held to 92-160 km/h by its own
+  // planner (the road bending ahead, and how far it can see), drops back, and times out. See README,
+  // "PITs at speed".
+  MAX_SPEED: 62,
   /** How far behind the target the striking car must be to have any leverage. */
   STRIKE_LONG_MIN: -4.4,
   STRIKE_LONG_MAX: -1.3,
