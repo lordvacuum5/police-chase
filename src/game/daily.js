@@ -36,6 +36,9 @@ const DAILY_SLACK = 0.85;
 /** Gates to drive through along the route, this far apart, m; this many standing ahead of you at once. */
 const GATE_EVERY = 90;
 const GATES_SHOWN = 3;
+/** A gate's arch reaches this far past each kerb, m; and a gate this far behind you, m, along the route, is missed. */
+const GATE_SPARE = 2.5;
+const GATE_MISSED = 35;
 /** Further than this from the line, m, and OFF ROUTE comes up: "you can deviate quite a lot, but if you deviate loads ..." */
 const OFF_ROUTE = 55;
 /** How long a route, m: about a minute of driving. */
@@ -236,13 +239,21 @@ export class DailyChallenge {
   }
 
   /**
-   * "Big visuals so you know which way to go ... things that you can go through." An arch across the road
-   * every GATE_EVERY metres of the route, the next GATES_SHOWN of them standing at once, the nearest
-   * brightest. Three meshes, moved along as you pass them: nothing per gate, nothing that collides.
+   * The gates: an arch across the road every GATE_EVERY metres of the route, and every one of them a
+   * checkpoint. "Big visuals so you know which way to go ... I want it that you have to go through each one
+   * like a checkpoint, and if you fail to go through one, you have to like go back and go through it. It
+   * doesn't matter which direction you go through it, but you have to go through them all. To be able to
+   * then actually finish." The first one not yet driven through and the two after it stand at once (three
+   * meshes, moved along; nothing that collides), a missed one in orange.
    */
   _buildGates() {
     this.gates = [];
-    for (let s = 60; s < this.route.length - 40; s += GATE_EVERY) this.gates.push(s);
+    for (let s = 60; s < this.route.length - 40; s += GATE_EVERY) {
+      const site = this._siteAt(s);
+      // Kerb to kerb and a little more: "make sure they fully go over the road."
+      const r = Math.max(5, site.width * 0.5 + GATE_SPARE);
+      this.gates.push({ s, x: site.x, z: site.z, tx: site.tx, tz: site.tz, r, passed: false });
+    }
     const geo = new THREE.TorusGeometry(1, 0.045, 8, 40, Math.PI);
     this.gateMeshes = [];
     for (let i = 0; i < GATES_SHOWN; i++) {
@@ -257,25 +268,57 @@ export class DailyChallenge {
     this._gateFrom = -1;
   }
 
-  /** The next gates ahead of `progress`, put where they stand. */
+  /** The first gate not yet driven through, or the number of gates when all have been. */
+  _nextGate() {
+    const i = this.gates.findIndex((g) => !g.passed);
+    return i < 0 ? this.gates.length : i;
+  }
+
+  /**
+   * Has the car gone through any gate since last frame? Its path over the frame crossing the gate's line,
+   * within the arch, either way.
+   */
+  _throughGates(p) {
+    const prev = this._prevPos, cur = { x: p.position.x, z: p.position.z };
+    this._prevPos = cur;
+    if (!prev || Math.hypot(cur.x - prev.x, cur.z - prev.z) > 40) return;   // put somewhere, not driven
+    for (const g of this.gates) {
+      if (g.passed || Math.hypot(cur.x - g.x, cur.z - g.z) > g.r + 40) continue;
+      const a0 = (prev.x - g.x) * g.tx + (prev.z - g.z) * g.tz;
+      const a1 = (cur.x - g.x) * g.tx + (cur.z - g.z) * g.tz;
+      if ((a0 > 0) === (a1 > 0)) continue;
+      const t = Math.abs(a1 - a0) > 1e-6 ? a0 / (a0 - a1) : 0;
+      const x = prev.x + (cur.x - prev.x) * t, z = prev.z + (cur.z - prev.z) * t;
+      if (Math.hypot(x - g.x, z - g.z) <= g.r) {
+        g.passed = true;
+        this._gateFrom = -1;
+      }
+    }
+  }
+
+  /** The next gates to go through, put where they stand; a missed one orange. */
   _placeGates() {
     if (!this.gateMeshes) return;
-    let first = this.gates.findIndex((s) => s > this.progress + 2);
-    if (first < 0) first = this.gates.length;
-    if (first === this._gateFrom) return;
+    const first = this._nextGate();
+    const missed = this.missed;
+    if (first === this._gateFrom && missed === this._gateMissed) return;
     this._gateFrom = first;
-    for (let i = 0; i < this.gateMeshes.length; i++) {
-      const m = this.gateMeshes[i];
-      const s = this.gates[first + i];
-      if (s === undefined) { m.visible = false; continue; }
-      const site = this._siteAt(s);
+    this._gateMissed = missed;
+    let shown = 0;
+    for (let k = first; k < this.gates.length && shown < this.gateMeshes.length; k++) {
+      const g = this.gates[k];
+      if (g.passed) continue;
+      const m = this.gateMeshes[shown];
       // Half a torus standing on the road, spanning it: the ring's plane across the direction of travel.
-      const r = Math.max(4, site.width * 0.5 + 0.5);
-      m.scale.setScalar(r);
-      m.position.set(site.x, this.game.groundAt(site.x, site.z), site.z);
-      m.rotation.set(0, Math.atan2(site.tx, site.tz), 0);
+      m.scale.setScalar(g.r);
+      m.position.set(g.x, this.game.groundAt(g.x, g.z), g.z);
+      m.rotation.set(0, Math.atan2(g.tx, g.tz), 0);
+      m.material.color.setHex(shown === 0 && missed ? 0xff8a3d : 0x3fa9ff);
+      m.material.opacity = shown === 0 && missed ? 0.9 : 0.7 - shown * 0.2;
       m.visible = true;
+      shown++;
     }
+    for (let i = shown; i < this.gateMeshes.length; i++) this.gateMeshes[i].visible = false;
   }
 
   /** Average speed down a route in each car, m/s: see DAILY_PACE and tests/daily.js. */
@@ -303,7 +346,10 @@ export class DailyChallenge {
     this._idx = 0;
     for (const o of this.obstacles) { this._drop(o); o.done = false; }
     this._gateFrom = -1;
-    this._wasOff = true;
+    for (const gt of this.gates || []) gt.passed = false;
+    this.missed = false;
+    this._prevPos = null;
+    this._wasOff = null;
     this.offRoute = 0;
     this._offRoute();
     g.score && g.score.freeze && g.score.freeze();
@@ -345,6 +391,9 @@ export class DailyChallenge {
 
     this._track(p);
     this._obstacles();
+    this._throughGates(p);
+    const next = this._nextGate();
+    this.missed = next < this.gates.length && this.progress > this.gates[next].s + GATE_MISSED;
     this._placeGates();
     this._offRoute();
 
@@ -356,7 +405,8 @@ export class DailyChallenge {
     if (this.state === 'running' && this.time > this.limit) { this._fail('time'); return; }
     const end = this.route.pts[this.route.pts.length - 1];
     // Driven there: running, and for longer than the route could be driven at 100 m/s.
-    if (this.state === 'running' && this.time > this.route.length / 100
+    // And every gate driven through: "otherwise it won't allow you to [finish]."
+    if (this.state === 'running' && this._nextGate() >= this.gates.length && this.time > this.route.length / 100
       && Math.hypot(p.position.x - end.x, p.position.z - end.z) < FINISH_R && this.progress > this.route.length - 120) {
       this._win();
       return;
@@ -400,13 +450,20 @@ export class DailyChallenge {
     }
   }
 
-  /** OFF ROUTE, up while you are far from the line, and gone once you are back near it. */
+  /**
+   * The warning in the middle of the screen: GO BACK while a gate has been missed ("it'll say on the screen
+   * once you like miss one, go back"), or OFF ROUTE while you are far from the line.
+   */
   _offRoute() {
-    const off = this.state === 'running' && this.offRoute > OFF_ROUTE;
-    if (off === this._wasOff) return;
-    this._wasOff = off;
+    const live = this.state === 'running';
+    const say = live && this.missed ? 'missed' : live && this.offRoute > OFF_ROUTE ? 'off' : '';
+    if (say === this._wasOff) return;
+    this._wasOff = say;
     const w = document.getElementById('dailywarn');
-    if (w) w.hidden = !off;
+    if (!w) return;
+    w.hidden = !say;
+    if (say === 'missed') w.innerHTML = 'MISSED A GATE<small>go back through the orange arch</small>';
+    else if (say === 'off') w.innerHTML = 'OFF ROUTE<small>back to the blue line</small>';
   }
 
   _drop(o) {

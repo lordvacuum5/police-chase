@@ -715,6 +715,20 @@ export class Hud {
       ctx.strokeStyle = '#3fa9ff';
       ctx.lineWidth = big ? 3 : 4;
       ctx.stroke();
+      // The gates still to go through: blue dots on the line, and the missed one orange and bigger.
+      if (dl.gates) {
+        const next = dl._nextGate();
+        for (let gi = 0; gi < dl.gates.length; gi++) {
+          const gt = dl.gates[gi];
+          if (gt.passed) continue;
+          const q = toMap(gt.x, gt.z);
+          const miss = gi === next && dl.missed;
+          ctx.beginPath();
+          ctx.arc(q.x, q.y, miss ? 7 : 3.5, 0, Math.PI * 2);
+          ctx.fillStyle = miss ? '#ff8a3d' : '#bfe3ff';
+          ctx.fill();
+        }
+      }
       const end = toMap(pts[pts.length - 1].x, pts[pts.length - 1].z);
       ctx.beginPath();
       ctx.arc(end.x, end.y, big ? 6 : 8, 0, Math.PI * 2);

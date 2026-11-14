@@ -128,7 +128,7 @@ try {
                     if ($name.Length -gt 16) { $name = $name.Substring(0, 16) }
                     $t = [double]$post.time
                     # The name lock, as on the live server: first key to use a name keeps it.
-                    $namesFile = Join-Path $dir 'names.json'
+                    $namesFile = Join-Path $dir "$day.names.json"
                     $names = @{}
                     if (Test-Path -LiteralPath $namesFile) { (Get-Content -LiteralPath $namesFile -Raw | ConvertFrom-Json).psobject.Properties | ForEach-Object { $names[$_.Name] = $_.Value } }
                     $key = [string]$post.key

@@ -8022,6 +8022,20 @@ than 55 m from the line and OFF ROUTE comes up in the middle of the screen until
 and nothing more. Checked: 15 gates on today's 1.41 km, three standing; 117 m off the line brought up the warning, back at the start
 it went. Looked at: the arches across the road ahead, the next bending with the route.
 
+*"I want it that you have to go through each one like a checkpoint, and if you fail to go through one, you have to like go back and
+go through it. It doesn't matter which direction ... you have to go through them all. To be able to then actually finish ... it'll say
+on the screen once you like miss one, go back."* Every arch is a checkpoint (`_throughGates`: the car's path over the frame crossing the
+gate's line within the arch, either way). The arches reach 2.5 m past each kerb (`GATE_SPARE`; "make sure they fully go over the road").
+The first one not yet through and the next two stand; one 35 m behind you along the route is missed, turns orange, shows bigger on the
+minimap (every gate still to go is a dot there), and MISSED A GATE / go back through the orange arch comes up. The finish does not count
+until every gate is through. Checked: going round the fourth of today's 15 gates brought up the warning and the orange arch, the end of
+the route did not finish it, and going back through cleared both; the game's own driver down today's route went through all 15; R
+puts them all back.
+
+*"I tried to type in one of the usernames that I'd used, and it said already taken ... but it's a new day, so it's still me."* A name is
+now claimed for the day only, in a file per day beside the times (`{day}.names.json`), so yesterday's names are free again today, like
+the table. Checked locally: a name claimed yesterday by one key was taken today by another, and refused to the first today.
+
 **The route.** A blue line on the minimap (and the big map) from where you are to a ring at the finish, and a pale blue column standing
 over the finish in the world. The clock and the distance left are at the top of the screen.
 

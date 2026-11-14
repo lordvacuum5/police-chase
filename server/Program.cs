@@ -93,7 +93,6 @@ var dailyDir = Path.Combine(
     "data", "daily");
 Directory.CreateDirectory(dailyDir);
 var dailyLock = new object();
-var namesPath = Path.Combine(dailyDir, "names.json");
 // How many lines of a day's table are kept, and how many are sent back.
 const int DailyKeep = 200;
 const int DailyShow = 20;
@@ -122,13 +121,16 @@ app.MapPost("/api/daily", async (HttpContext http) =>
     if (name.Length is 0 or > 16) return Results.BadRequest();
     if (double.IsNaN(post.Time) || post.Time < 15 || post.Time > 900) return Results.BadRequest();
     var car = post.Car is "runner" or "supercar" or "offroad" ? post.Car : "runner";
-    // A name belongs to the device that first posted with it: "How would you know it's you? ... We don't
-    // want to have accounts." Each device makes a random key once and keeps it (src/game/daily.js); the
-    // first time a name is used, the key's hash is kept against it, and after that only that key may post
-    // under that name. Only the hash is stored.
+    // A name belongs, for the day, to the device that first posted with it: "How would you know it's you?
+    // ... We don't want to have accounts." Each device makes a random key once and keeps it
+    // (src/game/daily.js); the first time a name is used that day, the key's hash is kept against it, and
+    // after that only that key may post under that name that day. Only the hash is stored.
     var key = post.Key ?? string.Empty;
     if (key.Length is < 16 or > 64 || !key.All(c => char.IsAsciiLetterOrDigit(c) || c == '-')) return Results.BadRequest();
     var keyHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(key)));
+    // Claimed for that day only, in a file of its own: "it's a new day, so it's still me." A name used on
+    // one day is free again the next, like the table.
+    var namesPath = Path.Combine(dailyDir, post.Day + ".names.json");
     lock (dailyLock)
     {
         var names = NamesRead(namesPath);
