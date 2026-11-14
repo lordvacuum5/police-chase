@@ -7978,6 +7978,14 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Level crossings: barriers down longer, traffic waits for them
+
+*"The barriers lift up instantly ... make it so it's like longer until the barriers lift up. And also the actual civilian cars actually
+busted down the barriers, because you need to make them wait a bit longer until the barriers are fully up."* The lights went off the
+moment the last carriage cleared, the arms took 3 s to rise, and traffic, which stopped only while the lights flashed, drove into them.
+Now the barriers stay down `BARRIER_HOLD` (4 s) after the train, and `Railway.stopDistanceAt` holds traffic until the arms are fully up.
+Checked on Haldon Vale's first crossing: a 4.3 s pass, lights off 4.0 s after it, arms up at 6.75 s, traffic let go at 6.75 s.
+
 ### The daily challenge
 
 *"Daily challenges ... everyone is on the same thing ... It would have to be hard though ... level 5 with the helicopter ... you can't
@@ -8061,6 +8069,13 @@ middle, just inside and clipping the edge counted; 0.6 m clear of it did not.
 
 *"Add like 10 more seconds onto the timer because it is really hard now."* Ten seconds on top of the clock (`DAILY_EXTRA`): today's
 56 s on Haldon Vale in the Runner is 66.
+
+*"Now you know the exact route ... set up roadblocks and stuff along that route ... don't set up spike strips like right next to a marker
+... lots of rolling roadblocks and lots of roadblocks ... a fair amount of head-on vehicles ... disable the train."* An obstacle every
+150 m or so instead of 230, three in five of them half-road blocks; any that falls within 30 m of a gate moves to halfway between it and
+the next (`OBSTACLE_GATE_GAP`). Rolling blocks every 4 s instead of 7, head-on vans every 12 s instead of 30 and without waiting for a
+straight, and 3 s between any two things that come at you instead of 9 (`DAILY_CONTACT_GAP`, which also lets PITs come oftener). No train
+in the challenge (`Railway.off`). Checked on today's route: 8 obstacles where there were 5, the nearest 33 m from a gate; no carriages.
 
 **The route.** A blue line on the minimap (and the big map) from where you are to a ring at the finish, and a pale blue column standing
 over the finish in the world. The clock and the distance left are at the top of the screen.

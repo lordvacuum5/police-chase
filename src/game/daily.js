@@ -46,7 +46,9 @@ const OFF_ROUTE = 55;
 /** How long a route, m: about a minute of driving. */
 const ROUTE_MIN = 1100, ROUTE_MAX = 1500;
 /** The first obstacle this far along, then one every OBSTACLE_EVERY, none in the last OBSTACLE_END. */
-const OBSTACLE_FIRST = 260, OBSTACLE_EVERY = 230, OBSTACLE_END = 150;
+const OBSTACLE_FIRST = 200, OBSTACLE_EVERY = 150, OBSTACLE_END = 120;
+/** No obstacle within this of a gate, m: "don't set up spike strips like right next to a marker." */
+const OBSTACLE_GATE_GAP = 30;
 /** Put down this far ahead of you along the route, taken away this far behind. */
 const OBSTACLE_AHEAD = 330, OBSTACLE_BEHIND = 70;
 /** Within this of the end of the line is the finish, m. */
@@ -232,11 +234,18 @@ export class DailyChallenge {
     this.limit = Math.round(this.route.length / this._pace() * DAILY_SLACK) + DAILY_EXTRA;
     // The obstacles, by the same numbers: a stinger or a half-block, on alternate sides.
     const orng = makeRng(hash(`obstacles:${this.day}`));
+    this._buildGates();
+    // "Lots of roadblocks": one every OBSTACLE_EVERY or so, more blocks than stingers, and none on top of a
+    // gate, where it would make you go over the spikes or through the cars to get through it. Moved to
+    // halfway between the two gates either side when it falls too close to one.
     for (let s = OBSTACLE_FIRST; s < this.route.length - OBSTACLE_END; s += OBSTACLE_EVERY * (0.85 + orng() * 0.3)) {
-      this.obstacles.push({ s, kind: orng() < 0.5 ? 'stinger' : 'block', side: orng() < 0.5 ? 1 : -1, block: null, done: false });
+      let at = s;
+      const near = this.gates.find((gt) => Math.abs(gt.s - at) < OBSTACLE_GATE_GAP);
+      if (near) at = near.s + (at >= near.s ? 1 : -1) * GATE_EVERY * 0.5;
+      if (at >= this.route.length - OBSTACLE_END || at < 80) continue;
+      this.obstacles.push({ s: at, kind: orng() < 0.4 ? 'stinger' : 'block', side: orng() < 0.5 ? 1 : -1, block: null, done: false });
     }
     this._finishMarker();
-    this._buildGates();
     return true;
   }
 
@@ -344,6 +353,9 @@ export class DailyChallenge {
   /** Where a run starts, and everything put back as it was. Called at the start and on R. */
   begin() {
     const g = this.game;
+    // No train: "disable the train, because it just ruined my run ... I had to wait for it to pass."
+    const rail = g.world && g.world.__map && g.world.__map.railway;
+    if (rail) rail.off = true;
     this.state = 'ready';
     this.failedBy = null;
     this.time = 0;

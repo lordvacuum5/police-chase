@@ -92,6 +92,9 @@ const CAR_GAP = 1;
 const TRAIN_WAIT = 30;
 /** Lights flash this long before the train is on the crossing, s, and the barriers are down for the last DOWN_AT. */
 const LIGHTS_AT = 14;
+/** The barriers stay down this long after the train has cleared the crossing, s; and the angle of an arm that is up. */
+const BARRIER_HOLD = 4;
+const ARM_UP = Math.PI * 0.5;
 const DOWN_AT = 10;
 
 // =====================================================================
@@ -1393,6 +1396,8 @@ export class Railway {
 
   /** The front of the train at time t: { s, dir }, or null while it waits off the map. */
   frontAt(t) {
+    // Taken off for the daily challenge (game/daily.js): no train, the crossings open.
+    if (this.off) return null;
     const P = this.period, p = ((t % P) + P) % P, half = this.runTime + TRAIN_WAIT;
     const dir = p < half ? 1 : -1;
     const q = p < half ? p : p - half;
@@ -1506,6 +1511,11 @@ export class Railway {
       let lit = false, down = false;
       for (let k = 0; k <= LIGHTS_AT && !lit; k += 0.5) {
         if (this._occupies(this.clock + k, c.s, 8)) { lit = true; down = k <= DOWN_AT; }
+      }
+      // And down for a while after the last carriage has gone, not up the moment it has: "the barriers lift
+      // up instantly ... make it so it's like longer until the barriers lift up."
+      for (let k = 0.5; k <= BARRIER_HOLD && !lit; k += 0.5) {
+        if (this._occupies(this.clock - k, c.s, 8)) { lit = true; down = true; }
       }
       c.lit = lit;
       c.down = down;
@@ -1726,7 +1736,10 @@ export class Railway {
   stopDistanceAt(x, z, dx, dz, speed) {
     let best = Infinity;
     for (const c of this.crossings) {
-      if (!c.lit) continue;
+      // Closed until the arms are all the way up, not only while the lights flash: "the actual civilian cars
+      // actually busted down the barriers, because you need to make them wait a bit longer until the
+      // barriers are fully up." They went as the lights stopped, into arms three seconds from upright.
+      if (!c.lit && !(c.arm < ARM_UP - 0.02)) continue;
       const vx = c.x - x, vz = c.z - z;
       const along = vx * dx + vz * dz;
       if (along < 0 || along > 160) continue;

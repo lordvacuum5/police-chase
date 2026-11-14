@@ -63,7 +63,10 @@ const AIR_MARK_HOLD = 0.6;
  * 1 - CONTAIN_AHEAD).
  */
 /** Seconds between rolling blocks in the daily challenge, against 14 in an ordinary chase. */
-const DAILY_BLOCK_EVERY = 7;
+const DAILY_BLOCK_EVERY = 4;
+/** In the daily challenge: seconds between head-on vans (30 otherwise), and between any two things that come at you (CONTACT_GAP). */
+const DAILY_RHINO_EVERY = 12;
+const DAILY_CONTACT_GAP = 3;
 /** Seconds on one heading before a rolling block is put down ahead. */
 const BLOCK_COMMIT = 2;
 
@@ -135,6 +138,9 @@ const TIER = [
 const CONTACT_GAP = 9;
 
 export class Dispatcher {
+  /** Seconds between any two things that come at the player: shorter in the daily challenge. */
+  get contactGap() { return this.game.daily ? DAILY_CONTACT_GAP : CONTACT_GAP; }
+
   constructor(game) {
     this.game = game;
     this.units = [];
@@ -841,7 +847,7 @@ export class Dispatcher {
       for (const u of pursuers) {
         if (pitViable(u.vehicle, target)) {
           this.activePit = u;
-          this.contactCooldown = CONTACT_GAP;
+          this.contactCooldown = this.contactGap;
           u.setRole(ROLE.PIT);
           this.game.say('pit', [
             (v) => `${v.cs}, PIT authorised.`,
@@ -908,7 +914,7 @@ export class Dispatcher {
       // next corner usually has one.
       if (!u) this.blockCooldown = 3;
       if (u) {
-        this.contactCooldown = CONTACT_GAP;
+        this.contactCooldown = this.contactGap;
         this.units.push(u);
         // Also into `available`, which was snapshotted before this unit
         // existed -- otherwise the validation immediately below decides it is
@@ -958,14 +964,15 @@ export class Dispatcher {
     // one at a time, with a long cooldown between attempts.
     if (this.tier >= 4 && k.seen && !this.rhinoUnit && this.rhinoCooldown <= 0
         && this.contactCooldown <= 0
-        && this.straightFor > 3.2 && Math.abs(target.forwardSpeed) > 22) {
-      this.rhinoCooldown = 30;
+        && (this.straightFor > 3.2 || !!this.game.daily) && Math.abs(target.forwardSpeed) > 22) {
+      // In the daily challenge, "a fair amount of head-on vehicles", and on a road it is known to be on.
+      this.rhinoCooldown = this.game.daily ? DAILY_RHINO_EVERY : 30;
       const u = this.game.spawnRhino(target, this.tier);
       // Nowhere to put it on this stretch: look again shortly rather than
       // waiting out the whole cooldown.
       if (!u) this.rhinoCooldown = 4;
       if (u) {
-        this.contactCooldown = CONTACT_GAP;
+        this.contactCooldown = this.contactGap;
         this.units.push(u);
         available.push(u);
         u.setRole(ROLE.RHINO);
