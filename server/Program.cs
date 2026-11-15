@@ -144,6 +144,22 @@ app.MapPost("/api/daily", async (HttpContext http) =>
             File.WriteAllText(namesPath, System.Text.Json.JsonSerializer.Serialize(names));
         }
         var rows = DailyRead(dailyDir, post.Day!);
+        // The fastest run that came with its line, for the ghost (src/game/daily.js): replaced whenever a
+        // faster one with a line arrives, whatever the table says. It used to be kept only for the top of the
+        // table, and a time posted before runs sent their line sat there with nothing behind it, unbeaten: "I
+        // can see the option to turn on the ghost, but I can't see the ghost." Its time is kept beside it. A
+        // flat list of numbers, five a sample; bounded and finite or not kept.
+        if (post.Ghost is { Length: > 0 and <= 25000 } g && g.Length % 5 == 0 && g.All(double.IsFinite))
+        {
+            var ghostTime = Path.Combine(dailyDir, post.Day + ".ghost.time");
+            var held = File.Exists(ghostTime) && double.TryParse(File.ReadAllText(ghostTime),
+                System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var ht) ? ht : double.MaxValue;
+            if (post.Time < held)
+            {
+                File.WriteAllText(Path.Combine(dailyDir, post.Day + ".ghost.json"), System.Text.Json.JsonSerializer.Serialize(g));
+                File.WriteAllText(ghostTime, post.Time.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+        }
         // One line a name: their best.
         var mine = rows.FindIndex(r => r.Name == name);
         if (mine >= 0 && rows[mine].Time <= post.Time) return Results.Json(rows.Take(DailyShow).ToList());
@@ -153,12 +169,6 @@ app.MapPost("/api/daily", async (HttpContext http) =>
         rows.Add(new DailyEntry(name, Math.Round(post.Time, 2), car, tries));
         rows = rows.OrderBy(r => r.Time).Take(DailyKeep).ToList();
         File.WriteAllText(Path.Combine(dailyDir, post.Day + ".json"), System.Text.Json.JsonSerializer.Serialize(rows));
-        // The fastest run's line, for the ghost (src/game/daily.js): kept only for the day's best, replaced
-        // when it is beaten. A flat list of numbers, five a sample; bounded and finite or not kept.
-        if (rows[0].Name == name && post.Ghost is { Length: > 0 and <= 25000 } g && g.Length % 5 == 0 && g.All(double.IsFinite))
-        {
-            File.WriteAllText(Path.Combine(dailyDir, post.Day + ".ghost.json"), System.Text.Json.JsonSerializer.Serialize(g));
-        }
         return Results.Json(rows.Take(DailyShow).ToList());
     }
 });

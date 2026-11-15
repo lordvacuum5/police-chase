@@ -148,6 +148,15 @@ try {
                     if ($key.Length -lt 16) { $res.StatusCode = 400; $res.Close(); continue }
                     if ($names.ContainsKey($name) -and $names[$name] -ne $key) { $res.StatusCode = 409; $res.Close(); continue }
                     if (-not $names.ContainsKey($name)) { $names[$name] = $key; [System.IO.File]::WriteAllText($namesFile, (ConvertTo-Json $names -Compress)) }
+                    # The fastest run with a line is the ghost, as on the live server.
+                    if ($name -and $post.ghost -and $t -ge 15) {
+                        $gt = Join-Path $dir "$day.ghost.time"
+                        $held = if (Test-Path -LiteralPath $gt) { [double](Get-Content -LiteralPath $gt -Raw) } else { [double]::MaxValue }
+                        if ($t -lt $held) {
+                            [System.IO.File]::WriteAllText((Join-Path $dir "$day.ghost.json"), (ConvertTo-Json -InputObject @($post.ghost) -Compress))
+                            [System.IO.File]::WriteAllText($gt, $t.ToString([System.Globalization.CultureInfo]::InvariantCulture))
+                        }
+                    }
                     if ($name -and $t -ge 15 -and $t -le 900) {
                         $old = $rows | Where-Object { $_.name -eq $name }
                         if (-not $old -or $old.time -gt $t) {
@@ -155,9 +164,7 @@ try {
                             $rows += [pscustomobject]@{ name = $name; time = [math]::Round($t, 2); car = [string]$post.car; attempts = [int]$post.attempts }
                             $rows = @($rows | Sort-Object time)
                             [System.IO.File]::WriteAllText($file, (& $toJson $rows))
-                            if ($rows[0].name -eq $name -and $post.ghost) {
-                                [System.IO.File]::WriteAllText((Join-Path $dir "$day.ghost.json"), (ConvertTo-Json -InputObject @($post.ghost) -Compress))
-                            }
+
                         }
                     }
                 }

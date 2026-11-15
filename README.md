@@ -7991,7 +7991,11 @@ the finish said attempt 2, the table "2 tries".
 it off and on in the pause menu."* Your line is kept five times a second of a run (time, position, heading) and sent with your time;
 the server keeps the day's fastest run's line beside the table (`{day}.ghost.json`, replaced when beaten, at most 5,000 samples) and
 hands it out at `/api/daily/ghost`. A run fetches it once, and draws a see-through copy of the day's car where that run was at the same
-moment on the clock. Nothing when nobody has posted. DAILY GHOST ON/OFF in the pause menu. Checked locally: 43 samples sent with a
+moment on the clock. Nothing when nobody has posted. DAILY GHOST ON/OFF in the pause menu. *"I can see the option to turn on the
+ghost, but I can't see the ghost."* It was kept only for a run that went to the top of the table, and the top of 15 November's was a
+time posted before runs sent their line, which nobody beat: no ghost at all. Now the ghost is the fastest run that came with its line,
+whatever is above it (`{day}.ghost.time` beside it). Checked locally: under a best with no line, a 50 s run with one became the ghost, a
+60 s one did not replace it, a 45 s one did. Checked locally: 43 samples sent with a
 posted time, stored; on the next run the ghost was where the line said at 1, 2 and 3 s, and hidden with the option off.
 
 ### The menu, simpler
