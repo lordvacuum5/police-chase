@@ -2734,6 +2734,7 @@ class Game {
     // never does both: asking for air support should not also throw the
     // controls card up over the game.
     if (i.tapped('KeyH')) {
+      // `five` only arms it while the shortcuts are on (window.__wantedKeys).
       const armed = this._fiveAt && performance.now() - this._fiveAt < FIVE_H_WINDOW;
       this._fiveAt = 0;
       if (armed) {
@@ -2782,7 +2783,9 @@ class Game {
       this.debug = !this.debug;
       this.debugEl.style.display = this.debug ? 'block' : 'none';
     }
-    this._wantedShortcut(i);
+    // The wanted-level shortcuts (number keys, `one`..`five`, `zero`, `five` then H) are off: "can you remove
+    // the quick [way] to get to any wanted level and remove wanted level?" _wantedShortcut is kept, unused.
+    if (typeof window !== 'undefined' && window.__wantedKeys) this._wantedShortcut(i);
     this._appleShortcut(i);
     // Two letters, not a key: "make sure the key is like really hard to press
     // and no one else is in accidentally press it." It was `stuck`; then

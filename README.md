@@ -7978,6 +7978,12 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### No more wanted-level shortcuts
+
+*"Can you remove the quick [way] to get to any wanted level and remove wanted level?"* The number keys 0-5, typing `zero` to `five`,
+and `five` then H for the helicopter no longer do anything, and are gone from the controls card. The code is still there for testing:
+`window.__wantedKeys = true` in the console turns them back on. Checked: 5 left the level at 0; with the switch on, 3 set it to 3.
+
 ### Attempts on the daily table
 
 *"How many attempts it took? So their time and then how many attempts? Because it took me like 20 attempts today."* Each GO of the
