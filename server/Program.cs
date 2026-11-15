@@ -148,7 +148,9 @@ app.MapPost("/api/daily", async (HttpContext http) =>
         var mine = rows.FindIndex(r => r.Name == name);
         if (mine >= 0 && rows[mine].Time <= post.Time) return Results.Json(rows.Take(DailyShow).ToList());
         if (mine >= 0) rows.RemoveAt(mine);
-        rows.Add(new DailyEntry(name, Math.Round(post.Time, 2), car));
+        // How many goes it took to set that time: "show me the attempts it takes."
+        var tries = post.Attempts is int a && a is >= 1 and <= 100000 ? a : 0;
+        rows.Add(new DailyEntry(name, Math.Round(post.Time, 2), car, tries));
         rows = rows.OrderBy(r => r.Time).Take(DailyKeep).ToList();
         File.WriteAllText(Path.Combine(dailyDir, post.Day + ".json"), System.Text.Json.JsonSerializer.Serialize(rows));
         // The fastest run's line, for the ghost (src/game/daily.js): kept only for the day's best, replaced
@@ -329,7 +331,7 @@ static async Task Broadcast(Rooms.Room room, object message, CancellationToken t
 app.Run();
 
 /// <summary>A time sent in: the day, a name, seconds, and the day's car.</summary>
-record DailyPost(string? Day, string? Name, double Time, string? Car, string? Key, double[]? Ghost);
+record DailyPost(string? Day, string? Name, double Time, string? Car, string? Key, double[]? Ghost, int? Attempts);
 
 /// <summary>One line of a day's table.</summary>
-record DailyEntry(string Name, double Time, string Car);
+record DailyEntry(string Name, double Time, string Car, int Attempts = 0);

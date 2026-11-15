@@ -169,18 +169,29 @@ async function fetchGhost(day) {
   } catch (e) { return null; }
 }
 
+/** One more go at `day` on this machine; returns how many there have been. Kept for the last fortnight. */
+function bumpAttempts(day) {
+  try {
+    const all = JSON.parse(localStorage.getItem('pc.dailytries') || '{}');
+    all[day] = (all[day] || 0) + 1;
+    for (const k of Object.keys(all).sort().slice(0, -14)) delete all[k];
+    localStorage.setItem('pc.dailytries', JSON.stringify(all));
+    return all[day];
+  } catch (e) { return 0; }
+}
+
 /** Is the ghost wanted? On unless turned off in the pause menu. */
 export function ghostOn() {
   try { return localStorage.getItem('pc.ghost') !== '0'; } catch (e) { return true; }
 }
 
 /** Rows on success, 'taken' if the name is someone else's, null if it could not be sent. */
-async function postTime(day, name, time, car, ghost = null) {
+async function postTime(day, name, time, car, ghost = null, attempts = 0) {
   try {
     const r = await fetch('/api/daily', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ day, name, time, car, key: deviceKey(), ghost }),
+      body: JSON.stringify({ day, name, time, car, key: deviceKey(), ghost, attempts }),
     });
     if (r.status === 409) return 'taken';
     if (!r.ok) return null;
@@ -204,7 +215,8 @@ export function boardHtml(rows, mine = '') {
   if (!rows.length) return '<div class="dnone">No times yet today.</div>';
   return '<ol class="dboard">' + rows.slice(0, 10).map((r) => {
     const me = mine && r.name === mine ? ' class="me"' : '';
-    return `<li${me}><span>${escapeHtml(r.name)}</span><b>${fmtTime(r.time)}</b></li>`;
+    const tries = r.attempts > 0 ? `<i>${r.attempts} ${r.attempts === 1 ? 'try' : 'tries'}</i>` : '<i></i>';
+    return `<li${me}><span>${escapeHtml(r.name)}</span>${tries}<b>${fmtTime(r.time)}</b></li>`;
   }).join('') + '</ol>';
 }
 
@@ -556,7 +568,11 @@ export class DailyChallenge {
       this._halt();
       if (g.heat.value < 5) g.heat.value = 5;
       this._showCount();
-      if (this.count <= 0) this.state = 'running';
+      if (this.count <= 0) {
+        this.state = 'running';
+        // Another go at today's: "how many attempts it took ... it took me like 20 attempts today."
+        this.attempt = bumpAttempts(this.day);
+      }
       this._paint();
       return;
     }
@@ -739,7 +755,7 @@ export class DailyChallenge {
     const best = before === null || t < before;
     const name = savedName();
     g.hud.showOverlay('CHALLENGE COMPLETE', [
-      `<div class="dwin">Time <b>${fmtTime(t)}</b>${best ? ' &nbsp;<b class="best">YOUR BEST TODAY</b>' : ` &nbsp;(best ${fmtTime(before)})`}</div>`,
+      `<div class="dwin">Time <b>${fmtTime(t)}</b> &nbsp;·&nbsp; attempt <b>${this.attempt || 1}</b>${best ? ' &nbsp;<b class="best">YOUR BEST TODAY</b>' : ` &nbsp;(best ${fmtTime(before)})`}</div>`,
       '<div class="dsend"><input id="dname" maxlength="16" placeholder="YOUR NAME" autocomplete="off" spellcheck="false" '
         + `value="${escapeHtml(name)}"><button id="dpost" class="setbtn" type="button">POST TIME</button></div>`,
       '<div id="dtable"></div>',
@@ -761,7 +777,7 @@ export class DailyChallenge {
       if (!name) { box.focus(); return; }
       btn.disabled = true;
       btn.textContent = 'SENDING…';
-      const rows = await postTime(this.day, name, t, this.plan.car, this._line);
+      const rows = await postTime(this.day, name, t, this.plan.car, this._line, this.attempt || 1);
       if (rows === 'taken') {
         btn.textContent = 'NAME TAKEN';
         btn.disabled = false;

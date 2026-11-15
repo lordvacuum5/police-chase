@@ -7978,6 +7978,13 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Attempts on the daily table
+
+*"How many attempts it took? So their time and then how many attempts? Because it took me like 20 attempts today."* Each GO of the
+day's challenge counts a go on this machine (`pc.dailytries`); the finish screen says which attempt it was, it is sent with the time,
+and the table shows it beside each time ("20 tries"). Times posted before this show none. Checked locally: GO, R, GO counted 1 and 2,
+the finish said attempt 2, the table "2 tries".
+
 ### The daily ghost
 
 *"A ghost of the car of the best run on the daily challenge ... if no one's done it, obviously don't show anything ... an option to turn

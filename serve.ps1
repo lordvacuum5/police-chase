@@ -135,7 +135,7 @@ try {
                 $file = Join-Path $dir "$day.json"
                 # Windows PowerShell hands a JSON array back as one object; unrolled, it is the rows.
                 if (Test-Path -LiteralPath $file) { $rows = @((Get-Content -LiteralPath $file -Raw | ConvertFrom-Json) | ForEach-Object { $_ }) }
-                $toJson = { param($list) '[' + ((@($list) | ForEach-Object { '{"name":' + (ConvertTo-Json ([string]$_.name)) + ',"time":' + ([double]$_.time).ToString([System.Globalization.CultureInfo]::InvariantCulture) + ',"car":' + (ConvertTo-Json ([string]$_.car)) + '}' }) -join ',') + ']' }
+                $toJson = { param($list) '[' + ((@($list) | ForEach-Object { '{"name":' + (ConvertTo-Json ([string]$_.name)) + ',"time":' + ([double]$_.time).ToString([System.Globalization.CultureInfo]::InvariantCulture) + ',"car":' + (ConvertTo-Json ([string]$_.car)) + ',"attempts":' + [int]$_.attempts + '}' }) -join ',') + ']' }
                 if ($post) {
                     $name = ([string]$post.name).Trim().ToUpperInvariant() -replace '[^A-Z0-9 _-]', ''
                     if ($name.Length -gt 16) { $name = $name.Substring(0, 16) }
@@ -152,7 +152,7 @@ try {
                         $old = $rows | Where-Object { $_.name -eq $name }
                         if (-not $old -or $old.time -gt $t) {
                             $rows = @($rows | Where-Object { $_.name -ne $name })
-                            $rows += [pscustomobject]@{ name = $name; time = [math]::Round($t, 2); car = [string]$post.car }
+                            $rows += [pscustomobject]@{ name = $name; time = [math]::Round($t, 2); car = [string]$post.car; attempts = [int]$post.attempts }
                             $rows = @($rows | Sort-Object time)
                             [System.IO.File]::WriteAllText($file, (& $toJson $rows))
                             if ($rows[0].name -eq $name -and $post.ghost) {
