@@ -74,6 +74,21 @@ export class PauseMenu {
       });
     }
 
+    // The daily challenge's ghost of the day's best run (game/daily.js).
+    this.ghostBtn = document.getElementById('ghostbtn');
+    if (this.ghostBtn) {
+      const paint = () => {
+        const on = localStorage.getItem('pc.ghost') !== '0';
+        this.ghostBtn.textContent = on ? 'ON' : 'OFF';
+        this.ghostBtn.classList.toggle('on', on);
+        this.ghostBtn.classList.toggle('off', !on);
+      };
+      try { paint(); } catch (e) { /* storage blocked */ }
+      this.ghostBtn.addEventListener('click', () => {
+        try { localStorage.setItem('pc.ghost', localStorage.getItem('pc.ghost') === '0' ? '1' : '0'); paint(); } catch (e) { /* blocked */ }
+      });
+    }
+
     this.soundBtn.addEventListener('click', () => {
       if (!this.game.audio) return;
       this.game.audio.toggleMute();

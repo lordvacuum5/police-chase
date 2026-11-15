@@ -37,6 +37,8 @@ const DAILY_SLACK = 0.85;
 const DAILY_EXTRA = 10;
 /** The countdown at the start, s; and how long GO stays up once the clock is running, s. */
 const COUNT_FROM = 3;
+/** The ghost's line is a sample every this many seconds of the run. */
+const GHOST_EVERY = 0.2;
 const GO_FOR = 0.8;
 /** Gates to drive through along the route, this far apart, m; this many standing ahead of you at once. */
 const GATE_EVERY = 90;
@@ -157,13 +159,28 @@ function deviceKey() {
   } catch (e) { return ''; }
 }
 
+/** The day's best run's line, as [t, x, y, z, heading, ...], or null if nobody has posted one. */
+async function fetchGhost(day) {
+  try {
+    const r = await fetch(`/api/daily/ghost?day=${encodeURIComponent(day)}`, { cache: 'no-store' });
+    if (!r.ok) return null;
+    const a = await r.json();
+    return Array.isArray(a) && a.length >= 10 ? a : null;
+  } catch (e) { return null; }
+}
+
+/** Is the ghost wanted? On unless turned off in the pause menu. */
+export function ghostOn() {
+  try { return localStorage.getItem('pc.ghost') !== '0'; } catch (e) { return true; }
+}
+
 /** Rows on success, 'taken' if the name is someone else's, null if it could not be sent. */
-async function postTime(day, name, time, car) {
+async function postTime(day, name, time, car, ghost = null) {
   try {
     const r = await fetch('/api/daily', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ day, name, time, car, key: deviceKey() }),
+      body: JSON.stringify({ day, name, time, car, key: deviceKey(), ghost }),
     });
     if (r.status === 409) return 'taken';
     if (!r.ok) return null;
@@ -388,9 +405,67 @@ export class DailyChallenge {
     this.game.scene.add(this.marker);
   }
 
+  /**
+   * The ghost: "a ghost of the car of the best run on the daily challenge ... if no one's done it ...
+   * don't show anything ... and an option to turn it off and on in the pause menu." Your own line is kept
+   * every GHOST_EVERY seconds of the run and sent with your time; the server keeps the day's fastest. That
+   * one, if there is one, is drawn as a see-through copy of the day's car, where it was at the same moment.
+   */
+  _ghostTick(dt) {
+    const p = this.game.player;
+    if (this.state !== 'running' || !p) return;
+    if (this.time >= this._lineNext) {
+      this._lineNext = this.time + GHOST_EVERY;
+      const r = (v) => Math.round(v * 100) / 100;
+      this._line.push(r(this.time), r(p.position.x), r(p.position.y), r(p.position.z), r(Math.atan2(p.forward.x, p.forward.z)));
+    }
+    const gd = this.ghostData;
+    if (!gd || !ghostOn()) { if (this.ghostMesh) this.ghostMesh.visible = false; return; }
+    if (!this.ghostMesh && p.view) {
+      const m = p.view.clone(true);
+      m.traverse((o) => {
+        if (!o.isMesh) return;
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        const ghost = mats.map((mt) => {
+          const c = mt.clone();
+          c.transparent = true; c.opacity = 0.35; c.depthWrite = false;
+          return c;
+        });
+        o.material = Array.isArray(o.material) ? ghost : ghost[0];
+        o.castShadow = false;
+      });
+      this.game.scene.add(m);
+      this.ghostMesh = m;
+    }
+    if (!this.ghostMesh) return;
+    // The samples either side of now.
+    const t = this.time;
+    let i = this._ghostI || 0;
+    while (i + 5 < gd.length - 5 && gd[i + 5] <= t) i += 5;
+    this._ghostI = i;
+    const a = i, b = Math.min(gd.length - 5, i + 5);
+    const span = gd[b] - gd[a];
+    const u = span > 0 ? Math.min(1, Math.max(0, (t - gd[a]) / span)) : 0;
+    let dh = gd[b + 4] - gd[a + 4];
+    if (dh > Math.PI) dh -= Math.PI * 2; else if (dh < -Math.PI) dh += Math.PI * 2;
+    const m = this.ghostMesh;
+    m.visible = t <= gd[gd.length - 5] + 1;
+    m.position.set(gd[a + 1] + (gd[b + 1] - gd[a + 1]) * u, gd[a + 2] + (gd[b + 2] - gd[a + 2]) * u, gd[a + 3] + (gd[b + 3] - gd[a + 3]) * u);
+    m.rotation.set(0, gd[a + 4] + dh * u, 0);
+  }
+
   /** Where a run starts, and everything put back as it was. Called at the start and on R. */
   begin() {
     const g = this.game;
+    this._line = [];
+    this._lineNext = 0;
+    this._ghostI = 0;
+    if (this.ghostMesh) this.ghostMesh.visible = false;
+    // The day's best, fetched once; a new best of your own replaces it at the next start.
+    if (!this._ghostAsked) {
+      this._ghostAsked = true;
+      fetchGhost(this.day).then((d) => { this.ghostData = d; });
+    }
     // No train: "disable the train, because it just ruined my run ... I had to wait for it to pass."
     const rail = g.world && g.world.__map && g.world.__map.railway;
     if (rail) rail.off = true;
@@ -492,6 +567,7 @@ export class DailyChallenge {
     // And the stars stay where they were put.
     if (g.heat.value < 5) g.heat.value = 5;
 
+    this._ghostTick(dt);
     this._track(p);
     this._obstacles();
     this._throughGates(p);
@@ -685,7 +761,7 @@ export class DailyChallenge {
       if (!name) { box.focus(); return; }
       btn.disabled = true;
       btn.textContent = 'SENDING…';
-      const rows = await postTime(this.day, name, t, this.plan.car);
+      const rows = await postTime(this.day, name, t, this.plan.car, this._line);
       if (rows === 'taken') {
         btn.textContent = 'NAME TAKEN';
         btn.disabled = false;
@@ -727,6 +803,7 @@ export class DailyChallenge {
     if (w) w.hidden = true;
     const c = document.getElementById('dailycount');
     if (c) c.hidden = true;
+    if (this.ghostMesh) this.game.scene.remove(this.ghostMesh);
   }
 }
 

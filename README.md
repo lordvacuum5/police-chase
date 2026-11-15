@@ -7978,6 +7978,15 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### The daily ghost
+
+*"A ghost of the car of the best run on the daily challenge ... if no one's done it, obviously don't show anything ... an option to turn
+it off and on in the pause menu."* Your line is kept five times a second of a run (time, position, heading) and sent with your time;
+the server keeps the day's fastest run's line beside the table (`{day}.ghost.json`, replaced when beaten, at most 5,000 samples) and
+hands it out at `/api/daily/ghost`. A run fetches it once, and draws a see-through copy of the day's car where that run was at the same
+moment on the clock. Nothing when nobody has posted. DAILY GHOST ON/OFF in the pause menu. Checked locally: 43 samples sent with a
+posted time, stored; on the next run the ghost was where the line said at 1, 2 and 3 s, and hidden with the option off.
+
 ### The menu, simpler
 
 *"The menu now is super confusing and has way too much writing on it ... say like multiplayer or single player ... if you choose single

@@ -102,6 +102,19 @@ try {
 
             # The daily challenge's table, as server/Program.cs keeps it on the live site, so the game can be
             # tried here. Kept in the temp folder, not the project.
+            # The day's best run's line, for the ghost (as /api/daily/ghost on the live server).
+            if ($req.Url.AbsolutePath -eq '/api/daily/ghost') {
+                $day = $req.QueryString['day']
+                $file = Join-Path (Join-Path $env:TEMP 'police-chase-daily') "$day.ghost.json"
+                if ($day -match '^\d{4}-\d{2}-\d{2}$' -and (Test-Path -LiteralPath $file)) {
+                    $body = [System.IO.File]::ReadAllBytes($file)
+                    $res.ContentType = 'application/json; charset=utf-8'
+                    $res.ContentLength64 = $body.Length
+                    $res.OutputStream.Write($body, 0, $body.Length)
+                } else { $res.StatusCode = 404 }
+                $res.Close()
+                continue
+            }
             if ($req.Url.AbsolutePath -eq '/api/daily') {
                 $dir = Join-Path $env:TEMP 'police-chase-daily'
                 if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
@@ -142,6 +155,9 @@ try {
                             $rows += [pscustomobject]@{ name = $name; time = [math]::Round($t, 2); car = [string]$post.car }
                             $rows = @($rows | Sort-Object time)
                             [System.IO.File]::WriteAllText($file, (& $toJson $rows))
+                            if ($rows[0].name -eq $name -and $post.ghost) {
+                                [System.IO.File]::WriteAllText((Join-Path $dir "$day.ghost.json"), (ConvertTo-Json -InputObject @($post.ghost) -Compress))
+                            }
                         }
                     }
                 }

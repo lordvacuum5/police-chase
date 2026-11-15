@@ -151,7 +151,24 @@ app.MapPost("/api/daily", async (HttpContext http) =>
         rows.Add(new DailyEntry(name, Math.Round(post.Time, 2), car));
         rows = rows.OrderBy(r => r.Time).Take(DailyKeep).ToList();
         File.WriteAllText(Path.Combine(dailyDir, post.Day + ".json"), System.Text.Json.JsonSerializer.Serialize(rows));
+        // The fastest run's line, for the ghost (src/game/daily.js): kept only for the day's best, replaced
+        // when it is beaten. A flat list of numbers, five a sample; bounded and finite or not kept.
+        if (rows[0].Name == name && post.Ghost is { Length: > 0 and <= 25000 } g && g.Length % 5 == 0 && g.All(double.IsFinite))
+        {
+            File.WriteAllText(Path.Combine(dailyDir, post.Day + ".ghost.json"), System.Text.Json.JsonSerializer.Serialize(g));
+        }
         return Results.Json(rows.Take(DailyShow).ToList());
+    }
+});
+
+// The day's best run's line, or 404 when there is none yet.
+app.MapGet("/api/daily/ghost", (string? day) =>
+{
+    if (!DailyDayOk(day)) return Results.BadRequest();
+    var path = Path.Combine(dailyDir, day + ".ghost.json");
+    lock (dailyLock)
+    {
+        return File.Exists(path) ? Results.Text(File.ReadAllText(path), "application/json") : Results.NotFound();
     }
 });
 
@@ -312,7 +329,7 @@ static async Task Broadcast(Rooms.Room room, object message, CancellationToken t
 app.Run();
 
 /// <summary>A time sent in: the day, a name, seconds, and the day's car.</summary>
-record DailyPost(string? Day, string? Name, double Time, string? Car, string? Key);
+record DailyPost(string? Day, string? Name, double Time, string? Car, string? Key, double[]? Ghost);
 
 /// <summary>One line of a day's table.</summary>
 record DailyEntry(string Name, double Time, string Car);
