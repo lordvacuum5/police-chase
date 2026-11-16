@@ -469,6 +469,20 @@ export class DailyChallenge {
   /** Where a run starts, and everything put back as it was. Called at the start and on R. */
   begin() {
     const g = this.game;
+    // The same chances every attempt, for everyone: "he basically just got insanely lucky ... about the police
+    // spawns ... make the traffic and police spawns ... exactly the same every single time you run." The
+    // game's random numbers (Game.rng: which car, where, which way, who runs a light) start again from the
+    // day's seed, and the traffic from nothing, at every start -- the first included, which had the traffic
+    // the boot left. What the force does still follows what you do, so driving the same way meets the same.
+    // From an empty road: the last attempt's police (patrols the reset keeps, units off its roadblocks) and its
+    // traffic went on drawing numbers and moving, and two identical drives met different cars.
+    if (g.dispatcher) for (const u of g.dispatcher.units.slice()) if (!u.human) g.despawnPolice(u);
+    // And a new force: its timers and what it knew (when the last block went in, how long you have held a
+    // line) outlived a reset and made the second identical drive go differently from the first.
+    if (g.dispatcher) g.dispatcher = new g.dispatcher.constructor(g);
+    if (g.traffic) g.traffic.clear();
+    if (g.suspects && g.suspects.reset) g.suspects.reset();
+    g.rng = makeRng(hash(`play:${this.day}`));
     this._line = [];
     this._lineNext = 0;
     this._ghostI = 0;

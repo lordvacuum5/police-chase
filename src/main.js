@@ -50,6 +50,8 @@ const _qN = new THREE.Quaternion();
  * enough that an H a few seconds later is the controls card again.
  */
 const FIVE_H_WINDOW = 1500;
+/** The daily challenge's "in view" (Game.inView): this many degrees either side of the car's nose. */
+const DAILY_VIEW_DEG = 55;
 
 const SOLO_AIR = typeof location !== 'undefined'
   && new URLSearchParams(location.search).get('air') === '1';
@@ -1411,6 +1413,23 @@ class Game {
   }
 
   inView(pos) {
+    // In the daily challenge, in view of the car rather than of the camera: what counts as hidden decides
+    // where a car may be put, and the camera -- swung round, zoomed, just reset by R -- made two identical
+    // drives meet different police. "Make the traffic and police spawns ... exactly the same every single
+    // time you run." Ahead of the car within DAILY_VIEW_DEG either side, out to 700 m, with a clear line from
+    // the driving seat.
+    if (this.daily && this.player) {
+      const p = this.player;
+      const dx = pos.x - p.position.x, dz = pos.z - p.position.z, d = Math.hypot(dx, dz);
+      if (d > 700) return false;
+      if (d > 8) {
+        const h = Math.atan2(p.forward.x, p.forward.z);
+        let a = Math.atan2(dx, dz) - h;
+        a = Math.atan2(Math.sin(a), Math.cos(a));
+        if (Math.abs(a) > DAILY_VIEW_DEG * Math.PI / 180) return false;
+      }
+      return this._sees(p.position, pos);
+    }
     const cam = this.camera;
     if (!cam) return false;
     cam.updateMatrixWorld(true);

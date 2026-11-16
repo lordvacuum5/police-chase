@@ -7978,6 +7978,18 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### The daily: the same police every attempt, as near as it goes
+
+*"He basically just got insanely lucky ... about the police spawns. So I want you to make the traffic and police spawns ... exactly the
+same every single time you run."* Every start of the daily now: every police car taken off, the traffic cleared, the suspects reset, a
+new dispatcher (its timers outlived a reset), and the game's random numbers started again from the day's seed. And "in view", which
+decides where a car may be put, is judged from your car (55 degrees either side of the nose, a clear line from the seat) rather than
+from the camera, which you can swing round. Measured with the game's driver taking the same line three times, 20 s each, with the camera
+swung on the second: before, no car met the same as the other attempt; now the second and third attempts met the same police in the
+same places for 14 of 17 cars, and ended 2 m apart. Not exact: small differences in the physics grow over a run (cones and debris left
+by the last attempt, for one), and the first attempt after the page loads differs more (7 of 14 the same). Officer's one Math.random is
+the game's numbers now.
+
 ### No more wanted-level shortcuts
 
 *"Can you remove the quick [way] to get to any wanted level and remove wanted level?"* The number keys 0-5, typing `zero` to `five`,

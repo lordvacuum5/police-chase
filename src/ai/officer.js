@@ -496,7 +496,7 @@ export class Officer {
     this.role = ROLE.PATROL;
     this.orders = {};
     this.goalNode = null;
-    this.repathTimer = Math.random() * 0.6;
+    this.repathTimer = this.game.rng() * 0.6;   // the game's numbers, not Math.random: see DailyChallenge.begin
     this.pitState = {};
     this.recoverTimer = 0;
     this.lastRole = null;
