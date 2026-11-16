@@ -1449,7 +1449,17 @@ class Game {
     return hasLineOfSight(this.world, _eyeV, _atV, 0.3, SPAWN_SIGHT);
   }
 
+  /** A police unit of `kind` at a place, for the daily challenge's preset ones; null if there is no room. */
+  spawnUnitAt(position, heading, kind) {
+    if (this.carCount() >= this.vehicleLimit) return null;
+    const v = this.createVehicle(kind, kind, position, heading, { police: true, spawn: true });
+    if (!v) return null;
+    v.lampPhase = 0.37;
+    return new Officer(this, v, { skill: SKILL.advanced, kind });
+  }
+
   spawnPoliceNear(target, tier) {
+    if (this.daily) return null;
     // Four slots held back for a roadblock. The pursuit will happily fill the
     // board on its own -- every block the player beats hands it three more
     // cars -- and when it does, `createVehicle` starts refusing, which shows
@@ -1629,21 +1639,8 @@ class Game {
    */
   spawnPoliceAhead(target, tier) {
     if (this.carCount() >= this.vehicleLimit) return null;
-    // In the daily challenge, up the route itself, which is where you are going: see DailyChallenge.siteAhead.
-    if (this.daily) {
-      for (const ahead of [190, 230, 160, 270]) {
-        const site = this.daily.siteAhead(ahead);
-        if (!site) break;
-        const pos = { x: site.x, y: 0.95 + this.groundAt(site.x, site.z), z: site.z };
-        const kind = tier >= 4 ? 'interceptor' : 'patrol';
-        const v = this.createVehicle(kind, kind, pos, site.heading, { police: true, spawn: true });
-        if (!v) continue;
-        v.lampPhase = this.rng();
-        v.setVelocity({ x: Math.sin(site.heading) * 18, y: 0, z: Math.cos(site.heading) * 18 });
-        return new Officer(this, v, { skill: SKILL.advanced, kind });
-      }
-      return null;
-    }
+    // The daily challenge's police are all preset (DailyChallenge, the spawn plan): none of the force's own.
+    if (this.daily) return null;
     const g = this.graph;
 
     let dx = target.linvel.x, dz = target.linvel.z;
@@ -1926,20 +1923,7 @@ class Game {
    */
   spawnRhino(target, tier) {
     if (this.carCount() >= this.vehicleLimit) return null;
-    // In the daily challenge, coming down the route at you: see DailyChallenge.siteAhead.
-    if (this.daily) {
-      for (const ahead of [300, 260, 340, 220]) {
-        const site = this.daily.siteAhead(ahead, true);
-        if (!site) break;
-        const pos = { x: site.x, y: 0.95 + this.groundAt(site.x, site.z), z: site.z };
-        const v = this.createVehicle('van', 'van', pos, site.heading, { police: true, spawn: true });
-        if (!v) continue;
-        v.lampPhase = this.rng();
-        v.setVelocity({ x: Math.sin(site.heading) * 24, y: 0, z: Math.cos(site.heading) * 24 });
-        return new Officer(this, v, { skill: SKILL.advanced, kind: 'van' });
-      }
-      return null;
-    }
+    if (this.daily) return null;
     const g = this.graph;
 
     let dx = target.linvel.x, dz = target.linvel.z;

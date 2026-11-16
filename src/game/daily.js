@@ -37,6 +37,13 @@ const DAILY_SLACK = 0.85;
 const DAILY_EXTRA = 10;
 /** The countdown at the start, s; and how long GO stays up once the clock is running, s. */
 const COUNT_FROM = 3;
+/** The preset police (see _planSpawns): at the start; then one for each this many metres of route, this far up the route, about this far off it. */
+const SPAWN_START = 4;
+const SPAWN_EVERY = 110;
+const SPAWN_AHEAD = 160;
+const SPAWN_OFF = 140;
+/** Preset traffic cars along the route. */
+const TRAFFIC_ALONG = 14;
 /** The ghost's line is a sample every this many seconds of the run. */
 const GHOST_EVERY = 0.2;
 const GO_FOR = 0.8;
@@ -298,6 +305,7 @@ export class DailyChallenge {
       this.obstacles.push({ s: at, kind: 'full', side: 1, block: null, done: false });
     }
     this._buildGates();
+    this._planSpawns();
     this._finishMarker();
     return true;
   }
@@ -391,6 +399,65 @@ export class DailyChallenge {
     for (let i = shown; i < this.gateMeshes.length; i++) this.gateMeshes[i].visible = false;
   }
 
+  /**
+   * Every police car and every traffic car of the run, decided now from the day's numbers and the same for
+   * everyone and every attempt: "make the traffic and police spawns the same ... every single police spawn
+   * is like preset." Police: SPAWN_START at the start, round it, and then one at each SPAWN_EVERY of the
+   * route you reach, put down SPAWN_OFF from the route point SPAWN_AHEAD further on, off the route, pointing
+   * at it. Traffic: TRAFFIC_ALONG cars down the route, on alternate sides, laid out at every start. The
+   * force spawns nothing of its own in the challenge (Game.spawnPoliceNear and friends); what each unit does
+   * once it is there still follows what you do.
+   */
+  _planSpawns() {
+    const g = this.game, gr = g.graph;
+    const rng = makeRng(hash(`spawns:${this.day}`));
+    const onRoute = new Set(this.route.path);
+    const nodes = gr.nodes.filter((n) => n.edges.length && !n.quarry && !onRoute.has(n.id));
+    const KIND = ['interceptor', 'suv', 'interceptor', 'patrol'];
+    const near = (x, z, lo, hi) => {
+      const c = nodes.filter((n) => { const d = Math.hypot(n.x - x, n.z - z); return d > lo && d < hi; });
+      return c.length ? c[Math.floor(rng() * c.length) % c.length] : null;
+    };
+    const unitAt = (node) => {
+      const place = node && g._placeOnRoad(node);
+      return place && { x: place.position.x, z: place.position.z, heading: place.heading, kind: KIND[Math.floor(rng() * KIND.length) % KIND.length] };
+    };
+    this.spawnPlan = [];
+    const st = this.route.start.position;
+    for (let i = 0; i < SPAWN_START; i++) {
+      const u = unitAt(near(st.x, st.z, 90, 220));
+      if (u) this.spawnPlan.push(Object.assign({ s: 0 }, u));
+    }
+    for (let s = SPAWN_EVERY; s < this.route.length - 80; s += SPAWN_EVERY) {
+      const q = this._siteAt(Math.min(this.route.length - 20, s + SPAWN_AHEAD));
+      const u = unitAt(near(q.x, q.z, SPAWN_OFF * 0.5, SPAWN_OFF * 1.5));
+      if (u) this.spawnPlan.push(Object.assign({ s }, u));
+    }
+    this.trafficPlan = [];
+    const TK = ['hatchback', 'estate', 'civsuv'];
+    for (let k = 0; k < TRAFFIC_ALONG; k++) {
+      const s = 60 + (this.route.length - 120) * (k + rng() * 0.6) / TRAFFIC_ALONG;
+      const q = this._siteAt(s);
+      const back = rng() < 0.5;
+      const lane = Math.min(3, q.width * 0.25) * (back ? -1 : 1);
+      this.trafficPlan.push({
+        x: q.x + q.tz * lane, z: q.z - q.tx * lane,
+        heading: back ? Math.atan2(-q.tx, -q.tz) : Math.atan2(q.tx, q.tz),
+        kind: TK[Math.floor(rng() * TK.length) % TK.length],
+      });
+    }
+  }
+
+  /** The planned police whose distance along the route you have reached. */
+  _spawnDue() {
+    const g = this.game;
+    while (this._spawnNext < this.spawnPlan.length && this.spawnPlan[this._spawnNext].s <= this.progress) {
+      const sp = this.spawnPlan[this._spawnNext++];
+      const u = g.spawnUnitAt({ x: sp.x, y: 0.95 + g.groundAt(sp.x, sp.z), z: sp.z }, sp.heading, sp.kind);
+      if (u) g.dispatcher.adopt(u);
+    }
+  }
+
   /** Does the route run straight from `a` to `b` metres along it: no stretch of it more than STRAIGHT_DEG off the line at `b`? */
   _straight(a, b) {
     const end = this._siteAt(b);
@@ -480,7 +547,13 @@ export class DailyChallenge {
     // And a new force: its timers and what it knew (when the last block went in, how long you have held a
     // line) outlived a reset and made the second identical drive go differently from the first.
     if (g.dispatcher) g.dispatcher = new g.dispatcher.constructor(g);
-    if (g.traffic) g.traffic.clear();
+    if (g.traffic) {
+      g.traffic.clear();
+      // The day's traffic, all of it, where it always is: see _planSpawns.
+      g.traffic.preset = true;
+      for (const t of this.trafficPlan || []) g.traffic.place({ x: t.x, y: 0.95 + g.groundAt(t.x, t.z), z: t.z }, t.heading, t.kind);
+    }
+    this._spawnNext = 0;
     if (g.suspects && g.suspects.reset) g.suspects.reset();
     g.rng = makeRng(hash(`play:${this.day}`));
     this._line = [];
@@ -598,6 +671,7 @@ export class DailyChallenge {
 
     this._ghostTick(dt);
     this._track(p);
+    this._spawnDue();
     this._obstacles();
     this._throughGates(p);
     const next = this._nextGate();

@@ -31,7 +31,7 @@ import { DRIVE_SIDE } from '../world/roadgraph.js';
 import { groups, GROUP } from '../physics/world.js';
 
 /** Which maps have traffic. */
-export const TRAFFIC_MAPS = ['haldon', 'wexbury'];
+export const TRAFFIC_MAPS = ['haldon', 'wexbury', 'city'];
 /** How many cars, and the ring round the players they live in, m. */
 // Five more than the first trial's twelve, paid for by five fewer police
 // cars at five stars (Dispatcher.PACK_CAP 30 -> 25).
@@ -192,7 +192,7 @@ export class Traffic {
     // Fewer on a machine that has already had to shed police cars to hold its
     // frame rate (Game's quality ladder lowers vehicleLimit).
     const want = g.vehicleLimit < 30 ? Math.round(TRAFFIC_COUNT / 2) : TRAFFIC_COUNT;
-    if (this.cars.length < want && this._spawnIn <= 0 && watchers.length) {
+    if (!this.preset && this.cars.length < want && this._spawnIn <= 0 && watchers.length) {
       this._spawnIn = 0.35;
       this._spawn(watchers, nearest);
     }
@@ -320,6 +320,24 @@ export class Traffic {
       this._route(c);
       return;
     }
+  }
+
+  /**
+   * A traffic car of `kind` at a given place, driving off from it: for the daily challenge's preset traffic
+   * (DailyChallenge.begin), which sets `preset` so nothing else is spawned. Null if there is no room.
+   */
+  place(position, heading, kind) {
+    const g = this.game;
+    const id = `t${++this._made}`;
+    const v = g.createVehicle(kind, kind, position, heading, { spawn: true, paint: trafficPaint(id) });
+    if (!v) return null;
+    v.isTraffic = true;
+    v.setVelocity({ x: Math.sin(heading) * 9, y: 0, z: Math.cos(heading) * 9 });
+    const rideY = RIDE + (v.spec.wheelRadius - 0.32);
+    const c = { v, driver: new Driver(v, SKILL.regular), id, stuckFor: 0, pullFor: 0, rideY };
+    this.cars.push(c);
+    this._route(c);
+    return c;
   }
 
   _route(c) {

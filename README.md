@@ -7978,6 +7978,21 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### The daily: every police car and every traffic car preset
+
+*"I just need you to make the ... traffic and the police spawns the same. That's all."* Seeding was not enough: the force spawns on
+timers and from where you are, so a different drive still met different cars. In the challenge now the force spawns nothing of its own
+(`spawnPoliceNear`, `spawnPoliceAhead` and `spawnRhino` refuse), and `DailyChallenge._planSpawns` decides it all from the day's numbers
+when the route is built: four police round the start; then one for each 110 m of route you reach, put down about 140 m off the route
+160 m further on, on a side road (`Game.spawnUnitAt`); and 14 traffic cars down the route on alternate sides, laid out at every start,
+with the traffic's own spawning off (`Traffic.preset`, `Traffic.place`). The roadblocks were already preset. What each car does once it is
+there still follows you. Checked, two different drives (one off at once, one waiting 4 s with the camera swung round): the same 14 traffic
+cars at the start, and the police met in the same order at the same places, 7 of 7.
+
+*"Can you actually add traffic on the first map ... the American map ... it has no traffic."* Ashfield City is in `TRAFFIC_MAPS` now.
+Measured first, as HANDOVER asked (`tests/keepup.js`, ghost at 120 km/h, three routes): the police without traffic 72 km/h, with it 6%
+of the time, 25 hits; with traffic 71 km/h, 17%, 10 hits. No worse for it.
+
 ### The daily: the same police every attempt, as near as it goes
 
 *"He basically just got insanely lucky ... about the police spawns. So I want you to make the traffic and police spawns ... exactly the

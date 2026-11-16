@@ -455,10 +455,11 @@ keel catches it and it keeps its speed along the ground when only the keel
 touches** (`Vehicle._hillContact`, `_rideUpHill`). **Every game spawn tests the
 car's outline for room** (`createVehicle` with `spawn: true`). Rigs that make
 cars by hand do not pass `spawn` and are not refused.
-**Traffic** (`game/traffic.js`) is on Haldon Vale and Wexbury, 17 cars, with
-the police pack cap down to 25 to pay for it (both asked for). Turning it on
-for the city is adding the map id to `TRAFFIC_MAPS` -- measure the force with
-and without first; the grid will be the hard case. Cars live 70-260 m from a
+**Traffic** (`game/traffic.js`) is on all three maps, 17 cars, with
+the police pack cap down to 25 to pay for it (both asked for); the city was
+added after measuring (README, "every police car and every traffic car
+preset"). In the daily challenge both police and traffic are preset
+(`DailyChallenge._planSpawns`) and the force's own spawns are off. Cars live 70-260 m from a
 player (gone at 360), spawn only out of sight, and wake within 150 m *even in
 view* -- a dormant car has no body, and one kept asleep because it was seen
 was driven through. `tests/trafficseen.js` measures how many a driver meets.
