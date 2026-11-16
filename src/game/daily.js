@@ -473,11 +473,10 @@ export class DailyChallenge {
     this._lineNext = 0;
     this._ghostI = 0;
     if (this.ghostMesh) this.ghostMesh.visible = false;
-    // The day's best, fetched once; a new best of your own replaces it at the next start.
-    if (!this._ghostAsked) {
-      this._ghostAsked = true;
-      fetchGhost(this.day).then((d) => { this.ghostData = d; });
-    }
+    // The day's best, fetched afresh every start: it was fetched once a page, so a best you set yourself was
+    // not there until a reload. "If I am the best player, I can't see the ghost ... when my friend became the
+    // best, then I could see his ghost and he could see mine." Your own new best is used at once (_wireSend).
+    fetchGhost(this.day).then((d) => { if (d) this.ghostData = d; });
     // No train: "disable the train, because it just ruined my run ... I had to wait for it to pass."
     const rail = g.world && g.world.__map && g.world.__map.railway;
     if (rail) rail.off = true;
@@ -786,6 +785,10 @@ export class DailyChallenge {
         return;
       }
       saveName(name);
+      // Faster than the ghost there was: yours is the ghost now, from the next go.
+      const gd = this.ghostData;
+      const gEnd = gd && gd.length >= 5 ? gd[gd.length - 5] : Infinity;
+      if (rows && this._line && this._line.length >= 10 && t < gEnd) this.ghostData = this._line.slice();
       btn.textContent = rows ? 'POSTED' : 'COULD NOT POST';
       if (!rows) btn.disabled = false;
       if (rows && table) table.innerHTML = boardHtml(rows, name);

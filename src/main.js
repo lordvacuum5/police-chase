@@ -2356,17 +2356,22 @@ class Game {
       // `five` wipes the very letters `fiveh` would need.
       this._fiveAt = performance.now();
     }
-    for (let n = 0; n <= 5; n++) {
+    for (let n = 1; n <= 5; n++) {
       if (i.tapped(`Digit${n}`) || i.tapped(`Numpad${n}`)) want = n;
     }
     // And the rest as words, the way `five` is: "when I type in the 1 to
     // level, I want like 4, 1, 2, doesn't work." Only five was ever a word.
-    // `zero` clears. (Not `fiveh`: see above -- five arms the H.)
-    const WORDS = ['zero', 'one', 'two', 'three', 'four'];
+    // (Not `fiveh`: see above -- five arms the H.)
+    const WORDS = ['one', 'two', 'three', 'four'];
     for (let n = 0; n < WORDS.length; n++) {
-      if (i.typed(WORDS[n])) want = n;
+      if (i.typed(WORDS[n])) want = n + 1;
     }
     if (want === null) return;
+    // Up, never down: no 0, and no level below the one you are at. "My friend turned it down ... to 0,
+    // because he was about to die ... we just started spamming the buttons ... I don't want to be able to
+    // change the wanted level down in any way. So I can go up 1, 2, 3, but I can't go back to 2."
+    const now = Math.floor(session.active && !session.isHost ? (session.heat || 0) : this.heat.value);
+    if (want <= now) return;
 
     // A police player's copy of the heat is told to it by the escapee, so
     // setting it here would last until the next packet. Send it instead and
@@ -2783,9 +2788,8 @@ class Game {
       this.debug = !this.debug;
       this.debugEl.style.display = this.debug ? 'block' : 'none';
     }
-    // The wanted-level shortcuts (number keys, `one`..`five`, `zero`, `five` then H) are off: "can you remove
-    // the quick [way] to get to any wanted level and remove wanted level?" _wantedShortcut is kept, unused.
-    if (typeof window !== 'undefined' && window.__wantedKeys) this._wantedShortcut(i);
+    // Up only, and not in the daily challenge: see _wantedShortcut.
+    if (!this.daily) this._wantedShortcut(i);
     this._appleShortcut(i);
     // Two letters, not a key: "make sure the key is like really hard to press
     // and no one else is in accidentally press it." It was `stuck`; then
@@ -3405,7 +3409,11 @@ class Game {
       // guest typing FIVE cannot just set it locally; the next packet would
       // overrule them a twentieth of a second later. They ask, and the machine
       // that owns the number does it.
-      if (msg.e === 'heat' && session.isHost) { this._setWanted(msg.want | 0, !!msg.air); continue; }
+      // Up only, from anyone in the game (see _wantedShortcut).
+      if (msg.e === 'heat' && session.isHost) {
+        if ((msg.want | 0) > Math.floor(this.heat.value)) this._setWanted(msg.want | 0, !!msg.air);
+        continue;
+      }
       // Air support calling a car in. Only the escapee's machine runs the
       // chase, so a pilot's fix is applied here and reaches everybody else
       // the ordinary way, in the world update.

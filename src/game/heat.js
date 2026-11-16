@@ -36,6 +36,13 @@ const BOX_ACROSS = 2.3;
 const BOX_LOOK = 0.25;
 const BOX_RAYS = 12;
 const BOX_MASK = groups(0xFFFF, GROUP.BUILDING | GROUP.PROP);
+/** _checkStranded: seconds of it before the countdown, and the countdown; how far above the ground a building
+ * top under the car counts, m, and how far up off the ground, no wheel down, against a building counts as wedged. */
+const STRAND_GRACE = 2;
+const STRAND_COUNT = 10;
+const STRAND_UP = 0.8;
+const STRAND_WEDGE = 1.4;
+const STRAND_MASK = groups(0xFFFF, GROUP.BUILDING);
 const _boxO = { x: 0, y: 0, z: 0 };
 const _boxD = { x: 0, y: 0, z: 0 };
 
@@ -154,6 +161,7 @@ export class Heat {
     this._checkBust(dt, player, dispatcher);
     this._checkLedges(dt, player);
     this._checkBoxedIn(dt, player, dispatcher);
+    this._checkStranded(dt, player);
   }
 
   /**
@@ -191,6 +199,66 @@ export class Heat {
       this._boxSaid = left;
       g.hud.centreLine(`Officers on foot. Drive out or you're arrested: ${left}`);
     }
+  }
+
+  /**
+   * Somewhere no car can be: up on a building, or wedged up between two. "You can basically wedge yourself in
+   * there, and you can just keep on pressing R to go up because you're ... touching the building ... make
+   * sure it ... kills them or puts a warning up on screen ... with a 10-second countdown. But ... it doesn't
+   * actually affect ... someone doing something actually legit." The getaway car only, whoever drives it.
+   * STRAND_GRACE seconds of it -- a jump that clips a roof is shorter -- and then STRAND_COUNT down: still
+   * there at the end, an arrest if anyone is after you, and back on the nearest road if nobody is. No road
+   * or bridge in the game stands on a building collider, so being on one is never driving.
+   */
+  _checkStranded(dt, player) {
+    const g = this.game;
+    if (player !== g.player || g.outcome || player.isAircraft || player.isPolice || !player.collider) {
+      this.strandTime = 0;
+      return;
+    }
+    this._strandLook = (this._strandLook || 0) - dt;
+    if (this._strandLook <= 0) {
+      this._strandLook = BOX_LOOK;
+      this._stranded = this._strandedNow(player);
+    }
+    this.strandTime = this._stranded ? (this.strandTime || 0) + dt : 0;
+    const t = this.strandTime;
+    if (t < STRAND_GRACE) { this._strandSaid = null; return; }
+    const left = Math.ceil(STRAND_GRACE + STRAND_COUNT - t);
+    if (left <= 0) {
+      this.strandTime = 0;
+      if (this.value > 0) { g.onBusted(); return; }
+      const place = g.graph && g._placeOnRoad(g.graph.nearestNode(player.position.x, player.position.z));
+      if (place) {
+        player.teleport(place.position, place.heading);
+        player.setVelocity({ x: 0, y: 0, z: 0 });
+      }
+      return;
+    }
+    if (g.hud && left !== this._strandSaid) {
+      this._strandSaid = left;
+      g.hud.centreLine(`You can't be up there. Get back on the road: ${left}`);
+    }
+  }
+
+  /** On top of a building, or up off the ground against one with no wheel down. */
+  _strandedNow(player) {
+    const g = this.game, w = g.world, p = player.position;
+    const ground = g.sim && g.sim.heightAt ? g.sim.heightAt(p.x, p.z) : 0;
+    const solid = (c) => {
+      const m = c && c.collisionGroups ? (c.collisionGroups() >>> 16) : 0;
+      // A building, and not a quarry rock (RAMP) or a hedge with a wall in it (HEDGE): those are driven on.
+      return (m & GROUP.BUILDING) && !(m & (GROUP.RAMP | GROUP.HEDGE));
+    };
+    const under = raycast(w, { x: p.x, y: p.y + 0.5, z: p.z }, { x: 0, y: -1, z: 0 }, 4, STRAND_MASK, player.body);
+    if (under && solid(under.collider) && under.point.y > ground + STRAND_UP) return true;
+    if (p.y < ground + STRAND_WEDGE || player.grounded > 0) return false;
+    let against = false;
+    w.contactPairsWith(player.collider, (o) => {
+      if (against || !solid(o)) return;
+      w.contactPair(player.collider, o, (m) => { if (m.numContacts() > 0) against = true; });
+    });
+    return against;
   }
 
   /** Solid on two sides that face each other, and a police car close by. */

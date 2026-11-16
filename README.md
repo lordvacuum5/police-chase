@@ -7984,6 +7984,29 @@ player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve th
 and `five` then H for the helicopter no longer do anything, and are gone from the controls card. The code is still there for testing:
 `window.__wantedKeys = true` in the console turns them back on. Checked: 5 left the level at 0; with the switch on, 3 set it to 3.
 
+Then back, up only: *"I don't want to be able to change it to 0 ... my friend turned it down ... because he was about to die ... I
+don't want to be able to change the wanted level down in any way. So I can go up 1, 2, 3, but I can't go back to 2."* The keys 1-5 and
+`one` to `five` (and `five` then H) work again, but only for a level above the one you are at; 0 and `zero` are gone, and a request
+from another player in the game to lower it is ignored by the host. Not in the daily challenge. Checked: 3 set 3, then 2 and 0 left
+it at 3, then 5 set 5. *"The controls should only tell you the things that normal people who go into the game ... need to know."* The
+controls card no longer mentions the debug overlay, `st` or `log`; it gained V (replay) and the right mouse button (look around).
+
+### Stuck up on a building
+
+*"You can basically wedge yourself in there, and you can just keep on pressing R to go up because you're ... touching the building ...
+make sure it ... kills them or puts a warning up on screen ... with a 10-second countdown. But ... it doesn't actually affect if
+someone's doing something actually legit."* `Heat._checkStranded`, for the getaway car whoever drives it: on top of a building (a
+building collider under the car, more than 0.8 m above the ground; not a quarry rock or a hedge, which are driven on), or up off the
+ground with no wheel down and touching one. Two seconds of it, then "You can't be up there. Get back on the road: 10" counting down;
+still there at the end, busted if anyone is chasing, and put back on the nearest road if not. No road or bridge in the game stands on a
+building collider. Checked: put on a city roof, the countdown ran 10 to 1 and the car was back on the road; `tests/stranded.js`, the
+game's own driver down random routes with three stars after it, flagged nothing at all -- city 90 s, Wexbury 90 s, Haldon Vale 120 s,
+26 routes.
+
+*"I can't see my own personal best ... when my friend became the best, then I could see his ghost."* The ghost was fetched once a page,
+so a best set in that page did not show until a reload. It is fetched at every start now, and a new best of your own is the ghost from
+the next go at once.
+
 ### Attempts on the daily table
 
 *"How many attempts it took? So their time and then how many attempts? Because it took me like 20 attempts today."* Each GO of the
