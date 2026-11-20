@@ -72,8 +72,12 @@ src/
                   undone by Vehicle.repair), ambience.js (train, crossings,
                   birds, crows, owl; __amb('crows') etc. to hear one),
                   daily.js (the daily challenge: everything from the UTC
-                  date; times to /api/daily in server/Program.cs, one JSON
-                  file a day under HOME; serve.ps1 mirrors it locally)
+                  date, including its type -- Escape, Lone Unit (police,
+                  arrest the getaway car alone) or Eyes in the Sky (heli,
+                  30 s in sight); times to /api/daily in server/Program.cs,
+                  one JSON file a day under HOME; serve.ps1 mirrors it
+                  locally. To test a type: sessionStorage pc.dailytest and
+                  pc.daily set to the day, e.g. 2026-11-21 stop, -24 air)
   world/          map generation: citygen.js, towngen.js, countrygen.js
                   (Haldon Vale), terrain.js (hills: height grid, heightfield,
                   ground mesh), roadgraph.js, cutgraph.js, common.js

@@ -699,7 +699,7 @@ export class Hud {
     // "A little blue line on the mini-map of which way to go." Under everything else, from where you are on
     // it to the finish, and a ring round the finish.
     const dl = this.game.daily;
-    if (dl && dl.route) {
+    if (dl && dl.route && dl.type === 'escape') {
       const pts = dl.route.pts;
       ctx.save();
       ctx.beginPath();

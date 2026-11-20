@@ -74,7 +74,7 @@ import { ChaseCamera } from './game/camera.js';
 import { Replay } from './game/replay.js';
 import { Dents } from './game/dents.js';
 import { Ambience, soundCheck } from './game/ambience.js';
-import { DailyChallenge, dailyActive } from './game/daily.js';
+import { DailyChallenge, dailyActive, dailyPlan } from './game/daily.js';
 import { Hud } from './game/hud.js';
 import { PauseMenu, savedVolume, slowMoOn } from './game/pausemenu.js';
 import { Input } from './core/input.js';
@@ -359,7 +359,11 @@ class Game {
     this.openWorld = this.soloPolice;
     // The daily challenge (game/daily.js): on your own, in the getaway car, on the day's map.
     this.dailyDay = !session.active && !SOLO_AIR ? dailyActive() : null;
-    if (this.dailyDay) { this.soloPolice = false; this.openWorld = false; }
+    // Lone Unit and Eyes in the Sky put you in the police, chasing the computer's getaway car, with no open world.
+    if (this.dailyDay) {
+      this.soloPolice = dailyPlan(this.dailyDay).type !== 'escape';
+      this.openWorld = false;
+    }
     boot.set(0.05, 'starting physics…');
     await initPhysics();
 
@@ -454,7 +458,8 @@ class Game {
     // The pad only exists once the garage does, and the player is built
     // before it -- so an aircraft is put on the roof now rather than left
     // standing in the road where _initPlayer had to leave it.
-    if (this.aircraft) this._landOnPad();
+    // Not in the daily challenge's Eyes in the Sky, which starts where the day says.
+    if (this.aircraft && !this.daily) this._landOnPad();
     // Props first: the signals hand their posts to it to be knocked over.
     this.props = new StreetProps(this);
     this.signals = new TrafficLights(this);
@@ -617,7 +622,18 @@ class Game {
       if (this.mapDef && this.mapDef.id === d.plan.mapId && d.build()) {
         this.daily = d;
         const car = d.plan.car;
-        this.player = this.createVehicle(car, car, d.route.start.position, d.route.start.heading, {});
+        if (d.type === 'air') {
+          this._spawnAircraft(d.route.start);
+          return;
+        }
+        if (d.type === 'stop') {
+          this.player = this.createVehicle(car, car, d.route.start.position, d.route.start.heading,
+            { police: true, spec: drivablePoliceSpec(car) });
+          this.player.humanDriven = true;
+          this.player.lampPhase = 0.1;
+        } else {
+          this.player = this.createVehicle(car, car, d.route.start.position, d.route.start.heading, {});
+        }
         this._syncApple();
         this.startPlace = d.route.start;
         return;
@@ -1456,6 +1472,19 @@ class Game {
     if (!v) return null;
     v.lampPhase = 0.37;
     return new Officer(this, v, { skill: SKILL.advanced, kind });
+  }
+
+  /**
+   * Your own police car as a unit on the force's board, for the daily challenge's Lone Unit: the arrest is
+   * Heat._checkBust measuring the gap to the nearest unit, and with nobody else out your car has to be one.
+   * The same stand-in as a police player in somebody else's game (RemoteUnit), so nothing gives it orders.
+   */
+  selfUnit() {
+    if (!this._selfUnit || this._selfUnit.vehicle !== this.player) {
+      this._selfUnit = new RemoteUnit(this.player, 'you');
+      Object.defineProperty(this._selfUnit, 'callsign', { value: 'U1' });
+    }
+    return this._selfUnit;
   }
 
   spawnPoliceNear(target, tier) {

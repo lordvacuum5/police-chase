@@ -30,7 +30,12 @@ const KEY_KEY = 'pc.key';
 
 /** The cars a day can give you, and how fast each covers a route on average, m/s, for the clock (DAILY_PACE). */
 export const DAILY_CARS = ['runner', 'supercar', 'offroad'];
-const CAR_NAMES = { runner: 'Runner', supercar: 'Stiletto', offroad: 'Badger' };
+const CAR_NAMES = { runner: 'Runner', supercar: 'Stiletto', offroad: 'Badger', interceptor: 'Interceptor', suv: 'Police SUV', helicopter: 'Helicopter' };
+/** Lone Unit and Eyes in the Sky: the clock, s; the getaway car starts this far up the route, m; and how long in sight wins Eyes in the Sky, s. */
+const STOP_LIMIT = 150;
+const AIR_LIMIT = 150;
+const RUNNER_START = 140;
+const AIR_NEED = 30;
 /** The clock, as a share of the route's length over DAILY_PACE. Was 1: "the time limit seems a little bit too easy." */
 const DAILY_SLACK = 0.85;
 /** And this many seconds on top: "add like 10 more seconds onto the timer because it is really hard now." */
@@ -92,13 +97,37 @@ export function dailyPlan(day = dayKey()) {
   const rng = makeRng(hash(`daily:${day}`));
   const maps = MAPS.filter((m) => !m.hidden);
   const map = maps[Math.floor(rng() * maps.length) % maps.length];
-  const car = DAILY_CARS[Math.floor(rng() * DAILY_CARS.length) % DAILY_CARS.length];
-  return { day, mapId: map.id, mapName: map.name, car, carName: CAR_NAMES[car] };
+  let car = DAILY_CARS[Math.floor(rng() * DAILY_CARS.length) % DAILY_CARS.length];
+  // What kind of challenge, from its own numbers so the map and car above are what they always were.
+  // "Loads more different daily challenges ... where you're the police and you have to stop a criminal but
+  // you have no police help ... a helicopter, where you have to ... stay on them for a certain amount of
+  // time." Escape until 20 November, the day they came in, so that day's table stays the one it was.
+  // The first few numbers from seeds this alike come out alike too (four helicopter days running), so
+  // they are thrown away.
+  const trng = makeRng(hash(`type:${day}`) ^ 0x9e3779b9);
+  for (let i = 0; i < 6; i++) trng();
+  const type = day <= '2026-11-20' ? 'escape' : DAILY_TYPES[Math.floor(trng() * DAILY_TYPES.length) % DAILY_TYPES.length];
+  if (type === 'stop') car = trng() < 0.5 ? 'interceptor' : 'suv';
+  if (type === 'air') car = 'helicopter';
+  return { day, type, typeName: TYPE_NAMES[type], mapId: map.id, mapName: map.name, car, carName: CAR_NAMES[car] };
 }
+
+/** The kinds of daily challenge, and what each is called. */
+export const DAILY_TYPES = ['escape', 'stop', 'air'];
+const TYPE_NAMES = { escape: 'Escape', stop: 'Lone Unit', air: 'Eyes in the Sky' };
+/** One line on the menu for each. */
+export const TYPE_RULES = {
+  escape: 'Five stars from the start. Through every gate to the finish before the clock runs out.',
+  stop: 'You are the police, and nobody is coming to help. Arrest the getaway car before the clock runs out.',
+  air: 'You are in the helicopter. Keep the getaway car in sight for 30 seconds in all, as fast as you can.',
+};
 
 /** The day being played in this tab, if a daily challenge is on; null otherwise. A new day ends it. */
 export function dailyActive() {
   try {
+    // For trying another day's challenge in this tab only: sessionStorage pc.dailytest = 'YYYY-MM-DD'.
+    const test = sessionStorage.getItem('pc.dailytest');
+    if (test && sessionStorage.getItem(DAILY_KEY)) return test;
     const d = sessionStorage.getItem(DAILY_KEY);
     if (d && d === dayKey()) return d;
     if (d) sessionStorage.removeItem(DAILY_KEY);
@@ -304,6 +333,17 @@ export class DailyChallenge {
       lastAt = at;
       this.obstacles.push({ s: at, kind: 'full', side: 1, block: null, done: false });
     }
+    this.type = this.plan.type || 'escape';
+    if (this.type !== 'escape') {
+      // No route to drive, and no blocks or gates on it: the route is only where you and the getaway car
+      // start. The force sends nobody in either (see Game.spawnPoliceNear).
+      this.obstacles = [];
+      this.gates = [];
+      this.limit = this.type === 'stop' ? STOP_LIMIT : AIR_LIMIT;
+      this._planSpawns();
+      this.spawnPlan = [];
+      return true;
+    }
     this._buildGates();
     this._planSpawns();
     this._finishMarker();
@@ -492,7 +532,7 @@ export class DailyChallenge {
    */
   _ghostTick(dt) {
     const p = this.game.player;
-    if (this.state !== 'running' || !p) return;
+    if (this.state !== 'running' || !p || this.type !== 'escape') return;
     if (this.time >= this._lineNext) {
       this._lineNext = this.time + GHOST_EVERY;
       const r = (v) => Math.round(v * 100) / 100;
@@ -585,6 +625,7 @@ export class DailyChallenge {
     this.offRoute = 0;
     this._offRoute();
     g.score && g.score.freeze && g.score.freeze();
+    if (this.type !== 'escape') { this._beginChase(); this._paint(); return; }
     // Five stars, with the helicopter: through bump() so the chase starts properly. Game._setWanted
     // grounds the helicopter for stars that were typed in; these were not.
     g.heliGrounded = false;
@@ -605,6 +646,49 @@ export class DailyChallenge {
       k.timeSinceSeen = 0;
     }
     this._paint();
+  }
+
+  /**
+   * Lone Unit and Eyes in the Sky: the getaway car where it always starts, RUNNER_START up the route, facing
+   * along it, mended, waiting for GO; no wanted level yet; no helicopter of the force's, and nobody else.
+   */
+  _beginChase() {
+    const g = this.game;
+    g.heliGrounded = true;
+    if (g.helicopter) g.helicopter.reset();
+    g.heat.reset();
+    this.watched = 0;
+    const r = g.runner;
+    if (!r) return;
+    const q = this._siteAt(RUNNER_START);
+    const v = r.vehicle;
+    v.repair();
+    v.teleport({ x: q.x, y: 0.95 + g.groundAt(q.x, q.z), z: q.z }, Math.atan2(q.tx, q.tz));
+    v.setVelocity({ x: 0, y: 0, z: 0 });
+    r.running = false;
+    r.breakIn = 1e9;
+    r.driver.setPath([]);
+    r.repathTimer = 0;
+    r.goalNode = null;
+  }
+
+  /** GO, in Lone Unit and Eyes in the Sky: the getaway car runs, three stars on it, and the clock starts. */
+  _goChase() {
+    const g = this.game, r = g.runner;
+    if (!r) return;
+    r.running = true;
+    r.breakIn = 0;
+    if (this.type === 'stop' && g.selfUnit) g.dispatcher.adopt(g.selfUnit());
+    g.heat.bump(1, 'the daily challenge');
+    g.heat.value = 3;
+    const k = g.dispatcher && g.dispatcher.knowledge;
+    if (k) {
+      k.seen = true;
+      k.position.copy(r.vehicle.position);
+      k.velocity.set(0, 0, 0);
+      k.confidence = 1;
+      k.timeSinceSeen = 0;
+    }
   }
 
   /** Finished or failed: the force stops where it is (see Game._update and _halt). */
@@ -650,12 +734,14 @@ export class DailyChallenge {
     if (this.state === 'won' || this.state === 'failed') { this._halt(); this._paint(); return; }
     if (this.state === 'countdown') {
       this.count -= dt;
-      p.setControls({ throttle: 0, brake: 1, steer: 0, handbrake: 1 });
+      if (!p.isAircraft) p.setControls({ throttle: 0, brake: 1, steer: 0, handbrake: 1 });
       this._halt();
-      if (g.heat.value < 5) g.heat.value = 5;
+      if (this.type === 'escape' && g.heat.value < 5) g.heat.value = 5;
+      if (g.runner && this.type !== 'escape') g.runner.vehicle.setControls({ throttle: 0, brake: 1, steer: 0, handbrake: 1 });
       this._showCount();
       if (this.count <= 0) {
         this.state = 'running';
+        if (this.type !== 'escape') this._goChase();
         // Another go at today's: "how many attempts it took ... it took me like 20 attempts today."
         this.attempt = bumpAttempts(this.day);
       }
@@ -666,6 +752,7 @@ export class DailyChallenge {
     // The clock starts when you do.
     // (The clock starts at GO now, after the countdown, rather than on the first touch of the pedals.)
     if (this.state === 'running') this.time += dt;
+    if (this.type !== 'escape') { this._updateChase(dt); return; }
     // And the stars stay where they were put.
     if (g.heat.value < 5) g.heat.value = 5;
 
@@ -693,6 +780,27 @@ export class DailyChallenge {
       this._win();
       return;
     }
+    this._paint();
+  }
+
+  /**
+   * Lone Unit: arrested (the game's own BUSTED, made by you, there being nobody else) is the finish; lost
+   * (the wanted level run out) or the clock is the end. Eyes in the Sky: every moment the crew can make the
+   * car out (FlyingHelicopter.canSee) counts, and AIR_NEED of it is the finish; the car is kept wanted, so
+   * it keeps running, and only the clock ends it.
+   */
+  _updateChase(dt) {
+    const g = this.game, p = g.player, r = g.runner;
+    if (this.type === 'stop') {
+      if ((p.damage || 0) >= 0.999 || p.disabled) { this._fail('wrecked'); return; }
+      if (g.outcome === 'busted' && r) { this._win(); return; }
+      if (this.time > 3 && g.heat.value <= 0) { this._fail('lost'); return; }
+    } else {
+      if (g.heat.value < 3) g.heat.value = 3;
+      if (r && p.canSee && p.canSee(r.vehicle)) this.watched += dt;
+      if (this.watched >= AIR_NEED) { this._win(); return; }
+    }
+    if (this.time > this.limit) { this._fail('time'); return; }
     this._paint();
   }
 
@@ -819,11 +927,14 @@ export class DailyChallenge {
     const line = why === 'time' ? `Out of time at <b>${fmtTime(this.limit)}</b>`
       : why === 'busted' ? 'Busted'
         : why === 'wrecked' ? 'Wrecked: <b>100%</b> damage'
+        : why === 'lost' ? 'They got away'
         : `You hit <b>${why}</b>`;
     const best = dailyBest(this.day);
     g.hud.showOverlay('CHALLENGE FAILED', [
       line,
-      `<b>${Math.round(this.progress)}</b> of ${Math.round(this.route.length)} m`,
+      this.type === 'air' ? `<b>${Math.min(AIR_NEED, this.watched || 0).toFixed(1)}</b> of ${AIR_NEED}s in sight`
+        : this.type === 'stop' ? `After <b>${fmtTime(this.time)}</b>`
+          : `<b>${Math.round(this.progress)}</b> of ${Math.round(this.route.length)} m`,
       best !== null ? `Your best today <b>${fmtTime(best)}</b>` : 'Not finished yet today',
     ].join(' &nbsp;·&nbsp; '));
     if (g.audio) g.audio.impact(0.6);
@@ -890,8 +1001,11 @@ export class DailyChallenge {
     const left = Math.max(0, this.limit - this.time);
     const togo = Math.max(0, this.route.length - this.progress);
     const warn = left < 10 && this.state === 'running';
+    const what = this.type === 'stop' ? 'arrest the getaway car'
+      : this.type === 'air' ? `in sight ${Math.min(AIR_NEED, this.watched || 0).toFixed(1)} of ${AIR_NEED}s`
+        : `${(togo / 1000).toFixed(2)} km to go`;
     const html = `<b>DAILY</b> <span class="${warn ? 'warn' : ''}">${fmtTime(left)}</span>`
-      + ` <small>${(togo / 1000).toFixed(2)} km to go</small>`;
+      + ` <small>${what}</small>`;
     if (html !== this._last) { this.el.innerHTML = html; this._last = html; }
   }
 

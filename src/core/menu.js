@@ -41,7 +41,7 @@ import { appleMode, realApple, setAppleMode } from './platform.js';
 import { bestScores } from '../game/score.js';
 import { chosenConditions, setConditions } from '../game/weather.js';
 import { carCards } from '../game/cards.js';
-import { dailyPlan, dailyBest, setDaily, fetchBoard, boardHtml, fmtTime, savedName } from '../game/daily.js';
+import { TYPE_RULES, dailyPlan, dailyBest, setDaily, fetchBoard, boardHtml, fmtTime, savedName } from '../game/daily.js';
 import { makeRng, TAU } from '../util/math.js';
 import {
   englishVoices, pickVoices, voiceChoices, setVoiceChoice, speakSample, SPEAKER_NAMES,
@@ -722,8 +722,8 @@ async function paintDaily() {
   if (!el) return;
   const plan = dailyPlan();
   const best = dailyBest(plan.day);
-  el.innerHTML = `<div class="dhead">${plan.day} &nbsp;·&nbsp; <b>${plan.mapName}</b> &nbsp;·&nbsp; <b>${plan.carName}</b></div>`
-    + '<div class="drules">Five stars from the start. Through every gate to the finish before the clock runs out.</div>'
+  el.innerHTML = `<div class="dhead">${plan.day} &nbsp;·&nbsp; <b>${plan.typeName}</b> &nbsp;·&nbsp; <b>${plan.mapName}</b> &nbsp;·&nbsp; <b>${plan.carName}</b></div>`
+    + `<div class="drules">${TYPE_RULES[plan.type] || TYPE_RULES.escape}</div>`
     + `<div class="dbest">${best !== null ? `Your best today <b>${fmtTime(best)}</b>` : 'Not finished yet today'}</div>`
     + '<div class="dtable">Loading today&rsquo;s times…</div>';
   const rows = await fetchBoard(plan.day);

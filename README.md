@@ -7978,6 +7978,28 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### The daily: Lone Unit and Eyes in the Sky
+
+*"Loads more different daily challenges ... where you're the police and you have to stop a criminal but you have no police help ...
+a helicopter, where you have to ... stay on them for a certain amount of time."* The date now also picks one of three types
+(`dailyPlan`, from its own seed so the day's map and car are what they always were; every day up to 20 November stays Escape, so
+those tables mean what they did). The next 30 days: 11 Escape, 7 Lone Unit, 12 Eyes in the Sky. A first draw clustered (four helicopter
+days running); the type seed is mixed and its first six numbers thrown away.
+
+* **Escape**: as before.
+* **Lone Unit** (interceptor or police SUV): the getaway car starts 140 m up the day's route, held through the countdown, and runs at GO
+  with three stars on it. Nobody else is sent. Your car goes on the force's board as a human unit (`Game.selfUnit`, the same stand-in as
+  a police player in someone else's game), because the arrest is `Heat._checkBust` measuring the gap to the nearest unit and without it
+  you could never make one. Arrested is the finish; the wanted level running out ("They got away"), 100% damage or 2:30 is a fail.
+* **Eyes in the Sky** (helicopter): it starts on the ground at the route's start. Every moment the crew can make the car out
+  (`FlyingHelicopter.canSee`) counts; 30 s of it in all is the finish, by 2:30. The car is kept at three stars so it keeps running.
+
+No gates, blocks, route line or ghost in the two new ones; the preset traffic stays. Checked headless: Lone Unit, the car fled at
+113 km/h and was 187 m off 6 s after GO; parked against it, held still, the arrest came at 5.0 s and the day was won; left alone, it got
+away at 70 s. Eyes in the Sky, the car fled, the helicopter on the ground saw it for 0 of 20 s; held 60 m over it, 30 s in sight took
+29.5 s and the day was won. R put both back to the countdown. **Not measured: whether a person can catch the car alone in 2:30, or keep
+it in sight for 30 s.** That is a play-test.
+
 ### The daily: every police car and every traffic car preset
 
 *"I just need you to make the ... traffic and the police spawns the same. That's all."* Seeding was not enough: the force spawns on
