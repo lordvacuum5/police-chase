@@ -62,6 +62,8 @@ const GATE_MISSED = 35;
 const OFF_ROUTE = 55;
 /** How long a route, m: about a minute of driving. */
 const ROUTE_MIN = 1100, ROUTE_MAX = 1500;
+/** pickRoute: the most a road's cost is multiplied by for a day (see there). */
+const ROUTE_JITTER = 5;
 /** The first obstacle this far along, then one every OBSTACLE_EVERY, none in the last OBSTACLE_END. */
 const OBSTACLE_FIRST = 220, OBSTACLE_EVERY = 240, OBSTACLE_END = 120;
 /** A roadblock wants the route straight for this far before it, m, no part of it more than STRAIGHT_DEG off; and looks this far either side of where it was wanted for such a place, m. */
@@ -110,6 +112,49 @@ export function dailyPlan(day = dayKey()) {
   if (type === 'stop') car = trng() < 0.5 ? 'interceptor' : 'suv';
   if (type === 'air') car = 'helicopter';
   return { day, type, typeName: TYPE_NAMES[type], mapId: map.id, mapName: map.name, car, carName: CAR_NAMES[car] };
+}
+
+/**
+ * The day's route on the map that is loaded: a start and a finish ROUTE_MIN-ROUTE_MAX metres of road apart,
+ * chosen by the day's own random numbers, so the same everywhere. Null if none was found. Exported for
+ * tests/dailyroutes.js, which passes `mode` 'old' to see every day as it was up to 20 November.
+ *
+ * "It's basically the same route every single time on each map. It wasn't exactly the same route, but it
+ * was very similar." The quickest way between two random places is mostly down the same main roads. For
+ * days after 20 November (whose tables were set on the routes they had) every road costs 1 to ROUTE_JITTER
+ * times its time, its own figure for the day, so the quickest way by the day's reckoning is not always the
+ * bypass. See the README for what it did on each map, and what was tried and dropped.
+ */
+export function pickRoute(game, day, mapId, mode = 'new') {
+  const g = game.graph;
+  const weight = day > '2026-11-20' && mode !== 'old'
+    ? (e) => 1 + (ROUTE_JITTER - 1) * (hash(`${day}:${e.id}`) % 1000) / 1000 : null;
+  const rng = makeRng(hash(`route:${day}:${mapId}`));
+  const ok = (n) => n.edges.length > 0 && !n.quarry && n.edges.some((id) => !g.edges[id].cut && g.edges[id].width >= 7);
+  const nodes = g.nodes.filter(ok);
+  for (let tries = 0; tries < 400; tries++) {
+    const a = nodes[Math.floor(rng() * nodes.length) % nodes.length];
+    const b = nodes[Math.floor(rng() * nodes.length) % nodes.length];
+    const straight = Math.hypot(b.x - a.x, b.z - a.z);
+    if (straight < ROUTE_MIN * 0.6 || straight > ROUTE_MAX) continue;
+    const path = g.route(a.id, b.id, Infinity, weight && { weight });
+    if (!path || path.length < 3) continue;
+    let len = 0;
+    for (let i = 0; i < path.length - 1; i++) {
+      const e = g.edgeBetween(path[i], path[i + 1]);
+      if (!e || e.cut || e.width < 7) { len = -1; break; }
+      len += e.length;
+    }
+    if (len < ROUTE_MIN || len > ROUTE_MAX) continue;
+    const pts = g.pathToPoints(path, 0, true);
+    if (pts.length < 4) continue;
+    // Every point needs a road under it to place a car at the start.
+    const first = g.edgeBetween(path[0], path[1]);
+    const place = game._placeOnRoad(a, (e) => e === first);
+    if (!place) continue;
+    return { path, pts, len, start: place };
+  }
+  return null;
 }
 
 /** The kinds of daily challenge, and what each is called. */
@@ -275,32 +320,7 @@ export class DailyChallenge {
    * by the day's own random numbers, so the same everywhere. Called once the map is built.
    */
   build() {
-    const g = this.game.graph;
-    const rng = makeRng(hash(`route:${this.day}:${this.plan.mapId}`));
-    const ok = (n) => n.edges.length > 0 && !n.quarry && n.edges.some((id) => !g.edges[id].cut && g.edges[id].width >= 7);
-    const nodes = g.nodes.filter(ok);
-    for (let tries = 0; tries < 400 && !this.route; tries++) {
-      const a = nodes[Math.floor(rng() * nodes.length) % nodes.length];
-      const b = nodes[Math.floor(rng() * nodes.length) % nodes.length];
-      const straight = Math.hypot(b.x - a.x, b.z - a.z);
-      if (straight < ROUTE_MIN * 0.6 || straight > ROUTE_MAX) continue;
-      const path = g.route(a.id, b.id);
-      if (!path || path.length < 3) continue;
-      let len = 0;
-      for (let i = 0; i < path.length - 1; i++) {
-        const e = g.edgeBetween(path[i], path[i + 1]);
-        if (!e || e.cut || e.width < 7) { len = -1; break; }
-        len += e.length;
-      }
-      if (len < ROUTE_MIN || len > ROUTE_MAX) continue;
-      const pts = g.pathToPoints(path, 0, true);
-      if (pts.length < 4) continue;
-      // Every point needs a road under it to place a car at the start.
-      const first = g.edgeBetween(path[0], path[1]);
-      const place = this.game._placeOnRoad(a, (e) => e === first);
-      if (!place) continue;
-      this.route = { path, pts, len, start: place };
-    }
+    this.route = pickRoute(this.game, this.day, this.plan.mapId);
     if (!this.route) return false;
     // Distance along the line at each point.
     const pts = this.route.pts;

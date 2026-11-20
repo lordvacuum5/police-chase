@@ -1252,6 +1252,9 @@ export class RoadGraph {
     const cuts = !!(opts && opts.cuts);
     const minWidth = (opts && opts.minWidth) || 0;
     const noBack = opts && opts.noBack !== undefined ? opts.noBack : -1;
+    // opts.weight(edge): a multiplier on what each road costs, 1 or more (the daily challenge's own
+    // preferences, so that its routes are not always the quickest way: daily.js, pickRoute).
+    const weight = (opts && opts.weight) || null;
     if (startId === goalId) return [startId];
     const N = this.nodes.length;
     const stamp = ++this._stamp;
@@ -1323,7 +1326,7 @@ export class RoadGraph {
         // charge the router took marginal ones for small savings and the road rig
         // went from 14 contacts to 23 at a 150 km/h ghost for no gain in distance.
         // With it, a cut has to be worth taking before it is taken.
-        const cost = e.length / Math.min(e.speed, speedCap) + (e.cut ? CUT_PENALTY : 0);
+        const cost = (e.length / Math.min(e.speed, speedCap) + (e.cut ? CUT_PENALTY : 0)) * (weight ? weight(e) : 1);
         const tentative = g[cur] + cost;
         if (seen[nxt] !== stamp || tentative < g[nxt]) {
           seen[nxt] = stamp;

@@ -7978,6 +7978,26 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### The daily: more different routes
+
+*"It's basically the same route every single time on each map. It wasn't exactly the same route, but it was very similar."* The route
+was the quickest way between two random places, and the quickest way is mostly down the same main roads. For days after 20 November
+(earlier tables keep their routes) every road costs 1 to 5 times its time, its own figure for the day (`pickRoute`, `ROUTE_JITTER`,
+`RoadGraph.route`'s new `weight`), so the day's quickest way is not always the bypass. Measured with `tests/dailyroutes.js`, the next 30
+days that land on each map, every pair compared: share of road in common, and pairs sharing more than half.
+
+| map | before | after |
+|---|---|---|
+| Wexbury | 17.8%, 68/435 | 10.4%, 25/435 |
+| Ashfield City | 7.9%, 16/435 | 5.5%, 6/435 |
+| Haldon Vale | 21.6%, 77/435 | 25.6%, 83/435 |
+
+Jitter 3 and 8 measured too: Wexbury 11.4% / 9.0%, Haldon 26% / 24%. **Haldon is not helped**: it has 81 roads, 58 of them wide enough
+for the route (11 km), and 1.1-1.5 km across a network that small mostly has to share. Tried and dropped: letting it use the 6 m dirt
+tracks (7 km more): 22-23%, over-half pairs 77 to 53, not worth a Stiletto on gravel. Also dropped: each day steering off the last six
+days' roads on its map and choosing the least shared of six routes: Wexbury day-to-day share 17.7% against 10.1% for jitter alone,
+because the days it remembered were worked out without that memory and were not the routes they actually got.
+
 ### The daily: Lone Unit and Eyes in the Sky
 
 *"Loads more different daily challenges ... where you're the police and you have to stop a criminal but you have no police help ...
