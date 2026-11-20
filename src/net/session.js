@@ -86,7 +86,7 @@ const KINDS = ['runner', 'supercar', 'offroad', 'patrol', 'interceptor', 'suv', 
 
 export const FLAG = { POLICE: 1, UNMARKED: 2, DISABLED: 4, BLIP: 8, SIREN: 16, SUSPECT: 32, HAZARD: 64, WRECK: 128 };
 
-/** A car, as it goes on the wire: fifteen numbers and an id. */
+/** A car, as it goes on the wire: sixteen numbers and an id. */
 /**
  * What marks a car id as one of the AI's rather than a player's.
  *
@@ -124,6 +124,8 @@ export function packCar(id, v, extra = {}) {
     r2(v.forwardSpeed || 0),
     Math.round((v.damage || 0) * 100) / 100,
     flags,
+    // A respray (Game.paintCar): its index in SPRAY_COLOURS, 0 for the car's own colour.
+    v.paint || 0,
   ];
 }
 
@@ -138,6 +140,7 @@ export function unpackCar(a) {
     speed: a[13],
     damage: a[14],
     flags: a[15],
+    paint: a[16] || 0,
   };
 }
 

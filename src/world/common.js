@@ -6,6 +6,7 @@
 // playing, and lives here.
 
 import * as THREE from 'three';
+import { groundDetail } from './groundtex.js';
 import { MeshBuilder, vertexColorMaterial } from '../util/meshbuild.js';
 import { ROAD_KIND } from './roadgraph.js';
 import {
@@ -168,6 +169,7 @@ export function buildGround(ctx) {
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
 
   const mesh = new THREE.Mesh(g, vertexColorMaterial());
+  groundDetail(mesh, 'grass');
   mesh.position.y = -0.05;
   mesh.receiveShadow = true;
   mesh.name = 'ground';
@@ -487,6 +489,7 @@ export function buildRoadMeshes(ctx) {
   // See DRAW_ORDER: over the pavement whatever its height.
   const m1 = new THREE.Mesh(road.build(), vertexColorMaterial({ depthFunc: THREE.AlwaysDepth }));
   m1.name = 'roads';
+  groundDetail(m1, 'tarmac');
   m1.receiveShadow = true;
   m1.renderOrder = DRAW_ORDER.tarmac;
   // Markings sit a centimetre above the tarmac and the kerb stone two

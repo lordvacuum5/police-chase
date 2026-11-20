@@ -67,6 +67,8 @@ const RUNNER_CONE = 0.55;
 import { TrafficLights, SIGNAL } from './game/trafficlights.js';
 import { StreetProps } from './game/streetprops.js';
 import { Garage } from './game/garage.js';
+import { KnownCar } from './game/known.js';
+import { SPRAY_COLOURS } from './game/garage.js';
 import { Score } from './game/score.js';
 import { loadCarModels } from './game/carmodel.js';
 import { Weather } from './game/weather.js';
@@ -455,6 +457,8 @@ class Game {
     if (this.soloPolice && !this.openWorld) this._initRunner();
     // The garage before the props, so nothing is stood across its entrance.
     this.garage = new Garage(this);
+    // The car the police know, and what they do when they see it again (game/known.js).
+    this.known = new KnownCar(this);
     // The pad only exists once the garage does, and the player is built
     // before it -- so an aircraft is put on the roof now rather than left
     // standing in the road where _initPlayer had to leave it.
@@ -1025,6 +1029,59 @@ class Game {
 
     this.vehicles.push(v);
     return v;
+  }
+
+  /**
+   * A respray: `idx` into SPRAY_COLOURS, 0 for the car's own colour. "Spray paint your car ... purple, red,
+   * green, blue, pink ... a bunch of different colours." The Runner has a material of its own for the
+   * bodywork ("paint"); the Stiletto and the Badger are coloured from a strip of swatches, the first square
+   * of which is the bodywork, so that square is painted over in a copy. One material per model and colour.
+   */
+  paintCar(v, idx) {
+    // The three getaway cars only: a police car's or the helicopter's own strip is not bodywork-first.
+    if (!v || !v.view || !['runner', 'supercar', 'offroad'].includes(v.specKey)) return;
+    v.paint = idx || 0;
+    const hex = v.paint ? SPRAY_COLOURS[v.paint].hex : null;
+    if (!this._paints) this._paints = new Map();
+    v.view.traverse((o) => {
+      if (!o.isMesh || !o.material || Array.isArray(o.material)) return;
+      const base = o.userData.factoryMaterial || (o.userData.factoryMaterial = o.material);
+      if (hex === null) { o.material = base; return; }
+      const key = `${base.uuid}|spray${v.paint}`;
+      let m = this._paints.get(key);
+      if (!m) {
+        if (base.name === 'paint') {
+          m = base.clone();
+          m.color.setHex(hex);
+        } else if (base.map && base.map.image && /atlas|body/.test(base.name)) {
+          const im = base.map.image;
+          const c = document.createElement('canvas');
+          c.width = im.width; c.height = im.height;
+          const x = c.getContext('2d');
+          x.drawImage(im, 0, 0);
+          x.fillStyle = `#${hex.toString(16).padStart(6, '0')}`;
+          x.fillRect(0, 0, im.height, im.height);
+          m = base.clone();
+          m.map = base.map.clone();
+          m.map.image = c;
+          m.map.needsUpdate = true;
+        } else {
+          m = base;
+        }
+        this._paints.set(key, m);
+      }
+      o.material = m;
+    });
+  }
+
+  /** Respray your car at the garage: a new colour, and the police no longer know it (game/known.js). */
+  respray(idx) {
+    if (!this.garage || !this.garage.canSpray) return;
+    if ((this.player.paint || 0) === idx) return;
+    this.paintCar(this.player, idx);
+    this.known.resprayed();
+    this.hud.toast(`RESPRAYED ${SPRAY_COLOURS[idx].name}`);
+    if (this.audio && this.audio.spray) this.audio.spray();
   }
 
   removeVehicle(v) {
@@ -2613,6 +2670,7 @@ class Game {
     this.roadblocks.reset();
     this.traffic.clear();
     this.suspects.reset();
+    this.known.reset();
     this.helicopter.reset();
     this.heliGrounded = false;
     this.props.reset();
@@ -2763,6 +2821,8 @@ class Game {
       return;
     }
     if (i.tapped('KeyP')) this.paused = !this.paused;
+    // E in the garage bay: the next colour (Garage.canSpray, Game.respray).
+    if (i.tapped('KeyE') && this.garage && this.garage.canSpray) this.respray(((this.player.paint || 0) + 1) % SPRAY_COLOURS.length);
     // H is the controls card, unless it is the H on the end of `five`.
     //
     // "If I type in five and then H on the end, it spawns the one to level
@@ -3065,6 +3125,8 @@ class Game {
         }
       }
       this._netDriveRemote(v, car, dt);
+      // Another player's respray, on their car here too.
+      if ((car.paint || 0) !== (v.paint || 0) && !String(car.id).startsWith(AI_ID)) this.paintCar(v, car.paint);
       if (!v.netVel) v.netVel = new THREE.Vector3();
       v.netVel.set(car.vx, car.vy, car.vz);
       v.damage = car.damage;
@@ -3610,6 +3672,7 @@ class Game {
         this.heat.update(dt, hunted, this.dispatcher);
         this._checkProvocation(dt);
         this._checkRedLight();
+        if (!session.active) this.known.update(dt);
       }
       this.commentary.update(dt);
       // After the heat, so an arrest is seen the frame it happens and the stars are put back to five.

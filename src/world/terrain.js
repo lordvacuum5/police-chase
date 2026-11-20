@@ -18,6 +18,7 @@
 // the player to leave the ground over.
 
 import * as THREE from 'three';
+import { groundDetail } from './groundtex.js';
 import { RAPIER, GROUP, groups } from '../physics/world.js';
 import { vertexColorMaterial } from '../util/meshbuild.js';
 import { rand, TAU, clamp, lerp, smoothstep } from '../util/math.js';
@@ -563,6 +564,7 @@ export function buildTerrainMesh(grid, colourAt, step = 8, dropAt = null, hole =
   g.setIndex(new THREE.BufferAttribute(q < index.length ? index.slice(0, q) : index, 1));
   g.computeVertexNormals();
   const mesh = new THREE.Mesh(g, vertexColorMaterial());
+  groundDetail(mesh, 'grass');
   mesh.receiveShadow = true;
   mesh.name = 'terrain';
   return mesh;

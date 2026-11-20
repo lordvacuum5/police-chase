@@ -23,6 +23,7 @@
 //   * wind turbines on the tops, so the hills read from anywhere.
 
 import * as THREE from 'three';
+import { groundDetail } from './groundtex.js';
 import { RoadGraph, ROAD_KIND } from './roadgraph.js';
 import { approachesAt, addNodeWedges } from './junctions.js';
 import { GROUP, groups, addStaticBox, addCanopy, nearBuilding, EDGE_FACE, RAPIER } from '../physics/world.js';
@@ -819,6 +820,7 @@ function buildVillagePavements(ctx) {
   mesh.renderOrder = DRAW_ORDER.pavement;
   liftMesh(mesh, ctx.at, 0.05);
   mesh.name = 'pavements';
+  groundDetail(mesh, 'tarmac');
   mesh.receiveShadow = true;
   return mesh;
 }

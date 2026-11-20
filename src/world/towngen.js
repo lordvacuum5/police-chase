@@ -18,6 +18,7 @@
 // streets and makes the lanes feel enclosed.
 
 import * as THREE from 'three';
+import { groundDetail } from './groundtex.js';
 import { RoadGraph, ROAD_KIND } from './roadgraph.js';
 import { approachesAt, addNodeWedges } from './junctions.js';
 import { GROUP, addStaticBox } from '../physics/world.js';
@@ -451,6 +452,7 @@ function buildPavements(ctx) {
   }
   const mesh = new THREE.Mesh(b.build(), vertexColorMaterial());
   mesh.name = 'pavements';
+  groundDetail(mesh, 'tarmac');
   mesh.receiveShadow = true;
   mesh.renderOrder = DRAW_ORDER.pavement;
   return mesh;
@@ -647,6 +649,7 @@ function buildTownCountryside(ctx) {
   }
 
   const fm = new THREE.Mesh(fields.build(), vertexColorMaterial());
+  groundDetail(fm, 'grass');
   fm.name = 'fields';
   const tm = new THREE.Mesh(trees.build(), vertexColorMaterial());
   tm.name = 'trees';

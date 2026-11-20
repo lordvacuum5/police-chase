@@ -38,6 +38,22 @@ const PAD_V = 5.5;
 const PAD_R = 5.2;
 const PAD_Y = KERB_H + 6.0;
 
+/**
+ * The respray colours, by index: 0 is the car's own. "Purple, red, green, blue, pink. You know, a bunch of
+ * different colours." The index is what goes over the network (net/session.js, packCar).
+ */
+export const SPRAY_COLOURS = [
+  { name: 'ORIGINAL', hex: null },
+  { name: 'PURPLE', hex: 0x6a2bb8 },
+  { name: 'RED', hex: 0xc4161c },
+  { name: 'GREEN', hex: 0x1f8a3a },
+  { name: 'BLUE', hex: 0x1d4fc4 },
+  { name: 'PINK', hex: 0xe8569b },
+  { name: 'YELLOW', hex: 0xe6c21a },
+  { name: 'BLACK', hex: 0x15171a },
+  { name: 'WHITE', hex: 0xeceeef },
+];
+
 /** Seconds of sitting still before the work starts. */
 const HOLD = 3;
 /** Damage mended per second: a written-off car takes about twenty seconds. */
@@ -466,6 +482,16 @@ export class Garage {
       default:
         return null;
     }
+  }
+
+  /**
+   * Can you respray here, now? In the bay, stopped, in a car of your own (not a police car, not the
+   * helicopter), with nobody after you, outside the daily challenge (whose car is the day's).
+   */
+  get canSpray() {
+    const g = this.game, p = g.player;
+    if (!this.site || !p || p.isPolice || p.isAircraft || g.daily || g.outcome) return false;
+    return this.inBay(p) && p.speed < STILL && g.heat.value <= 0;
   }
 
   /** Where it is, for the minimap. */

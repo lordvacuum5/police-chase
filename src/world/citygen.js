@@ -8,6 +8,7 @@
 // rebuilt identically every run.
 
 import * as THREE from 'three';
+import { groundDetail } from './groundtex.js';
 import { MeshBuilder, vertexColorMaterial } from '../util/meshbuild.js';
 import { RoadGraph, ROAD_KIND } from './roadgraph.js';
 import { GROUP, addStaticBox, addCanopy, nearBuilding } from '../physics/world.js';
@@ -719,6 +720,7 @@ function buildBlocks(ctx, grid, park, roundabout) {
   }
   const plate = new THREE.Mesh(plates.build(), vertexColorMaterial());
   plate.name = 'plates';
+  groundDetail(plate, 'tarmac');
   plate.renderOrder = DRAW_ORDER.pavement;
   out.push(plate);
   return out;
@@ -796,6 +798,7 @@ function buildCountryside(ctx) {
   scatterWoodland(ctx, trees);
 
   const fm = new THREE.Mesh(fields.build(), vertexColorMaterial());
+  groundDetail(fm, 'grass');
   fm.name = 'fields';
   const tm = new THREE.Mesh(trees.build(), vertexColorMaterial());
   tm.name = 'trees';

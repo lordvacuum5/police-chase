@@ -11,6 +11,7 @@ import { WORLD_HALF } from '../world/common.js';
 import { TRACK_SECONDS } from '../ai/dispatcher.js';
 import { ENDURANCE as AIR_TANK } from './flyheli.js';
 import { AI_ID, session } from '../net/session.js';
+import { SPRAY_COLOURS } from './garage.js';
 
 const MAP_PX = 1200;          // offscreen map resolution
 const MAP_SPAN = 470;         // metres visible on the minimap
@@ -61,6 +62,8 @@ export class Hud {
     this.scoreBox = document.getElementById('score');
     this.popsEl = document.getElementById('scorepops');
     this.repairEl = document.getElementById('repair');
+    this.sprayEl = document.getElementById('spray');
+    this.knownEl = document.getElementById('knowncar');
     this.repairLabel = document.getElementById('repairlabel');
     this.repairValue = document.getElementById('repairvalue');
     this.repairFill = document.getElementById('repairfill');
@@ -355,12 +358,47 @@ export class Hud {
       }
     }
 
+    this._paintSpray(player);
+
     this._drawSpeedo(dt, player);
     // A pilot has no use for the name of the road below, and every use for
     // whether the car is in sight. Same plate, different job.
     if (player.isAircraft) this._drawSpotting();
     else this._drawRoadSign(player);
     this._drawMinimap(player, dispatcher, heat);
+  }
+
+  /**
+   * The respray colours while you can use them (Garage.canSpray), and the car icon by the stars while the
+   * police know the car you are in (game/known.js): in its colour, or white in its own.
+   */
+  _paintSpray(player) {
+    const g = this.game;
+    const can = !!(g.garage && g.garage.canSpray);
+    if (this.sprayEl && this.sprayEl.hidden === can) this.sprayEl.hidden = !can;
+    if (can) {
+      const row = this.sprayEl.querySelector('#sprayrow');
+      if (!row.children.length) {
+        SPRAY_COLOURS.forEach((c, i) => {
+          const b = document.createElement('button');
+          b.title = c.name;
+          if (c.hex === null) b.className = 'orig';
+          else b.style.background = `#${c.hex.toString(16).padStart(6, '0')}`;
+          b.addEventListener('click', (e) => { e.stopPropagation(); g.respray(i); });
+          row.appendChild(b);
+        });
+      }
+      const on = player.paint || 0;
+      for (let i = 0; i < row.children.length; i++) row.children[i].classList.toggle('on', i === on);
+    }
+    const known = !!(g.known && g.known.recognisable);
+    if (this.knownEl && this.knownEl.hidden === known) this.knownEl.hidden = !known;
+    if (known) {
+      const c = SPRAY_COLOURS[player.paint || 0];
+      const fill = c && c.hex !== null ? `#${c.hex.toString(16).padStart(6, '0')}` : '#ffffff';
+      const path = this.knownEl.querySelector('path');
+      if (path.getAttribute('fill') !== fill) path.setAttribute('fill', fill);
+    }
   }
 
   // ---------------------------------------------------------------- speedo

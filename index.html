@@ -657,6 +657,23 @@
   #repair.work #repairfill { background: linear-gradient(90deg, #7ef0b0, #2fbf6e); }
   body.touch #repair { bottom: calc(112px + var(--safe-b)); width: min(280px, 60vw); }
 
+  /* ---- respray: in the garage bay, not wanted (Garage.canSpray) ---- */
+  #spray { position: absolute; bottom: 118px; left: 50%; transform: translateX(-50%); text-align: center; }
+  #spray[hidden] { display: none; }
+  #spraylabel { font-size: 12px; letter-spacing: 4px; color: #fff; text-shadow: 0 1px 8px rgba(4,6,9,.9); margin-bottom: 7px; }
+  #spraylabel small { letter-spacing: 1px; color: var(--dim); margin-left: 6px; }
+  #sprayrow { display: flex; gap: 7px; justify-content: center; }
+  #sprayrow button { pointer-events: auto; cursor: pointer; width: 30px; height: 30px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,.35); padding: 0; box-shadow: 0 1px 6px rgba(0,0,0,.5); }
+  #sprayrow button.on { border-color: #fff; box-shadow: 0 0 0 2px #fff, 0 1px 8px rgba(0,0,0,.6); }
+  #sprayrow button.orig { background: repeating-linear-gradient(45deg, #888 0 5px, #555 5px 10px); }
+  body.touch #spray { bottom: calc(166px + var(--safe-b)); }
+
+  /* ---- the car the police know (game/known.js), by the stars ---- */
+  #knowncar { position: absolute; top: 9px; right: 10px; width: 34px; height: 20px; }
+  #knowncar[hidden] { display: none; }
+  body.touch #knowncar { top: 5px; right: 6px; width: 26px; height: 15px; }
+
   /* =================================================== touchscreen controls
      Built by src/core/touch.js. Nothing below applies until body.touch is set,
      which only happens on a phone or once the screen has been touched, so a
@@ -860,6 +877,7 @@
   <div id="dailycount" hidden></div>
   <div id="heat" class="panel">
     <div id="stars">☆☆☆☆☆</div>
+    <svg id="knowncar" hidden viewBox="0 0 34 20" aria-label="The police know this car"><path d="M3 13 L5 8 Q6 6 9 6 L22 6 Q25 6 27 8.5 L31 10 Q33 11 33 13 L33 15 L1 15 L1 13 Z" stroke="#fff" stroke-width="1.4"/><circle cx="8.5" cy="15.5" r="2.7" fill="#111" stroke="#fff" stroke-width="1.2"/><circle cx="25.5" cy="15.5" r="2.7" fill="#111" stroke="#fff" stroke-width="1.2"/></svg>
     <div id="heatbar"><div id="heatfill"></div></div>
     <div id="status" class="clear">NO ACTIVE PURSUIT</div>
     <div id="score"><span>SCORE</span> <b id="scorevalue">0</b></div>
@@ -910,6 +928,8 @@
           <td class="k"><kbd>N</kbd></td><td>Sound on / off</td></tr>
       <tr><td class="k"><kbd>H</kbd></td><td>This help</td>
           <td class="k"><kbd>M</kbd></td><td>Back to the menu</td></tr>
+      <tr><td class="k"><kbd>E</kbd></td><td>Respray (in the garage)</td>
+          <td></td><td></td></tr>
     </table>
   </div>
 
@@ -923,6 +943,7 @@
     <div id="repairhead"><span id="repairlabel">REPAIRING</span><span id="repairvalue">0%</span></div>
     <div id="repairtrack"><div id="repairfill"></div></div>
   </div>
+  <div id="spray" hidden><div id="spraylabel">RESPRAY<small>E or pick a colour</small></div><div id="sprayrow"></div></div>
   <div id="bust">
     <div id="bustlabel">BUSTED</div>
     <div id="busttrack"><div id="bustfill"></div></div>

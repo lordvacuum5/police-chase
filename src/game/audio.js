@@ -1375,6 +1375,28 @@ export class GameAudio {
    *   glass   on a hard one, a scatter of bright high pings, something breaking
    * `window.__oldCrash = true` puts the old one back, to compare.
    */
+  /** A respray at the garage: two short hisses of a spray gun (Game.respray). */
+  spray() {
+    if (!this.ready || this.muted || this.ctx.state !== 'running' || !this.noiseBuffer) return;
+    const ctx = this.ctx, now = ctx.currentTime;
+    for (let k = 0; k < 2; k++) {
+      const t = now + k * 0.32;
+      const n = ctx.createBufferSource();
+      n.buffer = this.noiseBuffer;
+      const f = ctx.createBiquadFilter();
+      f.type = 'highpass';
+      f.frequency.value = 3200;
+      const gn = ctx.createGain();
+      gn.gain.setValueAtTime(0.0001, t);
+      gn.gain.exponentialRampToValueAtTime(0.09, t + 0.03);
+      gn.gain.setValueAtTime(0.09, t + 0.2);
+      gn.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+      n.connect(f); f.connect(gn); gn.connect(this.master);
+      n.start(t, Math.random() * 0.5);
+      n.stop(t + 0.3);
+    }
+  }
+
   impact(strength) {
     if (!this.ready || this.muted || this.ctx.state !== 'running') return;
     if (window.__oldCrash) { this._impactOld(strength); return; }

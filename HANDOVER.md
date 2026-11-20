@@ -160,6 +160,20 @@ scoring, deliberately.
 
 ### Recently finished
 
+* **Respray and the car the police know** (20 Nov 2026). `game/known.js`:
+  a chase that reaches 2 stars puts your car (kind + `v.paint`) on file with
+  its top level; a car icon by the stars (`#knowncar`) shows while you are in
+  it. Not wanted, a patrol car that sees it is taken off the board and driven
+  by KnownCar (blips, follows); a 2.5 s close look restores the old level,
+  getting 80 m away is 1 star "failing to stop". Wanted lower than on file,
+  any unit's close look raises it; never lowers. Respray in the garage bay
+  (E, or the colour buttons; `Garage.canSpray`, `Game.respray`,
+  `Game.paintCar`, `SPRAY_COLOURS`) clears the file. Paint index goes on the
+  wire as the 17th number of `packCar`. Recognition is single player only
+  (`!session.active`). Ground grain: `world/groundtex.js`, world-position uvs
+  and a canvas texture multiplied over the vertex colours of ground, fields,
+  terrain, roads and pavements.
+
 * **Haldon Vale** (25 Oct 2026), the third map: open country, hedges, hills,
   three villages, farms you can drive through, woods. README "Haldon Vale" has
   the design, the bugs found on the way and the numbers. On a hilly map

@@ -7978,6 +7978,40 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Respray, and the police knowing your car
+
+*"Spray paint your car any colour ... purple, red, green, blue, pink ... when you're getting a pursuit, the police ... recognise your
+car ... even after they've fully lost you ... if a police car then sees you ... and you're still in the same car ... they kind of flash
+their lights ... try to make you pull over. If you ... zoom away ... they would get you in pursuit. But if they do recognise you, then
+I want it that it regains the earlier wanted level ... if you spray paint your car a different colour, they won't recognise you ... I
+don't want any bar on screen, but ... if they get relatively close to me to almost have a good look at my car, then it bumps up to the
+earlier wanted level ... don't bump it down ever."* Asked: from 2 stars up, sprayed at the garage, a car icon by the stars.
+
+* **Respray** in the garage bay, stopped, not wanted: E for the next colour or click one (original, purple, red, green, blue, pink,
+  yellow, black, white). The Runner has a paint material; the Stiletto and the Badger are coloured from a swatch strip whose first
+  square is the bodywork, so that square is painted over in a copy. Other players see it (the paint index goes in the car packet).
+* **On file** (`game/known.js`): a chase that reaches 2 stars records the car and colour and the top level. The icon by the stars,
+  in the car's colour, shows while you are in it.
+* **Seen again, not wanted**: a patrol car that sees it within 70 m comes after you, blipping lights and siren ("Vehicle that matches
+  one from earlier. Going to have a look."). A good look -- 2.5 s within 22 m, in sight -- and the level on file is back. 80 m away
+  from it first, and it is a 1-star pursuit for failing to stop, called in with the direction.
+* **Seen again, wanted lower than on file**: any unit's good look raises it to the level on file. It never lowers it.
+* Single player only: in multiplayer the heat is one machine's.
+
+Checked headless on Wexbury: 2.4 stars, escaped, a patrol car put 30 m off with the car parked: it set off at once, blipped, and
+the 2 stars were back at 6.1 s. Again, driving off at town speeds: it kept up and recognised the car at about 8 s. With the car
+taken 130 m away once it set off: 1 star, "failing to stop"; then a unit 25 m off raised it to the 3 on file in 8.5 s. Respray: the
+paint lands on all three cars (pixel read back: 232,86,155 for pink).
+
+### Texture on the ground
+
+*"It'd be nice to have a bit more texture on the ground."* Grass, fields and Haldon's hills get a grass grain, and roads and
+pavements a tarmac one (`world/groundtex.js`): textures drawn in code, tiled by world position, multiplied over the colours already
+there. The first tarmac was a 1 cm speckle and showed nothing: mipmapping averages anything that fine to flat a few metres away.
+Coarser patching and stones of a few centimetres show. Cost, Haldon Vale, 1024x768 on this laptop's Intel graphics, four turns each
+in the same scene: 23.2 ms a frame with it, 23.0 ms without -- inside the noise. (And 23 ms is the GPU alone: on this machine the
+graphics chip is a good part of why it lags.)
+
 ### The daily: more different routes
 
 *"It's basically the same route every single time on each map. It wasn't exactly the same route, but it was very similar."* The route
