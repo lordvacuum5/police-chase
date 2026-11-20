@@ -477,6 +477,25 @@ export class Vehicle {
     this.collider.setCollisionGroups(groups(GROUP.VEHICLE, free ? 0xFFFF & ~GROUP.HILL : 0xFFFF));
   }
 
+  /**
+   * A car another machine owns, on a hilly map: what it collides with here. It is never stepped like a car
+   * of our own (Game._netDriveRemote pulls it after what its owner says), so _hillContact never ran for it
+   * and its bodywork met the hill: up a steep slope at speed the nose hit the heightfield and it stopped dead
+   * for a frame before the pull dragged it on. "Hitting an invisible wall on the ground. Happened a lot in
+   * multiplayer today ... I saw police cars do it quite a lot." Where it is is its owner's to say: here it
+   * meets the hill with neither body nor keel, and the pull holds it to the height it is sent.
+   * `window.__remoteHill`: 'old' as before, 'body' only the bodywork kept off (as _hillContact).
+   */
+  remoteHill() {
+    if (!this.keel) return;
+    const mode = window.__remoteHill || 'none';
+    const want = mode === 'old' ? 'old' : mode === 'body' ? (this.up.y > 0.5 ? 'body' : 'old') : 'none';
+    if (want === this._remoteHill) return;
+    this._remoteHill = want;
+    this.collider.setCollisionGroups(groups(GROUP.VEHICLE, want === 'old' ? 0xFFFF : 0xFFFF & ~GROUP.HILL));
+    this.keel.setCollisionGroups(groups(GROUP.VEHICLE, want === 'none' ? 0 : GROUP.HILL));
+  }
+
   _buildWheels() {
     const s = this.spec;
     // Distance from the centre of mass to each axle, derived from the front

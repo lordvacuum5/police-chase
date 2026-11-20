@@ -7978,6 +7978,32 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### The invisible wall in multiplayer: other players' cars and the guest's police
+
+*"There's still ... an issue with ... hitting an invisible wall on the ground. Happened a lot in multiplayer today when I was with
+my friend ... I saw police cars do it quite a lot ... different spots of the map, but it's mainly really steep, pretty steep hills
+when you're going very fast."* Every car another machine owns -- the other player's, and on a guest every police car -- is a body
+here pulled after what its owner sends (`Game._netDriveRemote`). It is never stepped like a car of our own, so `_hillContact`,
+which keeps the bodywork off the hill, never ran for it: up a steep slope at speed its nose hit the heightfield and it stopped
+dead for a step before the pull dragged it on. Each player was watching the other's car, and the guest the whole force, hit the
+wall. Now such a car meets the hill with neither body nor keel (`Vehicle.remoteHill`): where it is is its owner's to say, and the
+pull holds it to the height it is sent. `window.__remoteHill = 'old'` / `'body'` to compare.
+
+`tests/remotehill.js`: the player's car flat out up the 30 steepest slopes on Haldon Vale at 150 km/h, recorded every frame and
+replayed into a remote car as if it came over the network. Physics steps in which the remote car lost over 60 km/h: **24, up to
+150 (dead stop), before; 0 after.** Frames losing over 30 km/h when the car it copies did not: 23 as it was, 13 with only the
+bodywork kept off (as `_hillContact`), 5 with no hill at all, and none of those 5 is a collision. It still keeps within 0.27 m of
+where it is sent on average (0.52 before).
+
+**Your own car, measured too, not found.** `tests/hillwall.js` watches every physics step and, for the big losses, what the car was
+touching. `tests/hillcharge.js` counted 10-16 of 40 slopes "thrown back" at 150-250 km/h, and looking at them one by one, the
+largest -- 196 to 36 km/h in a fifth of a second -- was the bodywork hitting a tree trunk in a wood the rig's clear-way check does not
+see. Counted after the car's own corrections (`_rideUpHill` puts back what the keel takes), the Runner had 0 walls in 40 slopes at
+150, 200 and 250 km/h; police 0 at 150 and 1 at 180, the Stiletto 2 at 250, all of those with the car already over on its side
+(up 0.46, 0.44, -0.35). Before the correction the keel does take 60-133 km/h in a step on 6 of 40 slopes at 150, and it is put back
+the same step. So if your own car still hits it, it is somewhere these straight runs up the slope do not go (at an angle, over a
+crest): say where.
+
 ### Respray, and the police knowing your car
 
 *"Spray paint your car any colour ... purple, red, green, blue, pink ... when you're getting a pursuit, the police ... recognise your

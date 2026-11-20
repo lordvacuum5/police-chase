@@ -160,6 +160,16 @@ scoring, deliberately.
 
 ### Recently finished
 
+* **Remote cars and the hill** (20 Nov 2026). Cars another machine owns
+  skip `Vehicle.prepare`, so nothing done there happens to them.
+  `Vehicle.remoteHill` (called for remote cars in the substep loop) takes
+  them off the hill entirely: they were stopping dead on steep slopes on
+  the other player's screen ("invisible wall" in multiplayer).
+  `tests/remotehill.js` replays a recorded drive into a remote car;
+  `tests/hillwall.js` finds the physics step that took the speed and what
+  was touched (trees count as objects, not walls). Anything new that a car
+  needs on a hill must also be thought about for remote cars.
+
 * **Respray and the car the police know** (20 Nov 2026). `game/known.js`:
   a chase that reaches 2 stars puts your car (kind + `v.paint`) on file with
   its top level; a car icon by the stars (`#knowncar`) shows while you are in
