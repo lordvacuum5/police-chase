@@ -7978,6 +7978,24 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### WebGPU, measured and not switched to
+
+*"Please can you switch over to WebGPU because I suppose that is just upsides, right? Yeah, I'm assuming the graphics will look a
+bit better."* Tried first, not switched (`tests/webgpu.js`, `vendor/three.webgpu.min.js`, three.js r185 like the rest): the same
+scene drawn by the game's WebGL renderer and by a WebGPURenderer beside it, each frame timed to the end of the GPU's work, turns
+alternating, on this laptop's Intel graphics at 1024x768:
+
+| map | WebGL | WebGPU |
+|---|---|---|
+| Ashfield City | 11.6 ms | 9.9 ms |
+| Haldon Vale | 20.1 | 18.6 |
+| Wexbury | 8.9 | 9.1 |
+
+Single turns vary by 20-40%, so 1-2 ms at best. The two pictures are the same but for slight differences in the shadows: a renderer
+does not make anything look better by itself. Why so little: the game already draws a whole town in about 41 batches, and the cost
+per batch is what WebGPU saves. Against that, switching means the one custom shader (`game/effects.js`) rewritten for it, an
+asynchronous start, and browsers without WebGPU falling back to its WebGL2 path, which is not quicker than what is here now.
+
 ### The invisible wall in multiplayer: other players' cars and the guest's police
 
 *"There's still ... an issue with ... hitting an invisible wall on the ground. Happened a lot in multiplayer today when I was with
