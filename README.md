@@ -7978,6 +7978,15 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Long grass and flowers on the verges
+
+Where a road met a field the grass stopped at a hard edge, flat. `game/verges.js`: a band of tufts along both verges of every road,
+1-5 m out from the edge, one every 1.1 m less a quarter for gaps, a sixth of them with white, yellow or purple flowers; two crossed
+cut-out panels each (4 triangles), shade, size and turn from a hash of the place; only on grass, not against buildings. 23,276 on
+Haldon Vale. One batch a 100 m cell, hidden past 150 m; nothing collides with them. The first green was vivid and stood out of the
+fields like plastic; now muted to them. GPU time on Haldon, shown and hidden in turns: 11.1 ms against 10.8 on average, the last
+pair 9.3 / 8.2 -- somewhere between a third of a millisecond and one. `window.__noVerges`.
+
 ### Parked cars
 
 *Street clutter.* Wexbury's streets had nothing standing in them but lamp posts and bins. The town generator now picks a drive

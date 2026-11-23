@@ -69,6 +69,7 @@ import { StreetProps } from './game/streetprops.js';
 import { Garage } from './game/garage.js';
 import { KnownCar } from './game/known.js';
 import { addParkedCars } from './game/parked.js';
+import { addVerges } from './game/verges.js';
 import { SPRAY_COLOURS } from './game/garage.js';
 import { Score } from './game/score.js';
 import { loadCarModels } from './game/carmodel.js';
@@ -434,6 +435,8 @@ class Game {
     this.carModels = await loadCarModels(this);
     // Cars on the drives, now there are models to draw them with (game/parked.js).
     addParkedCars(this, this.world.__map && this.world.__map.parked);
+    // Long grass and flowers along the verges (game/verges.js).
+    addVerges(this);
     for (const [kind, m] of Object.entries(this.carModels)) {
       // Not the radio: the HUD does not exist yet at this point in the boot.
       console.info(`[carmodel] ${kind} body from ${m.url} (fitted x${m.scale.toFixed(3)})`);
