@@ -440,9 +440,6 @@ class Game {
     this.carModels = await loadCarModels(this);
     // Cars on the drives, now there are models to draw them with (game/parked.js).
     this.parkedCars = addParkedCars(this, this.world.__map && this.world.__map.parked);
-    // Long grass and flowers along the verges (game/verges.js).
-    addVerges(this, this._mapBlocks);
-    this._mapBlocks = null;
     for (const [kind, m] of Object.entries(this.carModels)) {
       // Not the radio: the HUD does not exist yet at this point in the boot.
       console.info(`[carmodel] ${kind} body from ${m.url} (fitted x${m.scale.toFixed(3)})`);
@@ -469,6 +466,9 @@ class Game {
     if (this.soloPolice && !this.openWorld) this._initRunner();
     // The garage before the props, so nothing is stood across its entrance.
     this.garage = new Garage(this);
+    // Long grass and flowers along the verges (game/verges.js): after the garage, whose forecourt they keep off.
+    addVerges(this, this._mapBlocks);
+    this._mapBlocks = null;
     // The car the police know, and what they do when they see it again (game/known.js).
     this.known = new KnownCar(this);
     // The pad only exists once the garage does, and the player is built

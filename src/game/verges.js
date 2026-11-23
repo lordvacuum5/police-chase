@@ -53,6 +53,29 @@ function patchNoise(x, z, size) {
   return top + (bot - top) * sz;
 }
 
+/** A spray of hedge leaves on transparent: a rounded clump, denser low down, ragged at the edges. */
+function leafSprigTexture() {
+  const W = 128, H = 128;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  let seed = 17;
+  const r = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+  for (let k = 0; k < 220; k++) {
+    // Within a dome: wider at the foot, a rounded top.
+    const a = r() * Math.PI, d = Math.sqrt(r());
+    const px = W / 2 + Math.cos(a) * d * W * 0.46, py = H - Math.sin(a) * d * H * 0.92;
+    const g = 70 + Math.floor(r() * 70);
+    x.fillStyle = `rgb(${Math.floor(g * 0.55)},${Math.floor(g * 0.85)},${Math.floor(g * 0.4)})`;
+    x.beginPath();
+    x.ellipse(px, py, 3 + r() * 3, 2 + r() * 2, r() * Math.PI, 0, Math.PI * 2);
+    x.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 /** Blades of grass on transparent, and (flowers) a few heads of colour among them. */
 function tuftTexture(flowers) {
   const W = 128, H = 128;
@@ -135,6 +158,8 @@ export function addVerges(game, blocks = null) {
       }
     }
     if (onDrive(strips, x, z, 0.6)) return false;
+    // Nor on the garage's forecourt, which is laid after the map (game/garage.js).
+    if (game.garage && game.garage.covers(x, z, 1)) return false;
     return !nearBuilding(world, x, z, 0.9);
   };
   const spots = [];
@@ -176,10 +201,15 @@ export function addVerges(game, blocks = null) {
       spots.push({ x, z, f: hash(x, z, 15) < FLOWERS * 0.6, s: 0.5 + hash(x, z, 16) * 0.55, r: hash(z, x, 17) * Math.PI, c: hash(x, z, 18) });
     }
   }
+  // And leafy sprigs on Haldon's hedges, so up close a hedge has a ragged, leafy edge rather than a smooth
+  // one: "ideally with like a bit more leaves" (world/hedges.js says where).
+  for (const t of map.hedgeTops || []) {
+    spots.push({ x: t.x, z: t.z, y: t.y, f: 2, s: 0.75 + hash(t.x, t.z, 19) * 0.45, r: hash(t.z, t.x, 20) * Math.PI, c: hash(t.x, t.z, 22) });
+  }
   if (!spots.length) return null;
   const geo = tuftGeometry();
-  const mats = [false, true].map((f) => {
-    const mat = new THREE.MeshLambertMaterial({ map: tuftTexture(f), alphaTest: 0.5, side: THREE.DoubleSide });
+  const mats = [0, 1, 2].map((f) => {
+    const mat = new THREE.MeshLambertMaterial({ map: f === 2 ? leafSprigTexture() : tuftTexture(f === 1), alphaTest: 0.5, side: THREE.DoubleSide });
     // Each tuft scaled by how far its foot is from the camera, along the ground: grown in, not popped in.
     mat.onBeforeCompile = (sh) => {
       sh.vertexShader = sh.vertexShader
@@ -194,7 +224,7 @@ export function addVerges(game, blocks = null) {
   });
   const cells = new Map();
   for (const s of spots) {
-    const key = `${Math.floor(s.x / VERGE_CELL)},${Math.floor(s.z / VERGE_CELL)},${s.f ? 1 : 0}`;
+    const key = `${Math.floor(s.x / VERGE_CELL)},${Math.floor(s.z / VERGE_CELL)},${s.f === 2 ? 2 : s.f ? 1 : 0}`;
     let list = cells.get(key);
     if (!list) cells.set(key, (list = []));
     list.push(s);
@@ -209,7 +239,7 @@ export function addVerges(game, blocks = null) {
     const im = new THREE.InstancedMesh(geo, mats[f], list.length);
     list.forEach((s, i) => {
       q.setFromAxisAngle(Y, s.r);
-      m.compose(p.set(s.x - ox, (game.groundAt ? game.groundAt(s.x, s.z) : 0) - 0.03, s.z - oz), q, sc.set(s.s * 1.3, s.s, s.s * 1.3));
+      m.compose(p.set(s.x - ox, (game.groundAt ? game.groundAt(s.x, s.z) : 0) - 0.03 + (s.y || 0), s.z - oz), q, sc.set(s.s * 1.3, s.s, s.s * 1.3));
       im.setMatrixAt(i, m);
       im.setColorAt(i, col.setRGB(0.7 + s.c * 0.25, 0.72 + s.c * 0.22, 0.62 + s.c * 0.2));
     });

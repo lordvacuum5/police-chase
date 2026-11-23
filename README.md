@@ -9868,6 +9868,32 @@ as before the first fix. Shadows on the tufts or off measured the same (GPU mini
 And off Haldon's railway sleepers and dirt tracks, which the grip grid calls grass: the map's
 `clearAt` mask now keeps the tufts off them too.
 
+### Leafy hedges, and the garage textured and level
+
+"Hedges, they now look terribly out of date ... just make them look nice now. Ideally with like a bit more
+leaves." Haldon's hedges were tapered boxes in one flat green. Now (world/hedges.js), close up each piece is
+lofted through a seven-point cross-section every 1.7 m: a narrow foot, a bulging middle, rounded shoulders
+and a crown. Every point is pushed by a smooth noise of where it stands, so the top is uneven, the sides
+billow, and pieces that overlap at a bend still match. The foot is darker and the top lighter, and the
+trees' leaf texture covers it, mapped flat onto each face (the trees' slanted mapping streaked the long
+sides). Leafy sprigs stand along the crown and out of each side (104,226 places, drawn with the grass:
+dense near, thinning out with distance). Far off it is the old box with the leaf texture, in cells as the
+trees are. The colliders are unchanged.
+
+- Triangles at Haldon's wood: 966,719 a frame against 958,891 with every hedge forced to the box, and
+  947,018 with no hedges. The new ones add about 8,000.
+- The GPU timer (minimum of 30, four runs): new 4.4/4.4/4.4/4.4 then 6.0/6.1/6.0/5.9, boxes
+  5.1/5.1/5.3/5.3, none 5.7/5.5/5.6/4.3. The runs differ more than the settings do.
+
+The garage: "the repair station now looks kind of outdated", so cladding panels on its walls and a
+concrete grain on the forecourt. And on Haldon: "you can actually just see the normal ground where the
+actual like concrete repair bottom should be". The slab was flat at the height of the lot's middle, and the
+ground at its front corner stood 0.58 m over that (0.41 m under at the lowest). The slab now follows the
+ground in 2 m squares, with its paint, the bay and its edge (which goes 1.5 m down). The shop, workshop
+walls, posts and pump islands reach 1.2 m further down, so none floats where the ground falls away. Also,
+the verge grass had been planted before the garage was laid, so tufts stood on the forecourt. It is now
+planted after, and kept off.
+
 ## Apple mode
 
 The game plays harder on Apple hardware. It is a joke, it is deliberate, and

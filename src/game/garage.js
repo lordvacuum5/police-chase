@@ -17,6 +17,8 @@ import { MeshBuilder, vertexColorMaterial } from '../util/meshbuild.js';
 import { GROUP, addStaticBox } from '../physics/world.js';
 import { WORLD_HALF, CELL, GRID_N, KERB_H, SURF_PAVED } from '../world/common.js';
 import { clamp01 } from '../util/math.js';
+import { groundDetail } from '../world/groundtex.js';
+import { buildingDetail } from '../world/buildtex.js';
 import { ENDURANCE as AIR_TANK } from './flyheli.js';
 
 /** The lot, in metres: along the road, and back from it. */
@@ -242,16 +244,35 @@ export class Garage {
     const b = new MeshBuilder();
     const L2 = LOT_L * 0.5, D2 = LOT_D * 0.5;
     const flat = new MeshBuilder();
-    // Forecourt, out to the kerb line.
-    flat.addQuadY(-L2, -D2 - GAP + 0.3, L2, -D2 - GAP + 0.3, L2, D2, -L2, D2, y0 + 0.006, FORECOURT);
+    // On the hills the lot is not level: "you can see the normal ground where the concrete repair bottom
+    // should be". The ground at the front corner of Haldon's lot stood 0.58 m over the middle, and the slab,
+    // flat at the middle's height, had grass through it. Now the slab follows the ground (conform, below),
+    // in 2 m squares so it can; and what stands on it goes down SINK metres further, so nothing floats
+    // where the ground falls away.
+    const hills = !!game.sim.terrainAt;
+    const SINK = hills ? 1.2 : 0;
+    const F0 = -D2 - GAP + 0.3;
+    for (let u = -L2; u < L2 - 1e-6; u += 2) {
+      for (let v = F0; v < D2 - 1e-6; v += 2) {
+        const u1 = Math.min(L2, u + 2), v1 = Math.min(D2, v + 2);
+        flat.addQuadY(u, v, u1, v, u1, v1, u, v1, y0 + 0.006, FORECOURT);
+      }
+    }
 
-    // The edge of the slab, where it stands proud of grass.
-    b.addWall([
-      { x: -L2, z: -D2 - GAP + 0.3 }, { x: -L2, z: D2 }, { x: L2, z: D2 }, { x: L2, z: -D2 - GAP + 0.3 },
-    ], 0, y0 + 0.006, 0x4a4d52);
+    // The edge of the slab, where it stands proud of grass: down past the ground, in 2 m pieces.
+    const edge = new MeshBuilder();
+    const rim = [];
+    const corners = [[-L2, F0], [-L2, D2], [L2, D2], [L2, F0]];
+    for (let k = 0; k < 3; k++) {
+      const [a0, b0] = corners[k], [a1, b1] = corners[k + 1];
+      const n = Math.max(1, Math.ceil(Math.hypot(a1 - a0, b1 - b0) / 2));
+      for (let i = 0; i < n; i++) rim.push({ x: a0 + (a1 - a0) * i / n, z: b0 + (b1 - b0) * i / n });
+    }
+    rim.push({ x: L2, z: F0 });
+    edge.addWall(rim, -SINK - 0.3, y0 + 0.006, 0x4a4d52);
 
     // Shop.
-    b.addBox(12, 4.2, 6.5, -10, y0 + 2.1, 8.25, 0xd9d4c7);
+    b.addBox(12, 4.2 + SINK, 6.5, -10, y0 + 2.1 - SINK * 0.5, 8.25, 0xd9d4c7);
     b.addBox(12.2, 0.5, 6.7, -10, y0 + 4.35, 8.25, 0x2f7d4c);            // green fascia
     b.addBox(9, 1.6, 0.08, -10, y0 + 1.7, 4.96, 0x9fc3d6);                // window
     b.addBox(1.4, 2.3, 0.1, -5.6, y0 + 1.15, 4.95, 0x39434d);             // door
@@ -261,11 +282,11 @@ export class Garage {
     b.addBox(19, 0.7, 10, CU, y0 + 5.35, CV, 0xeeeeea);
     b.addBox(19.1, 0.35, 10.1, CU, y0 + 4.95, CV, 0x2f7d4c);
     for (const du of [-7.5, 7.5]) {
-      for (const dv of [-3, 3]) b.addBox(0.45, 5, 0.45, CU + du, y0 + 2.5, CV + dv, 0xb9bcc0);
+      for (const dv of [-3, 3]) b.addBox(0.45, 5 + SINK, 0.45, CU + du, y0 + 2.5 - SINK * 0.5, CV + dv, 0xb9bcc0);
     }
     // Pump islands.
     for (const du of [-4, 4]) {
-      b.addBox(1.4, 0.25, 4.2, CU + du, y0 + 0.125, CV, 0xa6a9ad);
+      b.addBox(1.4, 0.25 + SINK, 4.2, CU + du, y0 + 0.125 - SINK * 0.5, CV, 0xa6a9ad);
       b.addBox(0.8, 1.5, 1.0, CU + du, y0 + 1.0, CV - 1.0, 0xe7e7e2);
       b.addBox(0.82, 0.3, 1.02, CU + du, y0 + 1.6, CV - 1.0, 0x2f7d4c);
       b.addBox(0.8, 1.5, 1.0, CU + du, y0 + 1.0, CV + 1.0, 0xe7e7e2);
@@ -281,8 +302,8 @@ export class Garage {
     // sides and the roof still make it a workshop to look at, and the bay is
     // still the bay.
     const WU = (BAY.u0 + BAY.u1) * 0.5;
-    b.addBox(0.4, 5.6, 12, 4.2, y0 + 2.8, 5.5, 0xcfcac0);
-    b.addBox(0.4, 5.6, 12, 15.8, y0 + 2.8, 5.5, 0xcfcac0);
+    b.addBox(0.4, 5.6 + SINK, 12, 4.2, y0 + 2.8 - SINK * 0.5, 5.5, 0xcfcac0);
+    b.addBox(0.4, 5.6 + SINK, 12, 15.8, y0 + 2.8 - SINK * 0.5, 5.5, 0xcfcac0);
     b.addBox(12.4, 0.4, 12.4, 10, y0 + 5.8, 5.5, 0x5b6068);
     b.addBox(12.4, 0.7, 0.3, 10, y0 + 5.35, -0.55, 0x2f7d4c);             // fascia over the door
 
@@ -322,17 +343,25 @@ export class Garage {
 
     // Sign by the road.
     const SU = -L2 + 1.5, SV = -D2 - GAP + 1.2;
-    b.addBox(0.35, 6, 0.35, SU, y0 + 3, SV, 0x6d7278);
+    b.addBox(0.35, 6 + SINK, 0.35, SU, y0 + 3 - SINK * 0.5, SV, 0x6d7278);
     const solid = new THREE.Mesh(b.build(), vertexColorMaterial());
+    // "The repair station now looks kind of outdated ... give that nice textures": cladding panels on the
+    // walls, as the city's buildings have (world/buildtex.js), over the colours it had.
+    buildingDetail(solid, 'panel');
     solid.castShadow = true;
     solid.receiveShadow = true;
     group.add(solid);
+    const rimMesh = new THREE.Mesh(edge.build(), vertexColorMaterial());
+    rimMesh.receiveShadow = true;
+    group.add(rimMesh);
     // The forecourt and its paint lie a few millimetres over the footway, so
     // they are pulled forward in depth rather than left to fight it.
     const ground = new THREE.Mesh(flat.build(), vertexColorMaterial({
       polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
     }));
     ground.receiveShadow = true;
+    // Concrete with a grain to it, not a flat grey sheet.
+    groundDetail(ground, 'tarmac');
     group.add(ground);
 
     // The bay's own light: the thing that says "stop here", and changes as the
@@ -343,10 +372,24 @@ export class Garage {
       map: bayTex, transparent: true, depthWrite: false, color: 0xffd35a,
       polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6,
     });
-    const bay = new THREE.Mesh(new THREE.PlaneGeometry(BAY.u1 - BAY.u0, BAY.v1 - BAY.v0), this.bayMat);
-    bay.rotation.x = -Math.PI / 2;
-    bay.position.set(WU, y0 + 0.02, (BAY.v0 + BAY.v1) * 0.5);
+    const bayGeo = new THREE.PlaneGeometry(BAY.u1 - BAY.u0, BAY.v1 - BAY.v0, 3, 6);
+    bayGeo.rotateX(-Math.PI / 2);
+    bayGeo.translate(WU, y0 + 0.02, (BAY.v0 + BAY.v1) * 0.5);
+    const bay = new THREE.Mesh(bayGeo, this.bayMat);
     group.add(bay);
+    // The slab, its edge, its paint and the bay onto the ground under each point of them (the group's
+    // frame is the lot's: x along the road, z away from it, y up from the ground at its middle).
+    if (hills) {
+      for (const m of [ground, rimMesh, bay]) {
+        const pa = m.geometry.attributes.position;
+        for (let i = 0; i < pa.count; i++) {
+          const w = this.toWorld(pa.getX(i), pa.getZ(i));
+          pa.setY(i, pa.getY(i) + game.groundAt(w.x, w.z) - gy);
+        }
+        pa.needsUpdate = true;
+        m.geometry.computeBoundingSphere();
+      }
+    }
 
     const signTex = new THREE.CanvasTexture(signCanvas(site.roadName));
     signTex.colorSpace = THREE.SRGBColorSpace;

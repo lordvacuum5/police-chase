@@ -43,6 +43,7 @@ import {
 } from './countryextras.js';
 import { buildLife } from './countrylife.js';
 import { planDrive, layDrives } from './drives.js';
+import { addHedge, hedgeUV } from './hedges.js';
 
 /** The ground drawn lower under the quarry's rock: how far out and in from the floor's edge, and how much, m. */
 const ROCK_OUT = 7, ROCK_IN = 6, ROCK_DROP = 0.35, ROCK_EDGE = 0.05, ROCK_EASE = 4;
@@ -262,6 +263,8 @@ export function buildCountry(sim, scene, seed = 4417) {
     rail,
     // The railway, the dirt tracks and the quarry: kept clear (countryextras.js), the verge grass too.
     clearAt: ctx.clearAt,
+    // Where leafy sprigs stand on the hedges (game/verges.js).
+    hedgeTops: ctx.hedgeTops,
     shortcuts: ctx.shortcuts,
     railway,
     // Called every frame by the game: the bales and gates follow their
@@ -1051,6 +1054,8 @@ function buildFarms(ctx, farms) {
 function buildHedges(ctx, fields) {
   const { graph, rng } = ctx;
   const b = new MeshBuilder();
+  const far = new MeshBuilder();
+  ctx.hedgeTops = [];
   const W = ctx.sim.world;
   // Each hedge's collider, to the height of the top of what is drawn: see
   // Vehicle._hedgeDrag.
@@ -1081,7 +1086,8 @@ function buildHedges(ctx, fields) {
     // Down into the ground a little, so the hedges by a lane -- where the
     // drawn ground is dropped under the tarmac -- do not float. Overlapping
     // its neighbours by HEDGE_LAP, so a run is joined up round a bend too.
-    b.addTaperedBox(len + HEDGE_LAP, h + 0.8, 1.5, mx, h * 0.5 - 0.4, mz, c, 1, 0.75, rot);
+    // Lumpy and leafy near, the plain box far off (world/hedges.js).
+    addHedge(b, far, x0, z0, x1, z1, h, c, HEDGE_LAP, ctx.hedgeTops);
     // Solid well above what is drawn. The AI's tests for "is there a clear
     // line to the target" sweep level from the car, and from a car on a
     // slope that line passed over a two-metre hedge further down: police took
@@ -1170,11 +1176,18 @@ function buildHedges(ctx, fields) {
     }
   }
   const mesh = new THREE.Mesh(b.build(), vertexColorMaterial());
-  liftMesh(mesh, ctx.at);
+  const low = new THREE.Mesh(far.build(), vertexColorMaterial());
+  for (const m of [mesh, low]) {
+    liftMesh(m, ctx.at);
+    // The trees' leaf texture, finer: a hedge is smaller leaves seen closer.
+    treeDetail(m, 1.4);
+    hedgeUV(m, 1.4);
+  }
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   mesh.name = 'hedges';
-  return mesh;
+  // In cells, near and far (trees.js): the lumpy hedges only near the camera.
+  return chunkTrees(mesh, low);
 }
 
 // =====================================================================
