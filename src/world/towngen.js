@@ -43,6 +43,8 @@ const TOWN_EDGE = 430;      // beyond this it is estates, then countryside
 
 /** Parked cars on the drives: the share of houses with one, and the hash that picks them (no random draws). */
 const PARK_SHARE = 0.33;
+/** A drive's width, m. */
+const DRIVE_W = 3;
 function driveHash(x, z) {
   let h = Math.imul(Math.round(x * 3) ^ 0x7feb352d, 0x846ca68b) ^ Math.imul(Math.round(z * 3) + 0x3c6ef372, 0x9e3779b1);
   h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13;
@@ -516,6 +518,10 @@ function buildFrontages(ctx) {
   // The windows lit at night (world/windows.js).
   const lit = new MeshBuilder();
   const drives = [];
+  const drivesMesh = new MeshBuilder();
+  // How far the pavement runs out from a road's edge, each side (buildPavements: its sheet is the road's
+  // width plus 13 m, 9 on a lane, 8 on the dual carriageway).
+  const paveOf = (e) => (e.kind === 'dual' ? 8 : e.kind === 'lane' ? 9 : 13) * 0.5;
   const placed = new Placed();
   let count = 0;
 
@@ -645,8 +651,28 @@ function buildFrontages(ctx) {
     if (!clear || ctx.parked.some((p) => Math.hypot(p.x - c.x, p.z - c.z) < 5.5)) continue;
     addStaticBox(sim.world, c.x, 0.75, c.z, 0.95, 0.75, 2.3, GROUP.BUILDING, c.rot);
     ctx.parked.push({ x: c.x, z: c.z, heading: Math.atan2(-c.fx, -c.fz), i: ctx.parked.length });
+    // And its drive: "on some houses, can you put driveways where the cars are?" From the house end of the
+    // car out toward the street until it meets the pavement, DRIVE_W wide.
+    const x0 = c.x - c.fx * 2.8, z0 = c.z - c.fz * 2.8;
+    let reach = 2.8;
+    for (; reach < 30; reach += 0.5) {
+      const px = c.x + c.fx * reach, pz = c.z + c.fz * reach;
+      const near = graph.nearestEdge(px, pz, 40);
+      if (near && near.dist <= near.edge.width * 0.5 + paveOf(near.edge) - 0.3) break;
+    }
+    const x1 = c.x + c.fx * (reach + 0.3), z1 = c.z + c.fz * (reach + 0.3);
+    const hw = DRIVE_W * 0.5, sx = -c.fz * hw, sz = c.fx * hw;
+    drivesMesh.addQuadY(x0 + sx, z0 + sz, x1 + sx, z1 + sz, x1 - sx, z1 - sz, x0 - sx, z0 - sz, 0.035, 0x66645f);
+  }
+  if (drivesMesh.vertexCount) {
+    const dm = new THREE.Mesh(drivesMesh.build(), vertexColorMaterial({ polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }));
+    dm.name = 'driveways';
+    dm.receiveShadow = true;
+    groundDetail(dm, 'tarmac');
+    ctx.driveMesh = dm;
   }
   const out = [];
+  if (ctx.driveMesh) out.push(ctx.driveMesh);
   const litMesh = litWindows(lit);
   if (litMesh) out.push(litMesh);
   for (let q = 0; q < 4; q++) {

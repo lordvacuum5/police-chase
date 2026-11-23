@@ -8013,6 +8013,10 @@ the police keep off them: 170 on Wexbury. Not in the road: a car parked in a lan
 springs, with the game's wheel; one batch per part of each model, in 120 m cells hidden past 230 m (a model is about 5,500
 triangles). GPU time, shown and hidden in turns at Wexbury's start: 4.3 ms against 4.2 on average. `window.__noParked`.
 
+*"On some houses, can you put driveways where the cars are?"* Every parked car now has a drive under it: 3 m of concrete with the
+pavements' grain, from the house end of the car out toward the street until it meets the pavement (buildPavements' own widths), one
+flat quad each, in the town's mesh. Drawn only: the grip under it is the grass's, as before.
+
 ### Windows on every wall, lit at night
 
 A Wexbury house had a door and two windows on its front and nothing else: from a side street or behind, a blank box.

@@ -195,6 +195,15 @@ scoring, deliberately.
   rng in tree drawing: it would move every later thing on the map.
   **Timing frames: use `tests/gputime.js`** (GPU timer query); the
   render+readPixels timing swings 14-98 ms on this laptop.
+  Measure with the game paused (`g.paused = true`): unpaused, readings
+  have collapsed when the car wandered off and the camera saw only sky.
+  More look work, all measured in the README: buildings in 150 m cells
+  (`world/chunks.js`); shiny cars (`Sky.reflect`, `PAINT_ROUGH`); windows
+  on every wall and a night-lit copy (`world/windows.js`, Wexbury);
+  parked cars and drives on Wexbury (`towngen` picks and makes them
+  solid, `game/parked.js` draws them); verge grass (`game/verges.js`);
+  shadows 2048 over 200 m; night halos (lamp bloom, window glow). None of
+  them draws from the map rng: placement is hashed from position.
 
 * **Haldon Vale** (25 Oct 2026), the third map: open country, hedges, hills,
   three villages, farms you can drive through, woods. README "Haldon Vale" has
