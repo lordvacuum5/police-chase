@@ -18,6 +18,7 @@
 // streets and makes the lanes feel enclosed.
 
 import * as THREE from 'three';
+import { chunkMesh } from './chunks.js';
 import { drawTree, treeDetail, chunkTrees, lowTrees } from './trees.js';
 import { buildingDetail } from './buildtex.js';
 import { groundDetail } from './groundtex.js';
@@ -615,7 +616,8 @@ function buildFrontages(ctx) {
     buildingDetail(mesh, 'brick');
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    out.push(mesh);
+    // In cells, so the town off the screen is not drawn (world/chunks.js).
+    out.push(chunkMesh(mesh));
   }
   return out;
 }

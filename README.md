@@ -7978,6 +7978,22 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Buildings in cells
+
+The trees showed it: a map's worth of something in one mesh is drawn whole, twice a frame, wherever you look. The buildings were a
+mesh a quarter of the map. `world/chunks.js` (`chunkMesh`) splits them into 150 m cells, keeping the walls-and-roofs material groups,
+so off-screen buildings are not drawn and only those near the car go into the shadows. GPU time (`tests/gputime.js`), start of the
+map, 40 frames a reading, same position:
+
+| | before | after |
+|---|---|---|
+| Wexbury | 9.7, 8.9 ms | 3.9, 5.1 ms |
+| Ashfield City | 9.7, 10.5 ms | 10.7, 8.0, 6.8 ms |
+
+Draw calls went up, 79 to 124 in Wexbury; the main thread's share of the render call stayed about 2-6 ms either way. The first
+reading after a load ran high once (18.9 ms in the city) and is not counted: the first frames after a load are not the game.
+`sessionStorage['pc.nochunks'] = '1'` and a reload to compare.
+
 ### Trees
 
 *"Trees next."* Every tree on every map was a box under one squashed pyramid. `world/trees.js`: broadleaf trees are a tapering

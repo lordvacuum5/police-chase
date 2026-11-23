@@ -8,6 +8,7 @@
 // rebuilt identically every run.
 
 import * as THREE from 'three';
+import { chunkMesh } from './chunks.js';
 import { drawTree, treeDetail, chunkTrees, lowTrees } from './trees.js';
 import { buildingDetail } from './buildtex.js';
 import { groundDetail } from './groundtex.js';
@@ -719,7 +720,7 @@ function buildBlocks(ctx, grid, park, roundabout) {
     buildingDetail(mesh, 'panel');
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    out.push(mesh);
+    out.push(chunkMesh(mesh));
   }
   const plate = new THREE.Mesh(plates.build(), vertexColorMaterial());
   plate.name = 'plates';

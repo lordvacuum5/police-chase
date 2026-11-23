@@ -23,6 +23,7 @@
 //   * wind turbines on the tops, so the hills read from anywhere.
 
 import * as THREE from 'three';
+import { chunkMesh } from './chunks.js';
 import { drawTree, treeDetail, chunkTrees, lowTrees } from './trees.js';
 import { buildingDetail } from './buildtex.js';
 import { groundDetail } from './groundtex.js';
@@ -925,7 +926,7 @@ function buildVillageBuildings(ctx) {
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   mesh.name = 'villages';
-  return [mesh];
+  return [chunkMesh(mesh)];
 }
 
 /** Position, tangent and normal a distance along an edge. */
@@ -1016,7 +1017,7 @@ function buildFarms(ctx, farms) {
   liftMesh(yards, ctx.at);
   yards.receiveShadow = true;
   yards.name = 'yards';
-  return [mesh, yards];
+  return [chunkMesh(mesh), yards];
 }
 
 // =====================================================================
