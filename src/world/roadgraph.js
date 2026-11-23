@@ -223,7 +223,8 @@ export const ROAD_KIND = {
   // A back alley between two downtown streets (Ashfield City): "make sure the police cars can follow you down
   // ... as long as the fast police car or the normal police car can go down". Wide enough for two of them
   // side by side, at a crawl.
-  alley:    { width: 7,  lanes: 1, speed: 9,  colour: 0x2f3134 },
+  // Worn pale concrete, not tarmac: "can't really see any alleys" -- dark, they read as any other street.
+  alley:    { width: 7,  lanes: 1, speed: 9,  colour: 0x6a675f },
 };
 
 /**

@@ -254,6 +254,7 @@ export function buildCity(sim, scene, seed = 20260822) {
   meshes.push(...buildBridges(ctx));
   meshes.push(...buildDecks(ctx));
   meshes.push(...buildCarPark(ctx));
+  meshes.push(...buildAlleyClutter(ctx));
   const water = buildWater();
   meshes.push(water);
   meshes.push(...buildDocks(ctx));
@@ -524,6 +525,8 @@ function addSlipRoad(ctx, ring, anchor, aim) {
     }
     return best;
   };
+  // Not from a ground road under the ring itself: one slip road's foot stood directly beneath the deck.
+  if (distToRing(anchor.x, anchor.z) < half + 25) return null;
   const candidates = ring.map((n, i) => ({ i, d: dist2(n.x, n.z, aim.x, aim.z) })).sort((p, q) => p.d - q.d);
   for (const cand of candidates) {
     const idx = cand.i;
@@ -857,8 +860,37 @@ function computeDecks(ctx, hgrid) {
   };
   for (const n of graph.nodes) if (n.elevated) n.y = smoothGround(n.x, n.z) + raiseAt(n.x, n.z);
   const levelOf = (n) => (n.elevated ? n.y : hgrid.at(n.x, n.z));
-  for (const e of graph.edges) {
-    if (!e.elevated) continue;
+  /**
+   * How far from node `n` edge `e` still overlaps another raised road leaving `n`: for that far it is held
+   * level with the junction. Climbing from the junction straight away, the expressway's deck rose out of the
+   * ring's like a low ceiling over its lanes, and a ramp dropping away under the bigger road's deck ran into
+   * its edge: "FELL" at the ring, and 0.53 damage the other way, driving the expressway end to end.
+   */
+  const distTo = (pts, x, z) => {
+    let best = Infinity;
+    for (let k = 0; k < pts.length - 1; k++) best = Math.min(best, closestOnSegment(x, z, pts[k].x, pts[k].z, pts[k + 1].x, pts[k + 1].z).dist);
+    return best;
+  };
+  const holdAt = (e, n, atA) => {
+    let hold = 0;
+    for (const ap of approachesAt(graph, n)) {
+      if (ap.edge === e || !ap.edge.elevated) continue;
+      const need = e.width * 0.5 + ap.edge.width * 0.5 + 1.5;
+      for (let d = 0; d <= Math.min(200, e.length * 0.45); d += 2) {
+        const p = pointAlong(e, atA ? d : e.length - d);
+        // And 25 m on past where they part: a car straddling the nose meets two level decks, not one
+        // dropping away from the other (0.38 damage at 7 m/s, driven down the expressway past a ramp).
+        if (distTo(ap.edge.points, p.x, p.z) > need) { hold = Math.max(hold, d + 25); break; }
+        if (d + 2 > Math.min(200, e.length * 0.45)) hold = Math.max(hold, d);
+      }
+    }
+    return hold;
+  };
+  // The bigger roads first, then the ramps, which while they overlap one follow its deck.
+  const order = graph.edges.filter((e) => e.elevated).sort((a, b) => (a.kind === 'ramp') - (b.kind === 'ramp'));
+  for (const e of order) {
+    const holdA = graph.nodes[e.a].elevated ? holdAt(e, graph.nodes[e.a], true) : 0;
+    const holdB = graph.nodes[e.b].elevated ? holdAt(e, graph.nodes[e.b], false) : 0;
     const S = [], P = [];
     for (const sg of e.segs) {
       const steps = Math.max(1, Math.ceil(sg.len / 5));
@@ -869,9 +901,22 @@ function computeDecks(ctx, hgrid) {
     const L = e.length;
     const Y = new Array(S.length);
     if (e.kind === 'ramp') {
+      // Over the stretch between the holds, from whichever end is on the ground (rampRise).
+      // While it still overlaps the bigger road at its top, at that road's own height there, not the junction's:
+      // held at the junction's while the expressway sloped away beside it, its slab's edge stood 0.6 m up in
+      // the expressway's lanes (0.38 damage at 7 m/s, driven down it).
+      const mainAt = (n) => n.elevated && approachesAt(graph, n).map((ap) => ap.edge).find((x) => x !== e && x.elevated && x.kind !== 'ramp' && x.deck);
+      const mainA = mainAt(graph.nodes[e.a]), mainB = mainAt(graph.nodes[e.b]);
+      const s0 = holdA, s1 = Math.max(s0 + 1, L - holdB);
+      const yTop = (k, main) => graph.levelOn(main, P[k].x, P[k].z);
+      const ea = mainA ? yTop(Math.min(S.length - 1, S.findIndex((v) => v >= s0) < 0 ? 0 : S.findIndex((v) => v >= s0)), mainA) : ya;
+      const lastIn = (() => { let k = S.length - 1; while (k > 0 && S[k] > s1) k--; return k; })();
+      const eb = mainB ? yTop(lastIn, mainB) : yb;
       for (let k = 0; k < S.length; k++) {
-        // From whichever end is on the ground (rampRise).
-        const y = ya < yb ? lerp(ya, yb, rampRise(S[k] / L)) : lerp(yb, ya, rampRise(1 - S[k] / L));
+        if (S[k] <= s0 && mainA) { Y[k] = yTop(k, mainA); continue; }
+        if (S[k] >= s1 && mainB) { Y[k] = yTop(k, mainB); continue; }
+        const u = clamp((S[k] - s0) / (s1 - s0), 0, 1);
+        const y = ea < eb ? lerp(ea, eb, rampRise(u)) : lerp(eb, ea, rampRise(1 - u));
         Y[k] = Math.max(y, ground(P[k].x, P[k].z) + 0.05);
       }
     } else {
@@ -880,9 +925,11 @@ function computeDecks(ctx, hgrid) {
         const pin = 1 - smooth(0, 60, Math.min(S[k], L - S[k]));
         Y[k] = lerp(mid, lerp(ya, yb, S[k] / L), pin);
       }
-      for (let pass = 0; pass < 2; pass++) {
-        for (let k = 1; k < S.length; k++) Y[k] = clamp(Y[k], Y[k - 1] - (S[k] - S[k - 1]) * 0.06, Y[k - 1] + (S[k] - S[k - 1]) * 0.06);
-        for (let k = S.length - 2; k >= 0; k--) Y[k] = clamp(Y[k], Y[k + 1] - (S[k + 1] - S[k]) * 0.06, Y[k + 1] + (S[k + 1] - S[k]) * 0.06);
+      const held = (k) => S[k] <= holdA || S[k] >= L - holdB;
+      for (let k = 0; k < S.length; k++) if (held(k)) Y[k] = S[k] <= holdA ? ya : yb;
+      for (let pass = 0; pass < 3; pass++) {
+        for (let k = 1; k < S.length; k++) if (!held(k)) Y[k] = clamp(Y[k], Y[k - 1] - (S[k] - S[k - 1]) * 0.06, Y[k - 1] + (S[k] - S[k - 1]) * 0.06);
+        for (let k = S.length - 2; k >= 0; k--) if (!held(k)) Y[k] = clamp(Y[k], Y[k + 1] - (S[k + 1] - S[k]) * 0.06, Y[k + 1] + (S[k + 1] - S[k]) * 0.06);
       }
     }
     Y[0] = ya; Y[S.length - 1] = yb;
@@ -900,8 +947,11 @@ function buildDecks(ctx) {
   const { graph } = ctx;
   const W = ctx.sim.world;
   const top = new MeshBuilder(), paint = new MeshBuilder(), under = new MeshBuilder(), piers = new MeshBuilder();
-  const barrier = new MeshBuilder();
-  const DECK = 0x2a2d31, SLAB = 0x8d8c87, BAR = 0xb3b2ad;
+  const barrier = new MeshBuilder(), kerb = new MeshBuilder();
+  const DECK = 0x2a2d31, SLAB = 0xb4b2ab, BAR = 0xc9c7c0, EDGE = 0xa9a7a0;
+  const norm = (x, z) => { const l = Math.hypot(x, z) || 1; return { x: x / l, z: z / l }; };
+  const opened = new Map();
+  const deckRGB = new THREE.Color(DECK).toArray();
   const lift = (b, from, fn) => {
     for (let k = from; k < b.pos.length / 3; k++) b.pos[k * 3 + 1] += fn(b.pos[k * 3], b.pos[k * 3 + 2]);
   };
@@ -925,47 +975,189 @@ function buildDecks(ctx) {
     lift(top, s0, yOf);
     const c = colliderFrom(top, s0, GROUP.RAMP);
     if (c) ctx.decks.add(c.handle);
-    // Markings.
-    s0 = paint.vertexCount;
-    if (e.kind === 'motorway' || e.kind === 'dual') {
-      for (const off of e.kind === 'motorway' ? [e.width / 6, -e.width / 6] : [0]) paint.addDashedRibbon(e.points, 0.28, 0.04, PALETTE.marking, 6, 9, off);
-      for (const off of [half - 0.6, -(half - 0.6)]) paint.addRibbon(e.points, 0.2, 0.04, PALETTE.marking, off);
-    }
-    lift(paint, s0, yOf);
+    // A pale concrete edge strip each side, under the barrier.
+    s0 = kerb.vertexCount;
+    for (const sg of [1, -1]) kerb.addRibbon(e.points, 1.0, 0.1, EDGE, sg * (half + 0.1));
+    lift(kerb, s0, yOf);
     // The slab: its two edges down 1.4 m, and the underside.
     s0 = under.vertexCount;
-    for (const off of [half + 0.6, -(half + 0.6)]) under.addWall(e.points, -1.4, 0.02, SLAB, off);
+    for (const off of [half + 0.6, -(half + 0.6)]) under.addWall(e.points, -1.4, 0.1, SLAB, off);
     under.addRibbon(e.points, e.width + 1.2, -1.4, SLAB);
     lift(under, s0, yOf);
-    // Barriers, open for 40 m at a junction where other roads join.
+    // Barriers, both sides, all the way -- open only on the side another raised road leaves from, for as far
+    // as the two run side by side; and on a ramp, not down where it is still on the ground. They used to stop
+    // 40 m short of every junction with a third road, both sides, which on the expressway and the ring was an
+    // 80 m stretch of open edge at every slip road.
     const a = graph.nodes[e.a], b = graph.nodes[e.b];
-    const line = sliceLine(e.points, busy(a) ? 40 : 0, e.length - (busy(b) ? 40 : 0));
-    if (line && line.length > 1) {
-      s0 = barrier.vertexCount;
-      for (const sg of [1, -1]) {
-        const off = sg * (half + 0.3);
-        barrier.addWall(line, 0, 1.05, BAR, off);
-        barrier.addWall(line, 0, 1.05, BAR, off + sg * 0.35);
-        barrier.addRibbon(line, 0.35, 1.05, BAR, off + sg * 0.175);
+    const n0 = e.points[0], n1 = e.points[Math.min(1, e.points.length - 1)];
+    const m0 = e.points[e.points.length - 2] || n0, m1 = e.points[e.points.length - 1];
+    const dirA = norm(n1.x - n0.x, n1.z - n0.z), dirB = norm(m1.x - m0.x, m1.z - m0.z);
+    // How far each side's barrier stays open at a node: as far as another raised road leaving it there still
+    // overlaps this one -- their centrelines nearer than their half widths and a margin. On that road's side;
+    // and on a ramp leaving a bigger road, both sides, since for that stretch it runs on top of the bigger road's
+    // deck. "Fell" the first time it was driven end to end: a ramp's barrier began at its junction, standing in
+    // the expressway's lanes, and a car at 105 km/h hit it and went over the side where the expressway's own
+    // barrier was open.
+    const distTo = (pts, x, z) => {
+      let best = Infinity;
+      for (let k = 0; k < pts.length - 1; k++) best = Math.min(best, closestOnSegment(x, z, pts[k].x, pts[k].z, pts[k + 1].x, pts[k + 1].z).dist);
+      return best;
+    };
+    const openAt = (n, atA, dir) => {
+      const out = new Map();
+      for (const ap of approachesAt(graph, n)) {
+        if (ap.edge === e || !ap.edge.elevated) continue;
+        const need = half + ap.edge.width * 0.5 + 2;
+        let sep = 0;
+        for (let d = 0; d <= Math.min(260, e.length); d += 2) {
+          const p = pointAlong(e, atA ? d : e.length - d);
+          sep = d;
+          if (distTo(ap.edge.points, p.x, p.z) > need) break;
+        }
+        sep += 6;
+        const side = ap.dir.x * -dir.z + ap.dir.z * dir.x >= 0 ? 1 : -1;
+        const sides = e.kind === 'ramp' && ap.edge.kind !== 'ramp' ? [1, -1] : [side];
+        for (const sd of sides) out.set(sd, Math.max(out.get(sd) || 0, sep));
       }
+      return out;
+    };
+    const openA = openAt(a, true, dirA), openB = openAt(b, false, dirB);
+    for (const [sd, d] of openA) opened.set(`${e.id}:${a.id}:${sd}`, d);
+    for (const [sd, d] of openB) opened.set(`${e.id}:${b.id}:${sd}`, d);
+    // Markings: a white line along each edge of every raised road, and its lanes dashed. "You can almost see
+    // the road, but it has no like edges on it": the deck was a dark sheet as dark as the streets under it,
+    // with nothing to say where it stopped.
+    // Each stops where the barrier on its side opens, and the lanes where either does: across a junction's
+    // mouth they ran on over the other road's deck.
+    s0 = paint.vertexCount;
+    for (const sg of [1, -1]) {
+      const ln = sliceLine(e.points, openA.get(sg) || 0, e.length - (openB.get(sg) || 0));
+      if (ln && ln.length > 1) paint.addRibbon(ln, 0.22, 0.04, PALETTE.marking, sg * (half - 0.5));
+    }
+    const mid = sliceLine(e.points, Math.max(openA.get(1) || 0, openA.get(-1) || 0), e.length - Math.max(openB.get(1) || 0, openB.get(-1) || 0));
+    if (mid && mid.length > 1) {
+      if (e.kind === 'motorway') for (const off of [e.width / 6, -e.width / 6]) paint.addDashedRibbon(mid, 0.28, 0.04, PALETTE.marking, 6, 9, off);
+      else if (e.kind === 'dual') paint.addDashedRibbon(mid, 0.28, 0.04, PALETTE.marking, 6, 9, 0);
+    }
+    lift(paint, s0, yOf);
+    // How far along it is still within 0.8 m of the ground (a ramp's foot): no barrier there.
+    let lowFrom = 0, lowTo = e.length;
+    if (e.kind === 'ramp') {
+      const footAtA = !a.elevated;
+      const S = e.deck.s, Y = e.deck.y;
+      for (let k = 0; k < S.length; k++) {
+        const pk = pointAlong(e, S[k]);
+        if (Y[k] - ctx.at(pk.x, pk.z) < 0.8) { if (footAtA) lowFrom = S[k]; else { lowTo = Math.min(lowTo, S[k]); break; } }
+      }
+    }
+    for (const sg of [1, -1]) {
+      const from = Math.max(lowFrom, openA.get(sg) || 0);
+      const to = Math.min(lowTo, e.length - (openB.get(sg) || 0));
+      if (to - from < 4) continue;
+      const line = sliceLine(e.points, from, to);
+      if (!line || line.length < 2) continue;
+      s0 = barrier.vertexCount;
+      const off = sg * (half + 0.3);
+      barrier.addWall(line, 0, 1.05, BAR, off);
+      barrier.addWall(line, 0, 1.05, BAR, off + sg * 0.4);
+      barrier.addRibbon(line, 0.4, 1.05, BAR, off + sg * 0.2);
       lift(barrier, s0, yOf);
       colliderFrom(barrier, s0, GROUP.BUILDING);
     }
-    // Piers every 30 m, where the deck is well up and no road runs underneath (paving and the river will do).
+    // Piers every 30 m where the deck is well up: two columns under its edges and a beam across them, each
+    // column only where no road runs under it (paving and the river will do). They were a single block as wide
+    // as the road, standing on the pavement, and its top was level with the slab's underside, which flickered.
     for (let sAlong = 15; sAlong < e.length - 10; sAlong += 30) {
       const p = pointAlong(e, sAlong);
-      const yd = yOf(p.x, p.z), yg = ctx.at(p.x, p.z);
-      if (yd - yg < 3) continue;
-      let clear = true;
-      for (const [ox, oz] of [[0, 0], [p.nx * half, p.nz * half], [-p.nx * half, -p.nz * half], [p.tx * 2, p.tz * 2], [-p.tx * 2, -p.tz * 2]]) {
-        if (ctx.groundSurfAt(p.x + ox, p.z + oz) === SURF_ROAD) { clear = false; break; }
-      }
-      if (!clear || nearBuilding(W, p.x, p.z, 2)) continue;
+      const yd = yOf(p.x, p.z);
       const rot = Math.atan2(p.tx, p.tz);
-      const h = yd - 1.4 - yg + 1.5;
-      piers.addBox(e.width * 0.6, h, 2.2, p.x, yg - 1.5 + h / 2, p.z, SLAB, rot);
-      piers.addBox(e.width + 1.4, 1.2, 2.6, p.x, yd - 2.0, p.z, SLAB, rot);
-      addStaticBox(W, p.x, yg - 1.5 + h / 2, p.z, e.width * 0.3, h / 2, 1.1, GROUP.BUILDING, rot);
+      const legs = [];
+      for (const sg of [1, -1]) {
+        const lx = p.x + p.nx * sg * (half - 2.2), lz = p.z + p.nz * sg * (half - 2.2);
+        const yg = ctx.at(lx, lz);
+        if (yd - yg < 3.5) continue;
+        let clear = ctx.groundSurfAt(lx, lz) !== SURF_ROAD;
+        // "Make sure the pillars are not too much in the way of the road": 3 m clear of any road's edge.
+        for (let a8 = 0; a8 < 8; a8++) for (const r of [1.5, 3, 3.8]) if (ctx.groundSurfAt(lx + Math.cos(a8 * 0.785) * r, lz + Math.sin(a8 * 0.785) * r) === SURF_ROAD) clear = false;
+        if (clear && !nearBuilding(W, lx, lz, 1.2)) legs.push({ lx, lz, yg });
+      }
+      if (!legs.length) continue;
+      for (const { lx, lz, yg } of legs) {
+        const h = yd - 2.45 - yg + 1.0;
+        piers.addBox(1.5, h, 1.5, lx, yg - 1.0 + h / 2, lz, SLAB, rot);
+        addStaticBox(W, lx, yg - 1.0 + h / 2, lz, 0.75, h / 2, 0.75, GROUP.BUILDING, rot);
+      }
+      // The beam: its top 5 cm under the slab's underside.
+      piers.addBox(e.width + 0.6, 1.0, 1.8, p.x, yd - 1.45 - 0.05 - 0.5, p.z, SLAB, rot);
+    }
+  }
+  // The corners of every junction up on the raised roads: the deck filled in between each pair of roads
+  // meeting there, out to where their barriers start, and a barrier round the outside -- at a T, the corner
+  // you turn across; where a ramp splits off, its nose. Without them a car turning off the ring onto the
+  // expressway, a little wide, went over the open corner: the first end-to-end drive "fell" 34 m in.
+  const lineHit = (p, d, q, f) => {
+    const den = d.x * f.z - d.z * f.x;
+    if (Math.abs(den) < 1e-3) return null;
+    const t = ((q.x - p.x) * f.z - (q.z - p.z) * f.x) / den;
+    return { x: p.x + d.x * t, z: p.z + d.z * t };
+  };
+  for (const n of graph.nodes) {
+    if (!n.elevated) continue;
+    const app = approachesAt(graph, n).filter((ap) => ap.edge.elevated);
+    if (app.length < 2) continue;
+    for (let i = 0; i < app.length; i++) {
+      const A = app[i], B = app[(i + 1) % app.length];
+      if (app.length === 2 && i === 1) break;
+      let th = B.ang - A.ang;
+      if (th <= 0) th += Math.PI * 2;
+      if (th > 2.7) continue;                       // a road carrying on through: nothing to close
+      // Each road's edge on the side facing the other, and how far along its barrier opens.
+      const sideTo = (ap, other) => {
+        const e = ap.edge, atA = ap.end === 'a';
+        const pts = e.points;
+        const q0 = atA ? pts[0] : pts[pts.length - 2], q1 = atA ? pts[1] : pts[pts.length - 1];
+        const dir = norm(q1.x - q0.x, q1.z - q0.z);
+        const sd = other.dir.x * -dir.z + other.dir.z * dir.x >= 0 ? 1 : -1;
+        const d = opened.get(`${e.id}:${n.id}:${sd}`) || 0;
+        const p = pointAlong(e, atA ? d : e.length - d);
+        // The offset side's normal, from the edge's own a-to-b direction (as addRibbon's offsets go).
+        const nx = -p.tz * sd, nz = p.tx * sd;
+        return { e, d, p, nx, nz, half: e.width * 0.5 };
+      };
+      const a = sideTo(A, B), b = sideTo(B, A);
+      if (!a.d && !b.d) continue;
+      // The deck's corner: where the two deck edges, run back toward the junction, meet.
+      const edgeA = { x: a.p.x + a.nx * (a.half + 0.6), z: a.p.z + a.nz * (a.half + 0.6) };
+      const edgeB = { x: b.p.x + b.nx * (b.half + 0.6), z: b.p.z + b.nz * (b.half + 0.6) };
+      let C = lineHit(edgeA, A.dir, edgeB, B.dir) || { x: (edgeA.x + edgeB.x) / 2, z: (edgeA.z + edgeB.z) / 2 };
+      // Not beyond the two points (an obtuse corner would put it out past them): clamp toward the junction.
+      if (Math.hypot(C.x - n.x, C.z - n.z) > Math.max(Math.hypot(edgeA.x - n.x, edgeA.z - n.z), Math.hypot(edgeB.x - n.x, edgeB.z - n.z)) * 1.2) {
+        C = { x: (edgeA.x + edgeB.x) / 2, z: (edgeA.z + edgeB.z) / 2 };
+      }
+      const y = n.y;
+      const s0 = top.vertexCount;
+      for (const [p, q] of [[edgeA, C], [C, edgeB]]) {
+        // Wound to face up whichever way round the corner goes.
+        const cr = (p.x - n.x) * (q.z - n.z) - (p.z - n.z) * (q.x - n.x);
+        const tri = cr < 0 ? [n, p, q] : [n, q, p];
+        for (const v of tri) { top.pos.push(v.x, y, v.z); top.norm.push(0, 1, 0); top.col.push(...deckRGB); }
+      }
+      const c = colliderFrom(top, s0, GROUP.RAMP);
+      if (c) ctx.decks.add(c.handle);
+      // The barrier round it, on the corner's edge -- at a corner, not where a ramp merges at a shallow angle:
+      // every road here runs both ways, and a car (the police's, too) coming up a slip road may turn back the
+      // other way along the ring; a nose across the merge left four of 13 slip roads undriveable that way.
+      if (th < 0.6) continue;
+      const bA = { x: a.p.x + a.nx * (a.half + 0.3), z: a.p.z + a.nz * (a.half + 0.3) };
+      const bB = { x: b.p.x + b.nx * (b.half + 0.3), z: b.p.z + b.nz * (b.half + 0.3) };
+      const bC = lineHit(bA, A.dir, bB, B.dir) || C;
+      const line = Math.hypot(bC.x - n.x, bC.z - n.z) > Math.hypot(C.x - n.x, C.z - n.z) * 1.3 ? [bA, bB] : [bA, bC, bB];
+      const b0 = barrier.vertexCount;
+      barrier.addWall(line, 0, 1.05, BAR, 0.2);
+      barrier.addWall(line, 0, 1.05, BAR, -0.2);
+      barrier.addRibbon(line, 0.4, 1.05, BAR, 0);
+      for (let k = b0; k < barrier.pos.length / 3; k++) barrier.pos[k * 3 + 1] += y;
+      colliderFrom(barrier, b0, GROUP.BUILDING);
     }
   }
   // Where raised roads meet: the wedges between them, at the junction's height.
@@ -992,9 +1184,13 @@ function buildDecks(ctx) {
   };
   mk(top, 'decks', {}, 'tarmac');
   mk(paint, 'deck-markings', { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
-  mk(under, 'deck-slabs', { side: THREE.DoubleSide }, 'panel');
-  mk(barrier, 'deck-barriers', { side: THREE.DoubleSide });
-  mk(piers, 'deck-piers', {}, 'panel');
+  // Lit a little of their own: from below, the sky's light reaches a slab's underside only as the ground's
+  // green bounce, and the concrete read as dark olive.
+  const lift2 = { emissive: 0x403f3c };
+  mk(kerb, 'deck-edges', {});
+  mk(under, 'deck-slabs', { side: THREE.DoubleSide, ...lift2 }, 'panel');
+  mk(barrier, 'deck-barriers', { side: THREE.DoubleSide, ...lift2 });
+  mk(piers, 'deck-piers', lift2, 'panel');
   return out;
 }
 
@@ -1113,6 +1309,40 @@ function buildCarPark(ctx) {
   mesh.receiveShadow = true;
   mesh.name = 'carpark';
   return [mesh];
+}
+
+/**
+ * Dumpsters and bins along the alleys, against their walls: what makes a gap between two towers an alley.
+ * Solid, as props are; kept to the edges, so a police car still has the middle (ROAD_KIND.alley is 7 m).
+ */
+function buildAlleyClutter(ctx) {
+  const { graph } = ctx;
+  const W = ctx.sim.world;
+  const b = new MeshBuilder();
+  const COLS = [0x2f5d3a, 0x2c4a6e, 0x5a5f63, 0x6e4a2c];
+  for (const e of graph.edges) {
+    if (e.kind !== 'alley') continue;
+    for (let s = 10; s < e.length - 10; s += 13 + hash(Math.round(e.points[0].x), Math.round(s), 61) * 10) {
+      const p = pointAlong(e, s);
+      const side = hash(Math.round(p.x), Math.round(p.z), 62) < 0.5 ? 1 : -1;
+      const off = e.width * 0.5 + 0.2;
+      const x = p.x + p.nx * side * off, z = p.z + p.nz * side * off;
+      const y = ctx.at(x, z);
+      const rot = Math.atan2(p.tx, p.tz);
+      const big = hash(Math.round(x), Math.round(z), 63) < 0.6;
+      const [w, h, d] = big ? [1.2, 1.3, 2.0] : [0.7, 1.0, 0.7];
+      const col = COLS[Math.floor(hash(Math.round(z), Math.round(x), 64) * COLS.length)];
+      b.addBox(w, h, d, x, y + h / 2, z, col, rot);
+      b.addBox(w * 1.04, 0.08, d * 1.04, x, y + h + 0.04, z, 0x222428, rot);
+      addStaticBox(W, x, y + h / 2, z, w / 2, h / 2, d / 2, GROUP.PROP, rot);
+    }
+  }
+  if (!b.vertexCount) return [];
+  const mesh = new THREE.Mesh(b.build(), vertexColorMaterial());
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.name = 'alley-clutter';
+  return [chunkMesh(mesh, 300)];
 }
 
 /** Where the car park goes: a downtown block west of the middle, kept clear of alleys and buildings. */

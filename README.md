@@ -9977,6 +9977,35 @@ The rest of what was asked for the new city.
   for everything here, with no single part making a difference when hidden. The browser pane was hidden at
   the time, which slows everything, so those figures say nothing about the change.
 
+### The raised roads, properly: edges, barriers, junctions, pillars; alleys you can see
+
+"There's massive issues with the thing going through town ... you can almost see the road, but it has no like
+edges on it ... it's really glitchy ... Can't really see any alleys as well." Looked at from on it, under it
+and from above:
+
+- **No edges.** The deck was a dark sheet as dark as the streets under it. Its barriers stopped 40 m short
+  of any junction with a third road, both sides, which on the expressway and the ring meant 80 m of open edge
+  at every slip road. Now: a white line down each edge, a pale concrete strip under the barrier, and barriers
+  both sides all the way. They open only on the side another raised road leaves from, and only for as far as
+  the two still overlap (centrelines nearer than their half widths plus 2 m).
+- **Junctions.** Where the expressway meets the ring at a T, the corners were open, with no deck beyond the
+  two roads' strips. Now the deck fills each corner out to where the barriers start, with a barrier round
+  it; where a ramp splits off, that barrier is its nose. Markings stop at the junction's mouth instead of
+  running across the other road.
+- **Ceilings.** Driving the expressway end to end (`tests/viaducts.js`), the car fell 34 m into the first run
+  and took 0.53 damage on the second. Leaving the ring, the expressway climbed straight away and its deck
+  rose out of the ring's like a low ceiling over its lanes. A ramp dropping away under the bigger road's deck
+  ran into its edge. A ramp's own barrier began at its junction, standing in the expressway's lanes, and a
+  car at 105 km/h hit it and went over the side. Every raised road is now held level with its junction for
+  as long as it overlaps another, and only then climbs or drops.
+- **Pillars.** They were one block as wide as the road, standing on the pavement. Their top was level with
+  the slab's underside, so the two flickered. Now there are two 1.5 m columns under the deck's edges with a
+  beam across, its top 5 cm under the slab. Each column is at least 3 m from any road's edge ("make sure the
+  pillars are not too much in the way of the road"). The underside is lit a little of its own: lit only by the
+  ground's green bounce, the concrete read as dark olive.
+- **Alleys.** They were tarmac as dark as any street, so they read as streets. Now they are worn pale concrete,
+  with dumpsters and bins against their walls, solid, kept to the edges so the police still have the middle.
+
 ## Apple mode
 
 The game plays harder on Apple hardware. It is a joke, it is deliberate, and
