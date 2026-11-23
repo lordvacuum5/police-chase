@@ -9853,6 +9853,15 @@ cells. Building them adds about 0.5 s to loading.
 On the GPU timer, verges on against off read 6.4/7.3/7.5 ms on Wexbury and 13.1/16.1/15.2 ms on Haldon
 (on, off, on). That spread is wider than any difference the verges make.
 
+"The round foliage keeps on appearing in front of you." A 100 m cell of grass appeared all at once as you
+came within 150 m, so a patch sprang up out of nothing ahead of the car. The user's idea was to draw it
+further where you are looking. That was half there already: three.js already skips cells off the screen.
+The rest: each tuft now grows out of the ground with distance, from nothing at 250 m to full size at
+190 m, done in the vertex shader. A cell is only hidden once all of it is past 250 m (322 m from its middle).
+The GPU timer at Haldon's wood, four pairs: on 6.2/7.8/8.3/7.5 ms, off 10.1/8.1/7.1/9.0. No cost that
+shows. And off Haldon's railway sleepers and dirt tracks, which the grip grid calls grass: the map's
+`clearAt` mask now keeps the tufts off them too.
+
 ## Apple mode
 
 The game plays harder on Apple hardware. It is a joke, it is deliberate, and

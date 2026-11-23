@@ -260,6 +260,8 @@ export function buildCountry(sim, scene, seed = 4417) {
     driveStrips: ctx.driveStrips || [],
     quarry,
     rail,
+    // The railway, the dirt tracks and the quarry: kept clear (countryextras.js), the verge grass too.
+    clearAt: ctx.clearAt,
     shortcuts: ctx.shortcuts,
     railway,
     // Called every frame by the game: the bales and gates follow their

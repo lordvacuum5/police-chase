@@ -5,8 +5,8 @@
 // white, yellow or purple flowers. Each tuft is two crossed panels with a cut-out texture (four triangles),
 // its shade and size its own; where they go comes from a hash of the place, not the map's random numbers.
 // Only on grass (the grip grid's own answer), not at junctions, not against buildings. Drawn as one batch a
-// cell of VERGE_CELL metres, each hidden past VERGE_FAR: up close they are the edge of the road, far off
-// they are a few pixels and not worth drawing. Nothing collides with them.
+// cell of VERGE_CELL metres, each hidden past VERGE_FAR, the tufts growing in from the ground as they come
+// within GROW_FROM: up close they are the edge of the road, far off a few pixels and not worth drawing. Nothing collides with them.
 //
 // And out across the grass in patches, not only by the road; and kept off the pavements, the drives and
 // out of the houses (see `green` below).
@@ -18,7 +18,15 @@ import { nearBuilding } from '../physics/world.js';
 import { onDrive } from '../world/drives.js';
 
 const VERGE_CELL = 100;
-const VERGE_FAR = 150;
+/**
+ * "The round foliage keeps on appearing in front of you." A cell switched on whole as you came within 150 m,
+ * so a patch of grass sprang up out of nothing ahead of the car. Now each tuft grows out of the ground as it
+ * comes in, from nothing at GROW_FROM metres to full size at GROW_TO, and a cell is only hidden (VERGE_FAR)
+ * once every tuft in it is past GROW_FROM: its middle that far plus the most a corner is from the middle.
+ */
+const GROW_TO = 190;
+const GROW_FROM = 250;
+const VERGE_FAR = GROW_FROM + VERGE_CELL * 0.72;
 /** Metres along the road between tufts, how far out from the edge the band reaches, and the share that are flowers. */
 const STEP = 1.1;
 const BAND = 4.5;
@@ -110,6 +118,8 @@ export function addVerges(game, blocks = null) {
   const quarry = map.quarry, qr = quarry ? quarry.r + 10 : 0;
   const green = (x, z) => {
     if (surf(x, z) !== 0) return false;
+    // Nor on the railway's sleepers or the dirt tracks, which the grip grid calls grass.
+    if (map.clearAt && map.clearAt(x, z)) return false;
     if (quarry && (x - quarry.x) * (x - quarry.x) + (z - quarry.z) * (z - quarry.z) < qr * qr) return false;
     for (const e of graph.edgesNear(x, z, 24)) {
       const keep = e.width * 0.5 + (e.pave || 0) + 0.7;
@@ -165,9 +175,17 @@ export function addVerges(game, blocks = null) {
   }
   if (!spots.length) return null;
   const geo = tuftGeometry();
-  const mats = [false, true].map((f) => new THREE.MeshLambertMaterial({
-    map: tuftTexture(f), alphaTest: 0.5, side: THREE.DoubleSide,
-  }));
+  const mats = [false, true].map((f) => {
+    const mat = new THREE.MeshLambertMaterial({ map: tuftTexture(f), alphaTest: 0.5, side: THREE.DoubleSide });
+    // Each tuft scaled by how far its foot is from the camera, along the ground: grown in, not popped in.
+    mat.onBeforeCompile = (sh) => {
+      sh.vertexShader = sh.vertexShader.replace('#include begin_vertex', `#include begin_vertex
+        vec4 vgFoot = modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+        transformed *= 1.0 - smoothstep(${GROW_TO.toFixed(1)}, ${GROW_FROM.toFixed(1)}, distance(vgFoot.xz, cameraPosition.xz));`);
+    };
+    mat.customProgramCacheKey = () => 'verge-grow';
+    return mat;
+  });
   const cells = new Map();
   for (const s of spots) {
     const key = `${Math.floor(s.x / VERGE_CELL)},${Math.floor(s.z / VERGE_CELL)},${s.f ? 1 : 0}`;
