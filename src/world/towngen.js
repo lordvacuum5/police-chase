@@ -18,6 +18,7 @@
 // streets and makes the lanes feel enclosed.
 
 import * as THREE from 'three';
+import { buildingDetail } from './buildtex.js';
 import { groundDetail } from './groundtex.js';
 import { RoadGraph, ROAD_KIND } from './roadgraph.js';
 import { approachesAt, addNodeWedges } from './junctions.js';
@@ -610,6 +611,7 @@ function buildFrontages(ctx) {
   for (let q = 0; q < 4; q++) {
     const mesh = new THREE.Mesh(builders[q].build(), vertexColorMaterial());
     mesh.name = 'town' + q;
+    buildingDetail(mesh, 'brick');
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     out.push(mesh);

@@ -8,6 +8,7 @@
 // rebuilt identically every run.
 
 import * as THREE from 'three';
+import { buildingDetail } from './buildtex.js';
 import { groundDetail } from './groundtex.js';
 import { MeshBuilder, vertexColorMaterial } from '../util/meshbuild.js';
 import { RoadGraph, ROAD_KIND } from './roadgraph.js';
@@ -714,6 +715,7 @@ function buildBlocks(ctx, grid, park, roundabout) {
   for (let q = 0; q < 4; q++) {
     const mesh = new THREE.Mesh(builders[q].build(), vertexColorMaterial());
     mesh.name = 'buildings' + q;
+    buildingDetail(mesh, 'panel');
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     out.push(mesh);

@@ -183,7 +183,9 @@ scoring, deliberately.
   wire as the 17th number of `packCar`. Recognition is single player only
   (`!session.active`). Ground grain: `world/groundtex.js`, world-position uvs
   and a canvas texture multiplied over the vertex colours of ground, fields,
-  terrain, roads and pavements.
+  terrain, roads and pavements. Buildings: `world/buildtex.js`
+  (`buildingDetail`), walls/roofs sorted into two material groups per
+  building mesh; it needs non-indexed flat-normal geometry (MeshBuilder).
 
 * **Haldon Vale** (25 Oct 2026), the third map: open country, hedges, hills,
   three villages, farms you can drive through, woods. README "Haldon Vale" has

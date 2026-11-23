@@ -7978,6 +7978,16 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Texture on the buildings
+
+*"Amazing job with the textures"* (a friend, of the ground), and then *"Building textures."* The same idea as the ground
+(`world/buildtex.js`): textures drawn in code, mapped by world position, multiplied over the colours the buildings already had.
+Each face is sorted by which way it faces -- walls brick in Wexbury, Haldon's villages and farms, concrete panels in Ashfield City;
+roofs and tops tiled, or gravel in the city -- into two material groups on the one mesh. The first brick (bricks 0.7-0.9 of white,
+3 px mortar) did not show past a few metres; 0.6-0.82 with 4 px mortar does. City panels at 1.5 by 0.75 m read as bathroom tiles
+on a tower; 3 by 1.5 m read as a facade. Cost, Ashfield City, 1024x768, Intel graphics, six turns: 13.9 ms a frame with, 13.7
+without -- inside the noise. `window.__flatBuildings = true` before load for the old look.
+
 ### WebGPU, measured and not switched to
 
 *"Please can you switch over to WebGPU because I suppose that is just upsides, right? Yeah, I'm assuming the graphics will look a

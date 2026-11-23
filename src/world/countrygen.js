@@ -23,6 +23,7 @@
 //   * wind turbines on the tops, so the hills read from anywhere.
 
 import * as THREE from 'three';
+import { buildingDetail } from './buildtex.js';
 import { groundDetail } from './groundtex.js';
 import { RoadGraph, ROAD_KIND } from './roadgraph.js';
 import { approachesAt, addNodeWedges } from './junctions.js';
@@ -912,6 +913,7 @@ function buildVillageBuildings(ctx) {
   }
   const mesh = new THREE.Mesh(b.build(), vertexColorMaterial());
   liftPieces(mesh, ctx.at, pieces);
+  buildingDetail(mesh, 'brick');
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   mesh.name = 'villages';
@@ -987,6 +989,7 @@ function buildFarms(ctx, farms) {
   }
   const mesh = new THREE.Mesh(b.build(), vertexColorMaterial());
   liftPieces(mesh, ctx.at, pieces);
+  buildingDetail(mesh, 'brick');
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   mesh.name = 'farms';
