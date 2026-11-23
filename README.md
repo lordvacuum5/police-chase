@@ -7995,6 +7995,10 @@ cells of 120 m, each a level of detail: the new trees near, the old 24-triangle 
 view, GPU time: **old trees 19.8-20.9 ms, new 8.3-9.1.** Better looking and cheaper. `sessionStorage['pc.oldtrees'] = '1'` and a
 reload for the old trees; `window.__oneTreeMesh`, `__plainTrees` to switch parts off.
 
+*"When I'm far away from the trees, I can see them, like the normal trees, and then they change when they get closer ... very
+obvious in fact."* The far version was the old pyramid. Now it is the same tree in one piece: the same kind, colour and outline
+(one clump over a trunk, or one cone), 18-32 triangles; swapped at 260 m, not 200. Same wood view, GPU time 6.2 ms.
+
 ### Wear on the roads
 
 *"Road detail next."* `world/roadwear.js`: one more layer over every road between its junction mouths, mapped across it (edge to

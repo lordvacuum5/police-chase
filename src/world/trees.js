@@ -57,16 +57,33 @@ function oldTree(b, x, z, h, crown, turn) {
   b.addTaperedBox(h * 0.78, h * 0.72, h * 0.78, x, h * 0.66, z, crown, 0.22, 0.22, turn);
 }
 
+function farTree(b, x, z, h, base, turn, conifer) {
+  if (conifer) {
+    const dark = base.clone().offsetHSL(0.03, -0.05, -0.04);
+    const trunk = 0.35 + h * 0.025;
+    b.addBox(trunk, h * 0.5, trunk, x, h * 0.25, z, BARK, turn);
+    coneAt(b, x, h * 0.66, z, h * 0.34, h * 0.72, turn, dark);
+    return;
+  }
+  const trunk = 0.55 + h * 0.035;
+  b.addBox(trunk * 0.8, h * 0.55, trunk * 0.8, x, h * 0.275, z, BARK, turn);
+  const r = h * 0.34;
+  blob(b, x, h * 0.68, z, r * 1.08, r * 0.95, r * 1.08, turn, _c.copy(base).offsetHSL(0, 0, 0.015));
+}
+
 export function drawTree(b, x, z, h, crown, turn, conifers = 0.25) {
   // The old tree, to compare: sessionStorage 'pc.oldtrees' = 1 and reload.
   if (OLD) { oldTree(b, x, z, h, crown, turn); return; }
-  // And the old tree again into `b.low`, the far-off version (chunkTrees): 24 triangles, not 40-70.
+  const base = new THREE.Color(crown);
+  const conifer = hash(x, z, 1) < conifers;
+  // And a far-off version of the same tree into `b.low` (chunkTrees): the same kind, shape and colour in
+  // one piece, 18-32 triangles. It was the old pyramid at first, and the change as you came closer was
+  // "very obvious".
   if (!b.low) { b.low = new MeshBuilder(); b.lowPieces = []; }
   const ls = b.low.vertexCount;
-  oldTree(b.low, x, z, h, crown, turn);
+  farTree(b.low, x, z, h, base, turn, conifer);
   b.lowPieces.push([ls, b.low.vertexCount, x, z]);
-  const base = new THREE.Color(crown);
-  if (hash(x, z, 1) < conifers) {
+  if (conifer) {
     // Darker, a touch bluer.
     const dark = base.clone().offsetHSL(0.03, -0.05, -0.04);
     const trunk = 0.35 + h * 0.025;
@@ -185,7 +202,7 @@ function pick(geo, list, ox, oz) {
 
 /** Metres a side of a cell of trees, and how far off the camera a cell is drawn with the old, cheaper trees. */
 const TREE_CELL = 120;
-const TREE_FAR = 200;
+const TREE_FAR = 260;
 
 /**
  * A map's trees as a grid of cells instead of one mesh, each its own level of detail: the new trees near,
