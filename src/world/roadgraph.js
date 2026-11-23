@@ -220,6 +220,10 @@ export const ROAD_KIND = {
   // time and a cut should only win when it genuinely saves some. Never drawn and
   // never in the spatial index, so nothing snaps a car onto one.
   cut:      { width: 4,  lanes: 1, speed: 8,  colour: 0x000000 },
+  // A back alley between two downtown streets (Ashfield City): "make sure the police cars can follow you down
+  // ... as long as the fast police car or the normal police car can go down". Wide enough for two of them
+  // side by side, at a crawl.
+  alley:    { width: 7,  lanes: 1, speed: 9,  colour: 0x2f3134 },
 };
 
 /**
@@ -922,7 +926,8 @@ export class RoadGraph {
       // that has one: a metre up or down counts as five across, so a car on a
       // ledge is near the junction on that ledge, not the one on the floor
       // under it.
-      if (y !== null && n.y !== undefined) d += (n.y - y) * (n.y - y) * 25;
+      const qy = y !== null ? y : this.queryY;
+      if (qy !== null && qy !== undefined && n.y !== undefined) d += (n.y - qy) * (n.y - qy) * 25;
       if (d < bestD) { bestD = d; best = n; }
     }
     return best;
@@ -956,6 +961,9 @@ export class RoadGraph {
           if (seen[eid] === stamp) continue;
           seen[eid] = stamp;
           const e = this.edges[eid], segs = e.segs;
+          // Roads at two levels (Ashfield City's raised motorway over the streets): asked on behalf of a car
+          // (`queryY`, set while its driver thinks -- see levelOn), not the road a few metres over or under it.
+          if (this.queryY !== null && this.queryY !== undefined && this.levelGround && !this._atLevel(e, x, z, this.queryY)) continue;
           for (let k = 0; k < segs.length; k++) {
             const seg = segs[k], ax = seg.a.x, az = seg.a.z;
             const dx = seg.b.x - ax, dz = seg.b.z - az;
@@ -984,6 +992,33 @@ export class RoadGraph {
       edge: bestE, x: a.x + (b.x - a.x) * bestT, z: a.z + (b.z - a.z) * bestT,
       dist: Math.sqrt(bestD), along: bestS.start + bestT * bestS.len,
     };
+  }
+
+  /**
+   * The height of a raised road's deck at (x, z) on it, or null if `e` is on the ground. A raised edge
+   * carries `deck`: { s: [along...], y: [height...] }, sampled along its polyline.
+   */
+  levelOn(e, x, z) {
+    if (!e || !e.deck) return null;
+    let best = Infinity, along = 0;
+    for (const sg of e.segs) {
+      const dx = sg.b.x - sg.a.x, dz = sg.b.z - sg.a.z, l2 = dx * dx + dz * dz;
+      let t = l2 > 1e-9 ? ((x - sg.a.x) * dx + (z - sg.a.z) * dz) / l2 : 0;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const px = sg.a.x + dx * t - x, pz = sg.a.z + dz * t - z, d = px * px + pz * pz;
+      if (d < best) { best = d; along = sg.start + sg.len * t; }
+    }
+    const { s, y } = e.deck;
+    let k = 0;
+    while (k < s.length - 2 && s[k + 1] < along) k++;
+    const u = Math.max(0, Math.min(1, (along - s[k]) / Math.max(1e-6, s[k + 1] - s[k])));
+    return y[k] + (y[k + 1] - y[k]) * u;
+  }
+
+  /** Is `e` at about height `y` at (x, z)? The ground's height from `levelGround` (the map sets it). */
+  _atLevel(e, x, z, y) {
+    const level = e.deck ? this.levelOn(e, x, z) : this.levelGround(x, z);
+    return Math.abs(level - y) < 5;
   }
 
   /** Unit direction of travel along an edge at distance `along`, toward node b. */

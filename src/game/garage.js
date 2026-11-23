@@ -170,7 +170,7 @@ export class Garage {
     const KINDS = new Set(['street', 'avenue', 'dual', 'country', 'lane']);
     let best = null;
     for (const e of g.edges) {
-      if (e.dead || e.turningHead || !KINDS.has(e.kind)) continue;
+      if (e.dead || e.turningHead || e.elevated || !KINDS.has(e.kind)) continue;
       if (e.length < LOT_L + 40) continue;
       for (let s = 20 + LOT_L * 0.5; s <= e.length - 20 - LOT_L * 0.5; s += 8) {
         const p = g.pointAt(e, s);

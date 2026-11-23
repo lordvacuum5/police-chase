@@ -109,7 +109,7 @@ export function buildRoadWear(graph, y = 0.035) {
   if (window.__noRoadWear) return null;
   const pos = [], uv = [], nor = [], col = [], idx = [];
   for (const e of graph.edges) {
-    if (e.cut) continue;
+    if (e.cut || e.elevated) continue;
     const line = sliceLine(e.points, e.trimA || 0, e.length - (e.trimB || 0));
     if (!line || line.length < 2) continue;
     const half = e.width * 0.5;

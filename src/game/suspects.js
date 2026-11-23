@@ -329,6 +329,7 @@ export class Suspects {
     this._spotOffences(dt);
     for (const s of this.list) {
       if (s.v.removed) { s.state = 'gone'; this._release(s); continue; }
+      g.graph.queryY = s.v.position.y - 0.9;
       this._rescue(s.v);
       // What the map on a police player's screen goes by: caught or lost is off it.
       s.v.fleeing = s.state === 'run';

@@ -343,6 +343,7 @@ export class Runner {
   update(dt) {
     const v = this.vehicle;
     if (!v || !this.game.graph) return;
+    this.game.graph.queryY = v.position.y - 0.9;
 
     // On its roof or wrecked: the same deal the police get. Righted where it
     // lies after a few seconds, because a getaway car that is permanently out

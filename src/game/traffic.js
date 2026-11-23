@@ -210,6 +210,8 @@ export class Traffic {
     // were like two, and I went straight through them." Waking moves nothing
     // the player can see; only sleeping waits for nobody to be looking.
     for (const c of this.cars) {
+      // Asked as this car, at its height: on the raised motorway, not the street under it (RoadGraph.levelOn).
+      g.graph.queryY = c.v.position.y - 0.9;
       const far = nearest(c.v.position);
       if (c.v.dormant && far < SIM_RANGE) this._wake(c);
       else if (!c.v.dormant && far > SIM_RANGE + SIM_SLACK && !g.seenByAnyone(c.v.position)) this._sleep(c);
@@ -270,7 +272,10 @@ export class Traffic {
     // a glide used whatever height the car had when it fell asleep -- most
     // fell asleep just after appearing, still dropping onto their wheels, and
     // rode 0.95 m up instead of 0.46 -- and was always level.
-    const h = (px, pz) => g.sim.heightAt(px, pz);
+    // Up on a raised road's deck when the route is (Ashfield City's motorway): the ground's height there
+    // is the street under it.
+    const on = pts[Math.min(i, pts.length - 1)] && pts[Math.min(i, pts.length - 1)].edge;
+    const h = on && on.deck ? (px, pz) => g.graph.levelOn(on, px, pz) : (px, pz) => g.sim.heightAt(px, pz);
     const y = h(x, z) + c.rideY;
     const e = 1.6;
     const pitch = Math.atan2(h(x + hx * e, z + hz * e) - h(x - hx * e, z - hz * e), 2 * e);

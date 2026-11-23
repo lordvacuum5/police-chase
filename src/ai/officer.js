@@ -733,6 +733,8 @@ export class Officer {
 
   update(dt, target) {
     const v = this.vehicle;
+    // Asked as this car, at its height (RoadGraph.levelOn).
+    if (this.game.graph) this.game.graph.queryY = v.position.y - 0.9;
     this._record(dt, target);
     v.bumpSoon = this._aboutToHit();
     // Only asked in the air, which is the only time it is needed.

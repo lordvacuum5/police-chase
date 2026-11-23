@@ -9935,6 +9935,48 @@ are next.
 - `tests/stranded.js` on the new city, 90 s, two routes with three stars after the car: nothing flagged. Ten
   units on the chase, all within 75 m.
 
+### Ashfield City: the raised motorway, alleys, a car park, a lit skyline
+
+The rest of what was asked for the new city.
+
+- **The motorway raised.** "Basically the entire motorway should be raised up with like kind of complicated
+  different roads coming off ... one section of it raised up, it should go through downtown ... make sure
+  it's high enough so it doesn't interrupt the camera." The ring now stands 10 m up on piers, all the way
+  round and over the river. A downtown expressway leaves it on the west, runs 15 m up through the middle of
+  downtown and over the river, and rejoins it on the east. 13 slip roads come up to the ring and 3 ramps
+  down from the expressway into the streets.
+  - Roads at two levels were new to this game ("elevated overpasses" were in "Not yet implemented"). A raised
+    edge carries its deck heights (`e.deck`). Its deck is a trimesh collider in a group the wheel rays see and
+    the AI's sweeps and sight lines do not. A wheel on it is told it is on road (`sim.decks`), whatever the
+    grip grid says of the ground under it.
+  - The ground under it is the ground: not shaped by the road (`skipClaim`), not in the ground's own grip grid.
+    It is marked road in the grid the AI asks, so a car up on the motorway is not "in a field" to the police.
+  - Every AI car tells the road graph its height while its driver thinks (`graph.queryY`), and `nearestEdge` /
+    `nearestNode` leave out roads more than 5 m above or below it. Traffic gliding unseen rides the deck its
+    route is on. Spawns on a raised road are put on its deck. Street furniture, the garage and the kerbs keep
+    off raised roads.
+  - Ramps stay at ground level for their first third, then climb, eased. Every road they pass over must have
+    5.5 m under them. The first version climbed from the foot and only 1 of 14 slip roads passed. 152
+    clearance failures were found, then one more bug: `dist2` is a distance, not its square, so slip roads had
+    been kept 67 km apart. Now 16 ramps.
+  - Checked: a car up a slip road climbs to the deck (body 0.35-0.48 m over it all the way). Accelerating
+    along the ring, 15 to 21 m/s, all four wheels "road". Traffic on it ran within 0.5 m of the deck, and
+    one gliding unseen 354 m off sat at deck height. Wanted and sitting on the ring: police came up the slip
+    roads at the same level and made the arrest in 30 s (`stepHeadless`). The first try at this stalled,
+    but only because the heat had been set without `bump` and nobody was chasing.
+- **Alleys.** "Make sure the police cars can follow you down ... as long as the fast police car or the normal
+  police car can go down." 63 back alleys through downtown blocks, 7 m wide (`ROAD_KIND.alley`), in the
+  graph like any road. Driven down by the game's own driver with nothing else on the road: interceptor (4
+  alleys), patrol and van each got through, all 69 m, in 11-12 s, no damage.
+- **A multi-storey car park** downtown: three decks and a roof 4.2 m apart, a ramp up each long side going
+  opposite ways (12%), low walls so a car on a deck cannot drop onto the ramp beside it, parapets, columns.
+  Up the first ramp: ground to level 1, the body 4.74 m up at the top (4.2 + its ride height).
+- **The skyline at night.** 23,956 windows lit warm up the towers and blocks, about three in ten, shown only
+  at night.
+- Triangles now: downtown 553,000 and 226 draw calls, suburbs 623,000 and 338. The GPU timer read 21-27 ms
+  for everything here, with no single part making a difference when hidden. The browser pane was hidden at
+  the time, which slows everything, so those figures say nothing about the change.
+
 ## Apple mode
 
 The game plays harder on Apple hardware. It is a joke, it is deliberate, and
@@ -10126,6 +10168,6 @@ right-hand traffic.
 
 ### Not yet implemented
 
-Spike strips, elevated overpasses (the motorway is grade-level throughout), and
+Spike strips, and
 civilian traffic — which is the one that would give the traffic signals someone
 to hold up besides the police.

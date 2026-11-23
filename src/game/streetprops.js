@@ -83,7 +83,8 @@ export class StreetProps {
   _place() {
     const { graph, rng } = this.game;
     for (const e of graph.edges) {
-      if (e.dead || e.turningHead || !FURNISHED.has(e.kind)) continue;
+      // Not on a raised road: its posts would stand on the ground under it (citygen.js draws its own).
+      if (e.dead || e.turningHead || e.elevated || !FURNISHED.has(e.kind)) continue;
       const half = e.width * 0.5;
       // Keep clear of the junction mouths at either end.
       const from = (e.trimA || 0) + 4;

@@ -1500,7 +1500,11 @@ export class Vehicle {
         w.contact.set(px, py, pz);
         w.normal.set(nx, ny, nz);
         if (w.normal.y < 0) w.normal.multiplyScalar(-1);
-        w.surface = this.sim.surfaceAt ? this.sim.surfaceAt(px, pz) : 1;
+        // On a raised deck (Ashfield's motorway, its car park): road, whatever the grip grid says of the
+        // ground under it.
+        const decks = this.sim.decks;
+        w.surface = standing && decks && hit.collider && decks.has(hit.collider.handle) ? 1
+          : this.sim.surfaceAt ? this.sim.surfaceAt(px, pz) : 1;
       } else {
         w.grounded = false;
         w.compression = 0;

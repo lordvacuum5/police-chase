@@ -388,6 +388,8 @@ class Game {
     const built = this.mapDef.build(this.sim, this.scene, this.mapDef.seed || 20260822);
     this.graph = built.graph;
     this.sim.surfaceAt = built.surfaceAt;
+    // Raised decks' colliders (Ashfield City): a wheel on one is on road (Vehicle).
+    this.sim.decks = built.decks || null;
     this.sim.heightAt = built.heightAt;
     // Hills (world/terrain.js): the ground under the kerbs, and how high it
     // gets, for the suspension rays. Flat maps have neither.
@@ -1402,14 +1404,16 @@ class Game {
       const x = px + -dz * lane * DRIVE_SIDE;
       const z = pz + dx * lane * DRIVE_SIDE;
 
-      if (this.sim.surfaceAt(x, z) !== 1) continue;
+      if (!e.elevated && this.sim.surfaceAt(x, z) !== 1) continue;
       let blocked = false;
       for (const v of this.vehicles) {
         if (dist2(v.position.x, v.position.z, x, z) < 7) { blocked = true; break; }
       }
       if (blocked) continue;
 
-      return { position: { x, y: 0.95 + this.groundAt(x, z), z }, heading: Math.atan2(dx, dz) };
+      // On a raised road, on its deck, not the ground under it.
+      const deckY = e.deck ? g.levelOn(e, x, z) : null;
+      return { position: { x, y: 0.95 + (deckY !== null ? deckY : this.groundAt(x, z)), z }, heading: Math.atan2(dx, dz) };
     }
     return null;
   }
@@ -3400,10 +3404,14 @@ class Game {
       }
     }
     for (const v of this.vehicles.slice()) {
-      if (v === this.player || v.remote || v.isAircraft || !wet(v)) continue;
+      if (v === this.player || v.remote || v.isAircraft || v.dormant || !wet(v)) continue;
       const unit = this.dispatcher.units.find((u) => u.vehicle === v);
+      // Each by its own owner: traffic's list kept a car removed behind its back, and the next time it
+      // tidied up it disabled a body that was gone -- the physics engine's "unreachable", and the game stopped.
+      const car = this.traffic && this.traffic.cars.find((c) => c.v === v);
       if (unit) this.dispatcher.retire(unit);
-      else this.removeVehicle(v);
+      else if (car) this.traffic._remove(car);
+      else if (!this.suspects || !this.suspects.list.some((s) => s.v === v)) this.removeVehicle(v);
     }
   }
 
@@ -3690,8 +3698,10 @@ class Game {
       // The getaway driver before the force, so the force is reacting to
       // where the car went this frame rather than to where it was last one.
       if (this.runner) this.runner.update(dt);
+      this.graph.queryY = null;
       // A daily challenge that is over leaves the force where it stopped (DailyChallenge._halt).
       if (!(this.daily && this.daily.frozen)) this.dispatcher.update(dt, hunted);
+      this.graph.queryY = null;
       // A few milliseconds of route planning for whichever units have asked --
       // see the queue in ai/localplan.js, which is why a plan no longer lands
       // on one frame as a hitch.
@@ -3699,7 +3709,9 @@ class Game {
       if (this.runner) this._runnerSight(dt);
       this.roadblocks.update(dt, hunted);
       this.traffic.update(dt);
+      this.graph.queryY = null;
       this.suspects.update(dt);
+      this.graph.queryY = null;
       this.helicopter.update(dt, hunted);
       this.props.update(dt);
       if (this.parkedCars) this.parkedCars.update(dt);

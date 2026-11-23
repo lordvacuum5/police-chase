@@ -100,6 +100,9 @@ export function paintRect(surface, x0, z0, x1, z1, value) {
 /** Burn every carriageway into the grip grid. Call after the paved areas. */
 export function rasteriseRoads(graph, surface) {
   for (const e of graph.edges) {
+    // Not a raised road (Ashfield's motorway): the grip grid is the ground's, and what is under a viaduct
+    // is whatever is under it. A wheel on the deck is told it is on road by the deck itself (Vehicle).
+    if (e.elevated) continue;
     const half = e.width * 0.5;
     for (const s of e.segs) {
       // Step by a quarter of the disc radius, not by the cell size. The two
@@ -116,6 +119,7 @@ export function rasteriseRoads(graph, surface) {
   // Junction corners are filled in past the ribbons, so the grip grid has to
   // be too -- otherwise cutting a corner drops you onto grass for a moment.
   for (const j of graph.junctionPlan || []) {
+    if (j.node.elevated) continue;
     let r = 0;
     for (const a of j.app) r = Math.max(r, a.half);
     paintDisc(surface, j.node.x, j.node.z, r * 1.45, SURF_ROAD);
@@ -279,7 +283,7 @@ export const DRAW_ORDER = { ground: -3, pavement: -2, tarmac: -1 };
  * setbacks at the two real ends of the run.
  */
 function roadChains(graph) {
-  const live = (e) => e && !e.dead && !e.turningHead;
+  const live = (e) => e && !e.dead && !e.turningHead && !e.elevated;
   // Unit direction an edge leaves a node in.
   const away = (e, nodeId) => {
     const p = e.points, n = p.length;
@@ -448,7 +452,8 @@ export function buildRoadMeshes(ctx) {
 
   // Worked out in graph.finalise(): how far back from each node the markings
   // have to stop, and which junctions are worth signalising.
-  const junctions = graph.junctionPlan || planJunctions(graph);
+  // Not a junction up on a raised road: its map draws those (citygen.js).
+  const junctions = (graph.junctionPlan || planJunctions(graph)).filter((j) => !j.node.elevated);
 
   // The kerb: a face standing up out of the carriageway, with the flat top of
   // the stone along it. The footway behind is drawn at KERB_H to match, and the
@@ -466,6 +471,8 @@ export function buildRoadMeshes(ctx) {
   }
 
   for (const e of graph.edges) {
+    // Raised roads are drawn by their map, at their own height (citygen.js).
+    if (e.elevated) continue;
     const def = ROAD_KIND[e.kind];
     // The carriageway itself still runs the full length: overlapping tarmac at
     // a junction is invisible, and stopping it short would leave holes.
@@ -491,7 +498,7 @@ export function buildRoadMeshes(ctx) {
 
   // Close the wedge two square ribbon ends leave at every bend and junction.
   for (const n of graph.nodes) {
-    addNodeWedges(road, n, approachesAt(graph, n), (e) => e.width * 0.5, 0.029,
+    addNodeWedges(road, n, approachesAt(graph, n).filter((a) => !a.edge.elevated), (e) => e.width * 0.5, 0.029,
       (a, b) => ROAD_KIND[(a.width >= b.width ? a : b).kind].colour);
   }
 
