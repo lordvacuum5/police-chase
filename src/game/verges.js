@@ -8,10 +8,14 @@
 // cell of VERGE_CELL metres, each hidden past VERGE_FAR: up close they are the edge of the road, far off
 // they are a few pixels and not worth drawing. Nothing collides with them.
 //
+// And out across the grass in patches, not only by the road; and kept off the pavements, the drives and
+// out of the houses (see `green` below).
+//
 // `window.__noVerges = true` before load leaves them out.
 
 import * as THREE from 'three';
 import { nearBuilding } from '../physics/world.js';
+import { onDrive } from '../world/drives.js';
 
 const VERGE_CELL = 100;
 const VERGE_FAR = 150;
@@ -19,11 +23,23 @@ const VERGE_FAR = 150;
 const STEP = 1.1;
 const BAND = 4.5;
 const FLOWERS = 0.16;
+/** Out in the fields: a tuft tried every FIELD_STEP metres, kept where the patchiness (a noise FIELD_PATCH m across) is high enough. */
+const FIELD_STEP = 3.2;
+const FIELD_PATCH = 34;
 
 function hash(a, b, k) {
   let h = Math.imul(Math.round(a * 13) ^ 0x51ed270b, 0x85ebca6b) ^ Math.imul(Math.round(b * 13) + k * 0x2f9be6c1, 0xc2b2ae35);
   h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 13;
   return (h >>> 0) / 4294967296;
+}
+
+/** Smooth noise 0..1, `size` m across: where the patches are. */
+function patchNoise(x, z, size) {
+  const fx = x / size, fz = z / size, i = Math.floor(fx), j = Math.floor(fz), tx = fx - i, tz = fz - j;
+  const sx = tx * tx * (3 - 2 * tx), sz = tz * tz * (3 - 2 * tz);
+  const v = (a, b) => hash(a * 7.31, b * 7.31, 11);
+  const top = v(i, j) + (v(i + 1, j) - v(i, j)) * sx, bot = v(i, j + 1) + (v(i + 1, j + 1) - v(i, j + 1)) * sx;
+  return top + (bot - top) * sz;
 }
 
 /** Blades of grass on transparent, and (flowers) a few heads of colour among them. */
@@ -77,9 +93,37 @@ function tuftGeometry() {
 }
 
 /** Plant the verges of `game`'s roads; returns the group added to the scene, or null. */
-export function addVerges(game) {
+export function addVerges(game, blocks = null) {
   if (window.__noVerges || !game.graph || !game.sim.surfaceAt) return null;
-  const surf = game.sim.surfaceAt, world = game.world;
+  const surf = game.sim.surfaceAt, graph = game.graph, map = game.world.__map || {};
+  // The building footprints as the map noted them (main.js keeps them for this): the world's own list is
+  // dropped once the map is built, and with it gone nearBuilding said no to everything -- "it shouldn't
+  // then be inside houses".
+  const world = { __blocks: blocks };
+  const strips = map.driveStrips;
+  /**
+   * Only on the green: "it shouldn't be on the pavement... it should only be in the green". The grip grid
+   * calls a footway grass where it has no kerb (Wexbury's lanes, and the edge of every pavement drawn wider
+   * than its 1 m cells), so the roads say themselves how far their footway runs out (edge.pave).
+   */
+  // Not in Haldon's quarry: dug rock and gravel, whose walls are not on the building list.
+  const quarry = map.quarry, qr = quarry ? quarry.r + 10 : 0;
+  const green = (x, z) => {
+    if (surf(x, z) !== 0) return false;
+    if (quarry && (x - quarry.x) * (x - quarry.x) + (z - quarry.z) * (z - quarry.z) < qr * qr) return false;
+    for (const e of graph.edgesNear(x, z, 24)) {
+      const keep = e.width * 0.5 + (e.pave || 0) + 0.7;
+      for (const sg of e.segs) {
+        const dx = sg.b.x - sg.a.x, dz = sg.b.z - sg.a.z, l2 = dx * dx + dz * dz;
+        let t = l2 > 1e-9 ? ((x - sg.a.x) * dx + (z - sg.a.z) * dz) / l2 : 0;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const px = sg.a.x + dx * t - x, pz = sg.a.z + dz * t - z;
+        if (px * px + pz * pz < keep * keep) return false;
+      }
+    }
+    if (onDrive(strips, x, z, 0.6)) return false;
+    return !nearBuilding(world, x, z, 0.9);
+  };
   const spots = [];
   for (const e of game.graph.edges) {
     if (e.cut) continue;
@@ -94,16 +138,29 @@ export function addVerges(game) {
         const px = a.x + tx * s, pz = a.z + tz * s;
         for (const side of [-1, 1]) {
           const h1 = hash(px, pz, side + 2);
-          const off = e.width * 0.5 + 0.8 + h1 * BAND;
+          const off = e.width * 0.5 + (e.pave || 0) + 0.8 + h1 * BAND;
           const x = px + nx * side * off + tx * (hash(pz, px, 7) - 0.5), z = pz + nz * side * off + tz * (hash(px, pz, 8) - 0.5);
-          if (surf(x, z) !== 0) continue;
           if (hash(x, z, 4) < 0.25) continue;               // gaps
-          if (nearBuilding(world, x, z, 0.8)) continue;
+          if (!green(x, z)) continue;
           spots.push({ x, z, f: hash(x, z, 5) < FLOWERS, s: 0.55 + hash(x, z, 6) * 0.6, r: hash(z, x, 9) * Math.PI, c: hash(x, z, 10) });
         }
       }
       carry = (carry - len) % STEP;
       if (carry < 0) carry += STEP;
+    }
+  }
+  // And out across the grass, in patches: "I almost wish there was slightly more of it ... it looks a bit
+  // odd that it's at the side of the road and not other places." Thicker where the noise is high, none
+  // where it is low, so it reads as rough patches in the fields rather than an even fur.
+  const half = (map.bounds || 1000) - 4;
+  for (let gx = -half; gx < half; gx += FIELD_STEP) {
+    for (let gz = -half; gz < half; gz += FIELD_STEP) {
+      const n = patchNoise(gx, gz, FIELD_PATCH);
+      const keep = (n - 0.42) * 2.2;
+      if (keep <= 0 || hash(gx, gz, 12) > keep) continue;
+      const x = gx + (hash(gx, gz, 13) - 0.5) * FIELD_STEP, z = gz + (hash(gz, gx, 14) - 0.5) * FIELD_STEP;
+      if (!green(x, z)) continue;
+      spots.push({ x, z, f: hash(x, z, 15) < FLOWERS * 0.6, s: 0.5 + hash(x, z, 16) * 0.55, r: hash(z, x, 17) * Math.PI, c: hash(x, z, 18) });
     }
   }
   if (!spots.length) return null;

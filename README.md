@@ -9812,6 +9812,47 @@ Fosse Way at the edge of town, 359 m out.
 collisions, nothing happens for the first 2.8 s, the repair runs at 5.0% a
 second, it stops when the car drives off, and 30% damage is gone 12 s later.
 
+### Parked cars you can shove, and grass only on the green
+
+"It's kind of bad to have them solid ... if you hit them, they turn on their car alarm and start flashing
+their hazards." The cars on the drives (game/parked.js) were fixed boxes. Each is now a 1,300 kg body
+that starts asleep, so Rapier spends nothing on it, until something hits it. Then it is shoved as hard as it
+was hit, its alarm whoops for 25 s (at most three alarms at once, fading with distance) and its hazards
+flash. Once it settles it stays where it was left, and a new game puts every car back on its drive. Not
+over the network: each player shoves their own.
+
+- Hit at 40 km/h head-on, a hatchback moved 3.0 m. The player slowed to 13 km/h and took 2% damage.
+- Every frame for all 170 cars costs 0.03 ms.
+- First try: the alarm went off when the car was moving faster than 0.6 m/s. All 170 alarms went off on
+  the first step, because Rapier wakes every body then and they settle by a couple of centimetres. Now the
+  alarm goes off once the car is 0.15 m from where it last stopped, or turned. One alarm went off, the right
+  one.
+
+"The driveways and the cars parked on the hilly map ... but not on the American one." The drive code
+moved to world/drives.js, and Haldon's village cottages use it too: 14 drives there, against 170 in
+Wexbury. Cottages stand close together, so most have no room beside them.
+
+"The greenery at the side of the road looks amazing, but it shouldn't be on the pavement ... and
+obviously it shouldn't then be inside houses." `tests/verges.js` counts where the tufts are.
+
+- On Wexbury before: 2,161 of 9,618 on a pavement, 10 on a road. The grip grid calls a lane's footway
+  grass, and the edge of every pavement drawn wider than its 1 m cells. Each road now says how far its
+  footway runs (`edge.pave`), and the tufts keep to the far side of it. They also keep off the drives.
+- Inside houses: the list of buildings they were kept out of had already been thrown away by the time they
+  were planted (main.js drops it once the map is built). With no list, nearBuilding said no to everything.
+  The list is now kept until the verges are in.
+- After: 0 on a pavement and 0 on a road, on both maps. Haldon had 740 tufts in the quarry rock, whose
+  walls are not on the building list; now 0, by keeping out of the quarry.
+
+"I almost wish there was slightly more of it ... it looks a bit odd that it's at the side of the road and
+not other places." Tufts are now tried every 3.2 m across all the grass. They are kept where a smooth noise,
+34 m across, is high, so the grass grows in rough patches rather than as an even fur. Counts went from
+about 9,600 to 120,000 on Wexbury and 134,000 on Haldon. They are still drawn only within 150 m, in 100 m
+cells. Building them adds about 0.5 s to loading.
+
+On the GPU timer, verges on against off read 6.4/7.3/7.5 ms on Wexbury and 13.1/16.1/15.2 ms on Haldon
+(on, off, on). That spread is wider than any difference the verges make.
+
 ## Apple mode
 
 The game plays harder on Apple hardware. It is a joke, it is deliberate, and

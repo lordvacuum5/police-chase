@@ -1397,6 +1397,42 @@ export class GameAudio {
     }
   }
 
+  /**
+   * A parked car's alarm (game/parked.js): a whooping square-wave siren, sweeping up and down a couple of
+   * times a second. Returns { level(0..1), stop() }: how loud from where you are, and off; or null.
+   */
+  carAlarm() {
+    if (!this.ready || this.muted || this.ctx.state !== 'running') return null;
+    const ctx = this.ctx, now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = 'square';
+    osc.frequency.value = 1150;
+    const lfo = ctx.createOscillator();
+    lfo.type = 'triangle';
+    lfo.frequency.value = 2.4;
+    const depth = ctx.createGain();
+    depth.gain.value = 420;
+    lfo.connect(depth); depth.connect(osc.frequency);
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.value = 1400;
+    f.Q.value = 0.8;
+    const g = ctx.createGain();
+    g.gain.value = 0;
+    osc.connect(f); f.connect(g); g.connect(this.master);
+    osc.start(now); lfo.start(now);
+    let stopped = false;
+    return {
+      level: (v) => { if (!stopped) g.gain.setTargetAtTime(0.05 * v * v, ctx.currentTime, 0.08); },
+      stop: () => {
+        if (stopped) return;
+        stopped = true;
+        g.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+        osc.stop(ctx.currentTime + 0.3); lfo.stop(ctx.currentTime + 0.3);
+      },
+    };
+  }
+
   impact(strength) {
     if (!this.ready || this.muted || this.ctx.state !== 'running') return;
     if (window.__oldCrash) { this._impactOld(strength); return; }

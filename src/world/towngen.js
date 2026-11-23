@@ -19,6 +19,7 @@
 
 import * as THREE from 'three';
 import { addWindows, litWindows } from './windows.js';
+import { planDrive, layDrives } from './drives.js';
 import { chunkMesh } from './chunks.js';
 import { drawTree, treeDetail, chunkTrees, lowTrees } from './trees.js';
 import { buildingDetail } from './buildtex.js';
@@ -40,16 +41,6 @@ const RINGS = [70, 152, 248, 352];
 const RING_NODES = [8, 12, 16, 20];
 const BYPASS_R = 610;
 const TOWN_EDGE = 430;      // beyond this it is estates, then countryside
-
-/** Parked cars on the drives: the share of houses with one, and the hash that picks them (no random draws). */
-const PARK_SHARE = 0.33;
-/** A drive's width, m. */
-const DRIVE_W = 3;
-function driveHash(x, z) {
-  let h = Math.imul(Math.round(x * 3) ^ 0x7feb352d, 0x846ca68b) ^ Math.imul(Math.round(z * 3) + 0x3c6ef372, 0x9e3779b1);
-  h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13;
-  return (h >>> 0) / 4294967296;
-}
 
 export function buildTown(sim, scene, seed = 6180339) {
   const rng = makeRng(seed);
@@ -106,6 +97,7 @@ export function buildTown(sim, scene, seed = 6180339) {
     bypass,
     // Cars on the drives (game/parked.js).
     parked: ctx.parked || [],
+    driveStrips: ctx.driveStrips || [],
   };
 }
 
@@ -456,7 +448,10 @@ function buildPavements(ctx) {
   // straight through without feeling is worse than no kerb at all.
   const heightOf = (e) => (e.kind === 'lane' ? 0.02 : KERB_H);
   for (const e of graph.edges) {
-    if (paved(e)) b.addRibbon(e.points, widthOf(e), heightOf(e), PALETTE.pavement);
+    if (!paved(e)) continue;
+    b.addRibbon(e.points, widthOf(e), heightOf(e), PALETTE.pavement);
+    // How far the footway runs out from the road's edge, for what must keep off it (game/verges.js).
+    e.pave = (widthOf(e) - e.width) * 0.5;
   }
   // The ribbons end square at every node, so a bend leaves a notch of grass
   // cut into the footway and the corners of a junction are left bare. The
@@ -518,7 +513,6 @@ function buildFrontages(ctx) {
   // The windows lit at night (world/windows.js).
   const lit = new MeshBuilder();
   const drives = [];
-  const drivesMesh = new MeshBuilder();
   // How far the pavement runs out from a road's edge, each side (buildPavements: its sheet is the road's
   // width plus 13 m, 9 on a lane, 8 on the dual carriageway).
   const paveOf = (e) => (e.kind === 'dual' ? 8 : e.kind === 'lane' ? 9 : 13) * 0.5;
@@ -608,12 +602,7 @@ function buildFrontages(ctx) {
           // A car on the drive beside about a third of the houses (not shops, not farms): which side and
           // whether from where the house is, not the map's random numbers. Checked and made solid after
           // every house is up (below), and drawn once the car models are in (game/parked.js).
-          if (r >= 150 && w < 12 && driveHash(bx, bz) < PARK_SHARE) {
-            const s = driveHash(bz, bx) < 0.5 ? 1 : -1;
-            const ox = Math.cos(rot), oz = -Math.sin(rot);
-            const along = d * 0.5 - 2.6;
-            drives.push({ x: bx + ox * s * (w * 0.5 + 1.7) + fx * along, z: bz + oz * s * (w * 0.5 + 1.7) + fz * along, rot, fx, fz });
-          }
+          if (r >= 150) planDrive(drives, bx, bz, w, d, rot, fx, fz);
           if (r < 150) {
             b.addBox(w * 0.86, h * 0.30, 0.12, bx + fx * face, h * 0.28, bz + fz * face, 0x121a20, rot);
           } else {
@@ -643,34 +632,10 @@ function buildFrontages(ctx) {
   ctx.buildingCount = count;
   // The drives: clear of the road and the pavement, of every building but at its own house's side, and of
   // each other; then solid, as a building is, so trees, spawns and the police all keep off them.
-  ctx.parked = [];
-  for (const c of drives) {
-    if (graph.overlapsRoad(c.x, c.z, 2.0, 4.8, c.rot, 1.2)) continue;
-    let clear = true;
-    for (const k of [-1.9, 0, 1.9]) if (nearBuilding(sim.world, c.x + c.fx * k, c.z + c.fz * k, 1.05)) clear = false;
-    if (!clear || ctx.parked.some((p) => Math.hypot(p.x - c.x, p.z - c.z) < 5.5)) continue;
-    addStaticBox(sim.world, c.x, 0.75, c.z, 0.95, 0.75, 2.3, GROUP.BUILDING, c.rot);
-    ctx.parked.push({ x: c.x, z: c.z, heading: Math.atan2(-c.fx, -c.fz), i: ctx.parked.length });
-    // And its drive: "on some houses, can you put driveways where the cars are?" From the house end of the
-    // car out toward the street until it meets the pavement, DRIVE_W wide.
-    const x0 = c.x - c.fx * 2.8, z0 = c.z - c.fz * 2.8;
-    let reach = 2.8;
-    for (; reach < 30; reach += 0.5) {
-      const px = c.x + c.fx * reach, pz = c.z + c.fz * reach;
-      const near = graph.nearestEdge(px, pz, 40);
-      if (near && near.dist <= near.edge.width * 0.5 + paveOf(near.edge) - 0.3) break;
-    }
-    const x1 = c.x + c.fx * (reach + 0.3), z1 = c.z + c.fz * (reach + 0.3);
-    const hw = DRIVE_W * 0.5, sx = -c.fz * hw, sz = c.fx * hw;
-    drivesMesh.addQuadY(x0 + sx, z0 + sz, x1 + sx, z1 + sz, x1 - sx, z1 - sz, x0 - sx, z0 - sz, 0.035, 0x66645f);
-  }
-  if (drivesMesh.vertexCount) {
-    const dm = new THREE.Mesh(drivesMesh.build(), vertexColorMaterial({ polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }));
-    dm.name = 'driveways';
-    dm.receiveShadow = true;
-    groundDetail(dm, 'tarmac');
-    ctx.driveMesh = dm;
-  }
+  const laid = layDrives(sim, graph, drives, paveOf);
+  ctx.parked = laid.parked;
+  ctx.driveStrips = laid.strips;
+  ctx.driveMesh = laid.mesh;
   const out = [];
   if (ctx.driveMesh) out.push(ctx.driveMesh);
   const litMesh = litWindows(lit);

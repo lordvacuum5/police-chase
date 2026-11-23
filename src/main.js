@@ -394,6 +394,8 @@ class Game {
     this.world.__map = built;
     // The building footprints the trees were kept out of: not needed now,
     // and a helicopter landing later should not add to them.
+    // Kept aside for the verges, which are planted after the car models load (game/verges.js).
+    this._mapBlocks = this.world.__blocks;
     this.world.__blocks = null;
     // The local planner's list of every building and tree box, made now rather
     // than the first time a unit needs it, which is in the middle of a chase.
@@ -437,9 +439,10 @@ class Game {
     // the normal case and cost one HEAD request each.
     this.carModels = await loadCarModels(this);
     // Cars on the drives, now there are models to draw them with (game/parked.js).
-    addParkedCars(this, this.world.__map && this.world.__map.parked);
+    this.parkedCars = addParkedCars(this, this.world.__map && this.world.__map.parked);
     // Long grass and flowers along the verges (game/verges.js).
-    addVerges(this);
+    addVerges(this, this._mapBlocks);
+    this._mapBlocks = null;
     for (const [kind, m] of Object.entries(this.carModels)) {
       // Not the radio: the HUD does not exist yet at this point in the boot.
       console.info(`[carmodel] ${kind} body from ${m.url} (fitted x${m.scale.toFixed(3)})`);
@@ -2686,6 +2689,7 @@ class Game {
     this.helicopter.reset();
     this.heliGrounded = false;
     this.props.reset();
+    if (this.parkedCars) this.parkedCars.reset();
     this.signals.reset();
     this.commentary.reset();
     this.replay.reset();
@@ -3668,6 +3672,7 @@ class Game {
       this.suspects.update(dt);
       this.helicopter.update(dt, hunted);
       this.props.update(dt);
+      if (this.parkedCars) this.parkedCars.update(dt);
       this.garage.update(dt);
       // The score is points for staying wanted, which is nothing a police
       // officer earns. Chasing the computer it used to tick up all through
@@ -3693,6 +3698,7 @@ class Game {
       if (this.daily) this.daily.update(dt);
     } else {
       this.props.update(dt);
+      if (this.parkedCars) this.parkedCars.update(dt);
       this.signals.update(dt);
       // The garage mends whoever is sitting in it, and a police player's car
       // is theirs alone -- nobody else simulates its damage -- so the bay has
@@ -4109,6 +4115,7 @@ class Game {
     if (replaying) this.replay.aim(this.camera, dt);
     else if (this.slowMo) this._slowMoAim();
     this.wheelMesh.instanceMatrix.needsUpdate = true;
+    if (this.parkedCars) this.parkedCars.lights(this.hazards);
     this.lights.end();
     this.hazards.end();
 

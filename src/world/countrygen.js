@@ -42,6 +42,7 @@ import {
   planShortcuts, buildShortcuts, buildGates, planRailway, railGround, buildRailTrack, Railway,
 } from './countryextras.js';
 import { buildLife } from './countrylife.js';
+import { planDrive, layDrives } from './drives.js';
 
 /** The ground drawn lower under the quarry's rock: how far out and in from the floor's edge, and how much, m. */
 const ROCK_OUT = 7, ROCK_IN = 6, ROCK_DROP = 0.35, ROCK_EDGE = 0.05, ROCK_EASE = 4;
@@ -254,6 +255,9 @@ export function buildCountry(sim, scene, seed = 4417) {
     villages,
     farms,
     hills,
+    // Cars on the drives (game/parked.js), and the drives (game/verges.js).
+    parked: ctx.parked || [],
+    driveStrips: ctx.driveStrips || [],
     quarry,
     rail,
     shortcuts: ctx.shortcuts,
@@ -815,7 +819,11 @@ function buildVillagePavements(ctx) {
   const { graph } = ctx;
   const b = new MeshBuilder();
   const paved = (e) => e && e.village && !e.turningHead;
-  for (const e of graph.edges) if (paved(e)) b.addRibbon(e.points, e.width + 6, KERB_H, PALETTE.pavement);
+  for (const e of graph.edges) {
+    if (!paved(e)) continue;
+    b.addRibbon(e.points, e.width + 6, KERB_H, PALETTE.pavement);
+    e.pave = 3;     // for what must keep off the footway (game/verges.js)
+  }
   for (const n of graph.nodes) {
     const app = approachesAt(graph, n).filter((a) => paved(a.edge));
     if (app.length) addNodeWedges(b, n, app, (e) => (e.width + 6) * 0.5, KERB_H - 0.001, PALETTE.pavement);
@@ -857,6 +865,7 @@ function buildVillageBuildings(ctx) {
   const b = new MeshBuilder();
   const pieces = [];
   const placed = [];
+  const drives = [];
   const free = (x, z, r) => placed.every((p) => Math.hypot(p.x - x, p.z - z) > p.r + r);
   for (const v of ctx.villages) {
     // The church on the green, square to it, with its tower.
@@ -913,6 +922,8 @@ function buildVillageBuildings(ctx) {
             : new THREE.Color().setHSL(rand(rng, 0.07, 0.13), rand(rng, 0.10, 0.30), rand(rng, 0.55, 0.78));
           const roof = rng() < 0.45 ? 0x6b5a3a : 0x3b3431;     // thatch or slate
           addHouse(ctx, b, pieces, x, z, isPub ? w * 1.5 : w, h, d, rot, colour, roof);
+          // A car on the drive beside about a third of the cottages, as in Wexbury (world/drives.js).
+          if (!isPub) planDrive(drives, x, z, w, d, rot, -p.nx * side, -p.nz * side);
           if (isPub) pub = true;
           placed.push({ x, z, r: r * 0.8 });
           along += w + rand(rng, 0.6, 4);
@@ -926,7 +937,12 @@ function buildVillageBuildings(ctx) {
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   mesh.name = 'villages';
-  return [chunkMesh(mesh)];
+  // The drives, once every cottage is up to keep them clear of: "the driveways and the cars parked on the
+  // hilly map". The footway runs 3 m out from a village street's edge (buildVillagePavements).
+  const laid = layDrives(ctx.sim, graph, drives, (e) => (e.village ? 3 : 0), ctx.at);
+  ctx.parked = laid.parked;
+  ctx.driveStrips = laid.strips;
+  return laid.mesh ? [chunkMesh(mesh), laid.mesh] : [chunkMesh(mesh)];
 }
 
 /** Position, tangent and normal a distance along an edge. */
