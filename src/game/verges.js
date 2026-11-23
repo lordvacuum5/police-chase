@@ -5,8 +5,8 @@
 // white, yellow or purple flowers. Each tuft is two crossed panels with a cut-out texture (four triangles),
 // its shade and size its own; where they go comes from a hash of the place, not the map's random numbers.
 // Only on grass (the grip grid's own answer), not at junctions, not against buildings. Drawn as one batch a
-// cell of VERGE_CELL metres, each hidden past VERGE_FAR, the tufts growing in from the ground as they come
-// within GROW_FROM: up close they are the edge of the road, far off a few pixels and not worth drawing. Nothing collides with them.
+// cell of VERGE_CELL metres, each hidden past VERGE_FAR; all of them close by and fewer further off (DENSE,
+// GROW_FROM): up close they are the edge of the road, far off a few pixels and not worth drawing. Nothing collides with them.
 //
 // And out across the grass in patches, not only by the road; and kept off the pavements, the drives and
 // out of the houses (see `green` below).
@@ -20,12 +20,15 @@ import { onDrive } from '../world/drives.js';
 const VERGE_CELL = 100;
 /**
  * "The round foliage keeps on appearing in front of you." A cell switched on whole as you came within 150 m,
- * so a patch of grass sprang up out of nothing ahead of the car. Now each tuft grows out of the ground as it
- * comes in, from nothing at GROW_FROM metres to full size at GROW_TO, and a cell is only hidden (VERGE_FAR)
- * once every tuft in it is past GROW_FROM: its middle that far plus the most a corner is from the middle.
+ * so a patch of grass sprang up out of nothing ahead of the car. Then each tuft grew in between 250 and 190 m
+ * -- "it's extremely laggy". Now as the player put it: "the closer you get, the more detailed it becomes".
+ * Every tuft has a rank (a hash of where it is); within DENSE metres all of them are drawn, and further off
+ * only the higher ranks, fewer and fewer out to GROW_FROM, where none are. Each grows out of the ground over
+ * its last GROW_EASE metres rather than popping. A cell is hidden (VERGE_FAR) once all of it is past GROW_FROM.
  */
-const GROW_TO = 190;
-const GROW_FROM = 250;
+const DENSE = 55;
+const GROW_FROM = 240;
+const GROW_EASE = 25;
 const VERGE_FAR = GROW_FROM + VERGE_CELL * 0.72;
 /** Metres along the road between tufts, how far out from the edge the band reaches, and the share that are flowers. */
 const STEP = 1.1;
@@ -179,9 +182,12 @@ export function addVerges(game, blocks = null) {
     const mat = new THREE.MeshLambertMaterial({ map: tuftTexture(f), alphaTest: 0.5, side: THREE.DoubleSide });
     // Each tuft scaled by how far its foot is from the camera, along the ground: grown in, not popped in.
     mat.onBeforeCompile = (sh) => {
-      sh.vertexShader = sh.vertexShader.replace('#include begin_vertex', `#include begin_vertex
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute float vgRank;')
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
         vec4 vgFoot = modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
-        transformed *= 1.0 - smoothstep(${GROW_TO.toFixed(1)}, ${GROW_FROM.toFixed(1)}, distance(vgFoot.xz, cameraPosition.xz));`);
+        float vgFar = ${DENSE.toFixed(1)} + ${(GROW_FROM - DENSE).toFixed(1)} * vgRank * vgRank * vgRank;
+        transformed *= 1.0 - smoothstep(vgFar - ${GROW_EASE.toFixed(1)}, vgFar, distance(vgFoot.xz, cameraPosition.xz));`);
     };
     mat.customProgramCacheKey = () => 'verge-grow';
     return mat;
@@ -208,7 +214,15 @@ export function addVerges(game, blocks = null) {
       im.setColorAt(i, col.setRGB(0.7 + s.c * 0.25, 0.72 + s.c * 0.22, 0.62 + s.c * 0.2));
     });
     im.computeBoundingSphere();
+    // Shadowed or not measured the same here (GPU minimum 5.7 ms either way at Haldon's wood), so shadowed.
     im.receiveShadow = true;
+    const rank = new Float32Array(list.length);
+    list.forEach((s, i) => { rank[i] = hash(s.z, s.x, 21); });
+    // Its own geometry for its own ranks, sharing the tuft's vertices (uploaded once).
+    const g = new THREE.BufferGeometry();
+    for (const k of ['position', 'uv', 'normal']) g.setAttribute(k, geo.attributes[k]);
+    g.setAttribute('vgRank', new THREE.InstancedBufferAttribute(rank, 1));
+    im.geometry = g;
     const lod = new THREE.LOD();
     lod.position.set(ox, 0, oz);
     lod.addLevel(im, 0);

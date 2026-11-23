@@ -9854,12 +9854,18 @@ On the GPU timer, verges on against off read 6.4/7.3/7.5 ms on Wexbury and 13.1/
 (on, off, on). That spread is wider than any difference the verges make.
 
 "The round foliage keeps on appearing in front of you." A 100 m cell of grass appeared all at once as you
-came within 150 m, so a patch sprang up out of nothing ahead of the car. The user's idea was to draw it
-further where you are looking. That was half there already: three.js already skips cells off the screen.
-The rest: each tuft now grows out of the ground with distance, from nothing at 250 m to full size at
-190 m, done in the vertex shader. A cell is only hidden once all of it is past 250 m (322 m from its middle).
-The GPU timer at Haldon's wood, four pairs: on 6.2/7.8/8.3/7.5 ms, off 10.1/8.1/7.1/9.0. No cost that
-shows. And off Haldon's railway sleepers and dirt tracks, which the grip grid calls grass: the map's
+came within 150 m, so a patch sprang up out of nothing ahead of the car. The first fix was meant to make each
+tuft grow out of the ground between 250 and 190 m, and to keep cells until 322 m. The shader hook never
+matched (it looked for `#include begin_vertex`, not `#include <begin_vertex>`), so nothing grew. The cells
+were kept twice as far as before, full size: "it's extremely laggy". At Haldon's wood that drew 12,698 tufts
+against 3,204 before. The GPU timer here could not see the difference, on a far quicker chip than the
+player's laptop.
+
+Then as the player suggested: "the closer you get, the more detailed it becomes". Each tuft has a rank (a
+hash of where it is). Within 55 m all of them are drawn; further off only the higher ranks, to 240 m, where
+none are. Each grows out of the ground over its last 25 m. Drawn at the same spot: 1,612 tufts, half as many
+as before the first fix. Shadows on the tufts or off measured the same (GPU minimum 5.7 ms), so they stay on.
+And off Haldon's railway sleepers and dirt tracks, which the grip grid calls grass: the map's
 `clearAt` mask now keeps the tufts off them too.
 
 ## Apple mode
