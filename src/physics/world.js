@@ -76,7 +76,9 @@ export const RAY_WHEELS = groups(GROUP.VEHICLE, GROUP.TERRAIN | GROUP.BUILDING |
  */
 export const RAY_SOLID = groups(0xFFFF, GROUP.TERRAIN | GROUP.BUILDING);
 /** What a line-of-sight ray is allowed to see -- buildings block, vehicles do not. */
-export const RAY_SIGHT = groups(0xFFFF, GROUP.BUILDING | GROUP.PROP | GROUP.HEDGE);
+// And RAMP: Ashfield's raised decks (and its car park's floors, the quarry's jumps). "The line of sight system
+// doesn't understand about the high up motorway": a unit on the street saw a car up on the deck straight through it.
+export const RAY_SIGHT = groups(0xFFFF, GROUP.BUILDING | GROUP.PROP | GROUP.HEDGE | GROUP.RAMP);
 
 let initialised = false;
 

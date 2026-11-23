@@ -1449,7 +1449,8 @@ export class Officer {
     // way round. "There was this like break in buildings, quite a big gap,
     // and then it could literally have just gone across the grass to the last
     // known location ... but instead it just went all the way around."
-    if (this._crossCountry(dt, point)) {
+    const otherLevel = point.y !== undefined && Math.abs(point.y - this.vehicle.position.y) > 4 && g.levelGround;
+    if (!otherLevel && this._crossCountry(dt, point)) {
       this._mode = 'across';
       return this.driver.driveTo(point, this._chaseSpeed() * speedFactor, dt);
     }
@@ -1969,6 +1970,16 @@ export class Officer {
     // a second unit hanging back that far was in the trees on the next bend.
     const rail = this._railFollow(dt, target, d, RAIL_CONTACT);
     if (rail) return rail;
+
+    // On another level -- the target up on Ashfield's raised motorway and this unit on the street under it, or
+    // the other way round: by the roads, up a slip road or down a ramp. "The police routing system doesn't seem
+    // to understand how to get onto the actual motorway": straight at the car across the ground, a unit drove
+    // about under the deck it was on. `_goTo` asks for the junction at the target's height (nearestNode, y).
+    if (Math.abs(target.position.y - v.position.y) > 4 && this.game.graph && this.game.graph.levelGround) {
+      this._mode = 'level';
+      this._hasLos = false;
+      return this._goTo(dt, target.position, 1.0);
+    }
 
     // Only chase the target's position directly when there is actually a clear
     // line to it. Driving at a car you cannot see means driving at whatever is

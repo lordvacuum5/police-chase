@@ -472,6 +472,7 @@ class Game {
     this.garage = new Garage(this);
     // Long grass and flowers along the verges (game/verges.js): after the garage, whose forecourt they keep off.
     addVerges(this, this._mapBlocks);
+    this._gatherFogCull();
     this._mapBlocks = null;
     // The car the police know, and what they do when they see it again (game/known.js).
     this.known = new KnownCar(this);
@@ -2262,6 +2263,9 @@ class Game {
     let best = null, soonest = SLOW_AHEAD;
     for (const v of this.vehicles) {
       if (v === p || !v.isPolice || v.removed || v.disabled) continue;
+      // Not one on another level: "the crash camera keeps on activating when a police car is underneath" --
+      // on Ashfield's motorway, a unit on the street 10 m below read as head-on across the ground.
+      if (Math.abs(v.position.y - p.position.y) > 3) continue;
       const dx = v.position.x - p.position.x, dz = v.position.z - p.position.z;
       const d = Math.hypot(dx, dz);
       if (d > 30 || d < 0.5) continue;
@@ -3415,6 +3419,42 @@ class Game {
     }
   }
 
+  /**
+   * Past the fog, not drawn. "The map seems to lag": on Ashfield City everything out to the camera's far plane
+   * (1,400 m) was drawn, and the fog has hidden all of it by 880 m -- cells of houses, towers, kerbs, pavements,
+   * trees and grass a kilometre off, every frame, invisible. The map's static meshes that nothing else shows or
+   * hides (not a level of detail's levels, not the night's windows) are gathered once with their bounds, and four
+   * times a second each is hidden while all of it is beyond the fog. Maps that ask for it (`fogCull`).
+   */
+  _gatherFogCull() {
+    this._fogMeshes = [];
+    const map = this.world.__map;
+    if (!map || !map.fogCull || window.__noFogCull) return;
+    const skip = new Set(['sky', 'river', 'terrain', 'terrain-edge']);
+    const walk = (o) => {
+      if (skip.has(o.name) || o.isLOD || (o.userData && o.userData.setNight) || o.isPoints || o.isSprite) return;
+      if (o.isMesh && o.geometry) {
+        if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
+        o.updateWorldMatrix(true, false);
+        const s = o.geometry.boundingSphere.clone().applyMatrix4(o.matrixWorld);
+        if (s.radius < 900) this._fogMeshes.push({ o, x: s.center.x, z: s.center.z, r: s.radius });
+        return;
+      }
+      for (const c of o.children) walk(c);
+    };
+    for (const name of map.fogCull) {
+      for (const o of this.scene.children) if (o.name === name) walk(o);
+    }
+    this._fogTick = 0;
+  }
+
+  _fogCull() {
+    if (!this._fogMeshes || !this._fogMeshes.length || !this.scene.fog) return;
+    if ((this._fogTick = (this._fogTick || 0) + 1) % 15) return;
+    const c = this.camera.position, far = this.scene.fog.far + 30;
+    for (const m of this._fogMeshes) m.o.visible = Math.hypot(m.x - c.x, m.z - c.z) - m.r < far;
+  }
+
   /** Towed back to the nearest road, facing along it, stopped. */
   _recoverPlayer() {
     const p = this.player;
@@ -4060,6 +4100,7 @@ class Game {
     let wi = 0;
     this.lights.begin(dt);
     this.hazards.begin(dt);
+    this._fogCull();
 
     // The player's aircraft, if they are flying one. Not in `vehicles` -- it
     // has no collider and no wheels -- so it is drawn here, the same way and

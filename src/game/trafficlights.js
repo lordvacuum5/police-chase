@@ -90,6 +90,17 @@ export class TrafficLights {
 
     this._buildHeads();
     this._buildLamps();
+    // The heads are drawn only near the camera (StreetProps._compact), which reorders them: the lamps follow.
+    const entry = this.game.props.byKind.get('signal');
+    if (entry) {
+      entry.reindexed = () => {
+        for (const h of this.heads) this._writeHead(h);
+        for (const m of [this.lampRed, this.lampAmber, this.lampGreen]) {
+          m.count = this.mesh.count;
+          m.instanceMatrix.needsUpdate = true;
+        }
+      };
+    }
     this.update(0);
   }
 

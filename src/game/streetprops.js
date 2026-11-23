@@ -52,6 +52,8 @@ const HIT_SPEED = 2.4;        // m/s below which you just nudge past
 const SUBSTEP = 1 / 120;      // the physics substep, as in main.js
 const MAX_SUBSTEP_TIME = 5 / 120;   // the most physics one frame can run
 
+/** Furniture further than this from the camera is not drawn (StreetProps._compact), m. */
+const DRAW_NEAR = 600;
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
 const _pos = new THREE.Vector3();
@@ -200,7 +202,43 @@ export class StreetProps {
    * props have no dynamic body at all, so nothing is being simulated until
    * something actually hits one.
    */
+  /**
+   * Only the furniture near the camera drawn. Each kind is one instanced mesh over the whole map, drawn whole
+   * whatever was in view: on Ashfield City, 3 km across, its lamp posts and bollards alone were 100,000
+   * triangles of every frame, nearly all of them out of sight or past the fog ("the map seems to lag").
+   * Twice a second the instances within DRAW_NEAR of the camera -- and any still moving after a knock -- are
+   * moved to the front of each mesh and its count cut to them; an instance keeps its own matrix, and each
+   * prop its new `index`, which is what everything that moves one writes to.
+   */
+  _compact() {
+    const cam = this.game.camera;
+    if (!cam || window.__noPropCull) return;
+    const c = cam.position;
+    if (this._compAt && Math.hypot(c.x - this._compAt.x, c.z - this._compAt.z) < 25) return;
+    this._compAt = { x: c.x, z: c.z };
+    for (const entry of this.byKind.values()) {
+      const { mesh, list } = entry;
+      if (!mesh || !list.length) continue;
+      const src = mesh.instanceMatrix.array.slice();
+      const near = [], far = [];
+      for (const p of list) {
+        if (p.body || Math.hypot(p.x - c.x, p.z - c.z) < DRAW_NEAR) near.push(p); else far.push(p);
+      }
+      const order = near.concat(far);
+      const dst = mesh.instanceMatrix.array;
+      order.forEach((p, i) => {
+        if (p.index !== i) dst.set(src.subarray(p.index * 16, p.index * 16 + 16), i * 16);
+        p.index = i;
+      });
+      mesh.count = near.length;
+      mesh.instanceMatrix.needsUpdate = true;
+      if (entry.reindexed) entry.reindexed();
+    }
+  }
+
   update(dt) {
+    this._compactFor = (this._compactFor || 0) - dt;
+    if (this._compactFor <= 0) { this._compactFor = 0.5; this._compact(); }
     // How far ahead to look: everything the car will cover before this is
     // checked again. It runs once a frame, but physics runs up to five
     // substeps in that frame. Checking only where the car is now let a fast

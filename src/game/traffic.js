@@ -42,6 +42,9 @@ const TRAFFIC_COUNT = 17;
 const TRAFFIC_NEAR = 70;
 const TRAFFIC_FAR = 260;
 const TRAFFIC_GONE = 360;
+/** On a raised road (Ashfield's motorway): spawned as far out as this, and past DECK_HAZE even in view, m. */
+const DECK_FAR = 460;
+const DECK_HAZE = 300;
 /** Which side of the road, m off the middle (clamped to the road's width). */
 const LANE = 2.4;
 /** Within this of a player, m, a traffic car is simulated; beyond it, moved along its route. */
@@ -180,7 +183,9 @@ export class Traffic {
     for (const c of this.cars.slice()) {
       const p = c.v.position;
       const far = nearest(p);
-      const done = far > TRAFFIC_GONE
+      // Up on a raised road it may be further off before it goes: it can have come into being out there.
+      const up = p.y - g.groundAt(p.x, p.z) > 3;
+      const done = far > (up ? DECK_FAR + 60 : TRAFFIC_GONE)
         || (c.v.disabled && far > TRAFFIC_NEAR)
         || (c.stuckFor > 20 && far > 80)
         || p.y < -10;
@@ -191,7 +196,10 @@ export class Traffic {
     this._spawnIn -= dt;
     // Fewer on a machine that has already had to shed police cars to hold its
     // frame rate (Game's quality ladder lowers vehicleLimit).
-    const want = g.vehicleLimit < 30 ? Math.round(TRAFFIC_COUNT / 2) : TRAFFIC_COUNT;
+    // A map can ask for more (Ashfield City, 3 km across: "ideally add in more cars, because it just seems so
+    // empty"). Most are gliding, out of anyone's sight, which costs next to nothing.
+    const count = (g.world && g.world.__map && g.world.__map.trafficCount) || TRAFFIC_COUNT;
+    const want = g.vehicleLimit < 30 ? Math.round(count / 2) : count;
     if (!this.preset && this.cars.length < want && this._spawnIn <= 0 && watchers.length) {
       this._spawnIn = 0.35;
       this._spawn(watchers, nearest);
@@ -296,18 +304,31 @@ export class Traffic {
     const w = watchers[Math.floor(g.rng() * watchers.length)];
     const spur = spurNodes(gr);
     const through = (e) => !spur.has(e.a) && !spur.has(e.b);
-    for (let i = 0; i < 12; i++) {
-      const n = gr.randomNode(g.rng);
-      if (spur.has(n.id)) continue;
+    // From the junctions near enough, not twelve picked from the whole map: on Ashfield City's 3 km a random
+    // twelve were almost never within reach, and with the player up on the motorway no car came at all in two
+    // minutes -- "the civilian car routing system, it doesn't work on highways". A raised road may have them
+    // further off (DECK_FAR): from up there everything nearer is in plain view, and nothing may appear in view.
+    const cands = [];
+    for (const n of gr.nodes) {
+      if (!n.edges.length || spur.has(n.id)) continue;
       const d = dist2(n.x, n.z, w.x, w.z);
-      if (d < TRAFFIC_NEAR || d > TRAFFIC_FAR || nearest(n) < TRAFFIC_NEAR) continue;
+      const far = n.elevated ? DECK_FAR : TRAFFIC_FAR;
+      if (d < TRAFFIC_NEAR || d > far) continue;
+      cands.push(n);
+    }
+    for (let i = 0; i < 12 && cands.length; i++) {
+      const n = cands[Math.floor(g.rng() * cands.length)];
+      const d = dist2(n.x, n.z, w.x, w.z);
+      if (nearest(n) < TRAFFIC_NEAR) continue;
       const place = g._placeOnRoad(n, through);
       if (!place) continue;
+      // Far out on a raised road, past the fog's start, it may come into being even in view.
+      const hazy = n.elevated && d > DECK_HAZE;
       // From a helicopter that is most of the map, so nothing ever came: "when I'm the
       // helicopter ... there's literally no traffic spawns." From up there a car coming on
       // to a road SKY_CLEAR off is a dot nobody is watching appear.
       const flying = g.player && g.player.isAircraft;
-      if (flying ? dist2(place.position.x, place.position.z, w.x, w.z) < SKY_CLEAR : g.seenByAnyone(place.position)) continue;
+      if (flying ? dist2(place.position.x, place.position.z, w.x, w.z) < SKY_CLEAR : (!hazy && g.seenByAnyone(place.position))) continue;
       const id = `t${++this._made}`;
       const kind = KINDS[Math.floor(g.rng() * KINDS.length)];
       const v = g.createVehicle(kind, kind, place.position, place.heading, {

@@ -5,11 +5,11 @@
 // expressway joining from the ring, up each slip road onto the ring and along it, down each expressway ramp --
 // and every step it is checked against the deck it should be on.
 //
-//   await import('/tests/viaducts.js');  __runViaducts()   // then window.__via
+//   await import('/tests/viaducts.js');  __runViaducts()   // then window.__via; __runViaducts('expressway') for some
 //
 //   fell     the car more than 2.5 m under every raised road's deck near it, while on a raised stretch
 //   damage   what the drive cost the car (a barrier, a pier, a ramp's edge)
-export async function runViaducts() {
+export async function runViaducts(only = null) {
   const g = window.__game, v = g.player, G = g.graph;
   const { Driver, SKILL } = window.__modules;
   g.onBusted = () => { g.outcome = null; };
@@ -38,6 +38,7 @@ export async function runViaducts() {
   }
   const out = [];
   for (const r of routes) {
+    if (only && !r.name.includes(only)) continue;
     const pts = G.pathToPoints(r.path, 2.5, true);
     if (pts.length < 3) continue;
     const p0 = pts[0], p1 = pts[2];
@@ -59,7 +60,7 @@ export async function runViaducts() {
       g.stepHeadless(1 / 60, c);
       t += 1 / 60;
       // Police patrols too: one on a slip road was most of what the first runs "hit".
-      if ((t * 60 | 0) % 30 === 0) {
+      if (true) {
         for (const u of g.dispatcher.units.slice()) g.dispatcher.retire(u);
         for (const o of g.vehicles.slice()) if (o !== v && !o.remote && !o.isAircraft) g.removeVehicle(o);
       }

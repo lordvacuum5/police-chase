@@ -10006,6 +10006,54 @@ and from above:
 - **Alleys.** They were tarmac as dark as any street, so they read as streets. Now they are worn pale concrete,
   with dumpsters and bins against their walls, solid, kept to the edges so the police still have the middle.
 
+### Ashfield City's bugs, one by one
+
+"Some of the ramps onto the highway are blocked by the road itself ... some roads go into the water ... the
+police routing system doesn't seem to understand how to get onto the actual motorway, and also the line of
+sight ... the crash camera keeps on activating when a police car is underneath ... the civilian car routing
+system, it doesn't work on highways ... American bins ... cannot be solid ... the map seems to lag ... too much
+open space in the center ... some roads almost slightly raised, so you almost drive it on grass ... sometimes
+no crash barrier ... I want it so there's not much friction, so you can kind of scrape along the crash barrier."
+
+- **Into the water.** Nine bridges had one end out in the river. The half from the bank was laid as a street,
+  a dam across half the river. Any road reaching into the channel is now part of its bridge, the deck at bank
+  level, laid in 6 m pieces that follow the road (a straight deck end to end left a curved road running off
+  it). A road between two junctions on one bank may not pass through the water. After: no ground road point
+  over the water below bank level.
+- **Driving on grass under the road.** City streets were drawn from junction to junction as single straight
+  strips, cutting a chord under every rise. Every ground road's polyline now has a point every 6 m.
+- **Ramps blocked, barriers missing.** One slip road joined the ring at the expressway's own junction, its
+  barriers across the deck; the expressway now reserves its ring ends. Barrier sides were decided from the
+  roads' directions at the junction, which at a shallow split are nearly parallel, and came out backwards:
+  barriers stood in the lane. Sides now come from where the other road actually is 30 m along. A ramp's far
+  barrier now opens only while the ramp is on top of the bigger road, not for its whole run alongside.
+  Splits get a short nose barrier and no filled corner (one reached 100 m out and a car drove off it). Ramps
+  follow the bigger road's deck while they overlap it, 4 cm under it, choosing the piece they leave
+  alongside. Deck colliders use FIX_INTERNAL_EDGES (0.36 damage at 27 m/s from a flat deck's triangle edges).
+  `tests/viaducts.js`, every raised route driven with traffic and police cleared: expressway both ways and 14
+  of 15 ramps clean (0 damage, no falls). The ramp down at -980 still fails to finish: twice what it hit was a
+  vehicle, not the structure, but it was not run clean.
+- **Barriers** are nearly frictionless (0.02, combined by minimum): you scrape along them.
+- **Police.** A unit on another level (more than 4 m) routes by road to the junction at the target's height
+  and does not cut across. Wanted and parked on the ring: busted in 38 s, units arriving at its level. Sight
+  lines are blocked by decks (`RAY_SIGHT` gains RAMP). The crash camera ignores police 3 m or more above or
+  below you.
+- **Traffic.** Spawning picked 12 junctions from the whole map, almost never near you on 3 km, and nothing
+  appeared in view, which from up on the motorway is everything near it. With the player on the ring: 0 cars
+  in 2 minutes. Now it picks from the junctions within reach, and on a raised road may spawn out to 460 m
+  (past 300 m even in view, in the haze). After: 23 cars, 2,523 car-seconds on decks, 84% moving. 28 cars on
+  this map (17 elsewhere).
+- **Bins** in the alleys are not solid.
+- **Lag.** Everything to 1,400 m was drawn, and the fog hides it all by 880 m. Static map cells are now hidden
+  past the fog (`Game._fogCull`), and street furniture is drawn only within 600 m (`StreetProps._compact`,
+  every map; traffic lights' lamps follow their posts). Roads and markings are in cells. Triangles a frame:
+  downtown 853,000 to 606,000; Heights 847,000 to 383,000; suburbs 934,000 to 687,000 (with 28 traffic cars).
+  In one suburban view, draw calls went from 393 to 266 and triangles to 424,000, against the old flat city's
+  578,000.
+- **Open space downtown.** A second pass puts the biggest tower that fits (24, 18, 13 or 10 m) on an 8 m lattice
+  through downtown, and the street-front towers are narrower (the alleys halve the blocks). Corners are now
+  checked too. What still looks open is mostly pavement at junctions.
+
 ## Apple mode
 
 The game plays harder on Apple hardware. It is a joke, it is deliberate, and
