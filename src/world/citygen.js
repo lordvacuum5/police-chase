@@ -329,6 +329,17 @@ const AVENUE_Z = new Set([-380, 80, 530]);
  */
 function addRoad(ctx, a, b, kind, pts = [], bridge = false, opts = {}) {
   const { graph } = ctx;
+  // In pieces of no more than 40 m: graph.finalise finds where roads cross by comparing the segments in
+  // neighbouring cells, and Broadway as one 876 m segment crossed a dozen streets with no junction at all.
+  {
+    const raw = [a, ...pts, b], dense = [];
+    for (let k = 0; k < raw.length - 1; k++) {
+      const p = raw[k], q = raw[k + 1], n = Math.max(1, Math.ceil(Math.hypot(q.x - p.x, q.z - p.z) / 40));
+      if (k > 0) dense.push({ x: p.x, z: p.z });
+      for (let m = 1; m < n; m++) dense.push({ x: lerp(p.x, q.x, m / n), z: lerp(p.z, q.z, m / n) });
+    }
+    pts = dense;
+  }
   const line = [a, ...pts, b];
   // Where it crosses: the first change of side, both ends in the river's reach.
   let cross = -1;
@@ -349,25 +360,29 @@ function addRoad(ctx, a, b, kind, pts = [], bridge = false, opts = {}) {
     return graph.addEdge(a, b, kind, pts.length ? pts : null, opts);
   }
   if (!bridge) return null;
-  const p = line[cross], q = line[cross + 1];
-  const L = Math.hypot(q.x - p.x, q.z - p.z);
-  const ux = (q.x - p.x) / L, uz = (q.z - p.z) / L;
-  // The two banks along it, where it is BANK m out of the river either side.
+  // The two banks, BANK m out of the river either side, found along the whole road (not just within the
+  // segment that crosses: in 40 m pieces that never reached the bank, and a bridge ended mid-river).
   const BANK = WATER_HALF + BANK_RUN + 16;
-  let t0 = 0, t1 = L;
-  for (let t = 0; t <= L; t += 1) {
-    const s = riverSide(p.x + ux * t, p.z + uz * t);
-    if (Math.sign(s) === Math.sign(riverSide(p.x, p.z)) && Math.abs(s) >= BANK) t0 = t;
-  }
-  for (let t = L; t >= 0; t -= 1) {
-    const s = riverSide(p.x + ux * t, p.z + uz * t);
-    if (Math.sign(s) === Math.sign(riverSide(q.x, q.z)) && Math.abs(s) >= BANK) t1 = t;
-  }
-  if (t1 - t0 < 20) return null;
-  const n0 = graph.addNode(p.x + ux * t0, p.z + uz * t0, 'bridge');
-  const n1 = graph.addNode(p.x + ux * t1, p.z + uz * t1, 'bridge');
-  // `line` is [a, ...pts, b]: the points before the crossing are pts[0 .. cross-1], after it pts[cross ..].
-  const before = pts.slice(0, cross), after = pts.slice(cross);
+  const S = [0];
+  for (let k = 1; k < line.length; k++) S.push(S[k - 1] + Math.hypot(line[k].x - line[k - 1].x, line[k].z - line[k - 1].z));
+  const at = (sv) => {
+    let k = 0;
+    while (k < line.length - 2 && S[k + 1] < sv) k++;
+    const u = (sv - S[k]) / Math.max(1e-6, S[k + 1] - S[k]);
+    return { x: lerp(line[k].x, line[k + 1].x, u), z: lerp(line[k].z, line[k + 1].z, u) };
+  };
+  const sNear = Math.sign(riverSide(a.x, a.z)), sFar = Math.sign(riverSide(b.x, b.z));
+  const sc = S[cross];
+  let s0 = null, s1 = null;
+  for (let sv = sc; sv >= 0; sv -= 1) { const pt = at(sv), v = riverSide(pt.x, pt.z); if (Math.sign(v) === sNear && Math.abs(v) >= BANK) { s0 = sv; break; } }
+  for (let sv = S[cross + 1]; sv <= S[S.length - 1]; sv += 1) { const pt = at(sv), v = riverSide(pt.x, pt.z); if (Math.sign(v) === sFar && Math.abs(v) >= BANK) { s1 = sv; break; } }
+  if (s0 === null || s1 === null || s1 - s0 < 20 || s0 < 15 || S[S.length - 1] - s1 < 15) return null;
+  const p0 = at(s0), p1 = at(s1);
+  const n0 = graph.addNode(p0.x, p0.z, 'bridge');
+  const n1 = graph.addNode(p1.x, p1.z, 'bridge');
+  // The road's own points short of the near bank and past the far one; the span straight between the banks.
+  const before = line.slice(1, -1).filter((_, i) => S[i + 1] < s0 - 1);
+  const after = line.slice(1, -1).filter((_, i) => S[i + 1] > s1 + 1);
   graph.addEdge(a, n0, kind, before.length ? before : null, opts);
   const span = graph.addEdge(n0, n1, kind, null, { ...opts, bridge: true });
   graph.addEdge(n1, b, kind, after.length ? after : null, opts);
@@ -394,7 +409,7 @@ function buildStreets(ctx) {
     for (let j = 0; j < NZ; j++) {
       const p = shift(GX[i], GZ[j]);
       // Not in or by the river, nor out on the docks' quay.
-      if (inChannel(p.x, p.z, 26) || inDocks(p.x, p.z, -30)) { nodes[i][j] = null; continue; }
+      if (inChannel(p.x, p.z, 26) || inDocks(p.x, p.z, -30) || !insideRing(p.x, p.z, 90)) { nodes[i][j] = null; continue; }
       nodes[i][j] = graph.addNode(p.x, p.z, 'cross');
     }
   }
@@ -469,7 +484,19 @@ function buildDiagonals(ctx, grid) {
   }
 }
 
-/** The ring motorway: a rounded square, sampled finely on its corners. At ground level for now. */
+/**
+ * Is (x, z) inside the ring motorway by `pad` m? The grid's corners stood out past its rounded corners, and
+ * their streets crossed the country roads beyond it with no junction.
+ */
+function insideRing(x, z, pad) {
+  const lim = RING - pad;
+  if (Math.abs(x) > lim || Math.abs(z) > lim) return false;
+  const st = RING - RING_CORNER;
+  const dx = Math.max(0, Math.abs(x) - st), dz = Math.max(0, Math.abs(z) - st);
+  return Math.hypot(dx, dz) < RING_CORNER - pad;
+}
+
+/** The ring motorway: a rounded square, sampled finely on its corners. Raised all the way round. */
 function buildRingMotorway(ctx) {
   const { graph } = ctx;
   const straight = RING - RING_CORNER;
@@ -1361,19 +1388,40 @@ function buildDecks(ctx) {
  */
 function buildAlleys(ctx) {
   const { graph } = ctx;
-  let n = 0;
+  let n = 0, run = null;
+  const runs = [];
   for (let i = 0; i < GX.length - 1; i++) {
     for (let j = 0; j < GZ.length - 1; j++) {
-      const x = (GX[i] + GX[i + 1]) / 2, z0 = GZ[j], z1 = GZ[j + 1];
+      // A little off the block's middle: the streets' 40 m pieces put a point at exactly the middle, and a crossing
+      // exactly on a point is not found -- 104 alley junctions were left joined to nothing.
+      const x = (GX[i] + GX[i + 1]) / 2 + 1.7, z0 = GZ[j], z1 = GZ[j + 1];
       if (dtDist(x, (z0 + z1) / 2) > DT_R - 70) continue;
       if (GX[i + 1] - GX[i] < 55) continue;
       if (hash(i, j, 41) > 0.5) continue;
       if (ctx.carPark && Math.abs(x - ctx.carPark.x) < 50 && Math.abs((z0 + z1) / 2 - ctx.carPark.z) < 50) continue;
       if (inChannel(x, z0, 20) || inChannel(x, z1, 20)) continue;
-      const a = graph.addNode(x, z0 - 2, 'alley'), b = graph.addNode(x, z1 + 2, 'alley');
-      const e = graph.addEdge(a, b, 'alley');
-      if (e) n++;
+      // A street at both ends to join: where one had been thinned out, the alley joined nothing there, and a
+      // dozen alleys' junctions were cut off from the network -- somewhere a car could be put and not leave.
+      const streetAt = (zz) => graph.edges.some((e) => !e.elevated && e.points.some((p, k) => k < e.points.length - 1
+        && closestOnSegment(x, zz, p.x, p.z, e.points[k + 1].x, e.points[k + 1].z).dist < 2.5));
+      if (!streetAt(z0) || !streetAt(z1)) continue;
+      // Joined to the alley in the block before it, if there is one, as one road: two alleys meeting a street
+      // from either side crossed it at the same spot, the stitching kept only the first cut, and the second
+      // alley was joined to nothing (10 alley junctions cut off).
+      if (run && run.i === i && run.j === j - 1) { run.z1 = z1; run.j = j; continue; }
+      if (run) runs.push(run);
+      run = { i, j, x, z0, z1 };
     }
+  }
+  if (run) runs.push(run);
+  for (const r of runs) {
+    const a = graph.addNode(r.x, r.z0 - 2, 'alley'), b = graph.addNode(r.x, r.z1 + 2, 'alley');
+    // A point every 20 m: the stitching finds crossings in 60 m cells by where each piece starts, and a 69 m
+    // alley in one piece never met the street at its far end (19 alleys crossing a street with no junction).
+    const L = r.z1 - r.z0 + 4, k = Math.ceil(L / 20), mid = [];
+    for (let m = 1; m < k; m++) mid.push({ x: r.x, z: r.z0 - 2 + L * m / k });
+    const e = graph.addEdge(a, b, 'alley', mid.length ? mid : null);
+    if (e) n++;
   }
   ctx.alleys = n;
 }

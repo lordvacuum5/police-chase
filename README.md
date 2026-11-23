@@ -10291,3 +10291,34 @@ right-hand traffic.
 Spike strips, and
 civilian traffic — which is the one that would give the traffic signals someone
 to hold up besides the police.
+
+### The city audited: roads that cross with no junction, places a car cannot leave
+
+"If you can find any more bugs or inconsistencies." `tests/cityaudit.js` (`auditCity()`) counts what should
+never be in Ashfield City: street furniture, trees, buildings or parked cars in a road or the water, buildings
+inside each other, ground roads crossing with no junction, junctions cut off from the network, roads under
+3 m. Furniture, trees, buildings and parked cars were already 0. The roads were not:
+
+| | first count | now |
+|---|---|---|
+| roads crossing with no junction | 16 (and Broadway, one 876 m segment, crossed a dozen streets) | 0 |
+| junctions cut off from the network | 104 | 0 |
+| roads under 3 m | 17 | 0 |
+
+- **The stitching finds crossings in 60 m cells by where each segment starts**, so a long segment never met a
+  road near its far end. Roads are now laid in pieces of at most 40 m, alleys 20 m.
+- **A crossing exactly on a road's point is not found**, and 40 m pieces put one at each block's middle --
+  where the alleys ran. Alleys are 1.7 m off the middle.
+- **Two alleys meeting a street from either side crossed it at the same spot**; the stitching kept the first
+  cut and dropped the second as too short, leaving that alley joined to nothing. A column's alleys are now one
+  road, and any crossing within 3 m of a cut a road already has reuses that cut's node.
+- **Every turning head had a 0 m road and a second road drawn over its ring** (the ring's near node fell on
+  the stub's end): 14 in the city, 8 heads on Wexbury. The stub's end is now that ring node. 3 avenue self-loops
+  from the stitching are gone too.
+- **The grid's corners stood out past the ring's rounded corners** and crossed the country roads beyond it.
+- **River bridges** now find each bank along the whole road, not the one segment that crosses (in 40 m pieces
+  that never reached the bank). 0 ground bridge ends in the water.
+
+Raised roads driven again (`tests/viaducts.js`): 18 routes, all finished, 0 damage. The drive test now checks
+the car only against its own route's decks: one ramp sweeps 8 m over another's foot, and driving under it read
+as a fall. Wexbury and Haldon Vale still build as one network each, no 0 m roads.

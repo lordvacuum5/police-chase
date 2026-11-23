@@ -73,6 +73,13 @@ export async function runViaducts(only = null) {
     if (v.repair) v.repair();
     const d = new Driver(v, SKILL.pursuit);
     d.setPath(pts);
+    // Only the route's own roads: one ramp sweeps 8 m over another's foot, and a car driving under it was
+    // read as having fallen through it.
+    const own = new Set();
+    for (let k = 0; k < r.path.length - 1; k++) {
+      const e = G.edges.find((x) => (x.a === r.path[k] && x.b === r.path[k + 1]) || (x.b === r.path[k] && x.a === r.path[k + 1]));
+      if (e) own.add(e);
+    }
     let fell = null, t = 0;
     while (t < 100 && d.remaining() > 15) {
       G.queryY = v.position.y - 0.9;
@@ -83,6 +90,7 @@ export async function runViaducts(only = null) {
       const p = v.position;
       let near = null;
       for (const e of raised) {
+        if (!own.has(e)) continue;
         if (Math.abs(p.x - e.points[0].x) > 600 && Math.abs(p.x - e.points[e.points.length - 1].x) > 600) continue;
         const ly = G.levelOn(e, p.x, p.z);
         if (ly - (g.sim.terrainAt(p.x, p.z)) < 1) continue;          // a ramp's foot: on the ground anyway

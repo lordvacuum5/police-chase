@@ -512,10 +512,14 @@ export class RoadGraph {
       const cx = n.x + dx * radius, cz = n.z + dz * radius;
       if (Math.abs(cx) > halfExtent - radius - 8 || Math.abs(cz) > halfExtent - radius - 8) continue;
 
+      // The ring's near side is the stub's end itself, when a ring node falls on it (an even count does): a
+      // second node there made a 0 m road to it and another drawn over the ring's own -- 14 of each in the city.
       const ring = [];
+      let onRing = false;
       for (let k = 0; k < segments; k++) {
         const a = (k / segments) * Math.PI * 2 + Math.atan2(dz, dx);
-        ring.push(this.addNode(cx + Math.cos(a) * radius, cz + Math.sin(a) * radius, 'cross'));
+        const x = cx + Math.cos(a) * radius, z = cz + Math.sin(a) * radius;
+        if (Math.hypot(x - n.x, z - n.z) < 0.5) { ring.push(n); onRing = true; } else ring.push(this.addNode(x, z, 'cross'));
       }
       const kind = this.edges[n.edges[0]].kind === 'lane' ? 'lane' : 'street';
       // Flagged so the mesh builder leaves the kerb lines off. Drawn per edge,
@@ -527,6 +531,7 @@ export class RoadGraph {
       }
       // Join the stub to the two ring nodes nearest it, so the head reads as a
       // loop off the end rather than a lollipop on a stick.
+      if (onRing) { made++; continue; }
       const sorted = ring.slice().sort((p, q) => (
         ((p.x - n.x) ** 2 + (p.z - n.z) ** 2) - ((q.x - n.x) ** 2 + (q.z - n.z) ** 2)
       ));
@@ -736,6 +741,14 @@ export class RoadGraph {
             else if (A.e.length - alongA < snap) node = this.nodes[A.e.b];
             else if (alongB < snap) node = this.nodes[B.e.a];
             else if (B.e.length - alongB < snap) node = this.nodes[B.e.b];
+            // Or a crossing either road already has within 3 m: two roads crossing a third a metre apart cut it
+            // at two nodes, the second cut was thrown away as too short, and its road was left joined to nothing.
+            if (!node) {
+              for (const [e, along] of [[A.e, alongA], [B.e, alongB]]) {
+                const c = (cuts.get(e) || []).find((c) => Math.abs(c.along - along) < 3);
+                if (c) { node = c.node; break; }
+              }
+            }
             if (!node) node = this.addNode(hit.x, hit.z, 'cross');
 
             if (node !== this.nodes[A.e.a] && node !== this.nodes[A.e.b]) {
@@ -770,6 +783,7 @@ export class RoadGraph {
       };
       for (const c of list) {
         if (c.along - prev < 3 || e.length - c.along < 3) continue;
+        if (c.node === fromNode || c.node === this.nodes[e.b]) continue;   // a road from a node to itself
         piece(c.node, c.along);
         prev = c.along;
         fromNode = c.node;
