@@ -77,11 +77,43 @@ export function addWindows(b, lit, x, z, w, h, d, rot, fx, fz, front = 'all') {
 /** The lit windows as a mesh, hidden by day: `mesh.userData.setNight(on)` shows it. */
 export function litWindows(lit) {
   if (!lit || !lit.vertexCount) return null;
-  const m = new THREE.Mesh(lit.build(), new THREE.MeshBasicMaterial({ vertexColors: true }));
+  const geo = lit.build();
+  const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true }));
+  // A soft warm glow round each, a little out from the wall: "night glow", as the street lamps' bloom.
+  const p = geo.attributes.position, nq = p.count / 6;
+  const centres = new Float32Array(nq * 3);
+  for (let i = 0; i < nq; i++) {
+    let x = 0, y = 0, z = 0;
+    for (let k = 0; k < 6; k++) { x += p.getX(i * 6 + k); y += p.getY(i * 6 + k); z += p.getZ(i * 6 + k); }
+    centres[i * 3] = x / 6; centres[i * 3 + 1] = y / 6; centres[i * 3 + 2] = z / 6;
+  }
+  const cg = new THREE.BufferGeometry();
+  cg.setAttribute('position', new THREE.BufferAttribute(centres, 3));
+  const glow = new THREE.Points(cg, new THREE.PointsMaterial({
+    color: 0xffb860, map: glowSpot(), size: 3.2, sizeAttenuation: true, transparent: true,
+    opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending, fog: true,
+  }));
+  m.add(glow);
   m.name = 'windows-lit';
   m.visible = false;
   m.userData.setNight = (on) => { m.visible = on; };
   return m;
+}
+
+let spot = null;
+function glowSpot() {
+  if (spot) return spot;
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grd.addColorStop(0, 'rgba(255,255,255,0.9)');
+  grd.addColorStop(0.4, 'rgba(255,255,255,0.3)');
+  grd.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grd;
+  g.fillRect(0, 0, 64, 64);
+  spot = new THREE.CanvasTexture(c);
+  return spot;
 }
 
 export { MeshBuilder };

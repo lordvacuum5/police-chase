@@ -36,6 +36,8 @@ export function setConditions(c) {
 const WET_GRIP = 0.8;
 
 const RAIN_DROPS = 2600;
+/** Street lamps' wide faint bloom at night, m across. */
+const BLOOM_SIZE = 12;
 const RAIN_BOX = { x: 70, y: 36, z: 70 };
 
 export class Weather {
@@ -121,6 +123,15 @@ export class Weather {
     }));
     glow.frustumCulled = false;
     this.game.scene.add(glow);
+    // And a wide faint bloom round it, the glow a lamp has in damp night air: "night glow". The same
+    // points, drawn again bigger and fainter -- a bloom without the full-screen pass a real one needs.
+    const bloom = new THREE.Points(geo, new THREE.PointsMaterial({
+      color: 0xffc98a, map: softSpot(), size: BLOOM_SIZE, sizeAttenuation: true, transparent: true,
+      opacity: this.rain ? 0.34 : 0.22, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+    }));
+    bloom.frustumCulled = false;
+    bloom.name = 'lamp-bloom';
+    this.game.scene.add(bloom);
 
     // ...and a pool of light on the ground under it.
     const pool = new THREE.InstancedMesh(

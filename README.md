@@ -7978,6 +7978,13 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Night glow
+
+A real bloom is a post-processing pass, with add-ons the game does not have (another download) and a full-screen cost. The game
+already draws its night lights as soft additive halos, so the glow is made the same way: every street lamp gets a second, wide,
+faint halo (12 m, 0.22; 0.34 in the rain), and every lit window (world/windows.js) a soft warm one a little out from the wall. GPU
+time at night on Wexbury, paused, glows on and off in turns: 9.3 ms against 8.9 on average -- about 0.4, inside the noise.
+
 ### Sharper shadows, further out
 
 The sun's shadow map is 2048 pixels over 200 m round the car, from 1024 over 170: a texel 10 cm across, not 17. GPU time at Haldon's
