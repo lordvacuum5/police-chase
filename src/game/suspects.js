@@ -74,8 +74,13 @@ const FREE_FOR = 50;
 /** What a hit on a police car adds, and the most it can be. */
 const HIT_HEAT = 0.4;
 const MAX_HEAT = 5;
-/** How far a unit can see a suspect, m (with a clear line). */
-const SIGHT = 170;
+/**
+ * How far a unit can see a suspect at its wanted level, m (with a clear line): the same as a unit in contact
+ * with the player at that level (Dispatcher._updateKnowledge, 70 + 32 a star). It was 170 m at every level,
+ * which drew a one-star civilian's ring far bigger than a one-star player's: "when a civilian car started
+ * running away, they had a larger radius, even though they were on wanted level 1."
+ */
+export function suspectSight(level) { return 70 + 32 * Math.max(1, Math.min(MAX_HEAT, Math.floor(level || 1))); }
 /** The arrest: under this speed, m/s, with a unit's bodywork within BUST_GAP m, for BUST_SECONDS. */
 const BUST_SPEED = 3 / 3.6;
 const BUST_GAP = 3.0;
@@ -358,6 +363,9 @@ export class Suspects {
     // for SUSPECT_TRACK after, then where it was last seen, then the roads round there.
     const known = s.seen || s.unseenFor < SUSPECT_TRACK;
     const level = Math.max(1, Math.min(MAX_HEAT, Math.floor(s.heat)));
+    const SIGHT = suspectSight(level);
+    // Its level, on the car: for the map's ring here and, sent with the car, on everybody else's.
+    v.suspectLevel = level;
     for (const u of s.units) {
       u.suspectTier = level;
       u.update(dt, known ? v : this._searchPoint(s, u));
@@ -833,4 +841,4 @@ export class Suspects {
   }
 }
 
-export { SUSPECT_UNITS, SIGHT as SUSPECT_SIGHT, SUSPECT_TRACK };
+export { SUSPECT_UNITS, SUSPECT_TRACK };

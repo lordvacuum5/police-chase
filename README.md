@@ -7978,6 +7978,27 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Lone Unit backup, the minimap in it, a civilian's ring, bricks that do not repeat
+
+*"The daily challenge today is like very, very hard ... just ramming if you're a police car ... maybe it should be like it gives
+you only two police cars backup."* Lone Unit now sends two units at GO, the first two the day's plan puts round the start, the same
+for everyone, never replaced (`STOP_BACKUP`, `backupPlan`). Checked, 23 November on Wexbury with nobody in your car: both on the
+getaway car within 20 s and 6-50 m off it for the whole 2:30, and no arrest without you: out of time. So they help; you still have
+to make it.
+
+*"On the daily challenge ... I could see on the mini map ... the little blue dot like you can see it in multiplayer."* Your own car
+is on the force's board in Lone Unit (`Game.selfUnit`, so it can make the arrest), and the map drew that unit as another player's
+ringed dot under your arrow. It skips your own car now.
+
+*"In multiplayer ... when a civilian car started running away, they had a larger radius, even though they were on wanted level 1."*
+A fleeing civilian's ring, and how far the police could see it, was 170 m at every level; yours at one star is 102. Both are now
+70 m plus 32 a star, as for you (`suspectSight`), and the level goes over the network with the car (18th number of `packCar`), so
+the other machines draw it the same size. Not tested on two machines.
+
+*"I can see the repeating pattern on the houses. So can you like randomize it?"* The brick now repeats every 3.2 m, not 1.6 (a
+1024 texture), carries broad weathering patches, and every wall takes its own offset into it, every other one mirrored (from the
+plane it lies in, so a wall's two triangles agree). Roofs take the same offsets.
+
 ### The sky and the light
 
 *"Sky and lighting next."* The sky was one flat colour, the same as the fog, so the world ended in a grey-blue wall. `game/sky.js`:

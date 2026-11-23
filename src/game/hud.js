@@ -999,6 +999,10 @@ export class Hud {
       // A wrecked unit is out of the pursuit; leaving it on the map just
       // makes you plan around a car that is never coming.
       if (!u.vehicle || u.vehicle.disabled || u.vehicle.removed) continue;
+      // Your own car, on the board as a unit in the daily's Lone Unit (Game.selfUnit), is already the
+      // arrow: it was also drawn as another player's ringed dot. "I could see on the mini map ... the
+      // little blue dot like you can see it in multiplayer."
+      if (u.vehicle === player) continue;
 
       const pos = u.vehicle.position;
       const p = toMap(pos.x, pos.z);

@@ -32,34 +32,56 @@ function toTexture(c) {
 }
 
 /** A canvas filled with a grey, and its context. */
-function canvas(grey) {
+function canvas(grey, size = SIZE) {
   const c = document.createElement('canvas');
-  c.width = c.height = SIZE;
+  c.width = c.height = size;
   const x = c.getContext('2d');
   x.fillStyle = `rgb(${grey},${grey},${grey})`;
-  x.fillRect(0, 0, SIZE, SIZE);
+  x.fillRect(0, 0, size, size);
   return { c, x };
 }
 
 /** Fine speckle over everything, so no surface is perfectly flat. */
-function speckle(x, r, n, amt) {
+function speckle(x, r, n, amt, size = SIZE) {
   for (let k = 0; k < n; k++) {
     const light = r() < 0.5;
     x.fillStyle = light ? `rgba(255,255,255,${amt * r()})` : `rgba(0,0,0,${amt * r()})`;
-    x.fillRect(r() * SIZE, r() * SIZE, 1 + r() * 2, 1 + r() * 2);
+    x.fillRect(r() * size, r() * size, 1 + r() * 2, 1 + r() * 2);
   }
 }
 
 /**
- * Brick, stretcher bond: 24 courses and 8 bricks a course over BRICK_TILE metres (about 20 by 6.7 cm a
- * brick), each brick its own shade, mortar lighter between. Mean about 0.78: fainter than this did not show past a few metres.
+ * Weathering: broad soft patches, lighter and darker, wrapped at the edges, so a wall is not the same tile of
+ * texture over and over. "I can see the repeating pattern on the houses. So can you like randomize it?"
  */
-const BRICK_TILE = 1.6;
+function weather(x, r, n, size) {
+  for (let k = 0; k < n; k++) {
+    const px = r() * size, py = r() * size, rad = size * (0.06 + r() * 0.16);
+    const dark = r() < 0.6;
+    for (const ox of [-size, 0, size]) {
+      for (const oy of [-size, 0, size]) {
+        const g = x.createRadialGradient(px + ox, py + oy, 0, px + ox, py + oy, rad);
+        g.addColorStop(0, dark ? `rgba(30,25,20,${0.08 + r() * 0.1})` : `rgba(255,250,240,${0.06 + r() * 0.08})`);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        x.fillStyle = g;
+        x.fillRect(px + ox - rad, py + oy - rad, rad * 2, rad * 2);
+      }
+    }
+  }
+}
+
+/**
+ * Brick, stretcher bond: 48 courses and 16 bricks a course over BRICK_TILE metres (about 20 by 6.7 cm a
+ * brick), each brick its own shade, mortar lighter between, weathered in patches. Mean about 0.78: fainter
+ * than this did not show past a few metres. 1.6 m of it at first, which repeated visibly along a wall.
+ */
+const BRICK_TILE = 3.2;
 function brickTexture() {
   if (cache.brick) return cache.brick;
   const r = rng(11);
-  const { c, x } = canvas(250);
-  const rows = 24, per = 8, bh = SIZE / rows, bw = SIZE / per, m = 4;
+  const B = SIZE * 2;
+  const { c, x } = canvas(250, B);
+  const rows = 48, per = 16, bh = B / rows, bw = B / per, m = 4;
   for (let row = 0; row < rows; row++) {
     const off = row % 2 ? bw / 2 : 0;
     for (let k = -1; k < per; k++) {
@@ -68,7 +90,8 @@ function brickTexture() {
       x.fillRect(off + k * bw + m / 2, row * bh + m / 2, bw - m, bh - m);
     }
   }
-  speckle(x, r, 14000, 0.12);
+  weather(x, r, 26, B);
+  speckle(x, r, 56000, 0.12, B);
   cache.brick = toTexture(c);
   return cache.brick;
 }
@@ -135,6 +158,12 @@ function gravelTexture() {
   return cache.gravel;
 }
 
+function faceHash(a, b, c) {
+  let h = Math.imul(a ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b + 0x632be5ab, 0xc2b2ae35) ^ Math.imul(c, 0x27d4eb2f);
+  h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 13;
+  return h >>> 0;
+}
+
 /**
  * Give a building mesh its textures. `style` 'brick' (towns, villages, farms) or 'panel' (the city). The
  * geometry is non-indexed with a flat normal per face (util/meshbuild.js), so each triangle is sorted on
@@ -164,6 +193,12 @@ export function buildingDetail(mesh, style = 'brick') {
     let hx = nz, hz = -nx;
     const hl = Math.hypot(hx, hz);
     if (hl > 1e-3) { hx /= hl; hz /= hl; } else { hx = 1; hz = 0; }
+    // Each wall its own place in the texture, and every other one mirrored, so neighbouring walls and
+    // houses do not repeat the same bricks: from the plane the face lies in, which both triangles of a
+    // wall share.
+    const plane = Math.round((pos.getX(t * 3) * nx + pos.getY(t * 3) * ny + pos.getZ(t * 3) * nz) * 4);
+    const hsh = faceHash(Math.round(nx * 50), Math.round(nz * 50), plane);
+    const ou = (hsh & 1023) / 1024, ov = ((hsh >>> 10) & 1023) / 1024, flip = (hsh >>> 20) & 1 ? -1 : 1;
     for (let k = 0; k < 3; k++) {
       const i = t * 3 + k, o = w * 3 + k;
       for (const name of Object.keys(geo.attributes)) {
@@ -172,14 +207,14 @@ export function buildingDetail(mesh, style = 'brick') {
       }
       const x = pos.getX(i) + mesh.position.x, y = pos.getY(i) + mesh.position.y, z = pos.getZ(i) + mesh.position.z;
       if (wall) {
-        uv[o * 2] = (x * hx + z * hz) / wallTile;
-        uv[o * 2 + 1] = y / wallTile;
+        uv[o * 2] = flip * (x * hx + z * hz) / wallTile + ou;
+        uv[o * 2 + 1] = y / wallTile + ov;
       } else if (hl > 0.05) {
         // A slope: courses run along it, level; the other way is distance down the slope (the
         // horizontal the face looks along, stretched by how steep it is).
         const dx = -hz, dz = hx;
-        uv[o * 2] = (x * hx + z * hz) / roofTile;
-        uv[o * 2 + 1] = -(x * dx + z * dz) / Math.max(0.2, Math.abs(ny)) / roofTile;
+        uv[o * 2] = flip * (x * hx + z * hz) / roofTile + ou;
+        uv[o * 2 + 1] = -(x * dx + z * dz) / Math.max(0.2, Math.abs(ny)) / roofTile + ov;
       } else {
         uv[o * 2] = x / roofTile;
         uv[o * 2 + 1] = z / roofTile;

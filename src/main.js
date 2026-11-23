@@ -20,7 +20,7 @@ import {
 } from './ai/officer.js';
 import { Driver, SKILL } from './ai/driver.js';
 import { Traffic, trafficPaint } from './game/traffic.js';
-import { Suspects, SUSPECT_SIGHT, SUSPECT_TRACK } from './game/suspects.js';
+import { Suspects, suspectSight, SUSPECT_TRACK } from './game/suspects.js';
 import { Runner, pickRunnerCar } from './ai/runner.js';
 import { warmLocalPlanner, pumpPlanner, boxesNear } from './ai/localplan.js';
 import { planFast } from './ai/fastplan.js';
@@ -1257,7 +1257,7 @@ class Game {
     this.hud.suspectStale = false;
     // The red ring, round the car while it is seen: how far the police on it
     // can see it.
-    this.hud.suspectRange = best && best.seen ? SUSPECT_SIGHT : 0;
+    this.hud.suspectRange = best && best.seen ? suspectSight(best.heat) : 0;
     // Any other car being chased at the same time is on the map too: "I want
     // just two dots ... on the map." With its own ring while seen: "every single civilian car needs to
     // have a red circle around it."
@@ -1265,7 +1265,7 @@ class Game {
     for (const s of this.suspects.list) {
       if (s === best || s.state !== 'run' || s.v.removed) continue;
       const p = at(s);
-      if (p) this.hud.moreSuspects.push({ p, stale: false, range: s.seen ? SUSPECT_SIGHT : 0 });
+      if (p) this.hud.moreSuspects.push({ p, stale: false, range: s.seen ? suspectSight(s.heat) : 0 });
     }
     // And any that got away, still counting down to being traffic again (Suspects._free): flashing, as a
     // car the force has lost. "You can see it."
@@ -1326,9 +1326,9 @@ class Game {
       if (i === 0 && !chaseOn) {
         this.hud.suspect = cars[0].position;
         this.hud.suspectStale = false;
-        this.hud.suspectRange = SUSPECT_SIGHT;
+        this.hud.suspectRange = suspectSight(cars[0].suspectLevel);
       } else {
-        this.hud.moreSuspects.push({ p: cars[i].position, stale: false, range: SUSPECT_SIGHT });
+        this.hud.moreSuspects.push({ p: cars[i].position, stale: false, range: suspectSight(cars[i].suspectLevel) });
       }
     }
     if (!chaseOn) {
@@ -3127,6 +3127,8 @@ class Game {
       this._netDriveRemote(v, car, dt);
       // Another player's respray, on their car here too.
       if ((car.paint || 0) !== (v.paint || 0) && !String(car.id).startsWith(AI_ID)) this.paintCar(v, car.paint);
+      // A fleeing civilian's wanted level, for the size of its ring (Game._netCivilians).
+      v.suspectLevel = car.level || 0;
       if (!v.netVel) v.netVel = new THREE.Vector3();
       v.netVel.set(car.vx, car.vy, car.vz);
       v.damage = car.damage;

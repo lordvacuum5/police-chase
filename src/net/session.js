@@ -86,7 +86,7 @@ const KINDS = ['runner', 'supercar', 'offroad', 'patrol', 'interceptor', 'suv', 
 
 export const FLAG = { POLICE: 1, UNMARKED: 2, DISABLED: 4, BLIP: 8, SIREN: 16, SUSPECT: 32, HAZARD: 64, WRECK: 128 };
 
-/** A car, as it goes on the wire: sixteen numbers and an id. */
+/** A car, as it goes on the wire: seventeen numbers and an id. */
 /**
  * What marks a car id as one of the AI's rather than a player's.
  *
@@ -126,6 +126,8 @@ export function packCar(id, v, extra = {}) {
     flags,
     // A respray (Game.paintCar): its index in SPRAY_COLOURS, 0 for the car's own colour.
     v.paint || 0,
+    // A fleeing civilian's wanted level (game/suspects.js), for its ring on everybody's map.
+    v.fleeing ? (v.suspectLevel || 1) : 0,
   ];
 }
 
@@ -141,6 +143,7 @@ export function unpackCar(a) {
     damage: a[14],
     flags: a[15],
     paint: a[16] || 0,
+    level: a[17] || 0,
   };
 }
 

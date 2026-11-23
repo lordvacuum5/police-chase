@@ -36,6 +36,8 @@ const STOP_LIMIT = 150;
 const AIR_LIMIT = 150;
 const RUNNER_START = 140;
 const AIR_NEED = 30;
+/** Lone Unit: police cars sent to help you at GO, and no more. */
+const STOP_BACKUP = 2;
 /** The clock, as a share of the route's length over DAILY_PACE. Was 1: "the time limit seems a little bit too easy." */
 const DAILY_SLACK = 0.85;
 /** And this many seconds on top: "add like 10 more seconds onto the timer because it is really hard now." */
@@ -163,7 +165,7 @@ const TYPE_NAMES = { escape: 'Escape', stop: 'Lone Unit', air: 'Eyes in the Sky'
 /** One line on the menu for each. */
 export const TYPE_RULES = {
   escape: 'Five stars from the start. Through every gate to the finish before the clock runs out.',
-  stop: 'You are the police, and nobody is coming to help. Arrest the getaway car before the clock runs out.',
+  stop: 'You are the police, with two cars for backup and no more. Arrest the getaway car before the clock runs out.',
   air: 'You are in the helicopter. Keep the getaway car in sight for 30 seconds in all, as fast as you can.',
 };
 
@@ -361,6 +363,11 @@ export class DailyChallenge {
       this.gates = [];
       this.limit = this.type === 'stop' ? STOP_LIMIT : AIR_LIMIT;
       this._planSpawns();
+      // Lone Unit's backup: the first STOP_BACKUP of the units the plan puts round the start, the same for
+      // everyone, sent in at GO (_goChase). "It's just really hard when you're a police car ... maybe it
+      // should be like it gives you only two police cars backup." Nobody else is sent, and a wrecked one is
+      // not replaced.
+      this.backupPlan = this.type === 'stop' ? this.spawnPlan.filter((sp) => sp.s === 0).slice(0, STOP_BACKUP) : [];
       this.spawnPlan = [];
       return true;
     }
@@ -701,6 +708,10 @@ export class DailyChallenge {
     if (this.type === 'stop' && g.selfUnit) g.dispatcher.adopt(g.selfUnit());
     g.heat.bump(1, 'the daily challenge');
     g.heat.value = 3;
+    for (const sp of this.backupPlan || []) {
+      const u = g.spawnUnitAt({ x: sp.x, y: 0.95 + g.groundAt(sp.x, sp.z), z: sp.z }, sp.heading, sp.kind);
+      if (u) g.dispatcher.adopt(u);
+    }
     const k = g.dispatcher && g.dispatcher.knowledge;
     if (k) {
       k.seen = true;
