@@ -4104,7 +4104,10 @@ class Game {
     const p = this.player.position;
     this.sun.target.position.copy(p);
     this.sun.position.set(p.x + 110, p.y + 175, p.z + 80);
-    if (this.weather && this.weather.sky) this.weather.sky.update(this.camera, dt);
+    if (this.weather && this.weather.sky) {
+      this.weather.sky.reflect(this.renderer, this.scene);
+      this.weather.sky.update(this.camera, dt);
+    }
 
     this.renderer.render(this.scene, this.camera);
 

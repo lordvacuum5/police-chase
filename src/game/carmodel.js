@@ -59,6 +59,8 @@ export const CAR_MODELS = {
   civsuv: { url: 'resources/models/traffic-suv.glb', police: false, yaw: 0, lift: 0, lamps: null },
 };
 
+/** The most a car's paint may be rough (0 a mirror, 1 chalk): see loadCarModel. */
+const PAINT_ROUGH = 0.2;
 const _box = new THREE.Box3();
 const _size = new THREE.Vector3();
 const _centre = new THREE.Vector3();
@@ -117,6 +119,12 @@ export async function loadCarModel(url, targetGeometry, opts = {}, spec = null) 
     // The car is always near the camera and its own mesh is cheap to draw;
     // culling it per part costs more than it saves.
     o.frustumCulled = false;
+    // Glossy paint, for the sky to show in (Sky.reflect): "shiny cars". The bodywork materials only --
+    // not the atlases that also carry tyres and trim (roughness 1), not glass or lamps.
+    const m = o.material;
+    if (m && m.isMeshStandardMaterial && m.roughness < 0.8 && /paint|police|van_body/.test(m.name)) {
+      m.roughness = Math.min(m.roughness, PAINT_ROUGH);
+    }
   });
 
   // ---- where the flashing lights go ----

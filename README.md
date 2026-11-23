@@ -7978,6 +7978,15 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Shiny cars
+
+The cars' materials could always reflect; there was nothing to reflect. `Sky.reflect` catches the sky (dome, clouds, sun glow) over a
+ground of grass colour into a blurred environment map once, at the first frame, and sets it on the scene: only the cars' standard
+materials read it, the world's Lambert ones do not. Paint (materials named paint/police/van_body) is now no rougher than 0.2
+(`PAINT_ROUGH`; it was 0.3-0.45), so the sky reads as a gloss, not a tint. Night: the environment at 0.35. GPU time, Wexbury, on and
+off in turns: settled at 5.6 / 4.4 ms on against 5.7 / 3.6 off; the first turns ran 12-17 ms both ways, the shaders recompiling as
+the environment is switched. `window.__noReflections` before load to leave it out.
+
 ### Buildings in cells
 
 The trees showed it: a map's worth of something in one mesh is drawn whole, twice a frame, wherever you look. The buildings were a

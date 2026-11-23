@@ -174,6 +174,39 @@ export class Sky {
     this.group.add(stars);
   }
 
+  /**
+   * What the cars reflect: this sky, and the ground's colour below the horizon, caught once into a blurred
+   * environment map and set on the scene. "Shiny cars." Only the cars' materials (MeshStandardMaterial)
+   * read scene.environment; the world's Lambert materials do not, so nothing else changes. With the sky's
+   * own lighting (Sky.lighting) the ground is grass-dark by day, black by night.
+   */
+  reflect(renderer, scene) {
+    if (this._reflected || !this.dome || !renderer || window.__noReflections) return;
+    this._reflected = true;
+    const env = new THREE.Scene();
+    env.add(new THREE.Mesh(this.dome.geometry, this.dome.material));
+    if (this.clouds) env.add(new THREE.Mesh(this.clouds.geometry, this.cloudMat));
+    if (this.sunSprite) {
+      const s = new THREE.Sprite(this.sunSprite.material);
+      s.scale.copy(this.sunSprite.scale);
+      s.position.copy(this.sunSprite.position);
+      env.add(s);
+    }
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(R * 0.97, 32), new THREE.MeshBasicMaterial({
+      color: new THREE.Color(this.look.ground).multiplyScalar(this.night ? 0.3 : 0.7), side: THREE.DoubleSide, fog: false,
+    }));
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -2;
+    env.add(ground);
+    const pm = new THREE.PMREMGenerator(renderer);
+    const rt = pm.fromScene(env, 0.02, 0.1, R * 2);
+    scene.environment = rt.texture;
+    scene.environmentIntensity = this.night ? 0.35 : 0.8;
+    pm.dispose();
+    ground.geometry.dispose();
+    ground.material.dispose();
+  }
+
   /** Every frame: round the camera, and the clouds drift. */
   update(camera, dt) {
     if (!this.dome) return;
