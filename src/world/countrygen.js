@@ -203,9 +203,16 @@ export function buildCountry(sim, scene, seed = 4417) {
   meshes.push(ring);
   // Without the kerbs: a country lane has a verge, not a kerb, and the grip
   // grid has none here outside the villages to match one.
-  const [tarmac, markings, kerbs] = buildRoadMeshes(ctx);
+  const [tarmac, markings, kerbs, wear] = buildRoadMeshes(ctx);
   kerbs.geometry.dispose();
   meshes.push(...liftRoads(ctx, [tarmac, markings]));
+  if (wear) {
+    // Lifted with the road, and pulled a little nearer than it so it stays on top on the hills.
+    liftMesh(wear, ctx.at, 0.06);
+    wear.material.polygonOffsetFactor = -4;
+    wear.material.polygonOffsetUnits = -8;
+    meshes.push(wear);
+  }
   meshes.push(buildVillagePavements(ctx));
   meshes.push(...buildVillageBuildings(ctx));
   meshes.push(...buildFarms(ctx, farms));

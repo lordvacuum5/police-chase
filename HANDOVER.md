@@ -188,6 +188,8 @@ scoring, deliberately.
   building mesh; it needs non-indexed flat-normal geometry (MeshBuilder).
   Sky: `game/sky.js`, made in `Weather._apply`, follows the camera in
   `_render`; it also sets the sun, hemisphere and fog colours per weather.
+  Road wear: `world/roadwear.js`, the 4th mesh from `buildRoadMeshes`
+  (Haldon lifts it in countrygen with a bigger polygon offset).
 
 * **Haldon Vale** (25 Oct 2026), the third map: open country, hedges, hills,
   three villages, farms you can drive through, woods. README "Haldon Vale" has

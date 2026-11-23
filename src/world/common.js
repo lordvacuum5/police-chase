@@ -6,6 +6,7 @@
 // playing, and lives here.
 
 import * as THREE from 'three';
+import { buildRoadWear } from './roadwear.js';
 import { groundDetail } from './groundtex.js';
 import { MeshBuilder, vertexColorMaterial } from '../util/meshbuild.js';
 import { ROAD_KIND } from './roadgraph.js';
@@ -502,7 +503,9 @@ export function buildRoadMeshes(ctx) {
   const m3 = new THREE.Mesh(kerbs.build(), vertexColorMaterial(nearer));
   m3.name = 'kerbs';
   m3.receiveShadow = true;
-  return [m1, m2, m3];
+  // Tyre tracks, kerb grime, cracks and drains (world/roadwear.js), over the tarmac, under the markings.
+  const wear = buildRoadWear(graph);
+  return wear ? [m1, m2, m3, wear] : [m1, m2, m3];
 }
 
 // ----------------------------------------------------------------- scenery

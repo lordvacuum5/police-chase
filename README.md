@@ -7978,6 +7978,22 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Wear on the roads
+
+*"Road detail next."* `world/roadwear.js`: one more layer over every road between its junction mouths, mapped across it (edge to
+edge) and along it, with a see-through texture: paler tyre tracks polished into each half of the road, dust along the kerbs, a few
+patches of newer tarmac with a sealed seam, fine cracks, a drain by each kerb every 24 m. Faded in and out over 6 m at each end.
+Each road starts at its own point in the texture.
+
+What did not work: darkening, first (grime, dark tracks, dark cracks) -- on tarmac this dark it did not show at all. Then too much:
+26 cracks a repeat at up to 0.45 looked like lightning, the patches like holes, and on the wide roads the texture twice across put a
+kerb's drain down the middle. Now 9 cracks at about 0.15, patches half as dark, once across every road. Stopping square at a
+junction drew a hard line across the road, hence the fade.
+
+Cost, Ashfield City (1,924 triangles of it), ten turns shown and hidden: 10.7 ms a frame against 10.3 (medians 10.7 / 10.1). About
+half a millisecond: a see-through layer over every road on screen is drawn twice where it is, unlike the textures before it.
+`window.__noRoadWear = true` before load leaves it out.
+
 ### Lone Unit backup, the minimap in it, a civilian's ring, bricks that do not repeat
 
 *"The daily challenge today is like very, very hard ... just ramming if you're a police car ... maybe it should be like it gives
