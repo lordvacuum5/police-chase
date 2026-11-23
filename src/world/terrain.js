@@ -73,7 +73,7 @@ export function baseRelief(rng, opts = {}) {
  * it is pulled to that. `crests` are added to the road long sections after the
  * smoothing, so they survive it.
  */
-export function buildHeightGrid(base, { half = 1000, graph = null, flatten = [], crests = [], roadFade = 16, pins = [], lines = [] } = {}) {
+export function buildHeightGrid(base, { half = 1000, graph = null, flatten = [], crests = [], roadFade = 16, pins = [], lines = [], skipClaim = null } = {}) {
   const n = Math.round((half * 2) / H_STEP) + 1;
   const H = new Float32Array(n * n);
   const W = new Float32Array(n * n);      // how strongly a place has claimed the cell
@@ -215,6 +215,9 @@ export function buildHeightGrid(base, { half = 1000, graph = null, flatten = [],
           if (Math.abs(u) < 1) h += c.h * 0.5 * (1 + Math.cos(u * Math.PI));
         }
         prof[k] = h;
+        // A bridge over Ashfield's river leaves the ground under its span alone (citygen.js): claimed, the
+        // road would have stood on a dam across the water.
+        if (skipClaim && skipClaim(e, q.x, q.z)) continue;
         claim(q.x, q.z, h, e.width * 0.5 + 3, e.width * 0.5 + 3 + roadFade, true);
       }
       roadProf.set(e.id, { S, prof });

@@ -7,7 +7,7 @@ import {
   SPECS, LIVERIES, buildCarGeometry, buildWheelGeometry, LAMP_OFFSETS,
   carMaterials, drivablePoliceSpec, getawaySpec,
 } from './game/vehicles.js';
-import { WORLD_HALF } from './world/common.js';
+import { WORLD_HALF, setWorldSize } from './world/common.js';
 import { appleMode, realApple, setAppleMode } from './core/platform.js';
 import { MAPS, mapById } from './world/maps.js';
 import { buildCutGraph, CUTS_ON } from './world/cutgraph.js';
@@ -383,6 +383,8 @@ class Game {
     boot.set(0.32, `laying out ${this.mapDef.name}…`);
     // Yield so the loading bar actually paints before the long build.
     await frame();
+    // The world's size first: everything the map builds is sized from it (world/common.js).
+    setWorldSize(this.mapDef.half || 1000);
     const built = this.mapDef.build(this.sim, this.scene, this.mapDef.seed || 20260822);
     this.graph = built.graph;
     this.sim.surfaceAt = built.surfaceAt;
@@ -3377,6 +3379,34 @@ class Game {
     }
   }
 
+  /**
+   * Ashfield's river (world/citygen.js, `inWater`). "If you go into the river, I think you'll kind of sink
+   * ... and then you can't get out ... Let's make it that it just busts you if you go into the river." In it
+   * with anyone after you: busted. With nobody after you, towed back to the nearest road. Anyone else in
+   * it -- police, traffic -- is taken out, as a car that fell out of the world is (_catchFallen).
+   */
+  _checkWater() {
+    const inWater = this.world.__map && this.world.__map.inWater;
+    if (!inWater) return;
+    const wet = (v) => inWater(v.position.x, v.position.z, v.position.y);
+    const p = this.player;
+    if (p && !p.isAircraft && !this.outcome && wet(p)) {
+      if (this.heat && this.heat.value > 0 && !p.isPolice) {
+        if (this.hud) this.hud.centreLine('In the river');
+        this.onBusted();
+      } else {
+        this._recoverPlayer();
+        if (this.hud) this.hud.toast('OUT OF THE RIVER');
+      }
+    }
+    for (const v of this.vehicles.slice()) {
+      if (v === this.player || v.remote || v.isAircraft || !wet(v)) continue;
+      const unit = this.dispatcher.units.find((u) => u.vehicle === v);
+      if (unit) this.dispatcher.retire(unit);
+      else this.removeVehicle(v);
+    }
+  }
+
   /** Towed back to the nearest road, facing along it, stopped. */
   _recoverPlayer() {
     const p = this.player;
@@ -3763,6 +3793,7 @@ class Game {
     if (steps === MAX_SUBSTEPS) this.accumulator = 0;   // give up on the backlog
 
     this._catchFallen();
+    this._checkWater();
     this._updateSkids(dt);
     // The same part-way-through-a-substep pose the frame will be drawn in.
     // An aircraft is stepped once a frame, not on the physics clock, so the fraction

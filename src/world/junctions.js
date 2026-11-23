@@ -108,7 +108,9 @@ export function planJunctions(graph) {
       // and its stop lines landed at odd angles in the middle of the junction.
       // Nobody signals a junction that close to a roundabout anyway.
       && app.every((a) => a.edge.length >= 24)
-      && Math.max(...app.map((a) => a.half)) >= 7;
+      && Math.max(...app.map((a) => a.half)) >= 7
+      // And where the map wants them (Ashfield City: downtown and the avenues, not every suburban corner).
+      && (!graph.signalFilter || graph.signalFilter(node, app));
 
     junctions.push({ node, app, signal });
   }

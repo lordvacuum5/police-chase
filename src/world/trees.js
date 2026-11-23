@@ -211,8 +211,9 @@ const TREE_FAR = 260;
  * of them, cost a third more frame time than the old in a view over a wood. Returns a group under the
  * same name.
  */
-export function chunkTrees(mesh, low = null) {
+export function chunkTrees(mesh, low = null, cell = TREE_CELL) {
   if (window.__oneTreeMesh || !mesh || !mesh.geometry || mesh.geometry.index) return mesh;
+  const TREE_CELL = cell;
   const near = bucket(mesh.geometry, TREE_CELL);
   const far = low ? bucket(low.geometry, TREE_CELL) : new Map();
   const group = new THREE.Group();

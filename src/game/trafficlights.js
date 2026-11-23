@@ -181,7 +181,9 @@ export class TrafficLights {
   }
 
   _buildLamps() {
-    const geo = new THREE.SphereGeometry(LAMP_R, 8, 6);
+    // 6 x 4: 32 triangles a lamp, against 80 at 8 x 6. A lamp is a few pixels, and three instanced meshes of
+    // them -- one a colour, every head on the map in each -- were 220,000 triangles of Ashfield City's frame.
+    const geo = new THREE.SphereGeometry(LAMP_R, 6, 4);
     const n = Math.max(1, this.heads.length);
     const mk = (colour) => {
       const m = new THREE.InstancedMesh(

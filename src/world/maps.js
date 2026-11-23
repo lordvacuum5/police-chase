@@ -11,10 +11,13 @@ export const MAPS = [
   {
     id: 'city',
     name: 'Ashfield City',
-    tag: 'Grid · Ring motorway',
-    blurb: 'Dense downtown blocks, long avenues and a three-lane ring motorway. '
-         + 'Sightlines run straight down every street, so the police cut you off '
-         + 'at junctions they can predict.',
+    tag: 'Big city · River · Hills',
+    blurb: 'The biggest map: towers downtown, a river through the middle crossed by '
+         + 'bridges, the hilly streets of Ashfield Heights, suburbs of cul-de-sacs, '
+         + 'docks, and a three-lane ring motorway round it all. Drive into the '
+         + 'river and you are busted.',
+    // 3 km across: Wexbury and Haldon Vale are 2 km (world/common.js setWorldSize).
+    half: 1500,
     build: buildCity,
   },
   {

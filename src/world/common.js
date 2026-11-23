@@ -14,10 +14,15 @@ import { ROAD_KIND } from './roadgraph.js';
 import {
   planJunctions, buildJunctionCorners, buildStopLines, sliceLine, approachesAt, addNodeWedges,
 } from './junctions.js';
-import { GROUP, addStaticBox, addCanopy, nearBuilding, PLATE_HALF, EDGE_FACE } from '../physics/world.js';
+import { GROUP, addStaticBox, addCanopy, nearBuilding, PLATE_HALF, EDGE_FACE, setPlateHalf } from '../physics/world.js';
 import { rand, randInt, lerp, TAU } from '../util/math.js';
 
-export const WORLD_HALF = 1000;
+/**
+ * Half the side of the map, m. 1000 for Wexbury and Haldon Vale; a map can ask for more (maps.js `half`),
+ * and setWorldSize, called before it is built, moves this, the grids sized from it and the plate and its
+ * wall. Every module reads it as a live binding, so nothing may copy it at load time.
+ */
+export let WORLD_HALF = 1000;
 
 /** Surface classification, matching SURFACE_TYRES in physics/vehicle.js. */
 export const SURF_GRASS = 0, SURF_ROAD = 1, SURF_PAVED = 2;
@@ -34,7 +39,14 @@ export const SURF_GRASS = 0, SURF_ROAD = 1, SURF_PAVED = 2;
  * you can see.
  */
 export const CELL = 1;
-export const GRID_N = Math.ceil((WORLD_HALF * 2) / CELL);
+export let GRID_N = Math.ceil((WORLD_HALF * 2) / CELL);
+
+/** Size the world for the map about to be built: `half` m each way from the middle, 200 m of plate beyond. */
+export function setWorldSize(half = 1000) {
+  WORLD_HALF = half;
+  GRID_N = Math.ceil((half * 2) / CELL);
+  setPlateHalf(half + 200);
+}
 
 /**
  * How far the footway stands above the carriageway.

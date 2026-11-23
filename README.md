@@ -6161,16 +6161,21 @@ arrest saved it as a new best and cleared the score for the next run.
 ## The maps
 
 Three, chosen from the menu at startup. Press **M** in game to come back and
-switch. All are 2 × 2 km, generated from authored layout rules with a fixed
-seed, so each is identical every run.
+switch. Wexbury and Haldon Vale are 2 × 2 km, Ashfield City 3 × 3 km, all
+generated from authored layout rules with a fixed seed, so each is identical
+every run.
 
-### Ashfield City — grid
+### Ashfield City — big city, river, hills
 
-A dense downtown grid, a park superblock, thinned suburbs, an industrial strip,
-a roundabout, a ring **motorway** open at the verges with six slip roads, and
-winding **country** roads with hedgerows and a hamlet outside it. Sightlines run
-straight down every street and the block structure is regular, so the dispatcher
-can predict your route unusually well.
+Rebuilt (world/citygen.js): "it was the first map we ever made ... it's just the
+most boring map in the world." 3 km across (maps.js `half`, world/common.js
+`setWorldSize`). A square downtown grid of towers up to 150 m at the middle,
+the streets outside it bent and, in the hilly north-west (Ashfield Heights),
+curving; two diagonal avenues across it all; a river north to south in a
+channel cut below the streets, crossed by bridges, where you are busted if you
+go in; suburbs of houses with drives and cul-de-sacs; docks with containers and
+cranes on the east bank; a ring **motorway** with slip roads and country roads
+beyond. Built on Haldon Vale's terrain (world/terrain.js).
 
 ### Wexbury — organic market town
 
@@ -9893,6 +9898,42 @@ ground in 2 m squares, with its paint, the bay and its edge (which goes 1.5 m do
 walls, posts and pump islands reach 1.2 m further down, so none floats where the ground falls away. Also,
 the verge grass had been planted before the garage was laid, so tufts stood on the forecourt. It is now
 planted after, and kept off.
+
+### Ashfield City rebuilt: bigger, a river, hills
+
+"Hills? Yep. River through the middle? Yep ... it just busts you if you go into the river ... Mixed street
+grid, yep. Suburbs. Yes. Tower downtown, yep ... if we can make the map bigger ... if it was the biggest map,
+it'd be really cool." The first stage of it; the raised motorway, alleys, the car park and the docks' size
+are next.
+
+- **3 km across.** `WORLD_HALF` was a constant every module copied. It is now a live binding that
+  `setWorldSize(map.half)` sets before the build, with the grids, the plate and the wall at its edge
+  (physics/world.js `setPlateHalf`). Wexbury and Haldon Vale stay 2 km; checked, Haldon boots at 1000 with
+  its quarry.
+- **Hills and a river,** on Haldon's terrain: the plain at 6 m, Ashfield Heights rising 30 m in the north-west
+  and gentler rises elsewhere, and the river's channel cut down to a bed at 0.8 m with water at 3.6 m. A
+  levelling disc round downtown first filled the river where they met (the bed read 4.3-6 m at z -200).
+  Downtown is level without it, so it went.
+- **Bridges.** A road over the river is split by the generator so its span is an edge of its own. The terrain
+  builder leaves the ground under that span alone (`skipClaim`; claimed, the road had stood on a dam), and
+  `terrainAt` is the higher of the ground and any deck. So the wheels, the spawns, the street furniture and
+  the camera all find the deck, and only the water goes under it. Decks and parapets are colliders too.
+  Driven across: the body held 0.48 m over the deck the whole way. 16 bridges.
+- **In the river:** with anyone after you, busted (checked: in the water at y 4.0, busted); with nobody, towed
+  back to the road. Police and traffic that go in are taken out. The water is a ribbon at 3.6 m, reflecting
+  the sky, with ripples drifting downstream; the banks give it its edge.
+- **Cost.** At first 1.0-1.8 million triangles a frame, against the old city's 570,000. One 720,000-triangle
+  terrain mesh drawn whole wherever you looked is now 100 tiles, each with a 15 m version past 450 m. Traffic
+  lights were at every junction: 1,595 heads, four instanced meshes each drawn whole, 400,000 triangles.
+  They are now downtown only (188 junctions), and their lamp spheres are 32 triangles, not 80 (on every map).
+  Parked cars cut to one drive in six (724 to 368). The houses, kerbs and trees moved into bigger cells
+  (draw calls downtown 364 to 182). Now: downtown 794,000 triangles and 182 draw calls, the Heights 773,000
+  and 147, the suburbs 677,000 and 254 (the old city: 572,000 and 120 downtown, 578,000 and 171 in the
+  suburbs). The GPU timer could not separate them here: hiding any single thing "saved" 1.3-2.9 ms, which no
+  25,000-triangle mesh does. Minimums read 8.3 (Heights), 10-13 (downtown) and 10.6-11.7 (suburbs), against
+  the old city's 7.4-9.4.
+- `tests/stranded.js` on the new city, 90 s, two routes with three stars after the car: nothing flagged. Ten
+  units on the chase, all within 75 m.
 
 ## Apple mode
 

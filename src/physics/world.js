@@ -48,8 +48,13 @@ export const groups = (membership, filter) => ((membership << 16) | filter) >>> 
  * two other things need to know where it is: the wall itself, and Vehicle,
  * which does not charge for hitting it (see takeImpact).
  */
-export const PLATE_HALF = 1200;
-export const EDGE_FACE = PLATE_HALF - 4;
+export let PLATE_HALF = 1200;
+export let EDGE_FACE = PLATE_HALF - 4;
+/** A map bigger than the usual 2 km (world/common.js setWorldSize): its plate and wall move out with it. */
+export function setPlateHalf(half) {
+  PLATE_HALF = half;
+  EDGE_FACE = half - 4;
+}
 
 /** What a suspension ray is allowed to see -- deliberately not other vehicles. */
 export const RAY_GROUNDS = groups(0xFFFF, GROUP.TERRAIN | GROUP.BUILDING | GROUP.PROP);
