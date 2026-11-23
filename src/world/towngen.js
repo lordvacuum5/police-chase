@@ -25,7 +25,7 @@ import { buildingDetail } from './buildtex.js';
 import { groundDetail } from './groundtex.js';
 import { RoadGraph, ROAD_KIND } from './roadgraph.js';
 import { approachesAt, addNodeWedges } from './junctions.js';
-import { GROUP, addStaticBox } from '../physics/world.js';
+import { GROUP, addStaticBox, nearBuilding } from '../physics/world.js';
 import { makeRng, rand, randInt, clamp, lerp, dist2, TAU } from '../util/math.js';
 import {
   WORLD_HALF, CELL, GRID_N, KERB_H, SURF_GRASS, SURF_ROAD, SURF_PAVED, PALETTE,
@@ -40,6 +40,14 @@ const RINGS = [70, 152, 248, 352];
 const RING_NODES = [8, 12, 16, 20];
 const BYPASS_R = 610;
 const TOWN_EDGE = 430;      // beyond this it is estates, then countryside
+
+/** Parked cars on the drives: the share of houses with one, and the hash that picks them (no random draws). */
+const PARK_SHARE = 0.33;
+function driveHash(x, z) {
+  let h = Math.imul(Math.round(x * 3) ^ 0x7feb352d, 0x846ca68b) ^ Math.imul(Math.round(z * 3) + 0x3c6ef372, 0x9e3779b1);
+  h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13;
+  return (h >>> 0) / 4294967296;
+}
 
 export function buildTown(sim, scene, seed = 6180339) {
   const rng = makeRng(seed);
@@ -94,6 +102,8 @@ export function buildTown(sim, scene, seed = 6180339) {
     meshes,
     bounds: WORLD_HALF,
     bypass,
+    // Cars on the drives (game/parked.js).
+    parked: ctx.parked || [],
   };
 }
 
@@ -505,6 +515,7 @@ function buildFrontages(ctx) {
   const builders = [new MeshBuilder(), new MeshBuilder(), new MeshBuilder(), new MeshBuilder()];
   // The windows lit at night (world/windows.js).
   const lit = new MeshBuilder();
+  const drives = [];
   const placed = new Placed();
   let count = 0;
 
@@ -588,6 +599,15 @@ function buildFrontages(ctx) {
           // And windows on every other wall, the dark into the house and a lit few for the night
           // (world/windows.js): "windows on every wall, lit at night."
           addWindows(b, lit, bx, bz, w, h, d, rot, fx, fz, r < 150 ? 'shop' : 'house');
+          // A car on the drive beside about a third of the houses (not shops, not farms): which side and
+          // whether from where the house is, not the map's random numbers. Checked and made solid after
+          // every house is up (below), and drawn once the car models are in (game/parked.js).
+          if (r >= 150 && w < 12 && driveHash(bx, bz) < PARK_SHARE) {
+            const s = driveHash(bz, bx) < 0.5 ? 1 : -1;
+            const ox = Math.cos(rot), oz = -Math.sin(rot);
+            const along = d * 0.5 - 2.6;
+            drives.push({ x: bx + ox * s * (w * 0.5 + 1.7) + fx * along, z: bz + oz * s * (w * 0.5 + 1.7) + fz * along, rot, fx, fz });
+          }
           if (r < 150) {
             b.addBox(w * 0.86, h * 0.30, 0.12, bx + fx * face, h * 0.28, bz + fz * face, 0x121a20, rot);
           } else {
@@ -615,6 +635,17 @@ function buildFrontages(ctx) {
   }
 
   ctx.buildingCount = count;
+  // The drives: clear of the road and the pavement, of every building but at its own house's side, and of
+  // each other; then solid, as a building is, so trees, spawns and the police all keep off them.
+  ctx.parked = [];
+  for (const c of drives) {
+    if (graph.overlapsRoad(c.x, c.z, 2.0, 4.8, c.rot, 1.2)) continue;
+    let clear = true;
+    for (const k of [-1.9, 0, 1.9]) if (nearBuilding(sim.world, c.x + c.fx * k, c.z + c.fz * k, 1.05)) clear = false;
+    if (!clear || ctx.parked.some((p) => Math.hypot(p.x - c.x, p.z - c.z) < 5.5)) continue;
+    addStaticBox(sim.world, c.x, 0.75, c.z, 0.95, 0.75, 2.3, GROUP.BUILDING, c.rot);
+    ctx.parked.push({ x: c.x, z: c.z, heading: Math.atan2(-c.fx, -c.fz), i: ctx.parked.length });
+  }
   const out = [];
   const litMesh = litWindows(lit);
   if (litMesh) out.push(litMesh);

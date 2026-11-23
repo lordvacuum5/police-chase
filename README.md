@@ -7978,6 +7978,16 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Parked cars
+
+*Street clutter.* Wexbury's streets had nothing standing in them but lamp posts and bins. The town generator now picks a drive
+beside about a third of the houses (by where the house is, no random draws; not shops, not farms), off the road and the pavement
+(1.2 m margin), clear of every other building and of each other, and makes each one solid as a building is, so trees, spawns and
+the police keep off them: 170 on Wexbury. Not in the road: a car parked in a lane would change every chase down it.
+`game/parked.js` draws them once the car models are in: a traffic model each, its paint from the traffic's colours, sat on its
+springs, with the game's wheel; one batch per part of each model, in 120 m cells hidden past 230 m (a model is about 5,500
+triangles). GPU time, shown and hidden in turns at Wexbury's start: 4.3 ms against 4.2 on average. `window.__noParked`.
+
 ### Windows on every wall, lit at night
 
 A Wexbury house had a door and two windows on its front and nothing else: from a side street or behind, a blank box.
