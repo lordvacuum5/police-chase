@@ -124,6 +124,9 @@ const BLOCK_MAX = 220;
  * speed and spin the correction is allowed to use to get it back there. The
  * caps are what stop a car being leaned on from becoming a battering ram.
  */
+/** The sun's shadow map, pixels a side, and half the width of ground it covers round the car, m. */
+const SHADOW_MAP = 2048;
+const SHADOW_HALF = 100;
 const NET_SNAP = 5;      // m
 const NET_PULL = 10;     // m/s
 const NET_SPIN = 6;      // rad/s
@@ -580,9 +583,12 @@ class Game {
     const sun = new THREE.DirectionalLight(0xfff4e2, 1.75);
     sun.position.set(120, 190, 90);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
+    // 2048 over 200 m, from 1024 over 170: a texel 10 cm across, not 17, and shadows 15 m further out.
+    // Measured paused with the camera held: medians 6.5 ms (old) against 6.2-6.6 for the bigger maps --
+    // within the noise -- though one unpaused reading put 2048 over 220 m 2 ms dearer. See README.
+    sun.shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP);
     const c = sun.shadow.camera;
-    c.left = -85; c.right = 85; c.top = 85; c.bottom = -85;
+    c.left = -SHADOW_HALF; c.right = SHADOW_HALF; c.top = SHADOW_HALF; c.bottom = -SHADOW_HALF;
     c.near = 20; c.far = 460;
     sun.shadow.bias = -0.0012;
     sun.shadow.normalBias = 0.03;

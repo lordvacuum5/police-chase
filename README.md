@@ -7978,6 +7978,15 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Sharper shadows, further out
+
+The sun's shadow map is 2048 pixels over 200 m round the car, from 1024 over 170: a texel 10 cm across, not 17. GPU time at Haldon's
+start, the game paused and the camera held, three turns each: medians 6.5 ms for the old, 6.4 for 1536 over 200 m, 6.6 for 2048 over
+170, 6.2 for 2048 over 220 -- inside the noise. Not paused, with the game moving between readings, 2048 over 220 m read 2 ms dearer
+(10.0 against 7.9), so it may cost up to that on this laptop; the game drops shadows by itself when the frame rate falls
+(`_trackPerformance`). Readings with the game running here twice collapsed under 1 ms partway, the car having gone off the map and
+the camera to the sky: measure paused (`SHADOW_MAP`, `SHADOW_HALF`).
+
 ### Long grass and flowers on the verges
 
 Where a road met a field the grass stopped at a hard edge, flat. `game/verges.js`: a band of tufts along both verges of every road,
