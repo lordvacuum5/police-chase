@@ -10054,6 +10054,31 @@ no crash barrier ... I want it so there's not much friction, so you can kind of 
   through downtown, and the street-front towers are narrower (the alleys halve the blocks). Corners are now
   checked too. What still looks open is mostly pavement at junctions.
 
+### The ramp at -980, walls across bridges, flicker, bins, and the stops
+
+- **The ramp at -980** ("fix the ramp at -980 too"). Driven with nothing else on the map, it still failed. It
+  hugged the expressway, its centre 2.5 m from the expressway's, and started down while still underneath it:
+  a car meant for it stayed up on the expressway. An expressway ramp must now be clear of the expressway's
+  deck within 70 m and stay clear, and it curves away sooner (control point a fifth of the way along, not
+  45%). That turned every junction's ramp down until ramps could start from any junction (not every other),
+  250 m apart: four now, two of them from -830 in place of -980. The test had two faults of its own. It took
+  police out every frame, which left car bodies on the decks; it now stops them spawning. And it asked some
+  ramps for a hairpin turn back. `tests/viaducts.js`, all 17 raised routes: every one driven to its end, no
+  falls, damage 0 (0.002 on one).
+- **Walls across a bridge** ("you've got a wall on all corners blocking ... by the water bit"). Every 6 m
+  piece of a bridge had parapets both sides, including across a street joining it. Parapets are left out
+  wherever they would stand on another road.
+- **Flicker.** The tarmac, kerbs and markings were each pulled toward the camera by the same amount,
+  centimetres apart, and fought over pixels at a distance. Now tarmac -3/-6, kerbs -5/-10, markings -7/-14.
+  Alleys stop at the edge of the street they meet ("it should almost join into it, not overlay it").
+- **Bins** are knocked about like bales: 160 kg and 35 kg bodies, asleep until hit. Checked: a car at 40
+  km/h moved one 2.1 m. None stands on another road (some were out in a street where an alley crossed it).
+- **"It would kind of stop for a second"** in different parts of the map. three.js uploads a mesh to the
+  graphics card the first time it is drawn, so each new part of the map, and each cell back out of the fog,
+  stuttered once. Drawing everything once at load took 9.5 s here (3.7 s of it the drawing alone). So the
+  shaders are compiled at load (0.2 s), and the rest is fed in 40 pieces a frame from the start (3,509 on
+  Ashfield, about 1.5 s at 60 frames a second), each drawn once unculled.
+
 ## Apple mode
 
 The game plays harder on Apple hardware. It is a joke, it is deliberate, and

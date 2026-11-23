@@ -15,6 +15,19 @@ export async function runViaducts(only = null) {
   g.onBusted = () => { g.outcome = null; };
   // Nothing else on the road: what is measured is the structure, not who the driver ran into.
   if (g.traffic) { g.traffic.preset = true; g.traffic.clear(); }
+  // No police either, and none made: a patrol on a slip road was most of what the first runs "hit", and taking
+  // them out every frame instead left bodies behind on the decks. The roster is held at the player alone.
+  g.vehicleLimit = 1;
+  for (const u of g.dispatcher.units.slice()) g.dispatcher.retire(u);
+  for (let k = 0; k < 120; k++) g.stepHeadless(1 / 60, { throttle: 0, brake: 1, steer: 0, handbrake: 1 });
+  for (const o of g.vehicles.slice()) if (o !== v && !o.remote && !o.isAircraft) g.removeVehicle(o);
+  const bodies = new Set(g.vehicles.map((x) => x.body));
+  const stray = [];
+  g.world.forEachCollider((c) => {
+    const b = c.parent();
+    if (b && b.bodyType() === 0 && ((c.collisionGroups() >>> 16) & 8) && !bodies.has(b)) { const t = c.translation(); stray.push([Math.round(t.x), Math.round(t.y), Math.round(t.z)]); }
+  });
+  window.__viaStray = stray;
   const raised = G.edges.filter((e) => e.elevated);
   const routes = [];
   const ex = G.edges.filter((e) => e.express);
@@ -30,7 +43,15 @@ export async function runViaducts(only = null) {
   for (const e of raised.filter((r) => r.kind === 'ramp')) {
     const a = G.nodes[e.a], b = G.nodes[e.b];
     const foot = a.elevated ? b : a, top = a.elevated ? a : b;
-    const on = top.edges.map((id) => G.edges[id]).find((x) => x !== e && x.elevated);
+    // The road it joins, from the side a car meets it going its way (the other way is a hairpin back, which no
+    // driver takes).
+    const away = (edge) => { const pts = edge.a === top.id ? edge.points : edge.points.slice().reverse(); const q = pts[Math.min(3, pts.length - 1)]; const l = Math.hypot(q.x - top.x, q.z - top.z) || 1; return { x: (q.x - top.x) / l, z: (q.z - top.z) / l }; };
+    const rd = away(e);
+    const others = top.edges.map((id) => G.edges[id]).filter((x) => x !== e && x.elevated && x.kind !== 'ramp');
+    const score = (x) => { const d = away(x); return d.x * rd.x + d.z * rd.z; };
+    // Either way, the piece pointing furthest from where the ramp comes in: down off the expressway a car comes
+    // along it from there; up onto the ring a car carries on that way.
+    const on = others.sort((p, q) => score(p) - score(q))[0];
     if (!on) continue;
     const next = G.nodes[on.a === top.id ? on.b : on.a];
     routes.push({ name: (top.type === 'express' ? 'down from the expressway at ' : 'up onto the ring at ') + Math.round(top.x) + ',' + Math.round(top.z),
@@ -59,11 +80,6 @@ export async function runViaducts(only = null) {
       G.queryY = null;
       g.stepHeadless(1 / 60, c);
       t += 1 / 60;
-      // Police patrols too: one on a slip road was most of what the first runs "hit".
-      if (true) {
-        for (const u of g.dispatcher.units.slice()) g.dispatcher.retire(u);
-        for (const o of g.vehicles.slice()) if (o !== v && !o.remote && !o.isAircraft) g.removeVehicle(o);
-      }
       const p = v.position;
       let near = null;
       for (const e of raised) {

@@ -475,8 +475,14 @@ export function buildRoadMeshes(ctx) {
     if (e.elevated) continue;
     const def = ROAD_KIND[e.kind];
     // The carriageway itself still runs the full length: overlapping tarmac at
-    // a junction is invisible, and stopping it short would leave holes.
-    road.addRibbon(e.points, e.width, 0.03, def.colour);
+    // a junction is invisible, and stopping it short would leave holes. Not an
+    // alley's, which is another colour: it stops at the edge of the street it
+    // meets, where it was laid across the street's tarmac and the two flickered
+    // ("when a road hits another road, it should almost join into it, not overlay it").
+    if (e.kind === 'alley') {
+      const line = sliceLine(e.points, e.trimA || 0, e.length - (e.trimB || 0));
+      if (line && line.length > 1) road.addRibbon(line, e.width, 0.03, def.colour);
+    } else road.addRibbon(e.points, e.width, 0.03, def.colour);
 
     // Everything drawn on top of the tarmac stops at the junction mouth.
     const inner = sliceLine(e.points, e.trimA || 0, e.length - (e.trimB || 0));

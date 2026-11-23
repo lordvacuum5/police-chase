@@ -308,8 +308,8 @@ export function buildCity(sim, scene, seed = 20260822) {
     trafficCount: 28,
     // What is hidden past the fog (Game._fogCull): the map's cells of static meshes, by name.
     fogCull: ['roads', 'markings', 'towers', 'houses', 'kerbs', 'pavements', 'trees', 'decks', 'deck-markings', 'deck-edges', 'deck-slabs',
-      'deck-barriers', 'deck-piers', 'docks', 'alley-clutter', 'bridges', 'road-wear', 'driveways', 'verges', 'parked', 'carpark'],
-    update: (game, dt) => water.userData.update(dt || 1 / 60),
+      'deck-barriers', 'deck-piers', 'docks', 'bridges', 'road-wear', 'driveways', 'verges', 'parked', 'carpark'],
+    update: (game, dt) => { water.userData.update(dt || 1 / 60); if (ctx.binsUpdate) ctx.binsUpdate(); },
   };
 }
 
@@ -862,8 +862,12 @@ function buildExpressway(ctx, ring) {
   // Ramps down: from every other expressway junction, leaving along it, to a street junction 190-420 m off.
   const cands = graph.nodes.filter((n) => n.type === 'cross' && !n.elevated);
   let made = 0;
-  for (let k = 1; k < nodes.length - 1 && made < 8; k += 2) {
+  // From any junction along it (not every other, as first), a ramp's top at least 250 m from another's: the
+  // rule that keeps a ramp from hugging the expressway turned some junctions down, and the -980 one with them.
+  const tops = [];
+  for (let k = 1; k < nodes.length - 1 && made < 8; k++) {
     const A = nodes[k];
+    if (tops.some((t) => Math.hypot(t.x - A.x, t.z - A.z) < 250)) continue;
     for (const dirSign of [1, -1]) {
       const to = dirSign > 0 ? nodes[k + 1] : nodes[k - 1];
       let dx = to.x - A.x, dz = to.z - A.z;
@@ -873,24 +877,41 @@ function buildExpressway(ctx, ring) {
         const gx = G.x - A.x, gz = G.z - A.z, gl = Math.hypot(gx, gz);
         if (gl < 190 || gl > 420 || gl > bl) continue;
         const ahead = gx * dx + gz * dz;
-        if (ahead < gl * 0.75) continue;                       // the way it is going, not back
+        if (ahead < gl * 0.6) continue;                        // the way it is going, not back
         const side = -gx * dz + gz * dx;
-        if (Math.abs(side) < 25) continue;                     // not straight under it
-        // Leaving along the expressway, then curving down to the street.
-        const c1 = { x: A.x + dx * gl * 0.45, z: A.z + dz * gl * 0.45 };
+        if (Math.abs(side) < gl * 0.3) continue;               // well off to one side, not under it
+        // Leaving along the expressway, then curving away down to the street: the control point near the
+        // junction (a fifth of the way), so it parts from the expressway quickly.
+        const c1 = { x: A.x + dx * gl * 0.2, z: A.z + dz * gl * 0.2 };
         const pts = [];
-        for (let m = 0; m <= 8; m++) {
-          const u = m / 8, iu = 1 - u;
+        for (let m = 0; m <= 10; m++) {
+          const u = m / 10, iu = 1 - u;
           pts.push({ x: iu * iu * A.x + 2 * iu * u * c1.x + u * u * G.x, z: iu * iu * A.z + 2 * iu * u * c1.z + u * u * G.z });
         }
         if (pts.some((q) => inChannel(q.x, q.z, 10))) continue;
+        // Clear of the expressway's own deck within 70 m, and staying clear: the one at -980 hugged it, its
+        // centre 2.5 m from the expressway's, and dropped away underneath it -- a car meant for it stayed up
+        // on the expressway, and the ramp was undriveable.
+        let hugs = false, run = 0;
+        for (let m = 1; m < pts.length && !hugs; m++) {
+          const segL = Math.hypot(pts[m].x - pts[m - 1].x, pts[m].z - pts[m - 1].z), steps = Math.ceil(segL / 4);
+          for (let k = 1; k <= steps; k++) {
+            run += segL / steps;
+            if (run < 70) continue;
+            const x = lerp(pts[m - 1].x, pts[m].x, k / steps), z = lerp(pts[m - 1].z, pts[m].z, k / steps);
+            let near = Infinity;
+            for (let q = 0; q < nodes.length - 1; q++) near = Math.min(near, closestOnSegment(x, z, nodes[q].x, nodes[q].z, nodes[q + 1].x, nodes[q + 1].z).dist);
+            if (near < ROAD_KIND.dual.width * 0.5 + ROAD_KIND.ramp.width * 0.5 + 2) { hugs = true; break; }
+          }
+        }
+        if (hugs) continue;
         const top = ctx.base(A.x, A.z) + raiseAt(A.x, A.z);
         if (!rampClear(ctx, pts, top, ctx.base(G.x, G.z))) continue;
         bl = gl; best = { G, pts };
       }
       if (!best) continue;
       const e = graph.addEdge(A, best.G, 'ramp', best.pts.slice(1, -1), { bridge: true });
-      if (e) { e.elevated = true; made++; }
+      if (e) { e.elevated = true; made++; if (!tops.includes(A)) tops.push(A); }
     }
   }
   ctx.expressRamps = made;
@@ -1436,36 +1457,74 @@ function buildCarPark(ctx) {
 
 /**
  * Dumpsters and bins along the alleys, against their walls: what makes a gap between two towers an alley.
- * Not solid -- you drive through them -- and kept to the edges anyway (ROAD_KIND.alley is 7 m).
+ * "They cannot be solid ... Ideally you would be able to like push them a bit like bales. They don't need to
+ * break apart." Each is a body of its own weight (BIN_MASS), asleep where it stands -- Rapier spends nothing
+ * on it -- until something knocks it; then it is shoved, and its instance follows the body until it settles.
+ * Never on another road: where an alley crossed a street, some stood out in the street's carriageway.
  */
+const BIN_MASS = { big: 160, small: 35 };
+
 function buildAlleyClutter(ctx) {
   const { graph } = ctx;
   const W = ctx.sim.world;
-  const b = new MeshBuilder();
   const COLS = [0x2f5d3a, 0x2c4a6e, 0x5a5f63, 0x6e4a2c];
+  const spots = { big: [], small: [] };
   for (const e of graph.edges) {
     if (e.kind !== 'alley') continue;
     for (let s = 10; s < e.length - 10; s += 13 + hash(Math.round(e.points[0].x), Math.round(s), 61) * 10) {
       const p = pointAlong(e, s);
       const side = hash(Math.round(p.x), Math.round(p.z), 62) < 0.5 ? 1 : -1;
-      const off = e.width * 0.5 + 0.2;
+      const off = e.width * 0.5 - 0.3;
       const x = p.x + p.nx * side * off, z = p.z + p.nz * side * off;
-      const y = ctx.at(x, z);
-      const rot = Math.atan2(p.tx, p.tz);
+      if (onOtherRoad(graph, e, x, z) || onOtherRoad(graph, e, p.x, p.z)) continue;
       const big = hash(Math.round(x), Math.round(z), 63) < 0.6;
-      const [w, h, d] = big ? [1.2, 1.3, 2.0] : [0.7, 1.0, 0.7];
-      const col = COLS[Math.floor(hash(Math.round(z), Math.round(x), 64) * COLS.length)];
-      b.addBox(w, h, d, x, y + h / 2, z, col, rot);
-      b.addBox(w * 1.04, 0.08, d * 1.04, x, y + h + 0.04, z, 0x222428, rot);
-      // Not solid: "There's some American bins. They're solid. They cannot be solid."
+      spots[big ? 'big' : 'small'].push({ x, z, y: ctx.at(x, z), rot: Math.atan2(p.tx, p.tz), col: COLS[Math.floor(hash(Math.round(z), Math.round(x), 64) * COLS.length)] });
     }
   }
-  if (!b.vertexCount) return [];
-  const mesh = new THREE.Mesh(b.build(), vertexColorMaterial());
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  mesh.name = 'alley-clutter';
-  return [chunkMesh(mesh, 300)];
+  const out = [], bins = [];
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), ps = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1), c = new THREE.Color();
+  for (const kind of ['big', 'small']) {
+    const list = spots[kind];
+    if (!list.length) continue;
+    const [w, h, d] = kind === 'big' ? [1.2, 1.3, 2.0] : [0.7, 1.0, 0.7];
+    const geo = new THREE.BoxGeometry(w, h, d);
+    const im = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial(), list.length);
+    im.name = 'alley-bins';
+    im.castShadow = true;
+    im.receiveShadow = true;
+    im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    list.forEach((sp, i) => {
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), sp.rot);
+      const body = W.createRigidBody(RAPIER.RigidBodyDesc.dynamic()
+        .setTranslation(sp.x, sp.y + h / 2, sp.z).setRotation({ x: q.x, y: q.y, z: q.z, w: q.w })
+        .setLinearDamping(0.8).setAngularDamping(1.5).setSleeping(true));
+      // Its collider reaching HILL_SINK below what is drawn: the ground the bodies rest on is that far under
+      // the ground drawn and driven (terrain.js), and a bin knocked awake settled into the road.
+      W.createCollider(RAPIER.ColliderDesc.cuboid(w / 2, h / 2 + 0.175, d / 2).setTranslation(0, -0.175, 0)
+        .setDensity(BIN_MASS[kind] / (w * (h + 0.35) * d)).setFriction(0.6)
+        .setCollisionGroups(groups(GROUP.STREET, GROUP.TERRAIN | GROUP.HILL | GROUP.VEHICLE | GROUP.BUILDING | GROUP.STREET | GROUP.PROP)), body);
+      m4.compose(ps.set(sp.x, sp.y + h / 2, sp.z), q, one);
+      im.setMatrixAt(i, m4);
+      im.setColorAt(i, c.setHex(sp.col));
+      bins.push({ body, im, i });
+    });
+    im.computeBoundingSphere();
+    out.push(im);
+  }
+  // Every frame (the map's update): the ones knocked awake follow their bodies; the bounds once they settle.
+  ctx.binsUpdate = () => {
+    let moved = null;
+    for (const bn of bins) {
+      if (bn.body.isSleeping()) { if (bn.moving) { bn.moving = false; (moved || (moved = new Set())).add(bn.im); } continue; }
+      bn.moving = true;
+      const t = bn.body.translation(), r = bn.body.rotation();
+      m4.compose(ps.set(t.x, t.y, t.z), q.set(r.x, r.y, r.z, r.w), one);
+      bn.im.setMatrixAt(bn.i, m4);
+      bn.im.instanceMatrix.needsUpdate = true;
+    }
+    if (moved) for (const im of moved) im.computeBoundingSphere();
+  };
+  return out;
 }
 
 /** Where the car park goes: a downtown block west of the middle, kept clear of alleys and buildings. */
@@ -1632,13 +1691,18 @@ function buildTerrain(ctx, hgrid) {
 
 /** The roads lifted onto the ground (and the decks), depth-tested and pulled forward to stay on top. */
 function liftRoads(ctx, meshes) {
+  // Each layer pulled forward by its own amount: the tarmac, then the kerbs over the footway, then the markings
+  // over the tarmac. All three at the same offset, centimetres apart, fought over every pixel at a distance --
+  // "quite a lot of flickering with the roads".
+  const pull = { roads: [-3, -6], kerbs: [-5, -10], markings: [-7, -14] };
   for (const m of meshes) {
     liftMesh(m, ctx.at, 0.06);
     m.material = m.material.clone();
     m.material.depthFunc = THREE.LessEqualDepth;
     m.material.polygonOffset = true;
-    m.material.polygonOffsetFactor = -3;
-    m.material.polygonOffsetUnits = -6;
+    const [f, u] = pull[m.name] || [-3, -6];
+    m.material.polygonOffsetFactor = f;
+    m.material.polygonOffsetUnits = u;
   }
   return meshes;
 }
@@ -1761,16 +1825,17 @@ function buildBridges(ctx) {
       const L = len / n + 0.2;
       // The deck: a slab under the road, 1.4 m deep, its edge facing.
       b.addBox(hw * 2 + 1.2, 1.4, L, x, y - 0.66, z, 0x8a8a86, rot);
-      // Parapets.
-      for (const sd of [-1, 1]) {
-        const px = x + uz * (hw + 0.3) * sd, pz = z - ux * (hw + 0.3) * sd;
-        b.addBox(0.5, 1.0, L, px, y + 0.5, pz, 0xa3a29c, rot);
-      }
-      // Solid where it is drawn: the deck, for the bodywork (the wheels ride `terrainAt`, which has it), and
-      // the parapets, which a car hits as it would a wall.
+      // Parapets -- not where one would stand on another road: where a street joins the bridge, or two bridges
+      // meet at a bank, each piece's parapets ran straight across the other's carriageway ("you've got a wall on
+      // all corners blocking ... by the water bit"). Tested at both ends of the piece and its middle.
+      // Solid where drawn: the parapets are walls; the deck is for the bodywork (the wheels ride `terrainAt`).
       addStaticBox(W, x, y - 0.66, z, hw + 0.6, 0.7, L / 2, GROUP.TERRAIN, rot);
       for (const sd of [-1, 1]) {
-        addStaticBox(W, x + uz * (hw + 0.3) * sd, y + 0.5, z - ux * (hw + 0.3) * sd, 0.25, 0.5, L / 2, GROUP.BUILDING, rot);
+        const px = x + uz * (hw + 0.3) * sd, pz = z - ux * (hw + 0.3) * sd;
+        const ends = [[px, pz], [px - ux * L * 0.5, pz - uz * L * 0.5], [px + ux * L * 0.5, pz + uz * L * 0.5]];
+        if (ends.some(([qx, qz]) => onOtherRoad(ctx.graph, br.e, qx, qz))) continue;
+        b.addBox(0.5, 1.0, L, px, y + 0.5, pz, 0xa3a29c, rot);
+        addStaticBox(W, px, y + 0.5, pz, 0.25, 0.5, L / 2, GROUP.BUILDING, rot);
       }
     }
     // A pier in the water every fourth piece, about 24 m.
@@ -2000,6 +2065,17 @@ function buildBuildings(ctx, roundabout) {
   const litMesh = litWindows(lit);
   if (litMesh) out.push(litMesh);
   return out;
+}
+
+/** Is (x, z) on the carriageway of some road other than `e` (with half a metre to spare)? */
+function onOtherRoad(graph, e, x, z) {
+  for (const o of graph.edgesNear(x, z, 30)) {
+    if (o === e || o.dead) continue;
+    for (const sg of o.segs) {
+      if (closestOnSegment(x, z, sg.a.x, sg.a.z, sg.b.x, sg.b.z).dist < o.width * 0.5 + 0.5) return true;
+    }
+  }
+  return false;
 }
 
 /** Position and normal a distance along an edge's polyline. */

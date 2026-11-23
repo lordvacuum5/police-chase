@@ -473,6 +473,7 @@ class Game {
     // Long grass and flowers along the verges (game/verges.js): after the garage, whose forecourt they keep off.
     addVerges(this, this._mapBlocks);
     this._gatherFogCull();
+    this._warmGpu();
     this._mapBlocks = null;
     // The car the police know, and what they do when they see it again (game/known.js).
     this.known = new KnownCar(this);
@@ -3448,6 +3449,65 @@ class Game {
     this._fogTick = 0;
   }
 
+  /**
+   * Everything the map is made of handed to the graphics card early. three.js uploads a mesh's buffers (and
+   * compiles its shader) the first frame it is drawn, so each part of the map stuttered the first time it came
+   * into view -- each new block, each tree cell's nearer level, each cell back out of the fog (_fogCull): "it
+   * would kind of stop for a second" in "loads of different parts of the map".
+   *
+   * All of it drawn in one go at load took 9.5 s on this machine (3.7 s of it the drawing alone, done again with
+   * everything already uploaded). So: the shaders compiled now with everything shown (0.2 s), and the buffers
+   * fed in a few dozen pieces a frame from the start (_warmStep): each piece drawn once with nothing culling it,
+   * a level of detail with all its levels shown, then put back as it was.
+   */
+  _warmGpu() {
+    const R = this.renderer;
+    this._warmQueue = [];
+    if (!R || !this.scene || !this.camera || window.__noWarm) return;
+    const undo = [];
+    this.scene.traverse((o) => {
+      if (o.isLOD) {
+        this._warmQueue.push(o);
+        for (const l of o.levels) { const ob = l.object, v = ob.visible; undo.push(() => { ob.visible = v; }); ob.visible = true; }
+      } else if ((o.isMesh || o.isPoints) && !(o.parent && o.parent.isLOD)) {
+        this._warmQueue.push(o);
+        const v = o.visible;
+        undo.push(() => { o.visible = v; });
+        o.visible = true;
+      }
+    });
+    const t0 = performance.now();
+    try { R.compile(this.scene, this.camera); } catch (e) { /* compiled on first use instead */ }
+    for (let k = undo.length - 1; k >= 0; k--) undo[k]();
+    this._warmMs = Math.round(performance.now() - t0);
+  }
+
+  /** Before a frame: the next few unwarmed pieces shown, unculled, for this frame only. Returns the undo. */
+  _warmStep() {
+    const q = this._warmQueue;
+    if (!q || !q.length) return null;
+    const undo = [];
+    for (let n = 0; n < 40 && q.length; n++) {
+      const o = q.pop();
+      if (o.isLOD) {
+        undo.push(() => { o.autoUpdate = true; });
+        o.autoUpdate = false;
+        for (const l of o.levels) {
+          const ob = l.object, v = ob.visible;
+          undo.push(() => { ob.visible = v; });
+          ob.visible = true;
+          ob.traverse((c) => { if (c.isMesh) { const fc = c.frustumCulled; undo.push(() => { c.frustumCulled = fc; }); c.frustumCulled = false; } });
+        }
+      } else {
+        const fc = o.frustumCulled, v = o.visible;
+        undo.push(() => { o.frustumCulled = fc; o.visible = v; });
+        o.frustumCulled = false;
+        o.visible = true;
+      }
+    }
+    return () => { for (let k = undo.length - 1; k >= 0; k--) undo[k](); };
+  }
+
   _fogCull() {
     if (!this._fogMeshes || !this._fogMeshes.length || !this.scene.fog) return;
     if ((this._fogTick = (this._fogTick || 0) + 1) % 15) return;
@@ -4212,7 +4272,9 @@ class Game {
       this.weather.sky.update(this.camera, dt);
     }
 
+    const warmed = this._warmStep();
     this.renderer.render(this.scene, this.camera);
+    if (warmed) warmed();
 
     if (this.debug) this._drawDebug();
   }
