@@ -376,8 +376,19 @@ export class Hud {
     const g = this.game;
     const can = !!(g.garage && g.garage.canSpray);
     if (this.sprayEl && this.sprayEl.hidden === can) this.sprayEl.hidden = !can;
+    const row = this.sprayEl && this.sprayEl.querySelector('#sprayrow');
+    // Shut again each time you leave the bay, so it is the small button next time.
+    if (!can && row && !row.hidden) row.hidden = true;
     if (can) {
-      const row = this.sprayEl.querySelector('#sprayrow');
+      const btn = this.sprayEl.querySelector('#spraybtn');
+      if (!btn._wired) {
+        btn._wired = true;
+        btn.addEventListener('click', (e) => { e.stopPropagation(); row.hidden = !row.hidden; });
+      }
+      const cur = SPRAY_COLOURS[player.paint || 0];
+      const dot = btn.querySelector('i');
+      const bg = cur.hex === null ? 'repeating-linear-gradient(45deg, #888 0 3px, #555 3px 6px)' : `#${cur.hex.toString(16).padStart(6, '0')}`;
+      if (dot.dataset.bg !== bg) { dot.dataset.bg = bg; dot.style.background = bg; }
       if (!row.children.length) {
         SPRAY_COLOURS.forEach((c, i) => {
           const b = document.createElement('button');

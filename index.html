@@ -657,17 +657,25 @@
   #repair.work #repairfill { background: linear-gradient(90deg, #7ef0b0, #2fbf6e); }
   body.touch #repair { bottom: calc(112px + var(--safe-b)); width: min(280px, 60vw); }
 
-  /* ---- respray: in the garage bay, not wanted (Garage.canSpray) ---- */
-  #spray { position: absolute; bottom: 118px; left: 50%; transform: translateX(-50%); text-align: center; }
+  /* ---- respray: in the garage bay, not wanted (Garage.canSpray). A small button at the right-hand edge,
+     out of the way; pressed, it opens the colours beside it. "It needs to be almost a little button at the
+     side, not in anyone's way, that you then press, and then it expands." ---- */
+  #spray { position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+    display: flex; flex-direction: row-reverse; align-items: center; gap: 10px; }
   #spray[hidden] { display: none; }
-  #spraylabel { font-size: 12px; letter-spacing: 4px; color: #fff; text-shadow: 0 1px 8px rgba(4,6,9,.9); margin-bottom: 7px; }
-  #spraylabel small { letter-spacing: 1px; color: var(--dim); margin-left: 6px; }
-  #sprayrow { display: flex; gap: 7px; justify-content: center; }
+  #spraybtn { pointer-events: auto; cursor: pointer; padding: 8px 10px; border-radius: 8px;
+    background: rgba(14,20,28,.82); border: 1px solid var(--edge); color: #fff;
+    font: 600 11px ui-monospace, Consolas, monospace; letter-spacing: 2px; display: flex; align-items: center; gap: 7px; }
+  #spraybtn i { width: 14px; height: 14px; border-radius: 50%; display: inline-block; border: 1px solid rgba(255,255,255,.6); }
+  #spraybtn small { color: var(--dim); letter-spacing: 1px; }
+  #sprayrow { display: grid; grid-template-columns: repeat(3, 30px); gap: 7px; padding: 9px;
+    background: rgba(14,20,28,.82); border: 1px solid var(--edge); border-radius: 8px; }
+  #sprayrow[hidden] { display: none; }
   #sprayrow button { pointer-events: auto; cursor: pointer; width: 30px; height: 30px; border-radius: 50%;
     border: 2px solid rgba(255,255,255,.35); padding: 0; box-shadow: 0 1px 6px rgba(0,0,0,.5); }
   #sprayrow button.on { border-color: #fff; box-shadow: 0 0 0 2px #fff, 0 1px 8px rgba(0,0,0,.6); }
   #sprayrow button.orig { background: repeating-linear-gradient(45deg, #888 0 5px, #555 5px 10px); }
-  body.touch #spray { bottom: calc(166px + var(--safe-b)); }
+  body.touch #spray { right: calc(8px + var(--safe-r, 0px)); top: 38%; }
 
   /* ---- the car the police know (game/known.js), by the stars ---- */
   #knowncar { position: absolute; top: 9px; right: 10px; width: 34px; height: 20px; }
@@ -943,7 +951,7 @@
     <div id="repairhead"><span id="repairlabel">REPAIRING</span><span id="repairvalue">0%</span></div>
     <div id="repairtrack"><div id="repairfill"></div></div>
   </div>
-  <div id="spray" hidden><div id="spraylabel">RESPRAY<small>E or pick a colour</small></div><div id="sprayrow"></div></div>
+  <div id="spray" hidden><button id="spraybtn" title="Respray (E for the next colour)"><i></i>RESPRAY <small>E</small></button><div id="sprayrow" hidden></div></div>
   <div id="bust">
     <div id="bustlabel">BUSTED</div>
     <div id="busttrack"><div id="bustfill"></div></div>

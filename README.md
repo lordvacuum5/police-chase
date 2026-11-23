@@ -8042,6 +8042,18 @@ earlier wanted level ... don't bump it down ever."* Asked: from 2 stars up, spra
 * **Seen again, wanted lower than on file**: any unit's good look raises it to the level on file. It never lowers it.
 * Single player only: in multiplayer the heat is one machine's.
 
+*"I went behind a hedge and I was quite far away from it, and then it regained pursuit of me. Like you need to be much closer to the
+police car, and also within line of sight of it because I was behind a hedge."* That was the failing-to-stop rule: 80 m from the car
+looking at you, seen or not. Now it is 60 m and only while it can still see you (hedges block sight); out of its sight 4 s and it
+has lost you, back to its beat with no pursuit ("Lost sight of that vehicle"). It comes to look from 40 m, not 70, and only in
+sight; the good look is within 10 m, not 22. Checked: hidden 70-130 m away, lost at 4.0 s, still no stars; 70-100 m away in its
+sight, one star for failing to stop at once; parked, it drove up and the look started at 10 m, two stars at 7.7 s.
+
+*"It needs to be almost a little button at the side, not in anyone's way, that you then press, and then it expands ... whatever
+damage you're at, if you're repairing, you can still change the colours."* The respray is a small RESPRAY button at the right-hand
+edge with a dot of the current colour; pressed, the nine colours open beside it in a grid, and it closes again when you leave the
+bay. It never depended on the damage; checked at 57% while REPAIRING, resprayed green.
+
 Checked headless on Wexbury: 2.4 stars, escaped, a patrol car put 30 m off with the car parked: it set off at once, blipped, and
 the 2 stars were back at 6.1 s. Again, driving off at town speeds: it kept up and recognised the car at about 8 s. With the car
 taken 130 m away once it set off: 1 star, "failing to stop"; then a unit 25 m off raised it to the 3 on file in 8.5 s. Respray: the

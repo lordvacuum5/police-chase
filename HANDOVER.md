@@ -175,7 +175,8 @@ scoring, deliberately.
   its top level; a car icon by the stars (`#knowncar`) shows while you are in
   it. Not wanted, a patrol car that sees it is taken off the board and driven
   by KnownCar (blips, follows); a 2.5 s close look restores the old level,
-  getting 80 m away is 1 star "failing to stop". Wanted lower than on file,
+  getting 60 m away while it still sees you is 1 star "failing to stop";
+  out of its sight 4 s, it gives up (STOP_SPOT 40, LOOK_CLOSE 10). Wanted lower than on file,
   any unit's close look raises it; never lowers. Respray in the garage bay
   (E, or the colour buttons; `Garage.canSpray`, `Game.respray`,
   `Game.paintCar`, `SPRAY_COLOURS`) clears the file. Paint index goes on the

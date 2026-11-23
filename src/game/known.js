@@ -12,8 +12,8 @@
 // it reached. While you are in that car, in that colour (the car icon by the stars says so):
 //  - Not wanted, a patrol car that sees you within STOP_SPOT comes after you to have a look: off the force's
 //    board, driven here, blipping its lights and siren. A good look (LOOK_TIME seconds within LOOK_CLOSE, in
-//    sight) and the old level is back. Get STOP_LOSE away from it first and it is a pursuit for failing to
-//    stop, at one star.
+//    sight) and the old level is back. Get STOP_LOSE away from it with it still watching and it is a pursuit
+//    for failing to stop, at one star; out of its sight STOP_UNSEEN seconds and it has lost you.
 //  - Wanted, a unit's good look at you puts the level up to the old one if it is lower. Never down.
 // A respray at the garage takes the car off file. Arrested, the run ends, and R starts it clean.
 // Single player only: in a multiplayer game the heat is one machine's and the other players' cars are not.
@@ -23,15 +23,22 @@ import { dist2 } from '../util/math.js';
 
 /** Stars a chase needs before the car is on file. */
 export const KNOWN_FROM = 2;
-/** Not wanted: a patrol car this close that can see you comes to look, m. */
-const STOP_SPOT = 70;
-/** The good look: within this gap, m, in sight, for this long in all, s. */
-const LOOK_CLOSE = 22;
+/**
+ * Not wanted: a patrol car this close that can see you comes to look, m. 70 at first, with LOOK_CLOSE 22 and
+ * STOP_LOSE counted whether or not it could still see you: "I went behind a hedge and I was quite far away
+ * from it, and then it regained pursuit of me. Like you need to be much closer to the police car, and also
+ * within line of sight of it because I was behind a hedge."
+ */
+const STOP_SPOT = 40;
+/** The good look: within this gap, m, in sight (hedges count), for this long in all, s. */
+const LOOK_CLOSE = 10;
 const LOOK_TIME = 2.5;
 /** What a look is worth when they drop back: it drains this much slower than it fills. */
 const LOOK_DRAIN = 0.4;
-/** Pulling away from the car looking at you: this far from it, m, is failing to stop. */
-const STOP_LOSE = 80;
+/** Pulling away from the car looking at you, while it can still see you: this far from it, m, is failing to stop. */
+const STOP_LOSE = 60;
+/** Out of its sight this long, s, and it has lost you: no pursuit, it goes back to its beat. */
+const STOP_UNSEEN = 4;
 /** A look that goes nowhere -- it cannot get to you -- is given up after this long, s. */
 const STOP_GIVE_UP = 45;
 /** A unit that has looked and lost you does not try again for this long, s. */
@@ -97,7 +104,7 @@ export class KnownCar {
     const k = d.knowledge;
     const u = k.seen && k.spotter;
     if (!u || !u.vehicle || u.human || u.vehicle.disabled || !d.units.includes(u)) return;
-    if (u.distanceTo(p.position) > STOP_SPOT) return;
+    if (u.distanceTo(p.position) > STOP_SPOT || !d._visibleTo(u, p)) return;
     this._start(u);
   }
 
@@ -122,7 +129,7 @@ export class KnownCar {
     const i = d.units.indexOf(u);
     if (i >= 0) d.units.splice(i, 1);
     u.setRole(ROLE.PURSUE);
-    this.stop = { unit: u, look: 0, t: 0, blipIn: 0 };
+    this.stop = { unit: u, look: 0, t: 0, blipIn: 0, unseen: 0 };
     g.say('knownStop', [
       (x) => `Control, ${x.cs}. Vehicle that matches one from earlier. Going to have a look.`,
       (x) => `Control, ${x.cs}. Think I've got the car from before. Pulling it over.`,
@@ -139,10 +146,22 @@ export class KnownCar {
     s.blipIn -= dt;
     if (s.blipIn <= 0) { s.blipIn = BLIP_EVERY; u.vehicle.blipFor = BLIP_FOR; }
     const gap = this._gap(u);
-    const close = gap < LOOK_CLOSE && d._visibleTo(u, p);
+    const sees = d._visibleTo(u, p);
+    const close = gap < LOOK_CLOSE && sees;
     s.look = close ? s.look + dt : Math.max(0, s.look - dt * LOOK_DRAIN);
     if (s.look >= LOOK_TIME) { this._recognised(u); return; }
-    if (gap > STOP_LOSE) {
+    // Out of its sight long enough, it has lost you: no pursuit.
+    s.unseen = sees ? 0 : s.unseen + dt;
+    if (s.unseen > STOP_UNSEEN) {
+      this._release();
+      this.again = STOP_AGAIN;
+      g.say('knownLost', [
+        () => 'Control, lost sight of that vehicle. Resuming patrol.',
+        () => 'Control, no sign of it now. Back on patrol.',
+      ], {}, false, { every: 10 });
+      return;
+    }
+    if (gap > STOP_LOSE && sees) {
       // Away from it: that is a pursuit, for not stopping. Close enough later, they will know you.
       const word = d._bearingWord(u.vehicle.position, p.position);
       this._release();
