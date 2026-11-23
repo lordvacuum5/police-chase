@@ -116,6 +116,10 @@ export class StreetProps {
     if (this.game.graph.overlapsRoad(x, z, def.radius * 2, def.radius * 2, 0, 0.4)) return;
     // Nor across the way into the garage.
     if (this.game.garage && this.game.garage.covers(x, z, 1.5)) return;
+    // Nor where the map keeps clear: Ashfield's river ("I saw a street light in the water", beside a bridge
+    // where the footway's line ran out over the channel), Haldon's railway and quarry.
+    const map = this.game.world && this.game.world.__map;
+    if (map && map.clearAt && map.clearAt(x, z)) return;
 
     // Street furniture stands on the footway, which is a kerb height above the
     // road. Planting it at zero buries a bollard to its knees.

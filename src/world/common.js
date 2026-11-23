@@ -480,6 +480,9 @@ export function buildRoadMeshes(ctx) {
     // meets, where it was laid across the street's tarmac and the two flickered
     // ("when a road hits another road, it should almost join into it, not overlay it").
     if (e.kind === 'alley') {
+      // Not the few metres an alley runs on into the street to be joined to it: laid over the street's
+      // tarmac, pale on dark, they flickered "when the back alleys go into main roads".
+      if (e.length < 15 && (graph.nodes[e.a].edges.length < 2 || graph.nodes[e.b].edges.length < 2)) continue;
       const line = sliceLine(e.points, e.trimA || 0, e.length - (e.trimB || 0));
       if (line && line.length > 1) road.addRibbon(line, e.width, 0.03, def.colour);
     } else road.addRibbon(e.points, e.width, 0.03, def.colour);

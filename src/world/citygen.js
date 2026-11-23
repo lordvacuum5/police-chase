@@ -299,8 +299,8 @@ export function buildCity(sim, scene, seed = 20260822) {
     parked: ctx.parked || [],
     driveStrips: ctx.driveStrips || [],
     /** In the river, below its surface: busted (main.js). */
-    inWater: (x, z, y) => y < WATER + 0.4 && riverOn(z) > 0.3 && Math.abs(riverSide(x, z)) < WATER_HALF + BANK_RUN * 0.5
-      && deckAt(x, z) < y - 1.2,
+    // Under a bridge too: asked whether a deck was below the car, a car in the water under one was dry.
+    inWater: (x, z, y) => y < WATER + 0.4 && riverOn(z) > 0.3 && Math.abs(riverSide(x, z)) < WATER_HALF + BANK_RUN * 0.6,
     water: WATER,
     clearAt: (x, z) => inChannel(x, z, 2),
     // The raised roads' deck colliders: a wheel on one is on road (Vehicle).
@@ -1086,13 +1086,8 @@ function buildDecks(ctx) {
     lift(top, s0, yOf);
     const c = colliderFrom(top, s0, GROUP.RAMP);
     if (c) ctx.decks.add(c.handle);
-    // A pale concrete edge strip each side, under the barrier.
-    s0 = kerb.vertexCount;
-    for (const sg of [1, -1]) kerb.addRibbon(e.points, 1.0, 0.1, EDGE, sg * (half + 0.1));
-    lift(kerb, s0, yOf);
-    // The slab: its two edges down 1.4 m, and the underside.
+    // The slab's underside.
     s0 = under.vertexCount;
-    for (const off of [half + 0.6, -(half + 0.6)]) under.addWall(e.points, -1.4, 0.1, SLAB, off);
     under.addRibbon(e.points, e.width + 1.2, -1.4, SLAB);
     lift(under, s0, yOf);
     // Barriers, both sides, all the way -- open only on the side another raised road leaves from, for as far
@@ -1149,6 +1144,20 @@ function buildDecks(ctx) {
     const openA = openAt(a, true, dirA), openB = openAt(b, false, dirB);
     for (const [sd, d] of openA) opened.set(`${e.id}:${a.id}:${sd}`, d);
     for (const [sd, d] of openB) opened.set(`${e.id}:${b.id}:${sd}`, d);
+    // A pale concrete edge strip each side under the barrier, and the slab's edge down 1.4 m -- each side only
+    // where its barrier is: where a ramp still runs with the motorway, both used to be drawn across the
+    // motorway's own deck, and the ramp looked to begin before it came off ("the road should start where it
+    // comes off, not like before it starts coming off").
+    for (const sg of [1, -1]) {
+      const side = sliceLine(e.points, openA.get(sg) || 0, e.length - (openB.get(sg) || 0));
+      if (!side || side.length < 2) continue;
+      s0 = kerb.vertexCount;
+      kerb.addRibbon(side, 1.0, 0.1, EDGE, sg * (half + 0.1));
+      lift(kerb, s0, yOf);
+      s0 = under.vertexCount;
+      under.addWall(side, -1.4, 0.1, SLAB, sg * (half + 0.6));
+      lift(under, s0, yOf);
+    }
     // Markings: a white line along each edge of every raised road, and its lanes dashed. "You can almost see
     // the road, but it has no like edges on it": the deck was a dark sheet as dark as the streets under it,
     // with nothing to say where it stopped.
@@ -1159,7 +1168,9 @@ function buildDecks(ctx) {
       const ln = sliceLine(e.points, openA.get(sg) || 0, e.length - (openB.get(sg) || 0));
       if (ln && ln.length > 1) paint.addRibbon(ln, 0.22, 0.04, PALETTE.marking, sg * (half - 0.5));
     }
-    const mid = sliceLine(e.points, Math.max(openA.get(1) || 0, openA.get(-1) || 0), e.length - Math.max(openB.get(1) || 0, openB.get(-1) || 0));
+    // The lanes stop only where this road ends into another -- open both sides, as the expressway at the ring
+    // -- and carry on past a slip road joining one side (they stopped there too, for the length of the merge).
+    const mid = sliceLine(e.points, Math.min(openA.get(1) || 0, openA.get(-1) || 0), e.length - Math.min(openB.get(1) || 0, openB.get(-1) || 0));
     if (mid && mid.length > 1) {
       if (e.kind === 'motorway') for (const off of [e.width / 6, -e.width / 6]) paint.addDashedRibbon(mid, 0.28, 0.04, PALETTE.marking, 6, 9, off);
       else if (e.kind === 'dual') paint.addDashedRibbon(mid, 0.28, 0.04, PALETTE.marking, 6, 9, 0);
@@ -1326,7 +1337,9 @@ function buildDecks(ctx) {
     else if (tex === 'panel') buildingDetail(m, 'panel');
     out.push(chunkMesh(m, 300));
   };
-  mk(top, 'decks', {}, 'tarmac');
+  // Pushed back in depth: where a ramp's foot lies on the street it meets, 1 cm under it and a shade
+  // different, the two flickered; the street now always wins.
+  mk(top, 'decks', { polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 4 }, 'tarmac');
   mk(paint, 'deck-markings', { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
   // Lit a little of their own: from below, the sky's light reaches a slab's underside only as the ground's
   // green bounce, and the concrete read as dark olive.
@@ -1824,12 +1837,14 @@ function buildBridges(ctx) {
       const x = ax + ux * len * tm, z = az + uz * len * tm, y = lerp(ha, hb, tm);
       const L = len / n + 0.2;
       // The deck: a slab under the road, 1.4 m deep, its edge facing.
-      b.addBox(hw * 2 + 1.2, 1.4, L, x, y - 0.66, z, 0x8a8a86, rot);
+      // Its top 8 cm under the road drawn on it: 2 cm, it and the road flickered through each other at a
+      // distance ("some bits just near the water").
+      b.addBox(hw * 2 + 1.2, 1.4, L, x, y - 0.78, z, 0x8a8a86, rot);
       // Parapets -- not where one would stand on another road: where a street joins the bridge, or two bridges
       // meet at a bank, each piece's parapets ran straight across the other's carriageway ("you've got a wall on
       // all corners blocking ... by the water bit"). Tested at both ends of the piece and its middle.
       // Solid where drawn: the parapets are walls; the deck is for the bodywork (the wheels ride `terrainAt`).
-      addStaticBox(W, x, y - 0.66, z, hw + 0.6, 0.7, L / 2, GROUP.TERRAIN, rot);
+      addStaticBox(W, x, y - 0.78, z, hw + 0.6, 0.7, L / 2, GROUP.TERRAIN, rot);
       for (const sd of [-1, 1]) {
         const px = x + uz * (hw + 0.3) * sd, pz = z - ux * (hw + 0.3) * sd;
         const ends = [[px, pz], [px - ux * L * 0.5, pz - uz * L * 0.5], [px + ux * L * 0.5, pz + uz * L * 0.5]];

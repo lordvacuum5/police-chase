@@ -10079,6 +10079,24 @@ no crash barrier ... I want it so there's not much friction, so you can kind of 
   shaders are compiled at load (0.2 s), and the rest is fed in 40 pieces a frame from the start (3,509 on
   Ashfield, about 1.5 s at 60 frames a second), each drawn once unculled.
 
+### Flicker at alleys and by the water, ramps that begin where they leave, busted in the river
+
+- **Alleys flickering where they meet a street.** An alley runs a few metres on into the street it meets, so
+  the graph can join the two, and that stub was drawn pale over the street's tarmac. Stubs are no longer
+  drawn (nor worn).
+- **"The road should start where it comes off."** Where a ramp still runs with the motorway, its pale edge
+  strips and slab edges were drawn across the motorway's deck, so the ramp seemed to begin before it left.
+  Both are now drawn only where that side's barrier is. The motorway's lane markings carry on past a slip
+  road joining one side; they stop only where a road ends into another (the expressway at the ring).
+- **Flicker near the water and on the motorway.** Depth precision here is about 1.3 cm at 300 m and 5 cm at
+  600 m. River bridge decks stood 2 cm under the road drawn on them; now 8 cm. Raised decks are pushed back in
+  depth, so where a ramp's foot lies on the street it meets (1 cm, a shade different) the street wins.
+- **The water busts you**, wanted or not ("I think it should just bust you"); a police player's car is towed
+  out. Under a bridge it used to be missed, as the test asked whether a deck was below the car. Checked: into
+  the river with heat 0, busted at y 3.9.
+- **A street light in the water**: no street furniture where the map keeps clear (Ashfield's river; Haldon's
+  railway and quarry). Furniture over the channel: 0.
+
 ## Apple mode
 
 The game plays harder on Apple hardware. It is a joke, it is deliberate, and

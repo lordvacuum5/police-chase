@@ -110,6 +110,8 @@ export function buildRoadWear(graph, y = 0.035) {
   const pos = [], uv = [], nor = [], col = [], idx = [];
   for (const e of graph.edges) {
     if (e.cut || e.elevated) continue;
+    // Nor an alley's stub into the street it joins (see buildRoadMeshes).
+    if (e.kind === 'alley' && e.length < 15 && (graph.nodes[e.a].edges.length < 2 || graph.nodes[e.b].edges.length < 2)) continue;
     const line = sliceLine(e.points, e.trimA || 0, e.length - (e.trimB || 0));
     if (!line || line.length < 2) continue;
     const half = e.width * 0.5;

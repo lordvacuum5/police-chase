@@ -3399,8 +3399,10 @@ class Game {
     if (!inWater) return;
     const wet = (v) => inWater(v.position.x, v.position.z, v.position.y);
     const p = this.player;
+    // Busted, wanted or not: "when you go into the water, I think it should just bust you". A police player's
+    // car is towed back out instead.
     if (p && !p.isAircraft && !this.outcome && wet(p)) {
-      if (this.heat && this.heat.value > 0 && !p.isPolice) {
+      if (!p.isPolice) {
         if (this.hud) this.hud.centreLine('In the river');
         this.onBusted();
       } else {
