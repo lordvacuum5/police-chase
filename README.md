@@ -7978,6 +7978,19 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### The sky and the light
+
+*"Sky and lighting next."* The sky was one flat colour, the same as the fog, so the world ended in a grey-blue wall. `game/sky.js`:
+a dome round the camera, deep blue overhead fading to a pale haze at the horizon that is the fog's own colour, so the distance melts
+into it; a disc of cloud high up, textured by position so the clouds shrink toward the horizon, faded at its rim, drifting; a glow
+where the sun is. Rain: a low grey overcast. Night: a dark sky, dim clouds and 900 stars. The light takes its colours from the
+same table (`Sky.lighting`, applied in `Weather._apply`): a warmer sun (0xfff0d6, 1.9 against 0xfff4e2, 1.75), a bluer fill from
+the sky, a grassier bounce from the ground, and the fog the horizon's colour. Unlit, unfogged meshes drawn behind everything: a few
+hundred triangles and one texture. Cost, Haldon Vale, ten turns with the sky shown and hidden: 33.1 ms a frame against 33.9 (medians
+30.5, 31.8) -- nothing, inside a spread of 21-55 ms on a laptop that had been running rigs for an hour. `window.__flatSky = true`
+before load for the old flat colour. The bright patch on a car's rear window facing the sun is the glass's own highlight, there
+before; hiding the sun glow does not change it.
+
 ### Texture on the buildings
 
 *"Amazing job with the textures"* (a friend, of the ground), and then *"Building textures."* The same idea as the ground

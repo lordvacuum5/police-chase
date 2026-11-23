@@ -186,6 +186,8 @@ scoring, deliberately.
   terrain, roads and pavements. Buildings: `world/buildtex.js`
   (`buildingDetail`), walls/roofs sorted into two material groups per
   building mesh; it needs non-indexed flat-normal geometry (MeshBuilder).
+  Sky: `game/sky.js`, made in `Weather._apply`, follows the camera in
+  `_render`; it also sets the sun, hemisphere and fog colours per weather.
 
 * **Haldon Vale** (25 Oct 2026), the third map: open country, hedges, hills,
   three villages, farms you can drive through, woods. README "Haldon Vale" has

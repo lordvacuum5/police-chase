@@ -15,6 +15,7 @@
 // would be hundreds of lights and no phone would draw it.
 
 import * as THREE from 'three';
+import { Sky } from './sky.js';
 
 const KEY = 'pc.conditions';
 
@@ -61,6 +62,11 @@ export class Weather {
       near = this.rain ? 30 : 60; far = this.rain ? 360 : 520;
       hemiI = 0.42; sunI = 0.32; sunCol = 0x9fb6ff;
     }
+    // The sky (game/sky.js), and the light and haze to match what it draws: the fog is the colour of its
+    // horizon, the sun and the fill from the sky its colours. Without it (window.__flatSky), as before.
+    this.sky = new Sky(scene, { night: this.night, rain: this.rain });
+    const lit = window.__flatSky ? null : this.sky.lighting;
+    if (lit) sky = lit.fog;
     scene.background = new THREE.Color(sky);
     scene.fog.color.setHex(sky);
     scene.fog.near = near;
@@ -68,9 +74,10 @@ export class Weather {
     if (hemi) {
       hemi.intensity = hemiI;
       if (this.night) { hemi.color.setHex(0x7d8fb8); hemi.groundColor.setHex(0x1c2230); }
+      if (lit) { hemi.intensity = lit.hemiI; hemi.color.setHex(lit.sky); hemi.groundColor.setHex(lit.ground); }
     }
-    g.sun.intensity = sunI;
-    g.sun.color.setHex(sunCol);
+    g.sun.intensity = lit ? lit.sunI : sunI;
+    g.sun.color.setHex(lit ? lit.sun : sunCol);
 
     // Wet: less grip for everyone, and darker, glossier-looking roads.
     g.sim.wetGrip = this.rain ? WET_GRIP : 1;
