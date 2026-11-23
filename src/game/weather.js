@@ -79,6 +79,9 @@ export class Weather {
     g.sun.intensity = lit ? lit.sunI : sunI;
     g.sun.color.setHex(lit ? lit.sun : sunCol);
 
+    // Lit windows (world/windows.js), on at night.
+    scene.traverse((o) => { if (o.userData && o.userData.setNight) o.userData.setNight(this.night); });
+
     // Wet: less grip for everyone, and darker, glossier-looking roads.
     g.sim.wetGrip = this.rain ? WET_GRIP : 1;
     if (this.rain) {

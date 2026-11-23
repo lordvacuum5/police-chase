@@ -18,6 +18,7 @@
 // streets and makes the lanes feel enclosed.
 
 import * as THREE from 'three';
+import { addWindows, litWindows } from './windows.js';
 import { chunkMesh } from './chunks.js';
 import { drawTree, treeDetail, chunkTrees, lowTrees } from './trees.js';
 import { buildingDetail } from './buildtex.js';
@@ -502,6 +503,8 @@ class Placed {
 function buildFrontages(ctx) {
   const { graph, rng, sim } = ctx;
   const builders = [new MeshBuilder(), new MeshBuilder(), new MeshBuilder(), new MeshBuilder()];
+  // The windows lit at night (world/windows.js).
+  const lit = new MeshBuilder();
   const placed = new Placed();
   let count = 0;
 
@@ -582,6 +585,9 @@ function buildFrontages(ctx) {
           // street. Shops in the centre get a glazed band; everything else gets
           // a door and a pair of windows either side of it.
           const face = d * 0.5 + 0.06;
+          // And windows on every other wall, the dark into the house and a lit few for the night
+          // (world/windows.js): "windows on every wall, lit at night."
+          addWindows(b, lit, bx, bz, w, h, d, rot, fx, fz, r < 150 ? 'shop' : 'house');
           if (r < 150) {
             b.addBox(w * 0.86, h * 0.30, 0.12, bx + fx * face, h * 0.28, bz + fz * face, 0x121a20, rot);
           } else {
@@ -610,6 +616,8 @@ function buildFrontages(ctx) {
 
   ctx.buildingCount = count;
   const out = [];
+  const litMesh = litWindows(lit);
+  if (litMesh) out.push(litMesh);
   for (let q = 0; q < 4; q++) {
     const mesh = new THREE.Mesh(builders[q].build(), vertexColorMaterial());
     mesh.name = 'town' + q;

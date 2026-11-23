@@ -7978,6 +7978,16 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Windows on every wall, lit at night
+
+A Wexbury house had a door and two windows on its front and nothing else: from a side street or behind, a blank box.
+`world/windows.js`: a row of windows a floor on every wall (two floors over 5.5 m), flat panels a few centimetres proud, drawn into
+the houses' own meshes (so they are in the buildings' cells); ground-floor ones either side of the door; a shop's floor above its
+glazed front. About a third of them (by where they are), and of the old front ones, are copied a hair further out in warm unlit
+glass into a `windows-lit` mesh shown only at night (`userData.setNight`, called from `Weather._apply`). Haldon's villages already
+had theirs (world/countrylife.js). No random draws, so the town is the town it was. GPU time at Wexbury's start, day: 5.2 / 6.3 ms,
+against 3.9 / 5.1 before this and the shiny cars -- a millisecond at most, after the cells took off about five.
+
 ### Shiny cars
 
 The cars' materials could always reflect; there was nothing to reflect. `Sky.reflect` catches the sky (dome, clouds, sun glow) over a
