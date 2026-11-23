@@ -8,6 +8,7 @@
 // rebuilt identically every run.
 
 import * as THREE from 'three';
+import { drawTree, treeDetail, chunkTrees, lowTrees } from './trees.js';
 import { buildingDetail } from './buildtex.js';
 import { groundDetail } from './groundtex.js';
 import { MeshBuilder, vertexColorMaterial } from '../util/meshbuild.js';
@@ -802,10 +803,10 @@ function buildCountryside(ctx) {
   const fm = new THREE.Mesh(fields.build(), vertexColorMaterial());
   groundDetail(fm, 'grass');
   fm.name = 'fields';
-  const tm = new THREE.Mesh(trees.build(), vertexColorMaterial());
+  const tm = treeDetail(new THREE.Mesh(trees.build(), vertexColorMaterial()));
   tm.name = 'trees';
   tm.castShadow = true;
-  return [fm, tm];
+  return [fm, chunkTrees(tm, lowTrees(trees))];
 }
 
 /**
@@ -828,11 +829,8 @@ function scatterWoodland(ctx, trees) {
     if (graph.overlapsRoad(tx, tz, 2.4, 2.4, 0, 2.0)) return;
     const h = rand(rng, 6, 13) * scale;
     if (nearBuilding(sim.world, tx, tz, h * 0.39)) return;
-    const trunk = 0.55 + h * 0.035;
-    trees.addBox(trunk, h * 0.5, trunk, tx, h * 0.25, tz, 0x463726);
-    trees.addTaperedBox(h * 0.78, h * 0.72, h * 0.78, tx, h * 0.66, tz,
-      new THREE.Color().setHSL(rand(rng, 0.22, 0.30), rand(rng, 0.28, 0.46), rand(rng, 0.13, 0.22)),
-      0.22, 0.22, rand(rng, 0, TAU));
+    const crown = new THREE.Color().setHSL(rand(rng, 0.22, 0.30), rand(rng, 0.28, 0.46), rand(rng, 0.13, 0.22));
+    drawTree(trees, tx, tz, h, crown, rand(rng, 0, TAU));
     placed++;
     // Every tree is solid. Making distant ones scenery-only saved broad-phase
     // work but meant you could drive straight through half the woodland.

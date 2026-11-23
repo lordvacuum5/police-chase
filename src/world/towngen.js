@@ -18,6 +18,7 @@
 // streets and makes the lanes feel enclosed.
 
 import * as THREE from 'three';
+import { drawTree, treeDetail, chunkTrees, lowTrees } from './trees.js';
 import { buildingDetail } from './buildtex.js';
 import { groundDetail } from './groundtex.js';
 import { RoadGraph, ROAD_KIND } from './roadgraph.js';
@@ -653,8 +654,8 @@ function buildTownCountryside(ctx) {
   const fm = new THREE.Mesh(fields.build(), vertexColorMaterial());
   groundDetail(fm, 'grass');
   fm.name = 'fields';
-  const tm = new THREE.Mesh(trees.build(), vertexColorMaterial());
+  const tm = treeDetail(new THREE.Mesh(trees.build(), vertexColorMaterial()));
   tm.name = 'trees';
   tm.castShadow = true;
-  return [fm, tm];
+  return [fm, chunkTrees(tm, lowTrees(trees))];
 }

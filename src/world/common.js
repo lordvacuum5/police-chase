@@ -6,6 +6,7 @@
 // playing, and lives here.
 
 import * as THREE from 'three';
+import { drawTree, treeDetail } from './trees.js';
 import { buildRoadWear } from './roadwear.js';
 import { groundDetail } from './groundtex.js';
 import { MeshBuilder, vertexColorMaterial } from '../util/meshbuild.js';
@@ -522,11 +523,9 @@ export function addTree(ctx, builder, tx, tz, scale = 1) {
   const h = rand(rng, 6, 13) * scale;
   // Not through a wall, crown and all. See nearBuilding.
   if (nearBuilding(sim.world, tx, tz, h * 0.39)) return false;
-  const trunk = 0.55 + h * 0.035;
-  builder.addBox(trunk, h * 0.5, trunk, tx, h * 0.25, tz, 0x463726);
-  builder.addTaperedBox(h * 0.78, h * 0.72, h * 0.78, tx, h * 0.66, tz,
-    new THREE.Color().setHSL(rand(rng, 0.22, 0.30), rand(rng, 0.28, 0.46), rand(rng, 0.13, 0.22)),
-    0.22, 0.22, rand(rng, 0, TAU));
+  // The same draws as ever, in the same order, so the map is the map it was (world/trees.js draws it).
+  const crown = new THREE.Color().setHSL(rand(rng, 0.22, 0.30), rand(rng, 0.28, 0.46), rand(rng, 0.13, 0.22));
+  drawTree(builder, tx, tz, h, crown, rand(rng, 0, TAU));
   addStaticBox(sim.world, tx, 2.6, tz, 0.65, 2.6, 0.65, GROUP.PROP);
   addCanopy(sim.world, tx, tz, 0, h * 0.66, h * 0.72, h * 0.78);
   return true;

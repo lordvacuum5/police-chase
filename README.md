@@ -7978,6 +7978,23 @@ noise, so the planners have not made them measurably quicker, only less stuck. C
 player away, 2 of 4 to 4 of 4, at 31-75 s: small numbers, and it is now nerve that stops them
 (`NERVE_DAMAGE` no longer comes into it), so a level of toughness did not make them escape.
 
+### Trees
+
+*"Trees next."* Every tree on every map was a box under one squashed pyramid. `world/trees.js`: broadleaf trees are a tapering
+trunk and two or three lumpy clumps (low icosahedra, flat-shaded), each its own shade, the top one lightest; conifers (a quarter,
+a third in Haldon's woods) a thin trunk and three stacked cones, darker and bluer; a leafy clumped grain over them all. Which kind,
+the lean and the shades come from a hash of where the tree stands, not from the map's random numbers, so every map and every daily
+route is the one it was; the trunk collider and the canopy box are unchanged. A first set of conifer boughs hung to a fifth of the
+height, lower than the old crown, and looked like leaves a car would drive through: now no lower than the old crown (0.3 h).
+
+What it cost, and what that led to. Haldon Vale's trees went from 75,360 triangles to 197,080. Timed round the render (the old way),
+a view over a wood went from a median of 16.0 ms to 24.6 -- but that timing swung 14-98 ms from turn to turn on this laptop, so
+`tests/gputime.js` now reads the graphics chip's own timer (`EXT_disjoint_timer_query_webgl2`), steady to about a millisecond. And
+the trees were one mesh a map: every tree drawn twice a frame, for the picture and the shadows, wherever you looked. Now they are
+cells of 120 m, each a level of detail: the new trees near, the old 24-triangle ones past 200 m (`chunkTrees`, `lowTrees`). Same
+view, GPU time: **old trees 19.8-20.9 ms, new 8.3-9.1.** Better looking and cheaper. `sessionStorage['pc.oldtrees'] = '1'` and a
+reload for the old trees; `window.__oneTreeMesh`, `__plainTrees` to switch parts off.
+
 ### Wear on the roads
 
 *"Road detail next."* `world/roadwear.js`: one more layer over every road between its junction mouths, mapped across it (edge to

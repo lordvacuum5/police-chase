@@ -190,6 +190,11 @@ scoring, deliberately.
   `_render`; it also sets the sun, hemisphere and fog colours per weather.
   Road wear: `world/roadwear.js`, the 4th mesh from `buildRoadMeshes`
   (Haldon lifts it in countrygen with a bigger polygon offset).
+  Trees: `world/trees.js` (`drawTree` for all three maps, a far copy into
+  `builder.low`; `chunkTrees` makes 120 m LOD cells). Never use the map
+  rng in tree drawing: it would move every later thing on the map.
+  **Timing frames: use `tests/gputime.js`** (GPU timer query); the
+  render+readPixels timing swings 14-98 ms on this laptop.
 
 * **Haldon Vale** (25 Oct 2026), the third map: open country, hedges, hills,
   three villages, farms you can drive through, woods. README "Haldon Vale" has

@@ -23,6 +23,7 @@
 //   * wind turbines on the tops, so the hills read from anywhere.
 
 import * as THREE from 'three';
+import { drawTree, treeDetail, chunkTrees, lowTrees } from './trees.js';
 import { buildingDetail } from './buildtex.js';
 import { groundDetail } from './groundtex.js';
 import { RoadGraph, ROAD_KIND } from './roadgraph.js';
@@ -1173,10 +1174,9 @@ function addTreeT(ctx, b, pieces, x, z, scale = 1) {
   // Not on the railway, a shortcut or in the quarry: after the draws, as with
   // the hedges, so the woods are the woods they were.
   if (ctx.clearAt(x, z)) return false;
-  const trunk = 0.55 + h * 0.035;
   const s = b.vertexCount;
-  b.addBox(trunk, h * 0.5, trunk, x, h * 0.25, z, 0x463726);
-  b.addTaperedBox(h * 0.8, h * 0.72, h * 0.8, x, h * 0.66, z, crown, 0.22, 0.22, turn);
+  // A third of the woods conifers (world/trees.js).
+  drawTree(b, x, z, h, crown, turn, 0.33);
   pieces.push([s, b.vertexCount, x, z]);
   addStaticBox(ctx.sim.world, x, ctx.at(x, z) + 2.6, z, 0.65, 2.6, 0.65, GROUP.PROP);
   // From the highest ground under the crown, not the foot of the trunk: on a
@@ -1224,9 +1224,12 @@ function buildWoods(ctx, fields) {
   ctx.treeCount = n;
   const mesh = new THREE.Mesh(b.build(), vertexColorMaterial());
   liftPieces(mesh, ctx.at, pieces);
+  treeDetail(mesh);
   mesh.castShadow = true;
   mesh.name = 'trees';
-  return mesh;
+  const low = lowTrees(b);
+  if (low) liftPieces(low, ctx.at, b.lowPieces);
+  return chunkTrees(mesh, low);
 }
 
 /**
