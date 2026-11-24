@@ -119,6 +119,83 @@ export function planJunctions(graph) {
 }
 
 /**
+ * The rounded corner between approach `a` and the next one round, `b`: the square corner `C`, the arc, and how far out
+ * from the node along each road the arc begins. Null where there is none.
+ */
+function cornerOf(node, a, b, onRoad) {
+  let d = b.ang - a.ang;
+  while (d <= 0) d += Math.PI * 2;
+  // A reflex sector is the outside of a two-road bend, not a corner.
+  if (d >= Math.PI - 0.12 || d < 0.35) return null;
+  // Perpendiculars, taken toward increasing angle so `a` uses +perp and
+  // `b` uses -perp: both point into the sector between them.
+  const pa = { x: -a.dir.z, z: a.dir.x };
+  const pb = { x: -b.dir.z, z: b.dir.x };
+  // Where the two kerb lines cross: the square corner we want to round.
+  const C = lineCross(
+    node.x + a.half * pa.x, node.z + a.half * pa.z, a.dir,
+    node.x - b.half * pb.x, node.z - b.half * pb.z, b.dir,
+  );
+  if (!C) return null;
+  // Our streets are wide -- fifteen metres for a two-way -- so a real
+  // six-metre kerb radius would swallow most of the corner. Scale it to
+  // the road instead.
+  const r = Math.min(CORNER_R, a.half * 0.55, b.half * 0.55);
+  // Tangent points, out along each kerb line past the corner. The fillet
+  // sits *outside* the plus shape the two ribbons make: a kerb radius cuts
+  // the pavement back, it does not shave the carriageway.
+  const tan = Math.min(r / Math.tan(d * 0.5), r * 2.2);
+  const t1 = { x: C.x + a.dir.x * tan, z: C.z + a.dir.z * tan };
+  const t2 = { x: C.x + b.dir.x * tan, z: C.z + b.dir.z * tan };
+  const arc = [t1];
+  const steps = 5;
+  for (let k = 1; k < steps; k++) {
+    const t = k / steps;
+    // Quadratic Bezier through the corner is close enough to a fillet at
+    // this scale, and costs no trigonometry.
+    const u = 1 - t;
+    arc.push({
+      x: u * u * t1.x + 2 * u * t * C.x + t * t * t2.x,
+      z: u * u * t1.z + 2 * u * t * C.z + t * t * t2.z,
+    });
+  }
+  arc.push(t2);
+  // Only if the corner is a corner. Where more than two roads meet, or two
+  // meet close by another junction, the gap between one pair of approaches
+  // can lie on a third road's tarmac -- and a kerb there is a U of stone
+  // standing in the middle of the junction.
+  const mine = new Set([a.edge, b.edge]);
+  const kerbed = !onRoad || !arc.some((p) => onRoad(p.x, p.z, 0.3, mine));
+  const along = (ap) => (C.x - node.x) * ap.dir.x + (C.z - node.z) * ap.dir.z + tan;
+  return { C, arc, t1, t2, kerbed, fromA: along(a), fromB: along(b) };
+}
+
+/**
+ * How far back each road's kerb stops at each end, each side: where the rounded corner on that side begins, or at the
+ * node itself on the straight side of a T. Both sides used to stop where the setback put the stop line -- the furthest
+ * of all the corners, and capped -- so at a slanting junction the straight kerb ran on past its corner out into the
+ * road on one side, and left a gap before it on the other. `edge.kerbA[side]`, `edge.kerbB[side]`, side as the edge runs.
+ */
+export function planKerbTrims(junctions, onRoad) {
+  for (const { node, app } of junctions) {
+    for (let i = 0; i < app.length; i++) {
+      const a = app[i], b = app[(i + 1) % app.length];
+      let d = b.ang - a.ang;
+      while (d <= 0) d += Math.PI * 2;
+      const put = (ap, perp, v) => {
+        const k = ap.end === 'a' ? 'kerbA' : 'kerbB';
+        (ap.edge[k] = ap.edge[k] || {})[ap.end === 'a' ? perp : -perp] = Math.max(0, v);
+      };
+      if (d >= Math.PI - 0.12) { put(a, 1, 0); put(b, -1, 0); continue; }
+      const c = cornerOf(node, a, b, onRoad);
+      if (!c || !c.kerbed || c.fromA > a.edge.length * 0.9 || c.fromB > b.edge.length * 0.9) continue;
+      put(a, 1, c.fromA);
+      put(b, -1, c.fromB);
+    }
+  }
+}
+
+/**
  * Round off the corners between adjacent approaches.
  *
  * Two crossing ribbons make a plus shape, not a square: the corners where they
@@ -137,50 +214,9 @@ export function buildJunctionCorners(junctions, road, y, kerb) {
       const a = app[i];
       const b = app[(i + 1) % app.length];
 
-      // Sector angle between the two approaches, always taken the short way
-      // round in the direction of increasing angle.
-      let d = b.ang - a.ang;
-      while (d <= 0) d += Math.PI * 2;
-      // A reflex sector is the outside of a two-road bend, not a corner.
-      if (d >= Math.PI - 0.12 || d < 0.35) continue;
-
-      // Perpendiculars, taken toward increasing angle so `a` uses +perp and
-      // `b` uses -perp: both point into the sector between them.
-      const pa = { x: -a.dir.z, z: a.dir.x };
-      const pb = { x: -b.dir.z, z: b.dir.x };
-
-      // Where the two kerb lines cross: the square corner we want to round.
-      const C = lineCross(
-        node.x + a.half * pa.x, node.z + a.half * pa.z, a.dir,
-        node.x - b.half * pb.x, node.z - b.half * pb.z, b.dir,
-      );
-      if (!C) continue;
-
-      // Our streets are wide -- fifteen metres for a two-way -- so a real
-      // six-metre kerb radius would swallow most of the corner. Scale it to
-      // the road instead.
-      const r = Math.min(CORNER_R, a.half * 0.55, b.half * 0.55);
-      // Tangent points, out along each kerb line past the corner. The fillet
-      // sits *outside* the plus shape the two ribbons make: a kerb radius cuts
-      // the pavement back, it does not shave the carriageway.
-      const tan = Math.min(r / Math.tan(d * 0.5), r * 2.2);
-      const t1 = { x: C.x + a.dir.x * tan, z: C.z + a.dir.z * tan };
-      const t2 = { x: C.x + b.dir.x * tan, z: C.z + b.dir.z * tan };
-
-      // Fan the wedge outside the arc in pavement, then kerb the arc itself.
-      const arc = [t1];
-      const steps = 5;
-      for (let k = 1; k < steps; k++) {
-        const t = k / steps;
-        // Quadratic Bezier through the corner is close enough to a fillet at
-        // this scale, and costs no trigonometry.
-        const u = 1 - t;
-        arc.push({
-          x: u * u * t1.x + 2 * u * t * C.x + t * t * t2.x,
-          z: u * u * t1.z + 2 * u * t * C.z + t * t * t2.z,
-        });
-      }
-      arc.push(t2);
+      const corner = cornerOf(node, a, b, kerb.onRoad);
+      if (!corner) continue;
+      const { C, arc, t1, t2 } = corner;
 
       // The corner between the arc and the sharp point is tarmac, so the two
       // carriageways run into each other on a curve.
@@ -197,14 +233,7 @@ export function buildJunctionCorners(junctions, road, y, kerb) {
       const mx = (t1.x + t2.x) * 0.5 - C.x, mz = (t1.z + t2.z) * 0.5 - C.z;
       const cx = t2.x - t1.x, cz = t2.z - t1.z;
       const away = (-cz * mx + cx * mz) > 0 ? 1 : -1;
-      // Only if the corner is a corner. Where more than two roads meet, or two
-      // meet close by another junction, the gap between one pair of approaches
-      // can lie on a third road's tarmac -- and a kerb there is a U of stone
-      // standing in the middle of the junction.
-      if (kerb.onRoad) {
-        const mine = new Set([a.edge, b.edge]);
-        if (arc.some((p) => kerb.onRoad(p.x, p.z, 0.3, mine))) continue;
-      }
+      if (!corner.kerbed) continue;
       kerb.builder.addWall(arc, y, kerb.height, kerb.face, 0);
       kerb.builder.addRibbon(arc, 0.45, kerb.height + 0.002, kerb.colour, 0.22 * away);
     }

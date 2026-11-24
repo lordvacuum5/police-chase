@@ -603,7 +603,7 @@ function offsetOf(p, side, dist) {
  * stretch of ring to itself. Not at a node by the river (its bridge) -- nor anywhere a slip road would
  * have to cross the water.
  */
-function addSlipRoad(ctx, ring, anchor, aim) {
+function addSlipRoad(ctx, ring, anchor, aim, depth = 0) {
   const { graph, junctions } = ctx;
   const half = ROAD_KIND.motorway.width * 0.5;
   const MERGE_BACK = 165;
@@ -647,6 +647,27 @@ function addSlipRoad(ctx, ring, anchor, aim) {
     const tdl = Math.hypot(tdx, tdz) || 1; tdx /= tdl; tdz /= tdl;
     let adx = t0.x - anchor.x, adz = t0.z - anchor.z;
     const adl = Math.hypot(adx, adz) || 1; adx /= adl; adz /= adl;
+    // Off the end of a street, straight on along it: it left a corner, and a notch of grass in the road; one turned back
+    // beside the street itself.
+    if (anchor.edges.length === 1) {
+      const e = graph.edges[anchor.edges[0]], pts = e.points, q = e.a === anchor.id ? pts[1] : pts[pts.length - 2];
+      const l = Math.hypot(anchor.x - q.x, anchor.z - q.z) || 1;
+      adx = (anchor.x - q.x) / l; adz = (anchor.z - q.z) / l;
+    }
+    // Leaving at 45 degrees or more to every street at its foot, where it can.
+    else {
+      const dirs = anchor.edges.map((id) => {
+        const e = graph.edges[id], q = e.a === anchor.id ? e.points[1] : e.points[e.points.length - 2];
+        return Math.atan2(q.z - anchor.z, q.x - anchor.x);
+      });
+      const gap = (t) => Math.min(...dirs.map((o) => Math.abs(Math.atan2(Math.sin(t - o), Math.cos(t - o)))));
+      const t0a = Math.atan2(adz, adx);
+      let turn = 0;
+      if (gap(t0a) < 0.78) {
+        for (let k = 1; k <= 14 && !turn; k++) for (const q of [k * 0.08, -k * 0.08]) if (!turn && gap(t0a + q) >= 0.78) turn = q;
+      }
+      adx = Math.cos(t0a + turn); adz = Math.sin(t0a + turn);
+    }
     const handle = adl * 0.45;
     const c1 = { x: anchor.x + adx * handle, z: anchor.z + adz * handle };
     const c2 = { x: t0.x - tdx * handle * 0.8, z: t0.z - tdz * handle * 0.8 };
@@ -671,6 +692,25 @@ function addSlipRoad(ctx, ring, anchor, aim) {
       full = out;
     }
     if (full.some((q) => inChannel(q.x, q.z, 8))) continue;
+    // Neither out along the countryside nor, from a junction found for it (depth), short and tight: the two first laid so,
+    // 216 and 257 m with bends of 66-80 m, the AI stopped at the foot of (tests/everyroad.js).
+    const long = full.reduce((l, q, k) => (k ? l + Math.hypot(q.x - full[k - 1].x, q.z - full[k - 1].z) : 0), 0);
+    if (long > 760 || (depth && long < 300)) continue;
+    // Not off along a street at its foot: four left theirs at 9-12 degrees, two roads lying over each other for 60 m.
+    {
+      const far = (pts) => {
+        let i = 1;
+        while (i < pts.length - 1 && Math.hypot(pts[i].x - anchor.x, pts[i].z - anchor.z) < 30) i++;
+        const l = Math.hypot(pts[i].x - anchor.x, pts[i].z - anchor.z) || 1;
+        return { x: (pts[i].x - anchor.x) / l, z: (pts[i].z - anchor.z) / l };
+      };
+      const d = far(full);
+      const along = anchor.edges.some((id) => {
+        const e = graph.edges[id], o = far(e.a === anchor.id ? e.points : e.points.slice().reverse());
+        return d.x * o.x + d.z * o.z > 0.9;
+      });
+      if (along) continue;
+    }
     let sharpest = 0;
     for (let i = 1; i < full.length - 1; i++) {
       const ux = full[i - 1].x - full[i].x, uz = full[i - 1].z - full[i].z;
@@ -693,7 +733,7 @@ function addSlipRoad(ctx, ring, anchor, aim) {
         const a = dense[i - 2], b = dense[i], c = dense[i + 2];
         const ab = Math.hypot(b.x - a.x, b.z - a.z), bc = Math.hypot(c.x - b.x, c.z - b.z), ac = Math.hypot(c.x - a.x, c.z - a.z);
         const area = Math.abs((b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x)) / 2;
-        if (area > 1e-6 && (ab * bc * ac) / (4 * area) < 40) tight = true;
+        if (area > 1e-6 && (ab * bc * ac) / (4 * area) < (depth ? 110 : 40)) tight = true;
       }
       if (tight) continue;
     }
@@ -701,6 +741,33 @@ function addSlipRoad(ctx, ring, anchor, aim) {
     const flat = rampClear(ctx, full, ctx.base(anchor.x, anchor.z), ctx.base(N.x, N.z) + raiseAt(N.x, N.z), true,
       [...ring, ring[0]], half);
     if (flat === null) continue;
+    // Never along the ground across a street: from the last street it would cross, at its nearest junction, instead.
+    // Three ran flush over five streets with no junction there, their kerbs and markings carried on across.
+    if (depth < 4) {
+      // 40 m on from its level stretch, too: a street it crosses there is crossed flush, or CLEAR of it, which it
+      // cannot yet be at 9%.
+      const at = lastFlushCrossing(ctx, full, flat * ctx.rampSpan + 40, anchor);
+      if (at) {
+        const made = addSlipRoad(ctx, ring, at, aim, depth + 1);
+        if (made) return made;
+        // Nor one from there: the same line, a street as far as the junction and a slip road from it.
+        let k = -1, bd = 12;
+        for (let i = 0; i < full.length - 1; i++) {
+          const dd = closestOnSegment(at.x, at.z, full[i].x, full[i].z, full[i + 1].x, full[i + 1].z).dist;
+          if (dd < bd) { bd = dd; k = i; }
+        }
+        const clearOf = (q) => Math.hypot(q.x - at.x, q.z - at.z) > 6;
+        const rest = k < 0 ? null : [at, ...full.slice(k + 1).filter(clearOf)];
+        const flat2 = rest && rampClear(ctx, rest, ctx.base(at.x, at.z), ctx.base(N.x, N.z) + raiseAt(N.x, N.z), true, [...ring, ring[0]], half);
+        if (flat2 !== null && rest) {
+          graph.addEdge(anchor, at, 'street', full.slice(1, k + 1).filter(clearOf));
+          const ramp = graph.addEdge(at, N, 'ramp', rest.slice(1, -1), { bridge: true });
+          if (ramp) { ramp.elevated = true; ramp.flat = flat2; }
+          junctions.push({ node: N });
+          return N;
+        }
+      }
+    }
     const ramp = graph.addEdge(anchor, N, 'ramp', full.slice(1, -1), { bridge: true });
     if (ramp) { ramp.elevated = true; ramp.flat = flat; }
     junctions.push({ node: N });
@@ -925,10 +992,51 @@ function groundSegs(ctx) {
   for (const e of ctx.graph.edges) {
     if (e.elevated || e.dead) continue;
     const pts = e.points;
-    for (let k = 0; k < pts.length - 1; k++) out.push({ a: pts[k], b: pts[k + 1], half: e.width * 0.5 });
+    for (let k = 0; k < pts.length - 1; k++) out.push({ a: pts[k], b: pts[k + 1], half: e.width * 0.5, e });
   }
   ctx._segs = { n: ctx.graph.edges.length, out };
   return out;
+}
+
+/**
+ * The junction (a ground road's end within 30 m) nearest the last street that `pts` crosses in its first `run` m, where
+ * a slip road from `foot` still lies on the ground, or a new one at the crossing; null when it crosses none.
+ */
+function lastFlushCrossing(ctx, pts, run, foot) {
+  const { graph } = ctx;
+  let d = 0, last = null;
+  for (let k = 0; k < pts.length - 1 && d < run; k++) {
+    const p = pts[k], q = pts[k + 1], len = Math.hypot(q.x - p.x, q.z - p.z);
+    for (const sg of groundSegs(ctx)) {
+      const bx = q.x - p.x, bz = q.z - p.z, dx = sg.b.x - sg.a.x, dz = sg.b.z - sg.a.z, den = bx * dz - bz * dx;
+      if (Math.abs(den) < 1e-9) continue;
+      const u = ((sg.a.x - p.x) * dz - (sg.a.z - p.z) * dx) / den, v = ((sg.a.x - p.x) * bz - (sg.a.z - p.z) * bx) / den;
+      if (u < 0 || u > 1 || v < 0 || v > 1) continue;
+      const x = p.x + bx * u, z = p.z + bz * u, at = d + len * u;
+      if (at > run || Math.hypot(x - foot.x, z - foot.z) < 25 || (last && at < last.at)) continue;
+      last = { at, x, z, e: sg.e };
+    }
+    d += len;
+  }
+  if (!last) return null;
+  const ends = [last.e.a, last.e.b].map((id) => graph.nodes[id]).filter((n) => n !== foot && !n.elevated)
+    .map((n) => ({ n, d: Math.hypot(n.x - last.x, n.z - last.z) })).sort((a, b) => a.d - b.d);
+  if (ends.length && ends[0].d < 30) return ends[0].n;
+  // Nowhere near one: a new junction, the street split there.
+  const e = last.e, n = graph.addNode(last.x, last.z, 'cross');
+  let seg = 0, bd = Infinity;
+  for (let k = 0; k < e.points.length - 1; k++) {
+    const dd = closestOnSegment(n.x, n.z, e.points[k].x, e.points[k].z, e.points[k + 1].x, e.points[k + 1].z).dist;
+    if (dd < bd) { bd = dd; seg = k; }
+  }
+  const opts = { width: e.width, lanes: e.lanes, speed: e.speed, bridge: e.bridge, y: e.y };
+  for (const [a, b, mid] of [[graph.nodes[e.a], n, e.points.slice(1, seg + 1)], [n, graph.nodes[e.b], e.points.slice(seg + 1, -1)]]) {
+    const ne = graph.addEdge(a, b, e.kind, mid.length ? mid : null, opts);
+    for (const k of Object.keys(e)) if (!(k in ne)) ne[k] = e[k];
+  }
+  e.dead = true;
+  graph.reindexEdges();
+  return n;
 }
 
 /**
@@ -990,6 +1098,7 @@ function rampClear(ctx, pts, yFoot, yTop, footFirst, main, mainHalf) {
     if (near > need) { hold = d + 25; break; }
   }
   const span = Math.max(1, L - hold);
+  ctx.rampSpan = span;
   // The ground where it leaves it, `d` m from the foot.
   const leaveAt = (d) => {
     const sv = footFirst ? d : L - d;
@@ -1471,6 +1580,8 @@ function buildDecks(ctx) {
       }
       // The beam: its top 5 cm under the slab's underside.
       piers.addBox(e.width + 0.6, 1.0, 1.8, p.x, yd - 1.45 - 0.05 - 0.5, p.z, SLAB, rot);
+      // Solid, as its legs are: on sloping ground its low end came down to a car's height, and a car went through it.
+      addStaticBox(W, p.x, yd - 2, p.z, e.width / 2 + 0.3, 0.5, 0.9, GROUP.BUILDING, rot);
     }
   }
   // Where a road carries on through a joint it turns a little, and its two pieces, each cut square, leave a wedge

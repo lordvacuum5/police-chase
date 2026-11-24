@@ -10495,3 +10495,50 @@ is this. The first is 27 November, on Ashfield.
 `tests/airrescue.js`: 60 days on each map, 540 places: 0 with a building, tree or road too near, water, or ground
 rising over 1 m; 1.5-3.1 km in all, legs 450-1,100 m. `fly()`, the rules in order: 4.5 m/s refused; held 1.5 s and lifted
 off, begins again; beside the box, nothing; wrecked on the last leg, back on the pad at 0/3; three landings, won.
+
+### Solid against drawn, slip roads across streets, kerbs that met their corners
+
+*"Can you look for more bugs like the road ones, where there's invisible walls, or there's like inconsistencies, how
+they kind of look weird."* Ashfield City. Not looked for by driving about: everything **solid** and everything **drawn**
+at a car's height (0.35-1.1 m) marked into the same 0.5 m grid, over the whole map, and compared (`tests/ghosts.js`).
+Shown to work both ways first: a hidden box put in is found, and a tower with its collider off is found. (The first
+try at the second said nothing: a disabled collider is still listed by `forEachCollider`.)
+
+| | before | after |
+|---|---|---|
+| invisible: solid, nothing drawn within 1 m, ground | 0 | 0 |
+| the same on the raised roads (89,011 solid cells) | 0 | 0 |
+| drawn, nothing solid: crossbeams under raised roads | 2 places | solid now |
+| ground roads, whole width: steps / solid things in 1.34 million points (`tests/steps.js`) | 0 / 149 | 0 / 97 |
+| slip roads crossing a street flush, with no junction | 5 (three slip roads) | 0 |
+| slip roads leaving their street at under 13 degrees | 4 | 0 (least 33) |
+
+* **Crossbeams.** The concrete beam between a raised road's two legs had no collider, and where the ground slopes its low
+  end is at a car's height. Solid, as the legs are.
+* **Slip roads across streets.** Three ran on the ground over five streets before they climbed -- allowed, as flush --
+  with the kerbs and markings carried on across and no turning either way. Each now starts from the last street it
+  would have crossed (`lastFlushCrossing`): its junction if there is one within 30 m, or a new one there. The test
+  must reach 40 m past the level stretch: First Street was crossed just after it had begun to rise, 5 cm up.
+* **Slip roads along streets.** Four left theirs at 9-12 degrees, two roads lying over each other for 60 m. They leave
+  at 45 degrees or more where they can. Refusing those that did not, instead, was tried: 11 slip roads of 13, one of
+  them 963 m long. Off the end of a street they go straight on along it; one left a corner with a notch of grass in
+  it, and one turned back beside the street it came from. None over 760 m. Still 13 in all. The first two laid from a
+  new junction came out 216 and 257 m with bends of 66-80 m, and the AI braked to a stop at their feet (`everyroad`
+  found it; `viaducts` passed): those are now at least 300 m with no bend under 110 m, and it takes them at 7 m/s or more.
+* **Kerbs (every map).** A road's two kerbs both stopped where its stop line goes, which is as far back as the widest of
+  its corners, and capped. At a slanting junction that left the straight kerb running on past its rounded corner
+  into the road on one side, and short of it on the other, and a gap along the straight side of a T. Each side now stops
+  where its own corner begins (`planKerbTrims`), or runs on to the node. Drawing only.
+
+**Left.** The 97 points are the mouths of two slip roads, where the deck's edge lies 13-25 cm over the slope of the street
+it leaves. Driven across at 22 m/s, both ways on three lines (`tests/lips.js`): the worst change in the car's rise
+in a frame is 0.55 m/s, against 0.04-0.17 on plain streets, and no damage. (The first try at that said 0.25 damage
+everywhere: the velocity had been set on the body, not by `setVelocity`.)
+
+Rechecked: `viaducts` 15 of 15 (0.043 damage on one, as before), `deckgaps` 0, `deckError` 0, `solidTest` 0 of 90 sides and 0
+undersides, `deckspawn` 3 wrong of 547, all vans (2 of 207 as last noted), audit clean.
+`scrape`, before the two short slip roads were laid again: 37 wrecked of 502 on a fresh page and 41 on a used one, against
+33. Two runs of one build differ by that much, and the ones traced again did not repeat, so no change is claimed either
+way. Every road both ways (`everyroad`, 2,670 drives, also before that): the two slip roads above, and 11 in alleys,
+brushing the bins (10 on the final build alone; the build before this has 10 too, so the "0 hurt" noted above was not true of
+alleys). On the final build: slip roads 26 of 26, country roads 62 of 62; the crossbeams and new feet by `ghosts`, nothing.

@@ -12,7 +12,7 @@ import { groundDetail } from './groundtex.js';
 import { MeshBuilder, vertexColorMaterial } from '../util/meshbuild.js';
 import { ROAD_KIND } from './roadgraph.js';
 import {
-  planJunctions, buildJunctionCorners, buildStopLines, sliceLine, approachesAt, addNodeWedges,
+  planJunctions, planKerbTrims, buildJunctionCorners, buildStopLines, sliceLine, approachesAt, addNodeWedges,
 } from './junctions.js';
 import { GROUP, addStaticBox, addCanopy, nearBuilding, PLATE_HALF, EDGE_FACE, setPlateHalf } from '../physics/world.js';
 import { rand, randInt, lerp, TAU } from '../util/math.js';
@@ -319,13 +319,18 @@ function roadChains(graph) {
     // ...then along it to the end.
     const points = [], edges = [], owner = [];
     let edge = first, at = start, trimStart = 0, trimEnd = 0;
+    // Each side's own, where the junction gives them (planKerbTrims).
+    const sideStart = {}, sideEnd = {};
+    const sides = (out, e, k, fwd) => { for (const sg of [1, -1]) out[sg] = e[k] ? e[k][fwd ? sg : -sg] : undefined; };
     for (;;) {
       used.add(edge);
       edges.push(edge);
       const fwd = edge.a === at;
       const pts = fwd ? edge.points : edge.points.slice().reverse();
       if (edges.length === 1) trimStart = (fwd ? edge.trimA : edge.trimB) || 0;
+      if (edges.length === 1) sides(sideStart, edge, fwd ? 'kerbA' : 'kerbB', fwd);
       trimEnd = (fwd ? edge.trimB : edge.trimA) || 0;
+      sides(sideEnd, edge, fwd ? 'kerbB' : 'kerbA', fwd);
       for (let i = points.length ? 1 : 0; i < pts.length; i++) {
         points.push(pts[i]);
         if (points.length > 1) owner.push(edges.length - 1);
@@ -335,7 +340,7 @@ function roadChains(graph) {
       if (!o || used.has(o)) break;
       edge = o;
     }
-    chains.push({ points, owner, edges, trimStart, trimEnd });
+    chains.push({ points, owner, edges, trimStart, trimEnd, sideStart, sideEnd });
   }
   return chains;
 }
@@ -399,7 +404,8 @@ function kerbRuns(chain, side, onRoad) {
   for (let i = 1; i < points.length; i++) {
     total += Math.hypot(points[i].x - points[i - 1].x, points[i].z - points[i - 1].z);
   }
-  const from = chain.trimStart, to = total - chain.trimEnd;
+  const own = (o, dflt) => (o[side] !== undefined ? o[side] : dflt);
+  const from = own(chain.sideStart, chain.trimStart), to = total - own(chain.sideEnd, chain.trimEnd);
   const runs = [];
   // `pending` is how far the current run has got inside a segment. Only the
   // road's own vertices, and the points where a run starts or stops, go into
@@ -455,6 +461,7 @@ export function buildRoadMeshes(ctx) {
   // Not a junction up on a raised road: its map draws those (citygen.js).
   const junctions = (graph.junctionPlan || planJunctions(graph)).filter((j) => !j.node.elevated);
 
+  planKerbTrims(junctions, onRoad);
   // The kerb: a face standing up out of the carriageway, with the flat top of
   // the stone along it. The footway behind is drawn at KERB_H to match, and the
   // height field the suspension reads has its step in the same place, so what
