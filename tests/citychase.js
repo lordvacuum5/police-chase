@@ -84,11 +84,16 @@ export async function runCityChase(secs = 300, seed = 12345) {
       const far = Math.hypot(v.position.x - pp.x, v.position.z - pp.z);
       // An interceptor at its junction waits there on purpose (Officer._intercept, holdStill).
       const waiting = u.role === 'intercept' && u.driver && u.driver.remaining() < 26;
-      if (moved(h) < 5 && far > 60 && !waiting && !/block|hold/i.test(String(u.role))) {
+      // Nor a wreck, which stops for good.
+      const wrecked = v.disabled || v.damage >= 1;
+      if (moved(h) < 5 && far > 60 && !waiting && !wrecked && !/block|hold/i.test(String(u.role))) {
         flagged.add(v);
         const last = u.trace && u.trace[u.trace.length - 1];
         // And the whole flight recorder, for working out what held it.
-        (window.__ccTraces = window.__ccTraces || []).push({ t, callsign: u.callsign, trace: (u.trace || []).slice() });
+        // And what was round it: another car holding it shows nowhere else.
+        const by = g.vehicles.filter((o) => o !== v && Math.hypot(o.position.x - v.position.x, o.position.z - v.position.z) < 10)
+          .map((o) => ({ kind: o.specKey, police: !!o.isPolice, traffic: !!o.isTraffic, x: +o.position.x.toFixed(1), z: +o.position.z.toFixed(1), kph: Math.round(o.speed * 3.6) }));
+        (window.__ccTraces = window.__ccTraces || []).push({ t, callsign: u.callsign, trace: (u.trace || []).slice(), by });
         copStuck.push({ t, x: Math.round(v.position.x), y: +v.position.y.toFixed(1), z: Math.round(v.position.z), role: u.role, mode: u._mode || null, far: Math.round(far), last });
       }
     }

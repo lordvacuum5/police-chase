@@ -10339,3 +10339,22 @@ as a fall. Wexbury and Haldon Vale still build as one network each, no 0 m roads
   waiting at their junction (on purpose), and everything round a player boxed in with busting off; the rig now
   skips the first and moves the player on when pinned (10 times in the run).
 - **Raised roads: no building comes up through a deck** (`auditCity`, new check): 0.
+
+### Police planning through parked cars
+
+`tests/citychase.js` on Wexbury and Haldon Vale found police cars held 12-15 s at a time beside parked cars:
+one at full throttle at 1 km/h on Haldon, one dithering forwards and back on the grass beside one on Wexbury.
+The parked cars were fixed boxes until they could be shoved ("make it so they're like any of the other cars"),
+and the local planner's obstacle map (`ai/localplan.js` `obstacleIndex`) holds only fixed bodies -- so a unit
+planned its way straight through one, stalled against it (with a house behind, it does not shove), planned the
+same way again, and sat there. Parked cars are now in that map at the spot they were parked (one shoved out
+of the way stays there, as a knocked-down tree does).
+
+Not like-for-like runs (the chases are not deterministic), 300 s each, police held 15 s or more away from you:
+
+| | before | after |
+|---|---|---|
+| Wexbury (170 parked cars) | 2, and 1 traffic car | 0 (1 flagged was a wreck, now skipped) |
+| Haldon Vale (14) | 3 | 1, ramming you just before the rig moved you |
+
+The rig now also skips wrecks and lists the cars round a flagged unit.

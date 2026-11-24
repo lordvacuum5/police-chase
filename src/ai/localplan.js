@@ -132,6 +132,23 @@ export function obstacleIndex(game) {
       }
     }
   });
+  // The parked cars, where they were parked. Fixed boxes until they could be shoved (game/parked.js), and a body
+  // that is not fixed is not in here -- so a unit planned its way straight through one, stalled against it
+  // (against a house behind it, it does not shove), planned the same way again, and sat there: Haldon Vale and
+  // Wexbury on tests/citychase.js, full throttle at 1 km/h for 12 s and more. One shoved out of the way stays
+  // here at its old spot, as a knocked-down tree does.
+  for (const car of (game.parkedCars && game.parkedCars.cars) || []) {
+    const s = car.s;
+    const box = { x: s.x, z: s.z, hx: 0.95, hz: 2.3, c: Math.cos(s.heading), s: Math.sin(s.heading), rad: Math.hypot(0.95, 2.3) };
+    for (let bx = Math.floor((s.x - box.rad) / B); bx <= Math.floor((s.x + box.rad) / B); bx++) {
+      for (let bz = Math.floor((s.z - box.rad) / B); bz <= Math.floor((s.z + box.rad) / B); bz++) {
+        const key = bx * 100003 + bz;
+        let list = buckets.get(key);
+        if (!list) buckets.set(key, list = []);
+        list.push(box);
+      }
+    }
+  }
   game._obstacleIndex = { B, buckets };
   return game._obstacleIndex;
 }
