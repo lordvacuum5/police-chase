@@ -331,7 +331,9 @@ export function buildCity(sim, scene, seed = 20260822) {
     // The raised roads' deck colliders: a wheel on one is on road (Vehicle).
     decks: ctx.decks,
     walls: ctx.walls,
-    trafficCount: 28,
+    // 28 to 50: "maybe we should have denser traffic ... it just looks so empty". Simulated only within 100 m, not 150.
+    trafficCount: 50,
+    trafficSim: 100,
     // What is hidden past the fog (Game._fogCull): the map's cells of static meshes, by name.
     fogCull: ['roads', 'markings', 'towers', 'houses', 'kerbs', 'pavements', 'trees', 'decks', 'deck-markings', 'deck-edges', 'deck-slabs',
       'deck-barriers', 'deck-piers', 'docks', 'bridges', 'road-wear', 'driveways', 'verges', 'parked', 'carpark'],

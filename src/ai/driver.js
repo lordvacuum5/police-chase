@@ -17,6 +17,8 @@ import { clamp, clamp01, lerp, sign, angleDelta, curveRadius, dist2, smoothstep 
 import { cornerSpeedLimit, TYRE_GRASS } from '../physics/tyre.js';
 import { raycast, sweepBox, groups, GROUP, RAY_GROUNDS, RAY_SOLID } from '../physics/world.js';
 
+const _mwPoint = { x: 0, z: 0 };
+const _mwAim = (x, z) => { _mwPoint.x = x; _mwPoint.z = z; return _mwPoint; };
 const _p = new THREE.Vector3();
 const _origin = new THREE.Vector3();
 const _probe = new THREE.Vector3();
@@ -394,6 +396,9 @@ export class Driver {
      */
     this.pathSkip = PATH_SKIP;
     this.pathAdvance = 0;
+    /** The motorway it is on (ai/motorway.js), for a police car: set by its Officer. */
+    this.motorway = null;
+    this._mw = null;
     this.raceLine = RACE_LINE;
     this.raceApex = RACE_APEX;
     this.raceEntry = RACE_ENTRY;
@@ -1094,7 +1099,23 @@ export class Driver {
     const mu = this._mu();
     const aBrake = this._stopAccel(mu * 9.81 * this._brakeFraction(0.85));
 
+    // On the motorway, with the point it is making for on it: the road's own line (ai/motorway.js), not these sweeps.
+    const mw = this.motorway && this.motorway.on && this.motorway.ahead(_mwAim(aimX, aimZ)) ? this.motorway : null;
+    this._mw = mw;
     this._clearTimer -= 1;
+    if (mw) {
+      const c = this.caps;
+      c.sTravel = c.sRunout = c.sBack = Infinity;
+      if (this._clearTimer <= 0 || this._mwClear === undefined) {
+        this._clearTimer = 3;
+        this._mwClear = mw.clear(clamp(32 + (v.speed * v.speed) / (2 * aBrake), 70, 400), this.halfWidth);
+      }
+      c.sClear = Math.sqrt(2 * aBrake * Math.max(0, this._mwClear - 7));
+      c.sArc = mw.bends(mu, aBrake);
+      this._clear = this._clearTravel = Math.min(this._mwClear, 400);
+      return Math.min(c.sClear, c.sArc);
+    }
+    this._mwClear = undefined;
     if (this._clearTimer <= 0) {
       this._clearTimer = 3;
 
@@ -1257,7 +1278,11 @@ export class Driver {
       // this much and no further, which keeps a limit in force at speed while
       // ending the nonsense at close range.
       if (this._courseRadius) {
-        radius = Math.max(radius, Math.min(this._courseRadius, radius * COURSE_LIFT));
+        // And only while the target is about ahead, where the bearing to it is an offset across the road: with it round
+        // a corner, at right angles, this read the 8 m turn needed as 24 and the car at 94 km/h was told 88 -- "they
+        // almost can't turn far enough, and they end up crashing" (tests/wideturn.js).
+        const lift = window.__oldTurn ? COURSE_LIFT : lerp(COURSE_LIFT, 1, smoothstep(0.35, 0.8, Math.abs(alpha)));
+        radius = Math.max(radius, Math.min(this._courseRadius, radius * lift));
       }
       // On a route, the corner is the route's, not the chord's.
       //
@@ -2064,7 +2089,8 @@ export class Driver {
     // Not the scenery push while driving a local plan: the plan has already
     // been checked against the scenery with the car's real footprint, and in a
     // tight yard the push only shoves the car off the line it was given.
-    deltaRad += this.avoidBias + (this._pureSteer ? 0 : this.wallBias);
+    // Nor much of it on the motorway: it pushed for the roomier side, which at a slip road is the mouth of it.
+    deltaRad += this.avoidBias + (this._pureSteer ? 0 : this.wallBias * (this._mw ? 0.2 : 1));
 
     // Scale against the lock currently available, not the absolute maximum.
     // The car limits steering by speed, so normalising by maxAngle would make
@@ -2173,7 +2199,7 @@ export class Driver {
     // ahead at every junction: units simply became timid, the nearest one sat
     // 50 m back instead of 28, and the scenery contacts went *up* rather than
     // down as they bunched up behind each other.
-    if (this.wallNear < 34) {
+    if (this.wallNear < 34 && !this._mw) {
       const mu = this._mu();
       // Be able to stop before whatever is ahead, keeping WALL_KEEP in hand and
       // assuming only WALL_GRIP of the tyre.

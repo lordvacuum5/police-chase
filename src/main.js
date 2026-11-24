@@ -107,6 +107,9 @@ const MAX_SUBSTEPS = 5;
  * and room for a couple of other players' cars in multiplayer.
  */
 const MAX_VEHICLES = 40;
+/** A traffic car farther off than this casts no shadow, m: past the shadow map's reach. */
+const SHADOW_TRAFFIC = 120;
+const _ball = new THREE.Sphere();
 /** Tipped further than this (its up vector's height) a car is drawn clear of the ground, at most this far, m. See _tippedLift. */
 const TIPPED_FROM = 0.8;
 const TIPPED_MAX = 0.8;
@@ -4233,6 +4236,7 @@ class Game {
     // for each car that turns up. See _wheelPool.
     if (this.vehicles.length * 4 > this.wheelCap) this._wheelPool(this.vehicles.length + 16);
     const replaying = this.replay.playing;
+    if (!replaying) this._cullTraffic();
     for (const v of this.vehicles) {
       if (replaying) {
         if (!this.replay.pose(v)) continue;
@@ -4258,7 +4262,7 @@ class Game {
       // the spec asks for it, which is purely visual.
       const s = v.spec;
       const rs = s.wheelRadius / 0.34;
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 4 && (v.view.visible || !v.isTraffic); i++) {
         const w = v.wheels[i];
         v.wheelCentre(i, _v, _drawn);
         // Front wheels pointing where the car is going, not where the body
@@ -4313,6 +4317,31 @@ class Game {
     if (warmed) warmed();
 
     if (this.debug) this._drawDebug();
+  }
+
+  /**
+   * Traffic out of the picture is not drawn. Car bodies have three's own culling off, so every traffic car was drawn every
+   * frame wherever it was, and again for its shadow: 5,600 triangles twice over, behind you and past the fog
+   * (tests/busyroads.js).
+   */
+  _cullTraffic() {
+    const c = this.camera, fog = this.scene.fog;
+    c.updateMatrixWorld();
+    _m.multiplyMatrices(c.projectionMatrix, c.matrixWorldInverse);
+    _frustum.setFromProjectionMatrix(_m);
+    const far = fog ? fog.far : Infinity;
+    for (const car of this.traffic.cars) {
+      const v = car.v, d = v.position.distanceTo(c.position);
+      _ball.center.copy(v.position);
+      _ball.radius = 8;
+      const show = d < 45 || (d < far && _frustum.intersectsSphere(_ball));
+      const shadow = this.renderer.shadowMap.enabled && d < SHADOW_TRAFFIC;
+      v.view.visible = show;
+      if (v._shadowOn !== shadow) {
+        v._shadowOn = shadow;
+        v.view.traverse((o) => { if (o.isMesh) o.castShadow = shadow; });
+      }
+    }
   }
 
   _resize() {

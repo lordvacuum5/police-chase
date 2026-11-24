@@ -6,6 +6,8 @@
 // how to execute, which is where an individual unit's skill shows up.
 
 import * as THREE from 'three';
+import { cornerSpeedLimit } from '../physics/tyre.js';
+import { Motorway } from './motorway.js';
 import { Driver, SKILL } from './driver.js';
 import { pitUpdate, relativeTo, boxAim, boxSpeed } from './tactics.js';
 import { planFast } from './fastplan.js';
@@ -203,6 +205,10 @@ const CUT_CORNER = 30;
  * Seven. Twelve is quicker in a straight line and gives the distance back --
  * cut that hard and the chord leaves the road the target is on.
  */
+/** Turning after a car that has turned off: within this of it, m; closing at no more than this, m/s; the road's room, m. */
+const TURN_NEAR = 70;
+const TURN_CLOSE = 4;
+const TURN_ROOM = 8;
 const CUT_INSIDE = 7;
 const CUT_INSIDE_MAXR = 70;
 
@@ -484,6 +490,7 @@ export class Officer {
     this.vehicle = vehicle;
     this.skill = opts.skill || SKILL.regular;
     this.driver = new Driver(vehicle, this.skill);
+    if (game.graph && game.graph.levelGround) this.driver.motorway = new Motorway(vehicle, game.graph);
     this.kind = opts.kind || 'patrol';
     if (opts.callsign) {
       this.callsign = opts.callsign;
@@ -1963,6 +1970,67 @@ export class Officer {
     return this.driver.driveTo(_aim, this._chaseSpeed(), dt);
   }
 
+  /** Is the target slowing hard with a junction just ahead of it? */
+  _brakingToTurn(dt, target) {
+    const s = target.speed;
+    const a = this._theirSpeed === undefined ? 0 : (s - this._theirSpeed) / Math.max(1e-3, dt);
+    this._theirSpeed = s;
+    this._theirAccel = lerp(this._theirAccel || 0, clamp(a, -20, 20), 1 - Math.exp(-8 * dt));
+    this._turnFor = Math.max(0, (this._turnFor || 0) - dt);
+    if (window.__oldTurn || s < 5) return false;
+    if (this._theirAccel < -3) {
+      this._junctionFor = (this._junctionFor || 0) - dt;
+      if (this._junctionFor <= 0) {
+        this._junctionFor = 0.15;
+        const g = this.game.graph, look = clamp(s * 1.1, 10, 30), p = target.position;
+        const x = p.x + target.linvel.x / s * look, z = p.z + target.linvel.z / s * look;
+        const n = g && g.nearestNode(x, z, p.y);
+        if (n && n.edges.length > 2 && dist2(n.x, n.z, x, z) < 26) this._turnFor = 0.8;
+      }
+    }
+    return this._turnFor > 0;
+  }
+
+  /**
+   * As fast as still makes the turn the target has made: its line crosses this car's way `t` m ahead, at `turn` radians.
+   * "They try to turn, but they almost can't turn far enough."
+   */
+  _turnCap(target, d) {
+    const v = this.vehicle, s = target.speed, sp = Math.hypot(v.linvel.x, v.linvel.z);
+    if (window.__oldTurn || s < 5 || sp < 10 || d > TURN_NEAR) return Infinity;
+    const ux = v.linvel.x / sp, uz = v.linvel.z / sp, wx = target.linvel.x / s, wz = target.linvel.z / s;
+    const cross = ux * wz - uz * wx, turn = Math.atan2(Math.abs(cross), ux * wx + uz * wz);
+    if (turn < 0.4 || turn > 2.3) return Infinity;
+    const qx = target.position.x - v.position.x, qz = target.position.z - v.position.z;
+    const t = Math.max(0, (qx * wz - qz * wx) / cross);
+    return cornerSpeedLimit(Math.max(10, t / Math.tan(turn / 2) + TURN_ROOM), this.driver._mu());
+  }
+
+  /**
+   * Chasing down the motorway: aimed along the road at the target's lane, as fast as the car goes. "They should just be
+   * able to absolutely send it like absolutely full speed." Aimed straight at a car round the bend it was aimed at
+   * the barrier, and braked for it. Null when it is not that, or close enough for the ordinary chase.
+   */
+  _motorwayChase(dt, target, d, close) {
+    const dr = this.driver, mw = dr.motorway, v = this.vehicle;
+    if (!mw || window.__noMotorway || !mw.update()) { if (mw && window.__noMotorway) mw.on = false; return null; }
+    if (d < close) return null;
+    const t = mw.ahead(target.position);
+    if (!t || t.s - mw.s < close * 0.8) return null;
+    const look = clamp(v.speed * 0.9, 18, Math.max(20, Math.min(80, t.s - mw.s)));
+    const mine = mw.lane(mw.lat), theirs = mw.lane(t.lat);
+    mw.at(mw.s + look, lerp(mine, theirs, clamp01(look / (t.s - mw.s) + 0.25)), _aim);
+    this._mode = 'motorway';
+    this._hasLos = true;
+    this.driver.setPath([]);
+    const ram = this.ramAggression;
+    // All it has, until there is only room left to slow to the target's speed and a bit.
+    const gap = t.s - mw.s - close * 0.6;
+    const want = Math.sqrt(target.speed * target.speed + 8 * Math.max(0, gap)) + lerp(5.5, 16, ram);
+    return dr.driveTo(_aim, Math.min(want, this._chaseSpeed() * lerp(1, 1.15, ram), this._gapCap(target)), dt,
+      { courseRadius: Infinity, goal: target.position, allowHandbrake: false });
+  }
+
   /** Is the river between this car and `p`? Asked three times a second. */
   _waterTo(dt, p) {
     this._wtFor = (this._wtFor || 0) - dt;
@@ -1985,6 +2053,10 @@ export class Officer {
     // a second unit hanging back that far was in the trees on the next bend.
     const rail = this._railFollow(dt, target, d, RAIL_CONTACT);
     if (rail) return rail;
+
+    // On the motorway, and the target further along it: down the road, flat out.
+    const mw = this._motorwayChase(dt, target, d, ramRange + 14);
+    if (mw) return mw;
 
     // On another level -- the target up on Ashfield's raised motorway and this unit on the street under it, or
     // the other way round: by the roads, up a slip road or down a ramp. "The police routing system doesn't seem
@@ -2205,8 +2277,9 @@ export class Officer {
     // Not in the last few lengths: the point of being there is contact, and a
     // planner that keeps looking for a way round the car it is supposed to be
     // hitting is no use to anybody.
+    const onMw = !!(this.driver.motorway && this.driver.motorway.on && this.driver.motorway.ahead(target.position));
     this._planFor = (this._planFor || 0) - dt;
-    if (d > ramRange + 14) {
+    if (d > ramRange + 14 && !onMw) {
       // The trajectory planner drives its candidates before choosing one, so
       // it keeps its own clock and is asked every frame: see
       // Driver.planTrajectory. The older two-leg search is the fallback for
@@ -2228,6 +2301,12 @@ export class Officer {
     } else {
       this._planAim = null;
       this._planCap = Infinity;
+    }
+
+    // On the motorway the aim stays on it: the lead on a car near the edge was out past the barrier.
+    if (onMw) {
+      const mw = this.driver.motorway, f = mw.find(_aim);
+      if (f) { const y = _aim.y; mw.at(f.s, mw.lane(f.lat), _aim); _aim.y = y; }
     }
 
     const runUp = lerp(7.5, 17, ram);
@@ -2256,11 +2335,14 @@ export class Officer {
     // looks, it may close at up to OPEN_CLOSE -- the distance still sets it,
     // so it comes down again as the gap shuts.
     const open = d > OPEN_FROM && this.driver.wallNear > OPEN_CLEAR && window.__openClose !== false;
-    const closeBy = Math.max(lerp(5.5, 16, ram), Math.min(d * 0.35, open ? OPEN_CLOSE : 16 + 11 * ram));
+    let closeBy = Math.max(lerp(5.5, 16, ram), Math.min(d * 0.35, open ? OPEN_CLOSE : 16 + 11 * ram));
+    // Not while they are braking for a junction: they are about to turn off, and at 60 km/h over their speed a unit is
+    // going past the end of the road they take.
+    if (this._brakingToTurn(dt, target) && d < TURN_NEAR) closeBy = Math.min(closeBy, TURN_CLOSE);
     const speed = Math.abs(target.forwardSpeed) + closeBy;
     return this.driver.driveTo(_aim, Math.min(
       speed, this._chaseSpeed() * lerp(1, 1.15, ram), this._gapCap(target),
-      this._planCap === undefined ? Infinity : this._planCap,
+      this._planCap === undefined ? Infinity : this._planCap, this._turnCap(target, d),
     ), dt, { courseRadius: this._courseRadius, goal: target.position });
   }
 
@@ -3011,7 +3093,8 @@ export class Officer {
     // cannot be hurt. Removing the early return that used to carry this made
     // every chasing unit indestructible and the road rig reported a suspiciously
     // perfect 0.00 worst damage.
-    a.shielded = engaged > 0;
+    // And on the motorway, all but alongside: "even if they hit the edge on the motorway ... it should be okay for them".
+    a.shielded = engaged > 0 || !!(this.driver.motorway && this.driver.motorway.on && d > 10);
   }
 
   /** Top speed this unit is willing to run at, given its car and its nerve. */

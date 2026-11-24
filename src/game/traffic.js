@@ -201,7 +201,8 @@ export class Traffic {
     // frame rate (Game's quality ladder lowers vehicleLimit).
     // A map can ask for more (Ashfield City, 3 km across: "ideally add in more cars, because it just seems so
     // empty"). Most are gliding, out of anyone's sight, which costs next to nothing.
-    const count = (g.world && g.world.__map && g.world.__map.trafficCount) || TRAFFIC_COUNT;
+    const map = (g.world && g.world.__map) || {};
+    const count = window.__trafficCount || map.trafficCount || TRAFFIC_COUNT;
     const want = g.vehicleLimit < 30 ? Math.round(count / 2) : count;
     if (!this.preset && this.cars.length < want && this._spawnIn <= 0 && watchers.length) {
       this._spawnIn = 0.35;
@@ -220,12 +221,13 @@ export class Traffic {
     // and one that stayed asleep because it was in view was a ghost -- "there
     // were like two, and I went straight through them." Waking moves nothing
     // the player can see; only sleeping waits for nobody to be looking.
+    const simRange = window.__trafficSim || map.trafficSim || SIM_RANGE;
     for (const c of this.cars) {
       // Asked as this car, at its height: on the raised motorway, not the street under it (RoadGraph.levelOn).
       g.graph.queryY = c.v.position.y - 0.9;
       const far = nearest(c.v.position);
-      if (c.v.dormant && far < SIM_RANGE) this._wake(c);
-      else if (!c.v.dormant && far > SIM_RANGE + SIM_SLACK && !g.seenByAnyone(c.v.position)) this._sleep(c);
+      if (c.v.dormant && far < simRange) this._wake(c);
+      else if (!c.v.dormant && far > simRange + SIM_SLACK && !g.seenByAnyone(c.v.position)) this._sleep(c);
       if (c.v.dormant) this._glide(c, dt);
       else if (far < DRIVE_NEAR) this._drive(c, dt);
       else {
@@ -545,6 +547,9 @@ export class Traffic {
     const i = this.cars.indexOf(c);
     if (i >= 0) this.cars.splice(i, 1);
     c.v.isTraffic = false;
+    // Drawn like any car again (Game._cullTraffic).
+    if (c.v.view) { c.v.view.visible = true; c.v.view.traverse((o) => { if (o.isMesh && c.v._shadowOn === false) o.castShadow = this.game.renderer.shadowMap.enabled; }); }
+    c.v._shadowOn = undefined;
   }
 
   _remove(c) {

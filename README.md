@@ -10542,3 +10542,67 @@ undersides, `deckspawn` 3 wrong of 547, all vans (2 of 207 as last noted), audit
 way. Every road both ways (`everyroad`, 2,670 drives, also before that): the two slip roads above, and 11 in alleys,
 brushing the bins (10 on the final build alone; the build before this has 10 too, so the "0 hurt" noted above was not true of
 alleys). On the final build: slip roads 26 of 26, country roads 62 of 62; the crossbeams and new feet by `ghosts`, nothing.
+
+### Police: flat out on the motorway, and round the corner you turned into; more traffic on Ashfield
+
+*"Sometimes the police cars try to turn, but they almost can't turn far enough, and they end up crashing. And they're kind of
+sometimes slow on like on the motorway when it's a bit of straight. They should just be able to absolutely send it."*
+
+**The motorway** (`ai/motorway.js`, Ashfield's is the only one). Every limit in `Driver.safeSpeed` asks how far a straight
+sweep goes before it meets something, and on a road that bends, however gently, that is the crash barrier a hundred
+metres on. Now a unit on it walks the road's own line ahead, sweeps down its own lane, and lets the bends set their own
+limit; its chase aims down the road at your lane, not at you across the bend; the scenery push is a fifth of itself
+(it pushed for the roomier side, which at a slip road is the mouth of it, and into the nose); and a knock there, other
+than alongside you, does not hurt it. `tests/motorpace.js`: two interceptors 60 m behind a car carried at a steady
+speed, 40 s, mean km/h (slowest), and how far behind they ended:
+
+| | 200: before | after | 240: before | after |
+|---|---|---|---|---|
+| ring, one way | 172 (102), 297-418 m | 206 (89), 13-65 | 191 (105), 566-623 | 246 (186), 42-59 |
+| ring, the other | 170 (104), 357-515 | 209 (109), 6-44 | 174 (92), 644-708 | 244 (167), 67-117 |
+| expressway east | 177 (113), 308-406 | 193 (0), 27 and 315 | 183 (125), 501-710 | 248 (198), 18-63 |
+| expressway west | 163 (78), 343-649 | 205 (60), 31-69 | 171 (79), 618-767 | 244 (203), 53-91 |
+
+The one at 315 m had hit the car ahead (it is carried, so nothing gives) and then the wall; before, none of them ever
+got near enough to. Knocks on walls in the eight runs: 16 (30 with the scenery push as it was; 0 before, at 30-70 km/h less).
+
+**The corner.** A unit 25 m behind at five stars charges to ram: it wants your speed and 58 km/h more, whatever you are
+about to do. Traced, it reached the corner you were taking at 50 doing 109, went to full lock -- six degrees, at that speed
+-- and went straight on. And the arc limit that should then have slowed it was lifted up to three times on account of
+you going straight (`COURSE_LIFT`), at right angles as much as dead ahead: at 94 km/h with a 12 m turn to make it was
+asked for 88. Three changes: the lift fades as the target comes off the nose (gone by 46 degrees); braking hard with a
+junction just ahead of you is read as turning off, and it closes at no more than 4 m/s (`_brakingToTurn`); and once you have
+turned, its speed is what still makes the turn to your line (`_turnCap`). `tests/wideturn.js`, 24 right-angle corners, one
+unit 25 m behind a car that slows to 50 for it (`window.__oldTurn = true` for before; fresh page each):
+
+| | made it | time to the side street | crashes | frames at full lock and wanting more |
+|---|---|---|---|---|
+| Ashfield, 80 km/h | 9 -> 24 of 24 | 5.8 -> 4.3 s | 5 -> 0 | 27% -> 0.4% |
+| Ashfield, 110 | 18 -> 24 | 5.1 -> 4.2 | 9 -> 0 | 17% -> 2% |
+| Wexbury, 80 | 16 -> 24 | 5.4 -> 4.3 | 1 -> 0 | 33% -> 0.8% |
+| Wexbury, 110 | 17 -> 24 | 5.2 -> 4.2 | 2 -> 0 | 20% -> 2% |
+
+The cost, `tests/keepup.js` on Ashfield, 12 routes, dispatcher off, fresh page each (its car does not brake for corners): at
+90 km/h knocks 50 -> 24, walls 12 -> 4, lost it 8 -> 1, but mean 63 -> 60 km/h, with it 60 -> 55%, 100 -> 119 m behind.
+At 120, knocks 17 and 17, mean 64 -> 62, 177 -> 182 m. (A first reading said it had cost far more: that run had the dispatcher
+on and the one it was held against did not.)
+
+**Traffic.** *"Maybe we should have denser traffic, like especially on ... the America map. Is that why it just looks so
+empty, or did you test that already and does it like lag?"* It was 28 cars for 3 km. `tests/busyroads.js`, driven about for a
+minute: 4.1 within 150 m. Two things cost: simulating those near (so 50, simulated within 100 m, not 150), and drawing --
+car bodies have three's culling off, so every traffic car was drawn every frame, and again for its shadow, wherever it
+was. Now not behind you, past the fog or, for its shadow, past 120 m (`_cullTraffic`).
+
+| cars, simulated within | within 150 m | in front, 250 m | simulated | triangles | draw calls |
+|---|---|---|---|---|---|
+| 28, 150 m, as it was | 4.1-7.4 | 3.1-3.8 | 7-10.5 | 769,000 | 385 |
+| 28, 150 m, culled | 4.1 | 3.1 | 7.2 | 508,000 | 283 |
+| **50, 100 m, culled** | **9.5** | **6.1** | 8.1 | **547,000** | 298 |
+| 60, 100 m | 9.7 | 5.1 | 7.0 | 539,000 | 295 |
+| 75, 100 m | 11.2 | 5.6 | 9.6 | 547,000 | 297 |
+
+Past 50 there is nowhere out of sight to put them. Simulation, ms a frame, is only good within one run: 28 at 150 m
+6.5 (its first minute, warming up), 28 at 100 m 2.3, 50 at 150 m 3.9, 50 at 100 m 2.8; in a slower second run 28 at 150 m 9.5, 50 at
+100 m 11.6, 75 13.7. Fewer triangles than before; the simulation about a fifth dearer than 28 in the one run and no dearer in
+the other. Not measured on a screen: the pane here draws about once a second. `citychase` 150 s: no unit or car stuck,
+none fallen.
