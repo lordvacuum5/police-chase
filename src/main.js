@@ -11,6 +11,7 @@ import { WORLD_HALF, setWorldSize } from './world/common.js';
 import { appleMode, realApple, setAppleMode } from './core/platform.js';
 import { MAPS, mapById } from './world/maps.js';
 import { buildCutGraph, CUTS_ON } from './world/cutgraph.js';
+import { addJumps } from './world/jumps.js';
 import { showMenu, hideMenu, chosenCar, chosenPoliceCar, soloRole } from './core/menu.js';
 import { takeCarCards } from './game/cards.js';
 import { DRIVE_SIDE } from './world/roadgraph.js';
@@ -110,6 +111,11 @@ const MAX_VEHICLES = 40;
 /** A traffic car farther off than this casts no shadow, m: past the shadow map's reach. */
 const SHADOW_TRAFFIC = 120;
 const _ball = new THREE.Sphere();
+/** The most a car that has come down hard is drawn up, m (Game._landedLift). */
+const LANDED_MAX = 1.2;
+const _wheelQ = new THREE.Quaternion(), _wheelUp = new THREE.Vector3();
+const _wheelPose = { position: null, quaternion: _wheelQ, up: _wheelUp };
+const _wheelPose3 = (position, quaternion) => { _wheelPose.position = position; _wheelPose.quaternion = quaternion; _wheelUp.set(0, 1, 0).applyQuaternion(quaternion); return _wheelPose; };
 /** Tipped further than this (its up vector's height) a car is drawn clear of the ground, at most this far, m. See _tippedLift. */
 const TIPPED_FROM = 0.8;
 const TIPPED_MAX = 0.8;
@@ -438,6 +444,12 @@ class Game {
       // moves: at this point the world is static geometry and no vehicle exists.
       this.world.step();
       this.cuts = buildCutGraph(this.graph, this.world, built.bounds || 1000);
+    }
+
+    // And off the edge of the raised motorway (world/jumps.js), by the colliders too.
+    if (built.jumps && built.jumps.length) {
+      this.world.step();
+      this.jumpEdges = addJumps(this, built.jumps);
     }
 
     boot.set(0.72, 'building vehicles…');
@@ -1411,6 +1423,28 @@ class Game {
       low = Math.min(low, y - r * Math.sqrt(Math.max(0, 1 - axleY * axleY)) - hw * Math.abs(axleY));
     }
     return Math.min(TIPPED_MAX, Math.max(0, ground - low)) * clamp01((TIPPED_FROM - up.y) / 0.3);
+  }
+
+  /**
+   * How far to draw a car up so that no part of it is under the ground it stands on. The bodies' own collider on the hills
+   * is HILL_SINK under what is drawn and the suspension stops short of holding a car up off a ten metre drop, and one that
+   * came off the motorway was half a metre into the grass for a third of a second: "apart from obviously if they do a
+   * massive jump ... the suspension should go down, but it still shouldn't look like the actual car body is in the
+   * ground or the wheels" (tests/jumpoff.js).
+   */
+  _landedLift(v, wheels = v.view.quaternion) {
+    const H = this.sim.heightAt, p = v.view.position, q = v.view.quaternion, s = v.spec, d = s.dims;
+    if (!H || p.y - H(p.x, p.z) > 1.6) return 0;
+    let lift = 0;
+    const cy = (s.colliderY === undefined ? 0.1 : s.colliderY) - d.h * 0.5, cz = s.colliderZ || 0;
+    for (let i = 0; i < 4; i++) {
+      _v.set(i & 1 ? d.w * 0.44 : -d.w * 0.44, cy, cz + (i & 2 ? d.l * 0.44 : -d.l * 0.44)).applyQuaternion(q);
+      lift = Math.max(lift, H(p.x + _v.x, p.z + _v.z) - (p.y + _v.y));
+      v.wheelCentre(i, _v, _wheelPose3(p, wheels));
+      lift = Math.max(lift, H(_v.x, _v.z) - (_v.y - s.wheelRadius));
+    }
+    // Not under a bridge or over a deck by mistake, and nothing for the millimetres it always is out.
+    return lift > 0.015 && lift < LANDED_MAX ? lift : 0;
   }
 
   /** A place on a road out of `node`; `ok(edge)`, if given, says which roads will do. */
@@ -4244,8 +4278,11 @@ class Game {
         v.view.position.lerpVectors(v.prevPos, v.position, alpha);
         v.view.quaternion.copy(v.prevQuat).slerp(v.quaternion, alpha);
         if (lookOn && v.isPolice && v !== this.player) this._driftLook(v, dt);
+        // The wheels stay on the road: the lean is the body's. Leant with it, the outside ones went into the ground.
+        _wheelQ.copy(v.view.quaternion);
         if (v.isPolice && v !== this.player && !v.remote) this._leanLook(v, dt);
       }
+      if (replaying) _wheelQ.copy(v.view.quaternion);
       // The wheels, the lamps and the camera all have to agree with the body
       // they are attached to, so everything below works off the drawn pose.
       _drawn.position = v.view.position;
@@ -4256,20 +4293,25 @@ class Game {
       // over the wheels. "Sometimes when I go on my side, my wheels fade through
       // the floor." Drawn up by however far its lowest wheel or corner is under.
       if (_up.y < TIPPED_FROM) v.view.position.y += this._tippedLift(v, _up);
+      else if (!v.dormant && (v.view.visible || !v.isTraffic)) v.view.position.y += this._landedLift(v, _wheelQ);
 
       // Every wheel is one instance of the same 0.34 m by 0.26 m tyre, scaled
       // to whatever this car actually runs on -- wider still at the rear if
       // the spec asks for it, which is purely visual.
       const s = v.spec;
       const rs = s.wheelRadius / 0.34;
+      _wheelUp.copy(AXIS_Y).applyQuaternion(_wheelQ);
       for (let i = 0; i < 4 && (v.view.visible || !v.isTraffic); i++) {
         const w = v.wheels[i];
-        v.wheelCentre(i, _v, _drawn);
+        _wheelPose.position = v.view.position;
+        _wheelPose.quaternion = _wheelQ;
+        _wheelPose.up = _wheelUp;
+        v.wheelCentre(i, _v, _wheelPose);
         // Front wheels pointing where the car is going, not where the body
         // is: the opposite lock of the drift look below.
         _qA.setFromAxisAngle(AXIS_Y, w.front ? w.steer - (v.lookYaw || 0) * DRIFT_LOOK_LOCK : w.steer);
         _qB.setFromAxisAngle(AXIS_X, -w.spin);
-        _qC.copy(v.view.quaternion).multiply(_qA).multiply(_qB);
+        _qC.copy(_wheelQ).multiply(_qA).multiply(_qB);
         const width = !w.front && s.wheelWidthRear ? s.wheelWidthRear : s.wheelWidth;
         _scale.set(width / 0.26, rs, rs);
         _m.compose(_v, _qC, _scale);

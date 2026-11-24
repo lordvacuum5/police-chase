@@ -32,7 +32,7 @@ import { GROUP, groups, RAPIER, addStaticBox, addCanopy, nearBuilding, EDGE_FACE
 import { makeRng, rand, randInt, clamp, lerp, dist2, closestOnSegment, TAU } from '../util/math.js';
 import {
   WORLD_HALF, GRID_N, KERB_H, SURF_ROAD, SURF_PAVED, PALETTE,
-  paintDisc, rasteriseRoads, makeSurfaceAt, makeHeightAt, buildGround, buildRoadMeshes, DRAW_ORDER,
+  paintDisc, rasteriseRoads, makeSurfaceAt, makeHeightAt, buildGround, buildRoadMeshes, DRAW_ORDER, LIFT, ROAD_OVER, PAVE_OVER, trueDepth,
 } from './common.js';
 import { buildHeightGrid, addHeightfield, buildTerrainMesh, liftMesh, liftPieces } from './terrain.js';
 import { planDrive, layDrives } from './drives.js';
@@ -264,6 +264,8 @@ export function buildCity(sim, scene, seed = 20260822) {
   // With the stretches of ramp that lie on the ground in it: the ground drawn is let down under them as it is
   // under a street.
   ctx.streetSurfAt = makeSurfaceAt(surface.slice());
+  // What the wheels ride is the streets' own, not the strips under the raised roads marked road below.
+  const kerbAt = makeHeightAt(surface.slice(), PAVE_OVER, ROAD_OVER);
   const groundSurf = surface.slice();
   for (const e of graph.edges) {
     if (e.kind !== 'ramp' || !e.deck) continue;
@@ -281,7 +283,6 @@ export function buildCity(sim, scene, seed = 20260822) {
     }
   }
   ctx.surfAt = makeSurfaceAt(surface);
-  const kerbAt = makeHeightAt(surface);
   const heightAt = (x, z) => at(x, z) + kerbAt(x, z);
 
   // --- visuals -------------------------------------------------------
@@ -292,11 +293,12 @@ export function buildCity(sim, scene, seed = 20260822) {
   const lifted = liftRoads(ctx, [tarmac, markings, kerbs]);
   // The kerbs in cells: one mesh of them was 77,000 triangles drawn wherever you looked.
   // All in cells: one mesh each, the roads were 58,000 triangles drawn wherever you looked.
-  meshes.push(chunkMesh(lifted[0], 300), chunkMesh(lifted[1], 300), chunkMesh(lifted[2], 300));
+  meshes.push(trueDepth(chunkMesh(lifted[0], 300), DRAW_ORDER.tarmac), chunkMesh(lifted[1], 300), trueDepth(chunkMesh(lifted[2], 300), DRAW_ORDER.tarmac + 0.3));
   if (wear) {
-    liftMesh(wear, at, 0.06);
-    wear.material.polygonOffsetFactor = -4;
-    wear.material.polygonOffsetUnits = -8;
+    liftMesh(wear, at, LIFT);
+    // Over the tarmac's true depth (trueDepth), not its pulled one: more, and it was drawn over tyres.
+    wear.material.polygonOffsetFactor = -1;
+    wear.material.polygonOffsetUnits = -2;
     meshes.push(wear.geometry.index ? wear : chunkMesh(wear, 300));
   }
   meshes.push(buildPavements(ctx));
@@ -331,6 +333,8 @@ export function buildCity(sim, scene, seed = 20260822) {
     // The raised roads' deck colliders: a wheel on one is on road (Vehicle).
     decks: ctx.decks,
     walls: ctx.walls,
+    /** Stretches of raised road with no barrier (world/jumps.js). */
+    jumps: ctx.jumps,
     // 28 to 50: "maybe we should have denser traffic ... it just looks so empty". Simulated only within 100 m, not 150.
     trafficCount: 50,
     trafficSim: 100,
@@ -1331,6 +1335,41 @@ function computeDecks(ctx, hgrid) {
 }
 
 /**
+ * Stretches of the ring with no barrier, to jump off: "you could add some more sections with no crash barrier if you want.
+ * That could be kind of fun." Where, and whether on the city's side of it; picked by tests/jumpsites.js from where all of
+ * 18 ways off the edge, both ways along, come down with nothing in the way.
+ */
+const JUMPS = [
+  [-1150, -16, 'in'], [-571, -1150, 'in'], [-44, -1150, 'in'], [313, -1150, 'in'], [691, -1150, 'in'], [1150, -193, 'in'],
+  [1150, 522, 'in'], [631, 1150, 'in'], [-184, 1150, 'in'], [-522, 1150, 'in'], [-1150, 571, 'in'],
+  [1150, -760, 'out'], [442, 1150, 'out'], [373, -1150, 'out'],
+];
+/** How long each is, m. */
+const JUMP_LEN = 46;
+
+/** JUMPS found on the ring: { edge, s, side, x, z, y, nx, nz, tx, tz }, out from the road along n. */
+function planJumps(graph) {
+  const out = [];
+  for (const [x, z, way] of JUMPS) {
+    let best = null;
+    for (const e of graph.edges) {
+      if (e.kind !== 'motorway' || !e.elevated) continue;
+      for (const sg of e.segs) {
+        const r = closestOnSegment(x, z, sg.a.x, sg.a.z, sg.b.x, sg.b.z);
+        if (!best || r.dist < best.d) best = { d: r.dist, e, s: sg.start + sg.len * r.t };
+      }
+    }
+    if (!best || best.d > 12 || best.e.length < JUMP_LEN + 8) continue;
+    const e = best.e, s = clamp(best.s, JUMP_LEN / 2 + 3, e.length - JUMP_LEN / 2 - 3), p = pointAlong(e, s);
+    const inward = -p.tz * p.x + p.tx * p.z < 0;
+    const side = inward === (way === 'in') ? 1 : -1;
+    const nx = -p.tz * side, nz = p.tx * side;
+    out.push({ edge: e, s, side, x: p.x + nx * e.width * 0.5, z: p.z + nz * e.width * 0.5, y: graph.levelOn(e, p.x, p.z), nx, nz, tx: p.tx, tz: p.tz, len: JUMP_LEN });
+  }
+  return out;
+}
+
+/**
  * The raised roads drawn and made solid: a deck with its markings, its slab's edge and underside, a crash
  * barrier each side (open where roads join), piers down to the ground where there is no road under them.
  * The deck's surface is a collider the wheels ride (a group the AI's sweeps and sight lines do not see), and
@@ -1422,6 +1461,7 @@ function buildDecks(ctx) {
     if (start !== null && to - start > 0.3) out.push([start, to]);
     return out;
   };
+  ctx.jumps = planJumps(graph);
   // The wall's lines as the roads' edges give them, joined end to end below.
   const wallLines = [];
   for (const e of graph.edges) {
@@ -1480,11 +1520,32 @@ function buildDecks(ctx) {
         s0 = under.vertexCount;
         under.addWall(side, -1.4, 0.1, SLAB, sg * (half + 0.6));
         lift(under, s0, yOf);
-        wallLines.push(side.map((q, k) => {
-          const p = side[Math.max(0, k - 1)], r = side[Math.min(side.length - 1, k + 1)], l = Math.hypot(r.x - p.x, r.z - p.z) || 1;
-          const x = q.x - (r.z - p.z) / l * sg * (half + 0.3), z = q.z + (r.x - p.x) / l * sg * (half + 0.3);
-          return { x, y: yOf(x, z), z };
-        }));
+        // The wall along it, but for the stretches to jump off, its ends there turned out away from the road.
+        const cuts = ctx.jumps.filter((j) => j.edge === e && j.side === sg && j.s > f0 && j.s < f1);
+        let from = f0;
+        for (const j of [...cuts, null]) {
+          const to = j ? j.s - j.len / 2 : f1, flareA = from > f0, flareB = !!j;
+          const part = to - from > 1 ? slice5(line5, from, to) : null;
+          if (j) from = j.s + j.len / 2;
+          if (!part || part.length < 2) continue;
+          wallLines.push(part.map((q, k) => {
+            const p = part[Math.max(0, k - 1)], r = part[Math.min(part.length - 1, k + 1)], l = Math.hypot(r.x - p.x, r.z - p.z) || 1;
+            const near = Math.min(flareA ? k : 9, flareB ? part.length - 1 - k : 9);
+            const o = half + 0.3 + (near === 0 ? 1.2 : near === 1 ? 0.35 : 0);
+            const x = q.x - (r.z - p.z) / l * sg * o, z = q.z + (r.x - p.x) / l * sg * o;
+            return { x, y: yOf(x, z), z };
+          }));
+        }
+        // Red and white along the edge where there is none.
+        for (const j of cuts) {
+          for (let d = j.s - j.len / 2; d < j.s + j.len / 2 - 0.5; d += 2) {
+            const bit = slice5(line5, d, Math.min(d + 2, j.s + j.len / 2));
+            if (!bit || bit.length < 2) continue;
+            s0 = kerb.vertexCount;
+            kerb.addRibbon(bit, 0.9, 0.115, Math.round((d - j.s) / 2) & 1 ? 0xb3261e : 0xe8e6df, sg * (half + 0.1));
+            lift(kerb, s0, yOf);
+          }
+        }
       }
     }
     // Markings: a white line along each edge of every raised road, and its lanes dashed. "You can almost see
@@ -1807,14 +1868,17 @@ function buildDecks(ctx) {
     m.receiveShadow = true;
     if (tex === 'tarmac') groundDetail(m, 'tarmac');
     else if (tex === 'panel') buildingDetail(m, 'panel');
-    out.push(chunkMesh(m, 300));
+    const c = chunkMesh(m, 300);
+    if (name === 'decks') trueDepth(c, DRAW_ORDER.tarmac + 0.5);
+    if (name === 'deck-markings') c.traverse((o) => { if (o.isMesh) o.renderOrder = DRAW_ORDER.tarmac + 0.6; });
+    out.push(c);
   };
   // Pulled forward in depth, but less than the streets (-3, -6, liftRoads): where a ramp's foot lies on the street
   // it meets the street wins, and over the grass the ramp does. It was pushed back instead, for the first of
   // those, and at a shallow angle the ground a few centimetres under it won: "it shows green grass ... as I get
   // closer, it then turns to tarmac ... it just keeps on going further away".
   mk(top, 'decks', { polygonOffset: true, polygonOffsetFactor: -1.5, polygonOffsetUnits: -3 }, 'tarmac');
-  mk(paint, 'deck-markings', { polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 });
+  mk(paint, 'deck-markings', { polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8, depthWrite: false });
   // Lit a little of their own: from below, the sky's light reaches a slab's underside only as the ground's
   // green bounce, and the concrete read as dark olive.
   const lift2 = { emissive: 0x403f3c };
@@ -2205,7 +2269,7 @@ function liftRoads(ctx, meshes) {
   // "quite a lot of flickering with the roads".
   const pull = { roads: [-3, -6], kerbs: [-5, -10], markings: [-7, -14] };
   for (const m of meshes) {
-    liftMesh(m, ctx.at, 0.06);
+    liftMesh(m, ctx.at, LIFT);
     m.material = m.material.clone();
     m.material.depthFunc = THREE.LessEqualDepth;
     m.material.polygonOffset = true;

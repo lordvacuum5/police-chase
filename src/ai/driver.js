@@ -988,7 +988,8 @@ export class Driver {
       // bend in the road -- on a share of its grip, not all of it. See
       // Officer's PATROL_CORNER.
       let vc = cornerSpeedLimit(R, mu * (R < TIGHT_TURN ? (this.cornerShare || 1) : 1));
-      if (b.speed) {
+      if (b.edge && b.edge.jump) vc = Math.min(vc, b.edge.speed * 1.1);
+      else if (b.speed) {
         vc = Math.min(vc, b.speed * this.limitScale * lerp(1.0, 1.35, skill.aggression - 0.7));
       }
       // Highest speed now that still allows braking to vc by the time we arrive.
@@ -2535,7 +2536,9 @@ export class Driver {
     this._trackPath();
 
     const here = this.path[this.pathIndex];
-    const roadCap = (here && here.speed ? here.speed : 20)
+    // Off the edge of the motorway (world/jumps.js): at the speed it is meant to be taken, or it does not land where it should.
+    const jumping = here && here.edge && here.edge.jump;
+    const roadCap = jumping ? here.edge.speed * 1.1 : (here && here.speed ? here.speed : 20)
       * this.limitScale * lerp(1.0, 1.3, this.skill.aggression - 0.7);
     const planned = Math.min(this.planSpeed(roadCap), speedCap, this.holdCap ?? Infinity);
 

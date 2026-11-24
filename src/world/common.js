@@ -140,11 +140,15 @@ export function rasteriseRoads(graph, surface) {
  * Cheap on purpose: this is called five times per wheel per substep, which is
  * about twelve thousand times a second with a handful of cars on the road.
  */
-export function makeHeightAt(surface) {
+/**
+ * How high the wheels ride over the ground on each surface: pavement `paved`, road `road`, grass 0. On the hills the roads
+ * and pavements are drawn a little over the ground they lie on (liftRoads), and the wheels were on the ground: every
+ * car stood 9 cm in the road. "It really shouldn't look like any part of the car is in the ground ever."
+ */
+export function makeHeightAt(surface, paved_ = KERB_H, road = 0) {
+  const of = [0, road, paved_];
   const paved = (a, b) => (
-    a < 0 || b < 0 || a >= GRID_N || b >= GRID_N
-      ? 0
-      : (surface[b * GRID_N + a] === SURF_PAVED ? 1 : 0)
+    a < 0 || b < 0 || a >= GRID_N || b >= GRID_N ? 0 : of[surface[b * GRID_N + a]] || 0
   );
   return (x, z) => {
     const fx = (x + WORLD_HALF) / CELL - 0.5;
@@ -153,9 +157,7 @@ export function makeHeightAt(surface) {
     const tx = fx - i, tz = fz - j;
     const a = paved(i, j), b = paved(i + 1, j);
     const c = paved(i, j + 1), d = paved(i + 1, j + 1);
-    return KERB_H * (
-      (a + (b - a) * tx) * (1 - tz) + (c + (d - c) * tx) * tz
-    );
+    return (a + (b - a) * tx) * (1 - tz) + (c + (d - c) * tx) * tz;
   };
 }
 
@@ -268,6 +270,35 @@ function buildWorldEdge(world) {
  * footway is raised, are drawn afterwards like everything else.
  */
 export const DRAW_ORDER = { ground: -3, pavement: -2, tarmac: -1 };
+/**
+ * How far over the ground the hill maps draw their tarmac and pavement (liftRoads, the ribbons' own height in), m: where
+ * the wheels are too (makeHeightAt).
+ */
+export const LIFT = 0.06;
+export const ROAD_OVER = LIFT + 0.03;
+export const PAVE_OVER = KERB_H + 0.05;
+
+/**
+ * Drawn pulled forward in depth, to stay over the ground it lies on, but leaving its true depth behind it: a mesh's, or
+ * all those in a group. Pulled three slopes forward, as the roads are, at a grazing angle that is metres -- and the tarmac
+ * hid the bottom 0.4 m of a car 100 m off. "Some cars kind of look like they're slightly in the ground on different
+ * kind of sections." First its depth alone, unpulled; then its colour, pulled, writing none. `order` for the colour.
+ */
+export function trueDepth(root, order) {
+  const only = new THREE.MeshBasicMaterial({ colorWrite: false });
+  const list = [];
+  root.traverse((o) => { if (o.isMesh) list.push(o); });
+  for (const m of list) {
+    m.material.depthWrite = false;
+    m.renderOrder = order;
+    const d = new THREE.Mesh(m.geometry, only);
+    d.renderOrder = order - 0.5;
+    d.name = m.name;
+    d.userData.depthOnly = true;
+    m.add(d);
+  }
+  return root;
+}
 
 /**
  * Roads joined end to end through plain bends, as single polylines.
@@ -534,7 +565,9 @@ export function buildRoadMeshes(ctx) {
   // hundred metres out, where they flickered through each other as hatching.
   // Pulled toward the camera in depth instead of lifted any higher.
   const nearer = { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 };
-  const m2 = new THREE.Mesh(paint.build(), vertexColorMaterial(nearer));
+  // No depth of their own, and before anything stands on them: pulled forward they covered the bottoms of tyres.
+  const m2 = new THREE.Mesh(paint.build(), vertexColorMaterial({ ...nearer, depthWrite: false }));
+  m2.renderOrder = DRAW_ORDER.tarmac + 0.2;
   m2.name = 'markings';
   const m3 = new THREE.Mesh(kerbs.build(), vertexColorMaterial(nearer));
   m3.name = 'kerbs';

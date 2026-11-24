@@ -34,7 +34,7 @@ export async function deckGaps(at = null) {
   }
   const tops = new Map();
   for (const k of cells.keys()) { const [i, j] = k.split(',').map(Number); tops.set(k, top(i * C, j * C)); }
-  const gaps = [];
+  const gaps = [], jumps = (g.world.__map && g.world.__map.jumps) || [];
   for (const [k, y] of tops) {
     if (y === null) continue;
     const [i, j] = k.split(',').map(Number);
@@ -44,6 +44,8 @@ export async function deckGaps(at = null) {
       const kk = (i + di) + ',' + (j + dj);
       const ny = tops.has(kk) ? tops.get(kk) : top((i + di) * C, (j + dj) * C);
       if (ny !== null && Math.abs(ny - y) < 1.2) continue;
+      // Where there is meant to be none (world/jumps.js), not a gap.
+      if (jumps.some((q) => Math.abs((i * C - q.x) * q.tx + (j * C - q.z) * q.tz) < q.len / 2 + 4 && Math.abs((i * C - q.x) * q.nx + (j * C - q.z) * q.nz) < 4)) continue;
       // Off the edge here: a barrier between 2 m in and 1.6 m out, at two heights?
       // Several, jittered: a single ray down the grid slips along the seam between two triangles of a wall.
       let held = false;

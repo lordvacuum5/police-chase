@@ -206,6 +206,10 @@ const CUT_CORNER = 30;
  * cut that hard and the chord leaves the road the target is on.
  */
 /** Turning after a car that has turned off: within this of it, m; closing at no more than this, m/s; the road's room, m. */
+/** Further off than this the motorway is worth asking about, m; what it makes along the streets, and straight at you, m/s (tests/jumpoff.js chases). */
+const BY_ROAD = 320;
+const STREET_PACE = 19;
+const DIRECT_PACE = 28;
 const TURN_NEAR = 70;
 const TURN_CLOSE = 4;
 const TURN_ROOM = 8;
@@ -621,13 +625,15 @@ export class Officer {
       // this car actually fits down. See world/cutgraph.js.
       {
         cuts: this.driver.allowOffRoad && this._wantsShortcut(),
+        jumps: this.driver.allowOffRoad && !window.__noJumps,
+        head: { x: v.forward.x, z: v.forward.z },
         minWidth: v.spec.dims.w
           + (this.game.graph.cutRoom === undefined ? CUT_CLEARANCE : this.game.graph.cutRoom),
       },
     );
     if (pts.length < 2) return false;
     // Through the open ground rather than down the road: see ai/freeline.js.
-    const freed = this.driver.allowOffRoad && v.speed > FREE_FROM && FREE_LINE();
+    const freed = this.driver.allowOffRoad && v.speed > FREE_FROM && FREE_LINE() && !pts.some((q) => q.edge && q.edge.jump);
     this.driver.setPath(freed
       ? freeLine(this.game, pts, v, { halfWidth: this.driver.halfWidth, grass: window.__freeGrass === true })
       : pts);
@@ -1441,7 +1447,10 @@ export class Officer {
     const far = this.distanceTo(point) > 150;
     const shifted = this.goalNode !== goal.id
       && (!this._goalAt || dist2(this._goalAt.x, this._goalAt.z, goal.x, goal.z) > (far ? 70 : 35));
-    if (this.repathTimer <= 0 || !this.driver.hasPath || shifted) {
+    // Not while it is going off the edge of the motorway (world/jumps.js): there is no road under it to plan from.
+    const at = this.driver.hasPath ? this.driver.path[Math.min(this.driver.pathIndex + 1, this.driver.path.length - 1)] : null;
+    const going = !!(at && at.edge && at.edge.jump) && Math.abs(this.driver.crossTrack || 0) < 14;
+    if (!going && (this.repathTimer <= 0 || !this.driver.hasPath || shifted)) {
       this._routeTo(goal.id, 2.4);
       this._goalAt = { x: goal.x, z: goal.z };
       this.repathTimer = far ? 4.5 : 1.4;
@@ -1461,7 +1470,7 @@ export class Officer {
     // way round. "There was this like break in buildings, quite a big gap,
     // and then it could literally have just gone across the grass to the last
     // known location ... but instead it just went all the way around."
-    const otherLevel = point.y !== undefined && Math.abs(point.y - this.vehicle.position.y) > 4 && g.levelGround;
+    const otherLevel = point.y !== undefined && this._otherLevel(point);
     if (!otherLevel && this._crossCountry(dt, point)) {
       this._mode = 'across';
       return this.driver.driveTo(point, this._chaseSpeed() * speedFactor, dt);
@@ -2006,6 +2015,42 @@ export class Officer {
     return cornerSpeedLimit(Math.max(10, t / Math.tan(turn / 2) + TURN_ROOM), this.driver._mu());
   }
 
+  /** Is `p` up on a raised road and this unit not, or the other way about, or on one above or below this one's? */
+  _otherLevel(p) {
+    const g = this.game.graph, v = this.vehicle.position, at = this.game.sim.terrainAt;
+    if (!g || !g.levelGround || !at) return false;
+    const me = v.y - at(v.x, v.z) > 3, it = p.y - at(p.x, p.z) > 3;
+    // One up and one not, whatever their heights: a street on a hill can be as high as the motorway past it.
+    return me !== it ? Math.abs(p.y - v.y) > 1.5 || this.distanceTo(p) > 40 : me && Math.abs(p.y - v.y) > 4;
+  }
+
+  /**
+   * Is it a good deal quicker to the target by the raised motorway than as the chase would go? "It could get onto the motorway
+   * because it knows that's faster, go really fast, and then jump off the edge if an edge is near me."
+   */
+  _byMotorway(dt, target, d) {
+    const g = this.game.graph, v = this.vehicle, p = target.position;
+    if (!g || !g.levelGround || window.__noByMotorway) return false;
+    this._bmFor = (this._bmFor || 0) - dt;
+    if (this._bmFor > 0) return this._bm;
+    this._bmFor = this._bm ? 3 : 1.5;
+    this._bm = false;
+    const a = g.nearestNode(v.position.x, v.position.z, v.position.y), b = g.nearestNode(p.x, p.z, p.y);
+    if (!a || !b || a === b) return false;
+    const path = g.route(a.id, b.id, Infinity, { jumps: !window.__noJumps, head: { x: v.forward.x, z: v.forward.z } });
+    if (!path) return false;
+    const raised = v.position.y - this.game.sim.terrainAt(v.position.x, v.position.z) > 3;
+    let t = raised ? 0 : dist2(a.x, a.z, v.position.x, v.position.z) / STREET_PACE, up = 0;
+    for (let i = 0; i < path.length - 1; i++) {
+      const e = g.edgeBetween(path[i], path[i + 1]);
+      if (!e) return false;
+      if (e.jump) { t += e.length / 30 + 3; up += 60; } else if (e.kind === 'motorway' || (e.elevated && e.kind === 'dual')) { t += e.length / 52; up += e.length; } else t += e.length / (e.kind === 'ramp' ? 22 : STREET_PACE);
+    }
+    t += dist2(b.x, b.z, p.x, p.z) / STREET_PACE;
+    this._bm = up > 150 && t < d / DIRECT_PACE * 0.85;
+    return this._bm;
+  }
+
   /**
    * Chasing down the motorway: aimed along the road at the target's lane, as fast as the car goes. "They should just be
    * able to absolutely send it like absolutely full speed." Aimed straight at a car round the bend it was aimed at
@@ -2013,7 +2058,7 @@ export class Officer {
    */
   _motorwayChase(dt, target, d, close) {
     const dr = this.driver, mw = dr.motorway, v = this.vehicle;
-    if (!mw || window.__noMotorway || !mw.update()) { if (mw && window.__noMotorway) mw.on = false; return null; }
+    if (!mw || window.__noMotorway || !mw.on) { if (mw && window.__noMotorway) mw.on = false; return null; }
     if (d < close) return null;
     const t = mw.ahead(target.position);
     if (!t || t.s - mw.s < close * 0.8) return null;
@@ -2058,11 +2103,20 @@ export class Officer {
     const mw = this._motorwayChase(dt, target, d, ramRange + 14);
     if (mw) return mw;
 
+    // A long way off, by the motorway where that is quicker: up a slip road, flat out, and down one or off the edge.
+    if (d > BY_ROAD && this._byMotorway(dt, target, d)) {
+      this._mode = 'byroad';
+      this._hasLos = false;
+      return this._goTo(dt, target.position, 1.0);
+    }
+
     // On another level -- the target up on Ashfield's raised motorway and this unit on the street under it, or
     // the other way round: by the roads, up a slip road or down a ramp. "The police routing system doesn't seem
     // to understand how to get onto the actual motorway": straight at the car across the ground, a unit drove
     // about under the deck it was on. `_goTo` asks for the junction at the target's height (nearestNode, y).
-    if (Math.abs(target.position.y - v.position.y) > 4 && this.game.graph && this.game.graph.levelGround) {
+    // By how far each is over the ground it is above, not by its height: on Ashfield's hills a unit on a street ten metres
+    // below one was "on another level" and drove round by the roads.
+    if (this._otherLevel(target.position)) {
       this._mode = 'level';
       this._hasLos = false;
       return this._goTo(dt, target.position, 1.0);
@@ -3014,6 +3068,7 @@ export class Officer {
    */
   _updateAssist(target, dt = 1 / 60) {
     const a = this.vehicle.assist;
+    if (this.driver.motorway && !window.__noMotorway) this.driver.motorway.update();
     // Never spins, chasing or not, near or far. See Vehicle._guardSpin.
     a.noSpin = window.__noSpin === undefined ? NO_SPIN : window.__noSpin;
     // Nor rolls over. See Vehicle._guardFlip.

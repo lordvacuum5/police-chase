@@ -91,7 +91,8 @@ export function buildTown(sim, scene, seed = 6180339) {
     graph,
     surface,
     surfaceAt: makeSurfaceAt(surface),
-    heightAt: makeHeightAt(surface),
+    // The tarmac is drawn 3 cm over the plate.
+    heightAt: makeHeightAt(surface, KERB_H, 0.03),
     meshes,
     bounds: WORLD_HALF,
     bypass,

@@ -33,7 +33,7 @@ import { GROUP, groups, addStaticBox, addCanopy, nearBuilding, EDGE_FACE, RAPIER
 import { makeRng, rand, randInt, clamp, lerp, dist2, TAU } from '../util/math.js';
 import {
   WORLD_HALF, CELL, GRID_N, KERB_H, SURF_GRASS, SURF_ROAD, SURF_PAVED, PALETTE,
-  paintDisc, rasteriseRoads, makeSurfaceAt, makeHeightAt, DRAW_ORDER,
+  paintDisc, rasteriseRoads, makeSurfaceAt, makeHeightAt, DRAW_ORDER, LIFT, ROAD_OVER, PAVE_OVER, trueDepth,
   buildGround, buildRoadMeshes, MeshBuilder, vertexColorMaterial,
 } from './common.js';
 import { baseRelief, buildHeightGrid, addHeightfield, buildTerrainMesh, liftMesh, liftPieces, HILL_SINK, H_STEP } from './terrain.js';
@@ -147,7 +147,7 @@ export function buildCountry(sim, scene, seed = 4417) {
   for (const f of farms) paintDisc(surface, f.x, f.z, 22, SURF_PAVED);
   rasteriseRoads(graph, surface);
   ctx.surfAt = makeSurfaceAt(surface);
-  const kerbAt = makeHeightAt(surface);
+  const kerbAt = makeHeightAt(surface, PAVE_OVER, ROAD_OVER);
   const heightAt = (x, z) => grid.at(x, z) + kerbAt(x, z);
 
   // ---------------------------------------------------------------- visuals
@@ -209,12 +209,13 @@ export function buildCountry(sim, scene, seed = 4417) {
   // grid has none here outside the villages to match one.
   const [tarmac, markings, kerbs, wear] = buildRoadMeshes(ctx);
   kerbs.geometry.dispose();
-  meshes.push(...liftRoads(ctx, [tarmac, markings]));
+  const [road, lines] = liftRoads(ctx, [tarmac, markings]);
+  meshes.push(trueDepth(road, DRAW_ORDER.tarmac), lines);
   if (wear) {
     // Lifted with the road, and pulled a little nearer than it so it stays on top on the hills.
-    liftMesh(wear, ctx.at, 0.06);
-    wear.material.polygonOffsetFactor = -4;
-    wear.material.polygonOffsetUnits = -8;
+    liftMesh(wear, ctx.at, LIFT);
+    wear.material.polygonOffsetFactor = -1;
+    wear.material.polygonOffsetUnits = -2;
     meshes.push(wear);
   }
   meshes.push(buildVillagePavements(ctx));
@@ -810,7 +811,7 @@ function paintVillagePaving(ctx, v) {
  */
 function liftRoads(ctx, meshes) {
   for (const m of meshes) {
-    liftMesh(m, ctx.at, 0.06);
+    liftMesh(m, ctx.at, LIFT);
     m.material = m.material.clone();
     m.material.depthFunc = THREE.LessEqualDepth;
     m.material.polygonOffset = true;

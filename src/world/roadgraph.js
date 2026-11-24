@@ -1321,6 +1321,15 @@ export class RoadGraph {
    * Shortest-time route between two nodes. Returns an array of node ids, or
    * null. `speedCap` lets a slow unit plan realistically.
    */
+  /** Coming to a jump the way it goes: turning round on the motorway for one, units stood across it. */
+  _facing(e, prevId, curId, opts) {
+    const p = e.points[0], q = e.points[1], n = this.nodes[curId];
+    let dx, dz;
+    if (prevId !== -1 && prevId !== undefined) { dx = n.x - this.nodes[prevId].x; dz = n.z - this.nodes[prevId].z; } else if (opts.head) { dx = opts.head.x; dz = opts.head.z; } else return false;
+    const l = Math.hypot(dx, dz) * Math.hypot(q.x - p.x, q.z - p.z) || 1;
+    return (dx * (q.x - p.x) + dz * (q.z - p.z)) / l > 0.5;
+  }
+
   route(startId, goalId, speedCap = Infinity, opts = null) {
     // Cuts are opt in. Everything that routed before this existed -- patrols,
     // roadblocks, responding units -- keeps to the roads, because a patrol car
@@ -1390,7 +1399,8 @@ export class RoadGraph {
 
       for (const eid of this.nodes[cur].edges) {
         const e = this.edges[eid];
-        if (e.cut && (!cuts || !this.cutsEnabled || e.width < minWidth)) continue;
+        // Off the edge of a raised road (world/jumps.js): one way, and only who asks.
+        if (e.jump) { if (!(opts && opts.jumps) || e.a !== cur || !this._facing(e, from[cur], cur, opts)) continue; } else if (e.cut && (!cuts || !this.cutsEnabled || e.width < minWidth)) continue;
         // Not straight back down the road it is leaving (opts.noBack: the
         // traffic, which never turns round).
         if (noBack === eid) continue;
@@ -1402,7 +1412,7 @@ export class RoadGraph {
         // charge the router took marginal ones for small savings and the road rig
         // went from 14 contacts to 23 at a 150 km/h ghost for no gain in distance.
         // With it, a cut has to be worth taking before it is taken.
-        const cost = (e.length / Math.min(e.speed, speedCap) + (e.cut ? CUT_PENALTY : 0)) * (weight ? weight(e) : 1);
+        const cost = (e.length / Math.min(e.speed, speedCap) + (e.cut && !e.jump ? CUT_PENALTY : e.jump ? 3 : 0)) * (weight ? weight(e) : 1);
         const tentative = g[cur] + cost;
         if (seen[nxt] !== stamp || tentative < g[nxt]) {
           seen[nxt] = stamp;

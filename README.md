@@ -10606,3 +10606,49 @@ Past 50 there is nowhere out of sight to put them. Simulation, ms a frame, is on
 100 m 11.6, 75 13.7. Fewer triangles than before; the simulation about a fifth dearer than 28 in the one run and no dearer in
 the other. Not measured on a screen: the pane here draws about once a second. `citychase` 150 s: no unit or car stuck,
 none fallen.
+
+### Cars on the ground, not in it; gaps in the motorway's barrier, and police who jump off them
+
+*"Some cars kind of look like they're slightly in the ground on different kind of sections ... It really shouldn't look like any
+part of the car is in the ground ever, really. Apart from obviously if they do a massive jump."* `tests/ridecheck.js`: every
+car as drawn against the ground as drawn, from the meshes' own triangles. Four causes.
+
+* **Every car on the ground was 9 cm in the road**, on Ashfield and Haldon, and 5 cm in the pavement: roads are drawn over
+  the ground they lie on (`LIFT`), and the wheels were on the ground. The wheels ride what is drawn now (`makeHeightAt`,
+  `ROAD_OVER`, `PAVE_OVER`); 3 cm on Wexbury. Mean gap -0.165 m (pavement's sheet under the road counted) to 0.000; of 921
+  Ashfield samples 21 have a wheel over 4 cm in, at junction corners, and one its bodywork; Haldon 362, one and none.
+  On the raised roads it was 0.00 to begin with.
+* **The road drawn over the bottoms of tyres at a distance.** Pulled forward in depth to stay over the ground, by three
+  slopes: at a grazing angle that is metres, and 0.4 m of a car 100 m off. On Ashfield's streets the cars 60 m ahead had no wheels.
+  Now the depth first, unpulled, then the colour, pulled, writing none (`trueDepth`); markings and wear are before what stands on
+  them. (The first go lost every lane line on the motorway: a group's `renderOrder` is not its meshes'.)
+* **The police's lean** turned the wheels with the body, the outside ones into the road. The body's only.
+* **Landings.** Off a 10 m drop the bodywork went up to 0.71 m into the grass, over 5 cm of it for 23 frames on average. Drawn
+  up by as much as the lowest corner or wheel is under (`_landedLift`, at most 0.71 m seen): 51 landings, one frame, 7 cm.
+
+*"If you're looking from below the motorway, it almost looks like some cars are almost floating slightly. I know they're not."*
+0.00 m, above. What shows over a 1.05 m barrier from below is a strip of roof; the barrier was left as it is.
+
+**Gaps.** *"You could add some more sections with no crash barrier if you want."* 14 on the ring, 46 m each, eleven towards the
+city, with a red and white edge and the barrier's ends turned out (`JUMPS`, citygen.js). Picked with `tests/jumpsites.js`: 18
+ways off each (both directions, 24-48 m/s, 12-28 degrees) with nothing in the way of the fall or 45 m after it: 186 places on the
+ring had at least 17; the expressway through downtown none with even 13. `tests/jumpoff.js` `flights()`, hands off the wheel
+after: 168 of 168 came down, 48 hurt over 5% (most by what they ran into after), 4 over on the roof or side. `deckgaps`, but for
+these, 0.
+
+**Police.** *"Double check the routing system doesn't know that they can jump off the edge."* It did not know: only slip roads.
+Each gap, each way, is a one-way edge of the road graph (world/jumps.js), only for a police car in a hurry, only when it is
+already going that way. Four things found getting it to work: leaving its lane 34 m out it had not the lock and sailed past,
+so 84 m, braking to 37 m/s for it; it U-turned on the motorway to use one facing the other way and stood across it;
+it was told to land under the motorway, among the legs; and "on another level" was a difference of 4 m in height, so on Ashfield's
+hills a unit on a street below yours drove round by the roads. 11 of the 14 have somewhere for it to land and go on.
+`chases()`, a unit 260 m before the run-up, you by where it lands, seconds to within 25 m: 11.4-24.7 with, against 44-62, or
+not inside 70 (three), without.
+
+From a long way off it weighs the motorway against straight at you (`_byMotorway`). The first figures (17 m/s across town) sent
+units 900-1,500 m off round by it and they were 5-15 s later; 28 m/s is what straight at you makes. On those ten runs it is now
+within a few seconds either way, as the city is quick to cross: the gain is for a unit already up there, or near a slip road.
+
+Rechecked: `viaducts` 15 of 15, `solidTest` 0 of 90, `deckError` 0, `wideturn` 24 of 24 twice, `motorpace` 185-248 (one unit of 16 left
+behind by a knock at the river; the wall there slid along eight times at 180-235 km/h, 7% at worst), traffic on the decks 97% moving and
+none stuck, `citychase` 120 s none stuck or fallen.
