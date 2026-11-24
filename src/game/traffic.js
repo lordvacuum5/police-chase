@@ -189,7 +189,10 @@ export class Traffic {
         || (c.v.disabled && far > TRAFFIC_NEAR)
         || (c.stuckFor > 20 && far > 80)
         || p.y < -10;
-      if (done && !g.seenByAnyone(p)) this._remove(c);
+      // Under the ground: its bodywork ignores the hills (see adopt), so one off the edge of a raised road goes
+      // through where it lands, to the plate beneath, and sat there for the rest of the game. Nobody sees it go.
+      const buried = !c.v.dormant && g.sim.terrainAt && p.y < g.sim.terrainAt(p.x, p.z) - 1.5;
+      if (buried || (done && !g.seenByAnyone(p))) this._remove(c);
     }
 
     // New: one at a time, a few a second, until there are enough.
@@ -488,7 +491,10 @@ export class Traffic {
   _pullOver(c, dt) {
     const g = this.game, v = c.v, d = c.driver;
     const here = g.graph.nearestEdge(v.position.x, v.position.z, 30);
-    const onVerge = !here || here.dist > here.edge.width * 0.5 + 0.3;
+    // On a raised road or a bridge there is no verge: in to its edge and stop there. Aimed past the edge as
+    // anywhere else, a car on a ramp "kind of just drove off the edge and then couldn't get back on".
+    const deck = here && (here.edge.elevated || here.edge.bridge);
+    const onVerge = !here || here.dist > here.edge.width * 0.5 + (deck ? -1.9 : 0.3);
     if (onVerge || v.forwardSpeed < -0.5) {
       v.setControls({ throttle: 0, brake: v.forwardSpeed > 2.5 ? 0.5 : 0, steer: 0, handbrake: v.forwardSpeed > 2.5 ? 0 : 1 });
       return;
@@ -499,7 +505,7 @@ export class Traffic {
     const t = g.graph.edgeDirection(snap.edge, snap.along, { x: 0, z: 1 });
     const s = t.x * v.forward.x + t.z * v.forward.z >= 0 ? 1 : -1;
     const tx = t.x * s, tz = t.z * s;
-    const off = snap.edge.width * 0.5 + VERGE;
+    const off = snap.edge.width * 0.5 + (deck || snap.edge.elevated || snap.edge.bridge ? -1.5 : VERGE);
     const aim = { x: snap.x + -tz * off * DRIVE_SIDE, z: snap.z + tx * off * DRIVE_SIDE };
     const out = d.driveTo(aim, CRAWL, dt, {});
     if (v.forwardSpeed > CRAWL + 1.5) { out.throttle = 0; out.brake = 0.4; }

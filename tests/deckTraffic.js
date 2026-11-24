@@ -50,7 +50,7 @@ export async function runDeckTraffic(secs = 120) {
       slow.set(c, Math.max(0, k));
       if (slow.get(c) >= 10) stuck.add(c);
     }
-    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => { const ch = new MessageChannel(); ch.port1.onmessage = () => { ch.port1.close(); r(); }; ch.port2.postMessage(0); });
   }
   const states = g.traffic.cars.map((c) => (c.v.dormant ? 'glide' : 'drive') + ':' + c.v.speed.toFixed(0));
   window.__dt = { secs, states, onDeck, moving: onDeck ? +(moving / onDeck).toFixed(2) : null, stuck: stuck.size, offDeck, cars: g.traffic.cars.length };

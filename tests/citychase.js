@@ -113,7 +113,7 @@ export async function runCityChase(secs = 300, seed = 12345) {
     for (const v of hist.keys()) if (!g.vehicles.includes(v)) hist.delete(v);
     window.__ccT = t;
     // A breath for the page every 10 s of game, not every one: a hidden page's timers wait a second each.
-    if (t % 10 === 0) await new Promise((r) => setTimeout(r, 0));
+    if (t % 10 === 0) await new Promise((r) => { const ch = new MessageChannel(); ch.port1.onmessage = () => { ch.port1.close(); r(); }; ch.port2.postMessage(0); });
   }
   window.__cc = { map: g.mapDef.id, secs, routes, moves, units: g.dispatcher.units.length, cars: g.traffic.cars.length, copStuck, carStuck, fell, damage: +p.damage.toFixed(2) };
   return window.__cc;

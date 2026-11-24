@@ -65,13 +65,17 @@ const RAISE = 10;
 const RAISE_DT = 15;
 const CLEAR = 5.5;
 /**
- * A ramp's rise, 0 at its foot to 1 at its deck, by how far along it is from the foot (0..1): level for its
- * first third -- at grade, where it meets its streets and passes the ones round them -- then easing up.
+ * A ramp's rise, 0 at its foot to 1 at its deck, by how far along it is from the foot (0..1): level for the
+ * first `flat` of it -- at grade, where it meets its streets and passes the ones round them -- then easing up.
+ * A third, unless the ramp was laid with its own (RAMP_FLATS, rampClear): where it climbs is where it is too low
+ * to drive under and too high to drive over, and that has to fall between the streets, not across one.
  */
-function rampRise(u) {
-  const t = clamp((u - 0.33) / 0.67, 0, 1);
+function rampRise(u, flat = 0.33) {
+  const t = clamp((u - flat) / (1 - flat), 0, 1);
   return t * t * (3 - 2 * t);
 }
+/** The level stretches a ramp may be laid with, as shares of its length: the usual third first. */
+const RAMP_FLATS = [0.33, 0.27, 0.39, 0.21, 0.45, 0.15, 0.51, 0.09, 0.57];
 const raiseAt = (x, z) => lerp(RAISE_DT, RAISE, smooth(DT_R, DT_R + 350, Math.hypot(x - DT.x, z - DT.z)));
 /** The expressway's line through downtown: between Fifteenth and Sixteenth Streets. */
 const EXPRESS_Z = 47;
@@ -167,11 +171,19 @@ export function buildCity(sim, scene, seed = 20260822) {
   // The expressway first, its ends on the ring kept from the slip roads: one joined the ring at the same
   // junction, and its barriers ran across the deck -- "some of the ramps onto the highway are blocked".
   buildExpressway(ctx, ring);
-  connectRamps(ctx, grid, ring);
+  // The country roads before the grid's slip roads, so a slip road is laid knowing where they are: one ran
+  // 2 m over a country road built after it.
   buildCountryRoads(ctx, ring);
+  connectRamps(ctx, grid, ring);
   buildCulDeSacs(ctx, grid);
   const roundabout = buildRoundabout(ctx, grid);
-  graph.addTurningHeads(15, 10, WORLD_HALF);
+  // None under a ramp: a turning head added after it stood where one came down, 0.4 m under its slab.
+  const rampSegs = [];
+  for (const e of graph.edges) {
+    if (e.kind !== 'ramp') continue;
+    for (let k = 0; k < e.points.length - 1; k++) rampSegs.push([e.points[k], e.points[k + 1]]);
+  }
+  graph.addTurningHeads(15, 10, WORLD_HALF, (x, z, r) => rampSegs.some(([p, q]) => closestOnSegment(x, z, p.x, p.z, q.x, q.z).dist < r + ROAD_KIND.ramp.width * 0.5 + 4));
   planCarPark(ctx);
   // After the turning heads, which would have put one on each alley's end.
   buildAlleys(ctx);
@@ -247,7 +259,18 @@ export function buildCity(sim, scene, seed = 20260822) {
   // The ground's own grip grid, for shaping the ground drawn (buildTerrain); then the strips under the raised
   // roads marked road too, so the AI's "is that car on a road" -- asked of the ground under it -- is right for a
   // car up on the motorway. A wheel on a deck is told road by the deck (Vehicle, `sim.decks`).
-  ctx.groundSurfAt = makeSurfaceAt(surface.slice());
+  // With the stretches of ramp that lie on the ground in it: the ground drawn is let down under them as it is
+  // under a street.
+  ctx.streetSurfAt = makeSurfaceAt(surface.slice());
+  const groundSurf = surface.slice();
+  for (const e of graph.edges) {
+    if (e.kind !== 'ramp' || !e.deck) continue;
+    for (let d = 0; d <= e.length; d += 2) {
+      const p = pointAlong(e, d);
+      if (graph.levelOn(e, p.x, p.z) - at(p.x, p.z) < 0.8) paintDisc(groundSurf, p.x, p.z, e.width * 0.5 + 0.6, SURF_ROAD);
+    }
+  }
+  ctx.groundSurfAt = makeSurfaceAt(groundSurf);
   for (const e of graph.edges) {
     if (!e.elevated) continue;
     for (const sg of e.segs) {
@@ -631,7 +654,19 @@ function addSlipRoad(ctx, ring, anchor, aim) {
       approach.push({ x: w0 * anchor.x + w1 * c1.x + w2 * c2.x + w3 * t0.x, z: w0 * anchor.z + w1 * c1.z + w2 * c2.z + w3 * t0.z });
     }
     if (approach.some((q) => distToRing(q.x, q.z) < half + 4)) continue;
-    const full = [anchor, ...approach, taper[0], taper[1], taper[2], N];
+    // Rounded off (corner cutting, its ends kept): ten points, it had a 19-degree corner where the curve off the
+    // street met the taper alongside the ring, and a car on it at speed went into the barrier.
+    let full = [anchor, ...approach, taper[0], taper[1], taper[2], N];
+    for (let it = 0; it < 3; it++) {
+      const out = [full[0]];
+      for (let i = 0; i < full.length - 1; i++) {
+        const a = full[i], b = full[i + 1];
+        if (i > 0) out.push({ x: a.x * 0.75 + b.x * 0.25, z: a.z * 0.75 + b.z * 0.25 });
+        if (i < full.length - 2) out.push({ x: a.x * 0.25 + b.x * 0.75, z: a.z * 0.25 + b.z * 0.75 });
+      }
+      out.push(full[full.length - 1]);
+      full = out;
+    }
     if (full.some((q) => inChannel(q.x, q.z, 8))) continue;
     let sharpest = 0;
     for (let i = 1; i < full.length - 1; i++) {
@@ -641,10 +676,30 @@ function addSlipRoad(ctx, ring, anchor, aim) {
       sharpest = Math.max(sharpest, Math.PI - Math.acos(clamp((ux * vx + uz * vz) / (ul * vl), -1, 1)));
     }
     if (sharpest > 1.25) continue;
+    // And no bend tighter than 40 m: the angle at each point was all that was asked, and five slip roads had a
+    // bend of 12-20 m -- a car on it at speed went into the barrier. Measured over 6 m either side every 3 m.
+    {
+      const dense = [];
+      for (let i = 0; i < full.length - 1; i++) {
+        const a = full[i], b = full[i + 1], n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 3));
+        for (let m = 0; m < n; m++) dense.push({ x: lerp(a.x, b.x, m / n), z: lerp(a.z, b.z, m / n) });
+      }
+      dense.push(full[full.length - 1]);
+      let tight = false;
+      for (let i = 2; i < dense.length - 2 && !tight; i++) {
+        const a = dense[i - 2], b = dense[i], c = dense[i + 2];
+        const ab = Math.hypot(b.x - a.x, b.z - a.z), bc = Math.hypot(c.x - b.x, c.z - b.z), ac = Math.hypot(c.x - a.x, c.z - a.z);
+        const area = Math.abs((b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x)) / 2;
+        if (area > 1e-6 && (ab * bc * ac) / (4 * area) < 40) tight = true;
+      }
+      if (tight) continue;
+    }
     // Up from the ground at the anchor to the ring's deck at N, clear of every road it passes over.
-    if (!rampClear(ctx, full, ctx.base(anchor.x, anchor.z), ctx.base(N.x, N.z) + raiseAt(N.x, N.z))) continue;
-    const ramp = graph.addEdge(anchor, N, 'ramp', [...approach, taper[0], taper[1], taper[2]], { bridge: true });
-    if (ramp) ramp.elevated = true;
+    const flat = rampClear(ctx, full, ctx.base(anchor.x, anchor.z), ctx.base(N.x, N.z) + raiseAt(N.x, N.z), true,
+      [...ring, ring[0]], half);
+    if (flat === null) continue;
+    const ramp = graph.addEdge(anchor, N, 'ramp', full.slice(1, -1), { bridge: true });
+    if (ramp) { ramp.elevated = true; ramp.flat = flat; }
     junctions.push({ node: N });
     return N;
   }
@@ -817,45 +872,96 @@ function markBridges(ctx) {
 
 /** The ground-level roads laid so far, as segments: what a raised road must clear. */
 function groundSegs(ctx) {
+  // Kept until a road is added.
+  if (ctx._segs && ctx._segs.n === ctx.graph.edges.length) return ctx._segs.out;
   const out = [];
   for (const e of ctx.graph.edges) {
     if (e.elevated || e.dead) continue;
     const pts = e.points;
     for (let k = 0; k < pts.length - 1; k++) out.push({ a: pts[k], b: pts[k + 1], half: e.width * 0.5 });
   }
+  ctx._segs = { n: ctx.graph.edges.length, out };
   return out;
 }
 
 /**
- * A ramp along `pts` from height `y0` at its first point to `y1` at its last: does it clear every ground road
- * it passes over by CLEAR, leaving out the stretch at its foot that meets its own street? And is it no
- * steeper than 9%?
+ * A ramp along `pts` from height `y0` at its first point to `y1` at its last: is it no steeper than 9%, and
+ * does it cross no ground road except flush with it or with CLEAR under it, but in the mouth of the junction at
+ * its foot?
+ *
+ * It used to leave out the 30 m at its foot and every street that met there. But a ramp that comes down
+ * across a junction's corner is still a metre or four up as it passes over the junction's other streets, and
+ * its slab and barriers wall them off: "the bridge is kind of like cutting it into the road there ... there's
+ * a junction. You can't actually get through one of the sides." Four ramps did (tests/cityaudit.js). Between
+ * 0.3 m (flush with the road: no barrier there, buildDecks) and CLEAR, it is a lip or a wall.
  */
-function rampClear(ctx, pts, y0, y1) {
+function rampClear(ctx, pts, yFoot, yTop, footFirst, main, mainHalf) {
   let L = 0;
   const S = [0];
   for (let k = 1; k < pts.length; k++) { L += Math.hypot(pts[k].x - pts[k - 1].x, pts[k].z - pts[k - 1].z); S.push(L); }
-  if (Math.abs(y1 - y0) > L * 0.67 * 0.09) return false;
-  const foot = y0 < y1 ? 0 : L;
-  // Not the streets that meet at its foot: it joins them there, it does not pass over them.
-  const fp = foot === 0 ? pts[0] : pts[pts.length - 1];
-  const segs = groundSegs(ctx).filter((sg) => Math.hypot(sg.a.x - fp.x, sg.a.z - fp.z) > 1 && Math.hypot(sg.b.x - fp.x, sg.b.z - fp.z) > 1);
+  // The foot is the end on the ground -- not the lower end: on Ashfield Heights a slip road comes down from its
+  // foot on the hill to the ring.
+  const fp = footFirst ? pts[0] : pts[pts.length - 1];
+  // Only the streets near it: all of the city's, for each of some hundreds of ramps tried, were 9 s of loading.
+  let bx0 = Infinity, bx1 = -Infinity, bz0 = Infinity, bz1 = -Infinity;
+  for (const q of pts) { bx0 = Math.min(bx0, q.x - 30); bx1 = Math.max(bx1, q.x + 30); bz0 = Math.min(bz0, q.z - 30); bz1 = Math.max(bz1, q.z + 30); }
+  const segs = groundSegs(ctx).filter((sg) => Math.max(sg.a.x, sg.b.x) > bx0 && Math.min(sg.a.x, sg.b.x) < bx1
+    && Math.max(sg.a.z, sg.b.z) > bz0 && Math.min(sg.a.z, sg.b.z) < bz1);
+  const rampHalf = ROAD_KIND.ramp.width * 0.5;
+  // The junction's mouth: where the ramp is the road joining it, as far out as its widest street's edge and
+  // the ramp's own half-width past that.
+  let mouth = 0;
+  for (const sg of segs) {
+    if (Math.hypot(sg.a.x - fp.x, sg.a.z - fp.z) < 1 || Math.hypot(sg.b.x - fp.x, sg.b.z - fp.z) < 1) mouth = Math.max(mouth, sg.half);
+  }
+  mouth += rampHalf + 4;
+  // Each sample once: where it is, how far from the foot, and whether any street is under it.
+  const samples = [];
   for (let k = 0; k < pts.length - 1; k++) {
-    const len = S[k + 1] - S[k], n = Math.max(1, Math.ceil(len / 4));
+    const len = S[k + 1] - S[k], n = Math.max(1, Math.ceil(len / 3));
     for (let m = 0; m <= n; m++) {
       const s = S[k] + len * m / n;
-      if (Math.abs(s - foot) < 30) continue;
       const x = lerp(pts[k].x, pts[k + 1].x, m / n), z = lerp(pts[k].z, pts[k + 1].z, m / n);
-      const y = y0 < y1 ? lerp(y0, y1, rampRise(s / L)) : lerp(y1, y0, rampRise(1 - s / L));
-      for (const sg of segs) {
-        if (closestOnSegment(x, z, sg.a.x, sg.a.z, sg.b.x, sg.b.z).dist > sg.half + 5.5) continue;
-        // At grade (still on the ground) is a road meeting a road; over it is a bridge. In between is a wall.
-        const up = y - ctx.base(x, z);
-        if (up > 0.8 && up < CLEAR) return false;
-      }
+      if (Math.hypot(x - fp.x, z - fp.z) < mouth) continue;
+      const over = segs.some((sg) => closestOnSegment(x, z, sg.a.x, sg.a.z, sg.b.x, sg.b.z).dist < sg.half + rampHalf + 1);
+      if (over) samples.push({ d: footFirst ? s : L - s, base: ctx.base(x, z) });
     }
   }
-  return true;
+  // How far it runs alongside the road it joins at its top, held at that road's height (computeDecks holdAt:
+  // while it overlaps, and 25 m on), up to 200 m or 45% of it. It climbs between its level stretch and there.
+  const need = rampHalf + mainHalf + 1.5;
+  let hold = 0;
+  for (let d = 0; d <= Math.min(200, L * 0.45); d += 2) {
+    const sv = footFirst ? L - d : d;
+    let k = 0;
+    while (k < pts.length - 2 && S[k + 1] < sv) k++;
+    const u = clamp((sv - S[k]) / Math.max(1e-6, S[k + 1] - S[k]), 0, 1);
+    const x = lerp(pts[k].x, pts[k + 1].x, u), z = lerp(pts[k].z, pts[k + 1].z, u);
+    let near = Infinity;
+    for (let q = 0; q < main.length - 1; q++) near = Math.min(near, closestOnSegment(x, z, main[q].x, main[q].z, main[q + 1].x, main[q + 1].z).dist);
+    hold = d;
+    if (near > need) { hold = d + 25; break; }
+  }
+  const span = Math.max(1, L - hold);
+  // The ground where it leaves it, `d` m from the foot.
+  const leaveAt = (d) => {
+    const sv = footFirst ? d : L - d;
+    let k = 0;
+    while (k < pts.length - 2 && S[k + 1] < sv) k++;
+    const u = clamp((sv - S[k]) / Math.max(1e-6, S[k + 1] - S[k]), 0, 1);
+    return ctx.base(lerp(pts[k].x, pts[k + 1].x, u), lerp(pts[k].z, pts[k + 1].z, u));
+  };
+  for (const flat of RAMP_FLATS) {
+    // No steeper than 9% on average where it climbs.
+    if (Math.abs(yTop - yFoot) > span * (1 - flat) * 0.09) continue;
+    const leave = leaveAt(flat * span);
+    // With a margin each way: the deck as built climbs over a slightly shorter stretch (computeDecks holds it
+    // level at its top), and came out 0.4 m over a street planned as flush.
+    // Its level stretch lies on the ground (computeDecks), then it climbs from where it leaves it. With a
+    // margin each way, for the deck as built climbing over a slightly shorter stretch (held level at its top).
+    if (samples.every((q) => { const r = rampRise(q.d / span, flat); const up = r <= 0 ? 0 : lerp(leave, yTop, r) - q.base; return up < 0.1 || up >= CLEAR + 0.3; })) return flat;
+  }
+  return null;
 }
 
 /**
@@ -933,12 +1039,13 @@ function buildExpressway(ctx, ring) {
         }
         if (hugs) continue;
         const top = ctx.base(A.x, A.z) + raiseAt(A.x, A.z);
-        if (!rampClear(ctx, pts, top, ctx.base(G.x, G.z))) continue;
-        bl = gl; best = { G, pts };
+        const flat = rampClear(ctx, pts, ctx.base(G.x, G.z), top, false, nodes, ROAD_KIND.dual.width * 0.5);
+        if (flat === null) continue;
+        bl = gl; best = { G, pts, flat };
       }
       if (!best) continue;
       const e = graph.addEdge(A, best.G, 'ramp', best.pts.slice(1, -1), { bridge: true });
-      if (e) { e.elevated = true; made++; if (!tops.includes(A)) tops.push(A); }
+      if (e) { e.elevated = true; e.flat = best.flat; made++; if (!tops.includes(A)) tops.push(A); }
     }
   }
   ctx.expressRamps = made;
@@ -1030,8 +1137,21 @@ function computeDecks(ctx, hgrid) {
       for (let k = 0; k < S.length; k++) {
         if (S[k] <= s0 && mainA) { Y[k] = yTop(k, mainA); continue; }
         if (S[k] >= s1 && mainB) { Y[k] = yTop(k, mainB); continue; }
-        const u = clamp((S[k] - s0) / (s1 - s0), 0, 1);
-        const y = ea < eb ? lerp(ea, eb, rampRise(u)) : lerp(eb, ea, rampRise(1 - u));
+        // Level for as many metres from the foot as it was laid with (rampClear chose where it climbs), then up
+        // to the top of the stretch between the holds.
+        // A share of the stretch it climbs over, between its foot and the hold at its top (as rampClear planned).
+        const flatM = (e.flat !== undefined ? e.flat : 0.33) * (s1 - s0);
+        // From the end on the ground (on Ashfield Heights that is the higher end).
+        const footAtA = !graph.nodes[e.a].elevated;
+        const dFoot = footAtA ? S[k] - s0 : s1 - S[k];
+        const t = clamp((dFoot - flatM) / Math.max(1, s1 - s0 - flatM), 0, 1);
+        const lp = pointAlong(e, clamp(footAtA ? s0 + flatM : s1 - flatM, 0, L));
+        const leave = ground(lp.x, lp.z) + 0.05;
+        // On the ground under it while level, not at the foot's height: level at the foot's height, where the
+        // ground fell away it stood 0.4 m proud of a street it crossed. Then up from where it leaves the ground --
+        // not from the ground under it all the way, or it dipped with every sunken street it passed over (39%
+        // for 3 m).
+        const y = t <= 0 ? ground(P[k].x, P[k].z) + 0.05 : lerp(leave, footAtA ? eb : ea, t * t * (3 - 2 * t));
         Y[k] = Math.max(y, ground(P[k].x, P[k].z) + 0.05);
       }
     } else {
@@ -1059,6 +1179,16 @@ function computeDecks(ctx, hgrid) {
  * noted in `ctx.decks` so a wheel on it is on road; the barriers and piers are walls.
  */
 function buildDecks(ctx) {
+  // A slice that starts on one of its points has two there, one on the other: no direction between them, and the
+  // first length of barrier stood square across the ramp (four slip roads walled off).
+  const slice5 = (pts, from, to) => {
+    const l = sliceLine(pts, from, to);
+    if (!l) return null;
+    const out = l.filter((p, k) => k === 0 || k === l.length - 1 || Math.hypot(p.x - l[k - 1].x, p.z - l[k - 1].z) > 0.01);
+    while (out.length > 2 && Math.hypot(out[1].x - out[0].x, out[1].z - out[0].z) < 0.02) out.splice(1, 1);
+    while (out.length > 2 && Math.hypot(out[out.length - 1].x - out[out.length - 2].x, out[out.length - 1].z - out[out.length - 2].z) < 0.02) out.splice(out.length - 2, 1);
+    return out.length > 1 ? out : null;
+  };
   const { graph } = ctx;
   const W = ctx.sim.world;
   const top = new MeshBuilder(), paint = new MeshBuilder(), under = new MeshBuilder(), piers = new MeshBuilder();
@@ -1081,7 +1211,7 @@ function buildDecks(ctx) {
     if (Math.abs(s) > 0.5) return s > 0 ? 1 : -1;
     return odir.x * -edir.z + odir.z * edir.x >= 0 ? 1 : -1;
   };
-  const deckRGB = new THREE.Color(DECK).toArray();
+  const deckRGB = new THREE.Color(DECK).toArray(), slabRGB = new THREE.Color(SLAB).toArray();
   const lift = (b, from, fn) => {
     for (let k = from; k < b.pos.length / 3; k++) b.pos[k * 3 + 1] += fn(b.pos[k * 3], b.pos[k * 3 + 2]);
   };
@@ -1102,20 +1232,53 @@ function buildDecks(ctx) {
     else desc.setFriction(0.9);
     return W.createCollider(desc);
   };
+  // Is (x, z), on the edge of `e`, out on another raised road's deck at the same height -- a ramp's, for a bigger
+  // road; a bigger road's, for a ramp? Asked of every one of them, not only those at its own ends: round the
+  // ring's corners, in 26 m pieces, a slip road runs alongside several.
+  const raisedBoxes = graph.edges.filter((o) => o.elevated).map((o) => {
+    const b = { o, x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity };
+    for (const q of o.points) { b.x0 = Math.min(b.x0, q.x - 20); b.x1 = Math.max(b.x1, q.x + 20); b.z0 = Math.min(b.z0, q.z - 20); b.z1 = Math.max(b.z1, q.z + 20); }
+    return b;
+  });
+  const coverNear = new Map();
+  const covered = (e, x, z) => {
+    let list = coverNear.get(e);
+    if (!list) {
+      const m = raisedBoxes.find((q) => q.o === e);
+      list = raisedBoxes.filter((q) => q.o !== e && (q.o.kind === 'ramp') !== (e.kind === 'ramp') && q.x0 < m.x1 && q.x1 > m.x0 && q.z0 < m.z1 && q.z1 > m.z0);
+      coverNear.set(e, list);
+    }
+    for (const { o, x0, x1, z0, z1 } of list) {
+      if (x < x0 || x > x1 || z < z0 || z > z1) continue;
+      let d = Infinity;
+      for (const sg of o.segs) d = Math.min(d, closestOnSegment(x, z, sg.a.x, sg.a.z, sg.b.x, sg.b.z).dist);
+      if (d > o.width * 0.5 + (o.kind === 'ramp' ? -0.9 : 0)) continue;
+      if (Math.abs(graph.levelOn(o, x, z) - graph.levelOn(e, x, z)) < 1.5) return true;
+    }
+    return false;
+  };
   const busy = (n) => n.edges.length >= 3;
   for (const e of graph.edges) {
     if (!e.elevated) continue;
     const half = e.width * 0.5;
     const yOf = (x, z) => graph.levelOn(e, x, z);
+    // A point every 5 m, as its heights are: the motorway's straights were drawn from their two ends, 189 m
+    // apart, and its deck and barriers ran straight while the road's height curved -- 2.5 m out at the worst,
+    // a barrier down inside the deck, and a car off the edge (tests/deckgaps.js deckError).
+    const line5 = [e.points[0]];
+    for (let k = 0; k < e.points.length - 1; k++) {
+      const p = e.points[k], q = e.points[k + 1], m = Math.max(1, Math.ceil(Math.hypot(q.x - p.x, q.z - p.z) / 5));
+      for (let j = 1; j <= m; j++) line5.push({ x: lerp(p.x, q.x, j / m), z: lerp(p.z, q.z, j / m) });
+    }
     // The deck's surface, and its collider.
     let s0 = top.vertexCount;
-    top.addRibbon(e.points, e.width + 1.2, 0, DECK);
+    top.addRibbon(line5, e.width + 1.2, 0, DECK);
     lift(top, s0, yOf);
     const c = colliderFrom(top, s0, GROUP.RAMP);
     if (c) ctx.decks.add(c.handle);
     // The slab's underside.
     s0 = under.vertexCount;
-    under.addRibbon(e.points, e.width + 1.2, -1.4, SLAB);
+    under.addRibbon(line5, e.width + 1.2, -1.4, SLAB);
     lift(under, s0, yOf);
     // Barriers, both sides, all the way -- open only on the side another raised road leaves from, for as far
     // as the two run side by side; and on a ramp, not down where it is still on the ground. They used to stop
@@ -1136,10 +1299,33 @@ function buildDecks(ctx) {
       for (let k = 0; k < pts.length - 1; k++) best = Math.min(best, closestOnSegment(x, z, pts[k].x, pts[k].z, pts[k + 1].x, pts[k + 1].z).dist);
       return best;
     };
+    // And where a ramp leaves a bigger road, how far along that road's edge before the ramp gets out to it: its
+    // edge is closed as far as that (open from the joint, it was 22 m of nothing at every merge).
+    const closeAt = (n, atA, dir) => {
+      const out = new Map();
+      if (e.kind === 'ramp') return out;
+      for (const ap of approachesAt(graph, n)) {
+        if (ap.edge === e || !ap.edge.elevated || ap.edge.kind !== 'ramp') continue;
+        if (ap.dir.x * (atA ? dir.x : -dir.x) + ap.dir.z * (atA ? dir.z : -dir.z) < -0.74) continue;
+        const sd = sideOf(e, atA, ap.edge, ap.dir, dir);
+        let d = 0;
+        for (; d < Math.min(120, e.length); d += 1) {
+          const p = pointAlong(e, atA ? d : e.length - d);
+          // The ramp's outer edge 0.9 m past this road's: its own barrier has begun by then.
+          if (distTo(ap.edge.points, p.x - p.tz * sd * (half + 0.3), p.z + p.tx * sd * (half + 0.3)) < ap.edge.width * 0.5 - 0.9) break;
+        }
+        out.set(sd, Math.min(out.has(sd) ? out.get(sd) : Infinity, d));
+      }
+      return out;
+    };
     const openAt = (n, atA, dir) => {
       const out = new Map();
       for (const ap of approachesAt(graph, n)) {
         if (ap.edge === e || !ap.edge.elevated) continue;
+        // Not the road carrying straight on. The next piece of the same motorway "overlaps" this one for a deck's
+        // width past the joint, so every joint was open on one side for 27 m, and on the corners, whose pieces are
+        // 26 m long, the whole inside had no barrier at all: a car driven at it went off (tests/deckgaps.js).
+        if (ap.dir.x * (atA ? dir.x : -dir.x) + ap.dir.z * (atA ? dir.z : -dir.z) < -0.74) continue;
         // Until the two decks' edges (each half + 0.6) stop touching, with 0.2 m to spare: no gap between them.
         const need = half + ap.edge.width * 0.5 + 1.0;
         let sep = 0;
@@ -1161,7 +1347,6 @@ function buildDecks(ctx) {
               far = d;
               if (distTo(ap.edge.points, p.x, p.z) > inside) break;
             }
-            far += 4;
           }
           out.set(-side, Math.max(out.get(-side) || 0, far));
         }
@@ -1169,14 +1354,27 @@ function buildDecks(ctx) {
       return out;
     };
     const openA = openAt(a, true, dirA), openB = openAt(b, false, dirB);
+    const closeA = closeAt(a, true, dirA), closeB = closeAt(b, false, dirB);
     for (const [sd, d] of openA) opened.set(`${e.id}:${a.id}:${sd}`, d);
     for (const [sd, d] of openB) opened.set(`${e.id}:${b.id}:${sd}`, d);
+    // How far along it is still within 0.35 m of the ground (a ramp's foot): no barrier there. (It was 0.8 m: a
+    // civilian pulling over for a siren went over the lip and could not get back on.)
+    let lowFrom = 0, lowTo = e.length;
+    if (e.kind === 'ramp') {
+      const footAtA = !a.elevated;
+      const S = e.deck.s, Y = e.deck.y;
+      for (let k = 0; k < S.length; k++) {
+        const pk = pointAlong(e, S[k]);
+        if (Y[k] - ctx.at(pk.x, pk.z) < 0.35) { if (footAtA) lowFrom = S[k]; else { lowTo = Math.min(lowTo, S[k]); break; } }
+      }
+    }
     // A pale concrete edge strip each side under the barrier, and the slab's edge down 1.4 m -- each side only
     // where its barrier is: where a ramp still runs with the motorway, both used to be drawn across the
     // motorway's own deck, and the ramp looked to begin before it came off ("the road should start where it
     // comes off, not like before it starts coming off").
     for (const sg of [1, -1]) {
-      const side = sliceLine(e.points, openA.get(sg) || 0, e.length - (openB.get(sg) || 0));
+      // Not where it lies on the ground: a pale kerb across every street it runs flush with.
+      const side = slice5(line5, Math.max(lowFrom, openA.get(sg) || 0), Math.min(lowTo, e.length - (openB.get(sg) || 0)));
       if (!side || side.length < 2) continue;
       s0 = kerb.vertexCount;
       kerb.addRibbon(side, 1.0, 0.1, EDGE, sg * (half + 0.1));
@@ -1192,40 +1390,92 @@ function buildDecks(ctx) {
     // mouth they ran on over the other road's deck.
     s0 = paint.vertexCount;
     for (const sg of [1, -1]) {
-      const ln = sliceLine(e.points, openA.get(sg) || 0, e.length - (openB.get(sg) || 0));
-      if (ln && ln.length > 1) paint.addRibbon(ln, 0.22, 0.04, PALETTE.marking, sg * (half - 0.5));
+      const ln = slice5(line5, openA.get(sg) || 0, e.length - (openB.get(sg) || 0));
+      if (!ln || ln.length < 2) continue;
+      // Broken where it lies on a street: the lines ran across its carriageway.
+      let run = [];
+      const flush = () => { if (run.length > 1) paint.addRibbon(run, 0.22, 0.04, PALETTE.marking, sg * (half - 0.5)); run = []; };
+      for (let k = 0; k < ln.length; k++) {
+        const q = ln[k], r = ln[Math.min(k + 1, ln.length - 1)], o = ln[Math.max(0, k - 1)], l = Math.hypot(r.x - o.x, r.z - o.z) || 1;
+        const ex = q.x - (r.z - o.z) / l * sg * (half - 0.5), ez = q.z + (r.x - o.x) / l * sg * (half - 0.5);
+        if (yOf(q.x, q.z) - ctx.at(q.x, q.z) < 0.4 && ctx.streetSurfAt(ex, ez) === SURF_ROAD) flush(); else run.push(q);
+      }
+      flush();
     }
     // The lanes stop only where this road ends into another -- open both sides, as the expressway at the ring
     // -- and carry on past a slip road joining one side (they stopped there too, for the length of the merge).
-    const mid = sliceLine(e.points, Math.min(openA.get(1) || 0, openA.get(-1) || 0), e.length - Math.min(openB.get(1) || 0, openB.get(-1) || 0));
+    const mid = slice5(line5, Math.min(openA.get(1) || 0, openA.get(-1) || 0), e.length - Math.min(openB.get(1) || 0, openB.get(-1) || 0));
     if (mid && mid.length > 1) {
       if (e.kind === 'motorway') for (const off of [e.width / 6, -e.width / 6]) paint.addDashedRibbon(mid, 0.28, 0.04, PALETTE.marking, 6, 9, off);
       else if (e.kind === 'dual') paint.addDashedRibbon(mid, 0.28, 0.04, PALETTE.marking, 6, 9, 0);
     }
     lift(paint, s0, yOf);
-    // How far along it is still within 0.8 m of the ground (a ramp's foot): no barrier there.
-    let lowFrom = 0, lowTo = e.length;
-    if (e.kind === 'ramp') {
-      const footAtA = !a.elevated;
-      const S = e.deck.s, Y = e.deck.y;
-      for (let k = 0; k < S.length; k++) {
-        const pk = pointAlong(e, S[k]);
-        if (Y[k] - ctx.at(pk.x, pk.z) < 0.8) { if (footAtA) lowFrom = S[k]; else { lowTo = Math.min(lowTo, S[k]); break; } }
+    // A raised road low over the ground is solid to it: walls down both its sides while there is no room to drive
+    // under it, and one across where there begins to be. It was a surface and two barriers and nothing else --
+    // "my car kind of phased through", from the side, and "if I try to go underneath it, I can just phase
+    // straight through. It needs to stop me".
+    {
+      const HEAD = 3.8;                     // deck over ground: 1.4 of slab and 2.4 to drive under
+      const info = line5.map((p) => { const y = yOf(p.x, p.z); return { p, y, g: ctx.at(p.x, p.z), lift: y - ctx.at(p.x, p.z) }; });
+      const nrm = (k) => { const p = line5[Math.max(0, k - 1)], q = line5[Math.min(line5.length - 1, k + 1)], l = Math.hypot(q.x - p.x, q.z - p.z) || 1; return { x: -(q.z - p.z) / l, z: (q.x - p.x) / l }; };
+      const quad = (A, B, n) => {
+        // A, B: { x, z, lo, hi }
+        for (const v of [[A.x, A.lo, A.z], [B.x, B.lo, B.z], [B.x, B.hi, B.z], [A.x, A.lo, A.z], [B.x, B.hi, B.z], [A.x, A.hi, A.z]]) {
+          under.pos.push(v[0], v[1], v[2]); under.norm.push(n.x, 0, n.z); under.col.push(...slabRGB);
+        }
+      };
+      const w0 = under.vertexCount;
+      for (let k = 0; k < line5.length - 1; k++) {
+        const A = info[k], B = info[k + 1];
+        const lowA = A.lift > 0.3 && A.lift < HEAD, lowB = B.lift > 0.3 && B.lift < HEAD;
+        if (!lowA && !lowB) continue;
+        const na = nrm(k), nb = nrm(k + 1);
+        for (const sg of [1, -1]) {
+          const o = sg * (half + 0.6);
+          const at = (I, n) => ({ x: I.p.x + n.x * o, z: I.p.z + n.z * o, lo: I.g - 1.2, hi: I.y + 0.1 });
+          quad(at(A, na), at(B, nb), { x: na.x * sg, z: na.z * sg });
+        }
       }
+      for (let k = 0; k < line5.length - 1; k++) {
+        const A = info[k], B = info[k + 1];
+        if ((A.lift < HEAD) === (B.lift < HEAD)) continue;
+        const I = A.lift < HEAD ? A : B, kk = A.lift < HEAD ? k : k + 1, n = nrm(kk), o = half + 0.6;
+        if (I.lift < 0.3) continue;
+        const out1 = A.lift < HEAD ? 1 : -1;
+        quad({ x: I.p.x + n.x * o, z: I.p.z + n.z * o, lo: I.g - 1.2, hi: I.y - 0.05 }, { x: I.p.x - n.x * o, z: I.p.z - n.z * o, lo: I.g - 1.2, hi: I.y - 0.05 }, { x: n.z * out1, z: -n.x * out1 });
+      }
+      colliderFrom(under, w0, GROUP.BUILDING);
     }
     for (const sg of [1, -1]) {
       const from = Math.max(lowFrom, openA.get(sg) || 0);
       const to = Math.min(lowTo, e.length - (openB.get(sg) || 0));
-      if (to - from < 4) continue;
-      const line = sliceLine(e.points, from, to);
-      if (!line || line.length < 2) continue;
-      s0 = barrier.vertexCount;
-      const off = sg * (half + 0.3);
-      barrier.addWall(line, 0, 1.05, BAR, off);
-      barrier.addWall(line, 0, 1.05, BAR, off + sg * 0.4);
-      barrier.addRibbon(line, 0.4, 1.05, BAR, off + sg * 0.2);
-      lift(barrier, s0, yOf);
-      colliderFrom(barrier, s0, GROUP.BUILDING);
+      const runs = [[from, to]];
+      if (closeA.has(sg)) runs.push([0, Math.min(closeA.get(sg), from)]);
+      if (closeB.has(sg)) runs.push([Math.max(e.length - closeB.get(sg), to), e.length]);
+      for (const [r0, r1] of runs) {
+        if (r1 - r0 < 4) continue;
+        // The stretches of it that are not out on another deck.
+        let free = null;
+        const parts = [];
+        for (let d = r0; ; d = Math.min(r1, d + 1)) {
+          const q = pointAlong(e, d);
+          const c1 = covered(e, q.x - q.tz * sg * (half + 0.3), q.z + q.tx * sg * (half + 0.3));
+          if (!c1 && free === null) free = d;
+          if ((c1 || d >= r1) && free !== null) { if (d - free >= 2) parts.push([free, d]); free = null; }
+          if (d >= r1) break;
+        }
+        for (const [f0, f1] of parts) {
+          const line = slice5(line5, f0, f1);
+          if (!line || line.length < 2) continue;
+          s0 = barrier.vertexCount;
+          const off = sg * (half + 0.3);
+          barrier.addWall(line, 0, 1.05, BAR, off);
+          barrier.addWall(line, 0, 1.05, BAR, off + sg * 0.4);
+          barrier.addRibbon(line, 0.4, 1.05, BAR, off + sg * 0.2);
+          lift(barrier, s0, yOf);
+          colliderFrom(barrier, s0, GROUP.BUILDING);
+        }
+      }
     }
     // Piers every 30 m where the deck is well up: two columns under its edges and a beam across them, each
     // column only where no road runs under it (paving and the river will do). They were a single block as wide
@@ -1264,6 +1514,40 @@ function buildDecks(ctx) {
     const t = ((q.x - p.x) * f.z - (q.z - p.z) * f.x) / den;
     return { x: p.x + d.x * t, z: p.z + d.z * t };
   };
+  // Where a road carries on through a joint it turns a little, and its two pieces, each cut square, leave a wedge
+  // open on the outside of the turn: the deck filled there, and the barrier carried across it.
+  for (const n of graph.nodes) {
+    if (!n.elevated) continue;
+    const app = approachesAt(graph, n).filter((ap) => ap.edge.elevated);
+    for (let i = 0; i < app.length; i++) {
+      for (let j = i + 1; j < app.length; j++) {
+        const A = app[i], B = app[j];
+        if (A.edge.kind !== B.edge.kind || A.dir.x * B.dir.x + A.dir.z * B.dir.z > -0.74) continue;
+        for (const side of [1, -1]) {
+          const at = (ap, sx, off) => ({ x: n.x - sx * ap.dir.z * side * off, z: n.z + sx * ap.dir.x * side * off });
+          const pa = at(A, 1, A.half + 0.6), pb = at(B, -1, B.half + 0.6);
+          if ((pa.x - pb.x) * A.dir.x + (pa.z - pb.z) * A.dir.z < 0.02) continue;      // the inside: they overlap
+          const cr = (pa.x - n.x) * (pb.z - n.z) - (pa.z - n.z) * (pb.x - n.x);
+          const w0 = top.vertexCount;
+          for (const v of cr < 0 ? [n, pa, pb] : [n, pb, pa]) { top.pos.push(v.x, n.y, v.z); top.norm.push(0, 1, 0); top.col.push(...deckRGB); }
+          const c = colliderFrom(top, w0, GROUP.RAMP);
+          if (c) ctx.decks.add(c.handle);
+          // No barrier across where a ramp leaves on that side.
+          const sa = A.end === 'a' ? side : -side, sb = B.end === 'a' ? -side : side;
+          if (opened.get(`${A.edge.id}:${n.id}:${sa}`) || opened.get(`${B.edge.id}:${n.id}:${sb}`)) continue;
+          const b0 = barrier.vertexCount;
+          const line = [at(A, 1, A.half + 0.3), at(B, -1, B.half + 0.3)];
+          if (Math.hypot(line[0].x - line[1].x, line[0].z - line[1].z) < 0.1) continue;
+          if (covered(A.edge, line[0].x, line[0].z) || covered(B.edge, line[1].x, line[1].z)) continue;
+          barrier.addWall(line, 0, 1.05, BAR, 0.2);
+          barrier.addWall(line, 0, 1.05, BAR, -0.2);
+          barrier.addRibbon(line, 0.4, 1.05, BAR, 0);
+          for (let k = b0; k < barrier.pos.length / 3; k++) barrier.pos[k * 3 + 1] += n.y;
+          colliderFrom(barrier, b0, GROUP.BUILDING);
+        }
+      }
+    }
+  }
   for (const n of graph.nodes) {
     if (!n.elevated) continue;
     const app = approachesAt(graph, n).filter((ap) => ap.edge.elevated);
@@ -1364,10 +1648,12 @@ function buildDecks(ctx) {
     else if (tex === 'panel') buildingDetail(m, 'panel');
     out.push(chunkMesh(m, 300));
   };
-  // Pushed back in depth: where a ramp's foot lies on the street it meets, 1 cm under it and a shade
-  // different, the two flickered; the street now always wins.
-  mk(top, 'decks', { polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 4 }, 'tarmac');
-  mk(paint, 'deck-markings', { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
+  // Pulled forward in depth, but less than the streets (-3, -6, liftRoads): where a ramp's foot lies on the street
+  // it meets the street wins, and over the grass the ramp does. It was pushed back instead, for the first of
+  // those, and at a shallow angle the ground a few centimetres under it won: "it shows green grass ... as I get
+  // closer, it then turns to tarmac ... it just keeps on going further away".
+  mk(top, 'decks', { polygonOffset: true, polygonOffsetFactor: -1.5, polygonOffsetUnits: -3 }, 'tarmac');
+  mk(paint, 'deck-markings', { polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 });
   // Lit a little of their own: from below, the sky's light reaches a slab's underside only as the ground's
   // green bounce, and the concrete read as dark olive.
   const lift2 = { emissive: 0x403f3c };
@@ -1735,7 +2021,8 @@ function buildTerrain(ctx, hgrid) {
       const lod = new THREE.LOD();
       lod.position.set(cx, 0, cz);
       for (const [step, dist] of [[5, 0], [15, TILE_FAR]]) {
-        const m = buildTerrainMesh(hgrid, colour, step, nearRoad, 0, patch);
+        // Let down further in the coarse one, which cuts its corners by more (18 places over a road, tests/farground.js).
+        const m = buildTerrainMesh(hgrid, colour, step, step > 5 ? (x, z) => nearRoad(x, z) * 1.8 : nearRoad, 0, patch);
         m.renderOrder = DRAW_ORDER.ground;
         m.position.set(-cx, 0, -cz);
         lod.addLevel(m, dist);

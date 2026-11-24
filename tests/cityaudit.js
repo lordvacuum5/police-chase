@@ -144,6 +144,31 @@ export function auditCity() {
     if (e) note('tree in a road', [Math.round(t.x), Math.round(t.z), e.kind]);
     if (wet(t.x, t.z)) note('tree in the water', [Math.round(t.x), Math.round(t.z)]);
   });
+  // A raised road too low to drive under, over another road: "the bridge is kind of like cutting it into the
+  // road there ... there's a junction. You can't actually get through one of the sides." Every 2 m of each
+  // raised road, across its width, where its deck is 0.3-5.5 m over the ground: any ground road there that is
+  // not the one it comes down onto.
+  for (const e of raised) {
+    const foot = [G.nodes[e.a], G.nodes[e.b]].filter((n) => !n.elevated).map((n) => n.id);
+    for (let s = 0; s < e.length; s += 2) {
+      const p = G.pointAt(e, s);
+      const lift = G.levelOn(e, p.x, p.z) - g.sim.terrainAt(p.x, p.z);
+      if (lift < 0.3 || lift > 5.5) continue;
+      for (const off of [-1, 0, 1]) {
+        const x = p.x - p.tz * off * (e.width * 0.5 + 0.5), z = p.z + p.tx * off * (e.width * 0.5 + 0.5);
+        const o = onRoad(x, z, 0);
+        if (!o || o === e) continue;
+        // The road it lands on, beyond its foot, is the one it is meant to meet.
+        if (foot.includes(o.a) || foot.includes(o.b)) {
+          const fn = G.nodes[foot[0]];
+          if (fn && Math.hypot(x - fn.x, z - fn.z) > 4 && lift > 1.2) note('ramp low over the road it meets', [e.kind, Math.round(x), Math.round(z), +lift.toFixed(1), o.kind]);
+          continue;
+        }
+        note('raised road low over another road', [e.kind, e.id, Math.round(x), Math.round(z), +lift.toFixed(1), o.kind, o.id]);
+        break;
+      }
+    }
+  }
   // Parked cars on a road.
   for (const p of map.parked || []) {
     const e = onRoad(p.x, p.z, 0.8);

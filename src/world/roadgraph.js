@@ -493,7 +493,7 @@ export class RoadGraph {
    *
    * Called before `finalise`, since it adds nodes and edges.
    */
-  addTurningHeads(radius = 15, segments = 10, halfExtent = Infinity) {
+  addTurningHeads(radius = 15, segments = 10, halfExtent = Infinity, avoid = null) {
     const stubs = [];
     for (const n of this.nodes) {
       const live = n.edges.filter((eid) => !this.edges[eid].dead);
@@ -511,6 +511,8 @@ export class RoadGraph {
       dx /= l; dz /= l;
       const cx = n.x + dx * radius, cz = n.z + dz * radius;
       if (Math.abs(cx) > halfExtent - radius - 8 || Math.abs(cz) > halfExtent - radius - 8) continue;
+      // Where the map says not (Ashfield City: under a ramp).
+      if (avoid && avoid(cx, cz, radius)) continue;
 
       // The ring's near side is the stub's end itself, when a ring node falls on it (an even count does): a
       // second node there made a 0 m road to it and another drawn over the ring's own -- 14 of each in the city.

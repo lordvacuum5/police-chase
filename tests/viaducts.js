@@ -99,7 +99,7 @@ export async function runViaducts(only = null) {
         if (near === null || Math.abs(p.y - ly) < Math.abs(near)) near = p.y - ly;
       }
       if (near !== null && near < -2.5 && !fell) fell = `${Math.round(p.x)},${Math.round(p.z)}`;
-      if ((t * 60 | 0) % 240 === 0) await new Promise((res) => setTimeout(res, 0));
+      if ((t * 60 | 0) % 240 === 0) await new Promise((r) => { const ch = new MessageChannel(); ch.port1.onmessage = () => { ch.port1.close(); r(); }; ch.port2.postMessage(0); });
     }
     out.push({ route: r.name, done: d.remaining() <= 15, t: +t.toFixed(1), fell, damage: +v.damage.toFixed(3) });
   }

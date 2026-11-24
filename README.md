@@ -10373,3 +10373,69 @@ helicopter is over, any forecourt the street furniture and verges keep off, a sp
 On the city: south-west on Halloway (-674, -925), 932 m from the start, and north-east on Twenty-Fourth Street
 (716, 1023), 2,393 m apart. Checked: car at 60% damage in the second one's bay, 37% eight seconds later. Sites
 also keep out of the map's clear mask now (the river). Wexbury and Haldon Vale: same site as before.
+
+### Ramps that came down across a junction
+
+"The bridge is kind of like cutting it into the road there ... there's a junction. You can't actually get
+through one of the sides." A ramp's check against the streets under it (`rampClear`) left out the 30 m at its
+foot and every street meeting there -- but a ramp landing on a junction from across its corner is still a
+metre or four up as it passes over the junction's other streets, and its slab and barriers wall them off.
+`tests/cityaudit.js` now checks every 2 m of every raised road for a deck 0.3-5.5 m over another road:
+73 samples, on four ramps (two expressway off-ramps, two ring slip roads).
+
+- A ramp may now cross a street only flush with it (no barrier is drawn there, buildDecks) or with CLEAR
+  under it, anywhere but the mouth of the junction at its foot.
+- That alone left 5 ramps of 16 (no expressway off-ramp could be laid). So each ramp now chooses where it
+  starts to climb (`RAMP_FLATS`: level for the usual third of what it climbs over, or anything from 9% to 57%),
+  so the stretch where it is too low to drive under and too high to drive over falls between streets; the
+  deck follows the choice.
+- Its level stretch lies on the ground, not at its foot's height: where the ground fell away it stood 0.4 m
+  proud of a street it crossed. It climbs from where it leaves the ground (following the ground all the way
+  up, it dipped with each sunken street under it: 39% for 3 m).
+- The foot is the end on the ground, not the lower end: on Ashfield Heights a slip road comes down from the
+  hill to the ring, and a first try ended that one in a 9 m step.
+- The planner allows for the stretch at the top held at the bigger road's height (computeDecks holdAt), as the
+  deck does; measured from the whole length instead, the climb was squeezed into what was left (39%).
+- Roads laid after the ramps went under them: the country roads are now laid before the grid's slip roads,
+  and no turning head is put under a ramp.
+- Slip roads are rounded off (corner cutting) and must bend no tighter than 40 m: ten points long, they had a
+  19-degree corner where the curve off the street met the taper beside the ring, and five bent at 12-20 m.
+  Driven at speed, two of those put the car into the barrier and it never got up.
+
+After: 0 samples low over another road; 13 ramps (2 expressway off-ramps, was 4; 11 slip roads, was 12);
+tightest slip road 45 m (was 12); steepest 3 m of any ramp 16%, on the Heights where the ground itself is.
+`tests/viaducts.js`: 15 routes, all finished, none fell; one scraped a barrier (0.024, the off-ramp at 520, 47).
+Loading: the new ramp check compared every ramp tried with every street (roads 5.1 s -> 13.8 s); only those near
+it, 2.5 s. The city in all 27.4 s against 28.3 s, both on this machine with the window hidden.
+
+### Raised roads: missing barriers, phasing through ramps, green in the distance, civilians off the edge
+
+Traffic up on the motorway ended under the ground (3 cars in 90 s as live, y 0.9 where the ground is 5.4). New
+`tests/deckgaps.js` walks every deck's edge looking for a barrier. Its first answer for the live version, 0, was
+false: on a page whose physics had not stepped every ray misses. Stepped first: **2,716 gap cells live**.
+
+- **Every joint in the motorway was open for 27 m on one side, and the whole inside of every corner.** A barrier
+  opens where another raised road leaves; the next piece of the *same* road counted as one. The car driven at the
+  corner went off. It no longer counts; the wedge on the outside of each joint is filled, deck and barrier; at a
+  ramp the bigger road's edge is closed until the ramp gets out to it; and a barrier is cut wherever another deck
+  really covers it (round the corners, in 26 m pieces, a slip road runs alongside several). 2,686 -> 9, single
+  cells, all of which hold the car.
+- **Decks drawn from their ends.** The motorway's straights had two points 189 m apart while their height curved:
+  505 of 3,993 samples more than 25 cm out, 2.48 m at worst, barriers down inside the deck. A point every 5 m: 0,
+  worst 5 cm. (A slice starting exactly on one of those points has two there, and its barrier stood square across
+  the ramp: four slip roads walled off until that was found.)
+- **"My car kind of phased through ... if I try to go underneath it, I can just phase straight through."** A ramp was
+  a surface and two barriers. Walls now down both sides while there is no room to drive under, and one across
+  where there begins to be (3.8 m). `solidTest`: 63 of 90 sides and 5 of 13 undersides let the car through, now 0
+  and 0. Its barrier starts 0.35 m up, not 0.8.
+- **"It shows green grass ... as I get closer it then turns to tarmac."** My own doing: decks were pushed back in
+  depth to stop a ramp's foot flickering on its street, so at a shallow angle the ground a few cm under won.
+  Pulled forward now, less than the streets are. The ground drawn is let down under ramps as under streets, and
+  further in the distant mesh (`tests/farground.js`: 18 places over a road past 450 m, now 8, worst 0.27 m).
+- Edge strips and white lines no longer run across streets a ramp lies flush with.
+- **Civilians.** "It basically just kind of drove off the edge and then couldn't get back on." Making way for a
+  siren aimed past the road's edge everywhere; on a raised road or a bridge it stops inside it.
+  `tests/pullover.js`: 15 of 100 off the ramps before, 1 of 202 now (a ramp still on the ground: no drop).
+- A traffic car under the ground is taken away: its bodywork ignores the hills, so one off an edge went through.
+
+`tests/deckTraffic.js`, 90 s: 85% moving (76% live), 5 stuck (6), 0 under the ground (3).
