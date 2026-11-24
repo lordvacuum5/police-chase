@@ -928,6 +928,45 @@ export class Hud {
       ctx.restore();
     }
 
+    // ---- Air Rescue's next landing (game/airrescue.js) ----
+    // As the garage is: "you know how the repair station is at the edge of the map ... you can kind of see the
+    // direction. Make it so it's like that".
+    const land = this.game.daily && this.game.daily.rescue && this.game.daily.rescue.target;
+    if (land) {
+      let p = toMap(land.x, land.z);
+      const dx = p.x - W / 2, dy = p.y - W / 2, lim = W / 2 - 26;
+      const out = Math.max(Math.abs(dx), Math.abs(dy)) > lim;
+      if (out) {
+        const s = lim / Math.max(Math.abs(dx), Math.abs(dy));
+        p = { x: W / 2 + dx * s, y: W / 2 + dy * s };
+      }
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      if (out) {
+        // Pointing the way.
+        ctx.save();
+        ctx.rotate(Math.atan2(dy, dx));
+        ctx.fillStyle = '#ff9a2e';
+        ctx.beginPath();
+        ctx.moveTo(21, 0); ctx.lineTo(12, -9); ctx.lineTo(12, 9);
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.fillStyle = '#ff9a2e';
+      ctx.strokeStyle = '#fff3e0';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(-13, -13, 26, 26, 6); else ctx.rect(-13, -13, 26, 26);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 18px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('H', 0, 1);
+      ctx.restore();
+    }
+
     // ---- the suspect, when you are the one chasing them ----
     // A police player is told where the car is for as long as the pursuit has
     // eyes on it, the way the rest of the force is; the marker is the same

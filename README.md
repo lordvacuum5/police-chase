@@ -10477,3 +10477,21 @@ went 100% damage."
 
 Every road driven, both ways (`tests/everyroad.js`): 2,386 ground drives, 0 stuck, hurt or off; 264 raised, 2, the
 driver wide into a barrier. `tests/snags.js`: 110,076 places in the lanes, nothing in the way.
+
+### Air Rescue: the daily challenge's helicopter day
+
+"With the helicopter, like today, it's kind of really easy ... you can see on the map ... the direction ... You have to
+go there, and you'll see like this relatively large box, and you have to land there gently and without like breaking
+yourself. If you break the helicopter, you instantly have to restart again ... go to like 3 different places ... but
+maybe make more of a reason." (game/airrescue.js)
+
+A crash: pick up the doctor, then the casualty, then land them at the hospital. An 18 m box with a beam over it at
+each, an orange H on the mini map that stays at its edge pointing the way, as the repair station does. Down inside it,
+touching at 3 m/s or less, for 3 s; harder does not count until it has lifted off again. Wreck it and 1.6 s later it is
+the whole challenge from the pad, with the countdown. The clock allows 27 m/s over the ground, 22 s a landing and 18 s
+to start. Today (24 November) stays Eyes in the Sky, so its table is all one challenge; from the 25th a helicopter day
+is this. The first is 27 November, on Ashfield.
+
+`tests/airrescue.js`: 60 days on each map, 540 places: 0 with a building, tree or road too near, water, or ground
+rising over 1 m; 1.5-3.1 km in all, legs 450-1,100 m. `fly()`, the rules in order: 4.5 m/s refused; held 1.5 s and lifted
+off, begins again; beside the box, nothing; wrecked on the last leg, back on the pad at 0/3; three landings, won.

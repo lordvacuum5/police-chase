@@ -368,7 +368,8 @@ class Game {
     this.dailyDay = !session.active && !SOLO_AIR ? dailyActive() : null;
     // Lone Unit and Eyes in the Sky put you in the police, chasing the computer's getaway car, with no open world.
     if (this.dailyDay) {
-      this.soloPolice = dailyPlan(this.dailyDay).type !== 'escape';
+      // (Not Air Rescue: the helicopter, and nobody to chase.)
+      this.soloPolice = !['escape', 'rescue'].includes(dailyPlan(this.dailyDay).type);
       this.openWorld = false;
     }
     boot.set(0.05, 'starting physics…');
@@ -648,7 +649,7 @@ class Game {
       if (this.mapDef && this.mapDef.id === d.plan.mapId && d.build()) {
         this.daily = d;
         const car = d.plan.car;
-        if (d.type === 'air') {
+        if (d.type === 'air' || d.type === 'rescue') {
           this._spawnAircraft(d.route.start);
           return;
         }

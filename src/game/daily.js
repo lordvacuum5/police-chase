@@ -22,6 +22,7 @@ import * as THREE from 'three';
 import { MAPS } from '../world/maps.js';
 import { GROUP } from '../physics/world.js';
 import { makeRng, clamp } from '../util/math.js';
+import { AirRescue } from './airrescue.js';
 
 const DAILY_KEY = 'pc.daily';
 const BEST_KEY = 'pc.dailybest';
@@ -111,6 +112,9 @@ export function dailyPlan(day = dayKey()) {
   const trng = makeRng(hash(`type:${day}`) ^ 0x9e3779b9);
   for (let i = 0; i < 6; i++) trng();
   const type = day <= '2026-11-20' ? 'escape' : DAILY_TYPES[Math.floor(trng() * DAILY_TYPES.length) % DAILY_TYPES.length];
+  // The helicopter's day is Air Rescue (game/airrescue.js) from 25 November: "with the helicopter, like today, it's
+  // kind of really easy". Eyes in the Sky up to then, so the day it was asked for keeps the table it had.
+  if (type === 'air' && day >= '2026-11-25') return { day, type: 'rescue', typeName: TYPE_NAMES.rescue, mapId: map.id, mapName: map.name, car: 'helicopter', carName: CAR_NAMES.helicopter };
   if (type === 'stop') car = trng() < 0.5 ? 'interceptor' : 'suv';
   if (type === 'air') car = 'helicopter';
   return { day, type, typeName: TYPE_NAMES[type], mapId: map.id, mapName: map.name, car, carName: CAR_NAMES[car] };
@@ -161,11 +165,12 @@ export function pickRoute(game, day, mapId, mode = 'new') {
 
 /** The kinds of daily challenge, and what each is called. */
 export const DAILY_TYPES = ['escape', 'stop', 'air'];
-const TYPE_NAMES = { escape: 'Escape', stop: 'Lone Unit', air: 'Eyes in the Sky' };
+const TYPE_NAMES = { escape: 'Escape', stop: 'Lone Unit', air: 'Eyes in the Sky', rescue: 'Air Rescue' };
 /** One line on the menu for each. */
 export const TYPE_RULES = {
   escape: 'Five stars from the start. Through every gate to the finish before the clock runs out.',
   stop: 'You are the police, with two cars for backup and no more. Arrest the getaway car before the clock runs out.',
+  rescue: 'There has been a crash. Pick up the doctor, then the casualty, and land them at the hospital: gently, inside each box. Wreck it and you start again.',
   air: 'You are in the helicopter. Keep the getaway car in sight for 30 seconds in all, as fast as you can.',
 };
 
@@ -356,6 +361,15 @@ export class DailyChallenge {
       this.obstacles.push({ s: at, kind: 'full', side: 1, block: null, done: false });
     }
     this.type = this.plan.type || 'escape';
+    if (this.type === 'rescue') {
+      this.obstacles = [];
+      this.gates = [];
+      this.spawnPlan = [];
+      this.trafficPlan = [];
+      this.rescue = new AirRescue(this.game, makeRng(hash(`rescue:${this.day}`)));
+      this.limit = this.rescue.limit;
+      return true;
+    }
     if (this.type !== 'escape') {
       // No route to drive, and no blocks or gates on it: the route is only where you and the getaway car
       // start. The force sends nobody in either (see Game.spawnPoliceNear).
@@ -653,6 +667,7 @@ export class DailyChallenge {
     this.offRoute = 0;
     this._offRoute();
     g.score && g.score.freeze && g.score.freeze();
+    if (this.type === 'rescue') { g.heat.reset(); this.rescue.begin(); this.limit = this.rescue.limit; this._paint(); return; }
     if (this.type !== 'escape') { this._beginChase(); this._paint(); return; }
     // Five stars, with the helicopter: through bump() so the chase starts properly. Game._setWanted
     // grounds the helicopter for stars that were typed in; these were not.
@@ -767,6 +782,7 @@ export class DailyChallenge {
     if (this.state === 'countdown') {
       this.count -= dt;
       if (!p.isAircraft) p.setControls({ throttle: 0, brake: 1, steer: 0, handbrake: 1 });
+      if (this.rescue) this.rescue.hold();
       this._halt();
       if (this.type === 'escape' && g.heat.value < 5) g.heat.value = 5;
       if (g.runner && this.type !== 'escape') g.runner.vehicle.setControls({ throttle: 0, brake: 1, steer: 0, handbrake: 1 });
@@ -784,6 +800,7 @@ export class DailyChallenge {
     // The clock starts when you do.
     // (The clock starts at GO now, after the countdown, rather than on the first touch of the pedals.)
     if (this.state === 'running') this.time += dt;
+    if (this.rescue) { this._updateRescue(dt); return; }
     if (this.type !== 'escape') { this._updateChase(dt); return; }
     // And the stars stay where they were put.
     if (g.heat.value < 5) g.heat.value = 5;
@@ -831,6 +848,21 @@ export class DailyChallenge {
       if (g.heat.value < 3) g.heat.value = 3;
       if (r && p.canSee && p.canSee(r.vehicle)) this.watched += dt;
       if (this.watched >= AIR_NEED) { this._win(); return; }
+    }
+    if (this.time > this.limit) { this._fail('time'); return; }
+    this._paint();
+  }
+
+  /** Air Rescue: every landing made is the finish; a wreck is the whole thing from the top, at once; or the clock. */
+  _updateRescue(dt) {
+    const g = this.game;
+    if (g.heat.value > 0) g.heat.reset();
+    const r = this.rescue.update(dt);
+    if (r === 'won') { this._win(); return; }
+    if (r === 'wrecked') {
+      g.restart();
+      if (g.hud) g.hud.toast('AIRCRAFT DOWN: FROM THE TOP');
+      return;
     }
     if (this.time > this.limit) { this._fail('time'); return; }
     this._paint();
@@ -973,7 +1005,8 @@ export class DailyChallenge {
     const best = dailyBest(this.day);
     g.hud.showOverlay('CHALLENGE FAILED', [
       line,
-      this.type === 'air' ? `<b>${Math.min(AIR_NEED, this.watched || 0).toFixed(1)}</b> of ${AIR_NEED}s in sight`
+      this.rescue ? `<b>${this.rescue.leg}</b> of 3 landings`
+        : this.type === 'air' ? `<b>${Math.min(AIR_NEED, this.watched || 0).toFixed(1)}</b> of ${AIR_NEED}s in sight`
         : this.type === 'stop' ? `After <b>${fmtTime(this.time)}</b>`
           : `<b>${Math.round(this.progress)}</b> of ${Math.round(this.route.length)} m`,
       best !== null ? `Your best today <b>${fmtTime(best)}</b>` : 'Not finished yet today',
@@ -1042,7 +1075,7 @@ export class DailyChallenge {
     const left = Math.max(0, this.limit - this.time);
     const togo = Math.max(0, this.route.length - this.progress);
     const warn = left < 10 && this.state === 'running';
-    const what = this.type === 'stop' ? 'arrest the getaway car'
+    const what = this.rescue ? this.rescue.say : this.type === 'stop' ? 'arrest the getaway car'
       : this.type === 'air' ? `in sight ${Math.min(AIR_NEED, this.watched || 0).toFixed(1)} of ${AIR_NEED}s`
         : `${(togo / 1000).toFixed(2)} km to go`;
     const html = `<b>DAILY</b> <span class="${warn ? 'warn' : ''}">${fmtTime(left)}</span>`
@@ -1058,6 +1091,7 @@ export class DailyChallenge {
       this.marker.geometry.dispose();
       this.marker.material.dispose();
     }
+    if (this.rescue) this.rescue.dispose();
     if (this.el) this.el.hidden = true;
     for (const m of this.gateMeshes || []) { this.game.scene.remove(m); m.material.dispose(); }
     if (this.gateMeshes && this.gateMeshes[0]) this.gateMeshes[0].geometry.dispose();
