@@ -126,11 +126,11 @@ export function auditCity() {
   // Short roads (slivers a car cannot use) and roads drawn under the ground.
   for (const e of ground) {
     if (e.length < 3 && !(e.kind === 'alley')) note('road under 3 m long', [e.kind, Math.round(e.points[0].x), Math.round(e.points[0].z)]);
-    for (const p of e.points) {
-      const road = g.sim.terrainAt(p.x, p.z);
-      const h = map.surface ? null : null;
-      void h;
-      if (!isFinite(road)) note('road with no ground', [Math.round(p.x), Math.round(p.z)]);
+    // (Any map: the flat ones have no terrain.)
+    if (g.sim.terrainAt) {
+      for (const p of e.points) {
+        if (!isFinite(g.sim.terrainAt(p.x, p.z))) note('road with no ground', [Math.round(p.x), Math.round(p.z)]);
+      }
     }
   }
   // Trees: trunks on a road or in the water (PROP boxes 0.65 square).
