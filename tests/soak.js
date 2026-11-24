@@ -89,6 +89,10 @@ window.__runSoak = async function (seconds = 600) {
         break;
       }
       if (i % 60) continue;
+      // Progress, and a breath for the page every ten seconds of game: run in one go on Ashfield City it held
+      // the page for over ten minutes with no way to tell slow from hung.
+      window.__soakT = t;
+      if (i % 600 === 0) await new Promise((r) => setTimeout(r, 0));
 
       // Held at three stars with eyes on: enough of the force to be
       // interesting, and it will not shake itself off while nobody is at the

@@ -3378,14 +3378,26 @@ class Game {
     // is itself below zero.
     const below = (v) => v.position.y < FALL_FLOOR + (this.sim.terrainAt ? Math.min(0, this.sim.terrainAt(v.position.x, v.position.z)) : 0);
     if (below(this.player)) this._recoverPlayer();
-    for (const v of this.vehicles) {
+    for (const v of this.vehicles.slice()) {
       if (v === this.player || v.remote) continue;
       if (!below(v)) continue;
       // Somebody else's problem to replace: the roster sends another car.
-      const unit = this.dispatcher.units.find((u) => u.vehicle === v);
-      if (unit) this.dispatcher.retire(unit);
-      else this.removeVehicle(v);
+      this._takeOut(v);
     }
+  }
+
+  /**
+   * A car gone (fallen out of the world, in the river), each by its own owner: traffic's list kept a car removed
+   * behind its back, and the next time it tidied up it disabled a body that was gone -- the physics engine's
+   * "unreachable", and the game stopped. Fixed for the river first; a traffic car falling out of the world was
+   * still removed the old way.
+   */
+  _takeOut(v, suspects = true) {
+    const unit = this.dispatcher.units.find((u) => u.vehicle === v);
+    const car = this.traffic && this.traffic.cars.find((c) => c.v === v);
+    if (unit) this.dispatcher.retire(unit);
+    else if (car) this.traffic._remove(car);
+    else if (suspects || !this.suspects || !this.suspects.list.some((s) => s.v === v)) this.removeVehicle(v);
   }
 
   /**
@@ -3412,13 +3424,7 @@ class Game {
     }
     for (const v of this.vehicles.slice()) {
       if (v === this.player || v.remote || v.isAircraft || v.dormant || !wet(v)) continue;
-      const unit = this.dispatcher.units.find((u) => u.vehicle === v);
-      // Each by its own owner: traffic's list kept a car removed behind its back, and the next time it
-      // tidied up it disabled a body that was gone -- the physics engine's "unreachable", and the game stopped.
-      const car = this.traffic && this.traffic.cars.find((c) => c.v === v);
-      if (unit) this.dispatcher.retire(unit);
-      else if (car) this.traffic._remove(car);
-      else if (!this.suspects || !this.suspects.list.some((s) => s.v === v)) this.removeVehicle(v);
+      this._takeOut(v, false);
     }
   }
 

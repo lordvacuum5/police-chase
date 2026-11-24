@@ -39,8 +39,21 @@ export function auditCity() {
     if (he.y < 2.5 || he.x < 2 || he.z < 2) return;           // walls, posts, barriers
     const t = c.translation(), r = c.rotation();
     const yaw = 2 * Math.atan2(r.y, r.w);
-    boxes.push({ x: t.x, z: t.z, hx: he.x, hz: he.z, c: Math.cos(yaw), s: Math.sin(yaw) });
+    boxes.push({ x: t.x, z: t.z, hx: he.x, hz: he.z, top: t.y + he.y, c: Math.cos(yaw), s: Math.sin(yaw) });
   });
+  // Up through a raised road: any building corner or middle under a deck, its roof above the deck's underside.
+  const raised = G.edges.filter((e) => e.elevated);
+  const underDeck = (x, z) => {
+    for (const e of raised) {
+      for (const s of e.segs) {
+        const dx = s.b.x - s.a.x, dz = s.b.z - s.a.z, l2 = dx * dx + dz * dz;
+        let u = l2 ? ((x - s.a.x) * dx + (z - s.a.z) * dz) / l2 : 0;
+        u = Math.max(0, Math.min(1, u));
+        if (Math.hypot(s.a.x + dx * u - x, s.a.z + dz * u - z) < e.width * 0.5 + 1) return { e, y: G.levelOn(e, x, z) };
+      }
+    }
+    return null;
+  };
   out.buildings = boxes.length;
   for (const b of boxes) {
     // Corners and middle on a road?
@@ -50,6 +63,8 @@ export function auditCity() {
       const e = onRoad(x, z, -0.5);
       if (e) { note('building in a road', [Math.round(b.x), Math.round(b.z), e.kind, e.name]); break; }
       if (wet(x, z)) { note('building in the water', [Math.round(b.x), Math.round(b.z)]); break; }
+      const d = underDeck(x, z);
+      if (d && b.top > d.y - 1.5) { note('building up through a raised road', [Math.round(b.x), Math.round(b.z), +b.top.toFixed(1), +d.y.toFixed(1), d.e.kind]); break; }
     }
   }
   // Buildings in each other: centre of one inside another.

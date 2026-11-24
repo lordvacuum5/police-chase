@@ -10322,3 +10322,20 @@ inside each other, ground roads crossing with no junction, junctions cut off fro
 Raised roads driven again (`tests/viaducts.js`): 18 routes, all finished, 0 damage. The drive test now checks
 the car only against its own route's decks: one ramp sweeps 8 m over another's foot, and driving under it read
 as a fall. Wexbury and Haldon Vale still build as one network each, no 0 m roads.
+
+### Long runs on the city: a fallen traffic car, stuck police and traffic
+
+- **A traffic car falling out of the world was removed behind traffic's back** (`Game._catchFallen`), the same
+  thing that once stopped the game in the river ("unreachable" from the physics engine) and was fixed only
+  there. Both now go through `Game._takeOut`. Checked: a traffic car dropped to y -40 beside the player is gone
+  from the game's list and traffic's within 2 s; before, traffic still held it.
+- **`tests/soak.js` on Ashfield City**, 600 s at three stars: nothing to report (no NaN, no car under the world,
+  cars up to 62, units up to 23, bodies 12,405 -> 12,391). It now lets the page breathe every 10 s of game:
+  in one go it held the page for over ten minutes with no way to tell slow from hung.
+- **`tests/citychase.js`**, new: the game's driver takes your car down long routes, three stars after it, and
+  every second asks which police cars and traffic have stopped and not got going again (with each police car's
+  flight recorder). 300 s, 38 routes: 0 traffic stuck, 0 fallen, 1 police car held about 10 s by a house corner
+  it hit cutting across a suburban block, which reversed out by itself. A first version flagged interceptors
+  waiting at their junction (on purpose), and everything round a player boxed in with busting off; the rig now
+  skips the first and moves the player on when pinned (10 times in the run).
+- **Raised roads: no building comes up through a deck** (`auditCity`, new check): 0.
