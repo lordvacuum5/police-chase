@@ -27,7 +27,7 @@ import * as THREE from 'three';
 import { Driver, SKILL } from '../ai/driver.js';
 import { ROLE } from '../ai/officer.js';
 import { dist2 } from '../util/math.js';
-import { DRIVE_SIDE } from '../world/roadgraph.js';
+import { DRIVE_SIDE, LANES } from '../world/roadgraph.js';
 import { groups, GROUP } from '../physics/world.js';
 
 /** Which maps have traffic. */
@@ -45,6 +45,15 @@ const TRAFFIC_GONE = 360;
 /** On a raised road (Ashfield's motorway): spawned as far out as this, and past DECK_HAZE even in view, m. */
 const DECK_FAR = 460;
 const DECK_HAZE = 300;
+/**
+ * On a map with fog, up on a raised road, further: out past where the fog has all but hidden it, a share of its end. Made at
+ * 300 m in plain view they "fade into existence too close to the player": 29 in a minute at 240 km/h, as near as 276 m
+ * (tests/seenahead.js). Those behind go sooner, for more ahead.
+ */
+const FOG_HID = 0.9;
+const BEHIND_GONE = 340;
+/** On the motorway and expressway, m/s: by the lane, inside first. */
+const LANE_PACE = { motorway: [30, 27, 23], dual: [25, 21] };
 /** Which side of the road, m off the middle (clamped to the road's width). */
 const LANE = 2.4;
 /** Within this of a player, m, a traffic car is simulated; beyond it, moved along its route. */
@@ -141,6 +150,9 @@ export function trafficPaint(id) {
   return PAINTS[(h >>> 0) % PAINTS.length];
 }
 
+/** Is this point of a route on a big raised road? */
+const onBig = (at) => !!(at && at.edge && at.edge.elevated && LANES[at.edge.kind]);
+
 export class Traffic {
   constructor(game) {
     this.game = game;
@@ -179,13 +191,16 @@ export class Traffic {
       return best;
     };
 
+    const map = (g.world && g.world.__map) || {};
     // Gone: far off, or wrecked or stuck -- and in every case out of sight.
     for (const c of this.cars.slice()) {
       const p = c.v.position;
       const far = nearest(p);
       // Up on a raised road it may be further off before it goes: it can have come into being out there.
       const up = p.y - g.groundAt(p.x, p.z) > 3;
-      const done = far > (up ? DECK_FAR + 60 : TRAFFIC_GONE)
+      const done = far > (up ? this._deckFar() + 80 : Math.max(TRAFFIC_GONE, (map.trafficFar || 0) + 100))
+        || (far > BEHIND_GONE && (map.trafficFar || up) && this._behind(p))
+        || (map.trafficFar && !up && far > TRAFFIC_GONE && !this._behind(p, -0.8))
         || (c.v.disabled && far > TRAFFIC_NEAR)
         || (c.stuckFor > 20 && far > 80)
         || p.y < -10;
@@ -201,11 +216,11 @@ export class Traffic {
     // frame rate (Game's quality ladder lowers vehicleLimit).
     // A map can ask for more (Ashfield City, 3 km across: "ideally add in more cars, because it just seems so
     // empty"). Most are gliding, out of anyone's sight, which costs next to nothing.
-    const map = (g.world && g.world.__map) || {};
     const count = window.__trafficCount || map.trafficCount || TRAFFIC_COUNT;
     const want = g.vehicleLimit < 30 ? Math.round(count / 2) : count;
     if (!this.preset && this.cars.length < want && this._spawnIn <= 0 && watchers.length) {
-      this._spawnIn = 0.35;
+      // Oftener the faster they are going through it, on the map that has it out to the fog.
+      this._spawnIn = map.trafficFar ? Math.max(0.1, 0.35 - (g.player ? g.player.speed : 0) * 0.005) : 0.35;
       this._spawn(watchers, nearest);
     }
 
@@ -278,7 +293,8 @@ export class Traffic {
     // At the road's pace from here on, as it would be driving.
     const at = pts[Math.min(i, pts.length - 1)];
     // Gives way to blue lights while gliding too: it simply waits.
-    c.cruise = this._sirenNear(v) ? 0 : Math.min(((at && at.speed) || 15) * PACE, TOP_SPEED);
+    // But not on the motorway, where what is coming through has two more lanes.
+    c.cruise = !onBig(at) && this._sirenNear(v) ? 0 : this._pace(c, at);
     // On the ground and with it: at the height a settled car of this kind
     // rides, tilted to the slope. "A car came down the hill ... almost
     // floating a few metres above the ground, level instead of going down":
@@ -314,21 +330,45 @@ export class Traffic {
     // minutes -- "the civilian car routing system, it doesn't work on highways". A raised road may have them
     // further off (DECK_FAR): from up there everything nearer is in plain view, and nothing may appear in view.
     const cands = [];
+    const map = (g.world && g.world.__map) || {}, deckFar = this._deckFar(), ground = map.trafficFar || TRAFFIC_FAR;
+    const up = !!map.trafficFar && w.y - g.groundAt(w.x, w.z) > 3;
+    // Going anywhere, three in four of them ahead.
+    const me = g.player && g.player.speed > 12 && dist2(g.player.position.x, g.player.position.z, w.x, w.z) < 5 ? g.player.linvel : null;
+    const ahead = me && g.rng() < 0.75;
     for (const n of gr.nodes) {
       if (!n.edges.length || spur.has(n.id)) continue;
       const d = dist2(n.x, n.z, w.x, w.z);
-      const far = n.elevated ? DECK_FAR : TRAFFIC_FAR;
+      const far = n.elevated ? deckFar : ground;
       if (d < TRAFFIC_NEAR || d > far) continue;
+      // Up there, the streets under it are not what is seen coming.
+      if (up && !n.elevated && d > 160) continue;
+      // On the streets, that far only up the one they are on: all round, it thinned those near by to four in 150 m.
+      if (!n.elevated && d > TRAFFIC_FAR && !(me && (n.x - w.x) * me.x + (n.z - w.z) * me.z > 0.9 * d * g.player.speed)) continue;
+      if (ahead && (n.x - w.x) * me.x + (n.z - w.z) * me.z < 0) continue;
       cands.push(n);
     }
-    for (let i = 0; i < 12 && cands.length; i++) {
+    for (let i = 0; i < (map.trafficFar ? 20 : 12) && cands.length; i++) {
       const n = cands[Math.floor(g.rng() * cands.length)];
       const d = dist2(n.x, n.z, w.x, w.z);
       if (nearest(n) < TRAFFIC_NEAR) continue;
-      const place = g._placeOnRoad(n, through);
+      // Out along any of its roads, not the first: on the motorway that was all one way.
+      const outs = n.edges.map((id) => gr.edges[id]).filter((e) => !e.cut && through(e));
+      const pickE = outs.length ? outs[Math.floor(g.rng() * outs.length)] : null;
+      const place = g._placeOnRoad(n, pickE ? (e) => e === pickE : through);
       if (!place) continue;
-      // Far out on a raised road, past the fog's start, it may come into being even in view.
-      const hazy = n.elevated && d > DECK_HAZE;
+      const lanes = pickE && pickE.elevated && LANES[pickE.kind];
+      const lane = lanes ? Math.floor(g.rng() * lanes.length) : 0;
+      if (lanes) {
+        // Into its lane from the one _placeOnRoad uses.
+        const over = (lanes[lane] - Math.min(3, pickE.width * 0.25)) * DRIVE_SIDE, h = place.heading;
+        place.position.x += -Math.cos(h) * over;
+        place.position.z += Math.sin(h) * over;
+      }
+      // Far out, where the fog has it, it may come into being even in view.
+      // Ahead along a raised road is in view whatever the barrier says: it hides the road, not a car over it.
+      const open = up && n.elevated && me && (n.x - w.x) * me.x + (n.z - w.z) * me.z > 0;
+      if (open && d < FOG_HID * g.scene.fog.far) continue;
+      const hazy = map.trafficFar ? d > FOG_HID * g.scene.fog.far : n.elevated && d > DECK_HAZE;
       // From a helicopter that is most of the map, so nothing ever came: "when I'm the
       // helicopter ... there's literally no traffic spawns." From up there a car coming on
       // to a road SKY_CLEAR off is a dot nobody is watching appear.
@@ -346,7 +386,7 @@ export class Traffic {
       // the hatchback and the estate, a little more on the SUV's bigger
       // wheels. Kept up to date while it is simulated (see _drive).
       const rideY = RIDE + (v.spec.wheelRadius - 0.32);
-      const c = { v, driver: new Driver(v, SKILL.regular), id, stuckFor: 0, pullFor: 0, rideY };
+      const c = { v, driver: new Driver(v, SKILL.regular), id, stuckFor: 0, pullFor: 0, rideY, lane };
       this.cars.push(c);
       this._route(c);
       return;
@@ -397,7 +437,54 @@ export class Traffic {
       if (p.length >= 2 && !turnsBack(p, v.forward)) { pts = p; break; }
       if (!pts && p.length >= 2) pts = p;
     }
-    if (pts) c.driver.setPath(pts);
+    if (pts) c.driver.setPath(this._inLane(c, pts));
+  }
+
+  /**
+   * Its route moved over into its own lane where it runs along a big raised road, 90 m to get across at either end of that.
+   * The router's one offset (LANE) had both directions' traffic nose to tail either side of the middle line.
+   */
+  _inLane(c, pts) {
+    let i = 0;
+    while (i < pts.length) {
+      const kind = (e) => (e && e.elevated && LANES[e.kind] ? e.kind : null);
+      const k = kind(pts[i].edge);
+      if (!k) { i++; continue; }
+      let j = i;
+      while (j + 1 < pts.length && kind(pts[j + 1].edge)) j++;
+      const S = [0];
+      for (let n = i + 1; n <= j; n++) S.push(S[n - i - 1] + Math.hypot(pts[n].x - pts[n - 1].x, pts[n].z - pts[n - 1].z));
+      const L = S[S.length - 1], out = [];
+      for (let n = i; n <= j; n++) {
+        const a = pts[Math.max(i, n - 1)], b = pts[Math.min(j, n + 1)], l = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+        const lanes = LANES[kind(pts[n].edge)], want = lanes[Math.min(c.lane || 0, lanes.length - 1)] - LANE;
+        // From where it is, when it starts up here; across from the slip road, when it does not.
+        const s = S[n - i], ease = Math.min(i === 0 ? 1 : s / 90, j === pts.length - 1 ? 1 : (L - s) / 90, 1), off = want * ease * DRIVE_SIDE;
+        out.push({ x: pts[n].x - (b.z - a.z) / l * off, z: pts[n].z + (b.x - a.x) / l * off });
+      }
+      for (let n = i; n <= j; n++) { pts[n].x = out[n - i].x; pts[n].z = out[n - i].z; }
+      i = j + 1;
+    }
+    return pts;
+  }
+
+  /** The pace it keeps at a point of its route, m/s. */
+  _pace(c, at) {
+    const e = at && at.edge, l = e && e.elevated && LANE_PACE[e.kind];
+    return l ? l[Math.min(c.lane || 0, l.length - 1)] : Math.min(((at && at.speed) || 15) * PACE, TOP_SPEED);
+  }
+
+  /** How far out on a raised road they are, m. */
+  _deckFar() {
+    const map = (this.game.world && this.game.world.__map) || {}, fog = this.game.scene && this.game.scene.fog;
+    return map.trafficFar && fog ? fog.far + 60 : DECK_FAR;
+  }
+
+  /** Behind everyone playing, as they are going; with `cos` -0.8, ahead of them, within the angle of that cosine. */
+  _behind(p, cos = 0) {
+    const me = this.game.player;
+    return !!me && me.speed > 12 && this.game.humanPositions().length === 0
+      && ((p.x - me.position.x) * me.linvel.x + (p.z - me.position.z) * me.linvel.z) * (cos < 0 ? 1 : -1) > -cos * me.speed * dist2(p.x, p.z, me.position.x, me.position.z);
   }
 
   /** Blue lights near enough to get out of the way of. */
@@ -442,12 +529,12 @@ export class Traffic {
     // Once it starts, it finishes: a few seconds at least, so a car that
     // began to pull over is stopped on the verge rather than drifting back
     // into the lane the moment the police car is past.
-    c.pullFor = this._sirenNear(v) ? Math.max(c.pullFor, PULL_HOLD) : Math.max(0, c.pullFor - dt);
+    c.pullFor = !onBig(d.path[d.pathIndex]) && this._sirenNear(v) ? Math.max(c.pullFor, PULL_HOLD) : Math.max(0, c.pullFor - dt);
     if (c.pullFor <= 0 && was) this._route(c);
     if (c.pullFor > 0) { this._pullOver(c, dt); return; }
 
     const here = d.path[d.pathIndex];
-    let cap = Math.min(((here && here.speed) || 15) * PACE, TOP_SPEED);
+    let cap = this._pace(c, here);
     // Red lights, the same way a patrol car stops for them (Officer._signalCap).
     if (g.signals) {
       const s = g.signals.stopDistanceAt(v.position.x, v.position.z, v.forward.x, v.forward.z, v.speed);

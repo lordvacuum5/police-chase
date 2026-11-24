@@ -175,6 +175,14 @@ function segmentCross(p, q) {
 }
 
 /** Which side of the road traffic drives on. -1 = right-hand, +1 = left-hand. */
+/**
+ * The lanes of a big raised road, each way: how far off its middle each one's is, m, inside first; the widths between. Three
+ * each way on the motorway ("the motorway has 3 lanes but the cars appear to use two and it's bidirectional ... there should
+ * be three lanes on each direction"), two on the expressway.
+ */
+export const LANES = { motorway: [2.65, 6.35, 10.05], dual: [2.65, 6.55] };
+export const LANE_LINES = { motorway: [4.5, 8.2], dual: [4.6] };
+
 export const DRIVE_SIDE = +1;   // left-hand traffic
 
 /**

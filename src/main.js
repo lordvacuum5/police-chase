@@ -21,6 +21,7 @@ import {
 } from './ai/officer.js';
 import { Driver, SKILL } from './ai/driver.js';
 import { Traffic, trafficPaint } from './game/traffic.js';
+import { RunningLights } from './game/runninglights.js';
 import { Suspects, suspectSight, SUSPECT_TRACK } from './game/suspects.js';
 import { Runner, pickRunnerCar } from './ai/runner.js';
 import { warmLocalPlanner, pumpPlanner, boxesNear } from './ai/localplan.js';
@@ -111,6 +112,11 @@ const MAX_VEHICLES = 40;
 /** A traffic car farther off than this casts no shadow, m: past the shadow map's reach. */
 const SHADOW_TRAFFIC = 120;
 const _ball = new THREE.Sphere();
+/** Game._checkWater: this much of a car under before it floods; damage a second just under that and right under; a wreck shown, s. */
+const FLOOD_FROM = 0.6;
+const FLOOD_SLOW = 0.15;
+const FLOOD_FAST = 0.9;
+const SUNK_SHOWN = 4;
 /** The most a car that has come down hard is drawn up, m (Game._landedLift). */
 const LANDED_MAX = 1.2;
 const _wheelQ = new THREE.Quaternion(), _wheelUp = new THREE.Vector3();
@@ -475,6 +481,7 @@ class Game {
     this.dispatcher = new Dispatcher(this);
     this.roadblocks = new RoadblockManager(this);
     this.traffic = new Traffic(this);
+    this.runningLights = new RunningLights(this.scene);
     // Traffic that gets itself chased: game/suspects.js.
     this.suspects = new Suspects(this);
     this.score = new Score(this);
@@ -3466,31 +3473,51 @@ class Game {
   }
 
   /**
-   * Ashfield's river (world/citygen.js, `inWater`). "If you go into the river, I think you'll kind of sink
-   * ... and then you can't get out ... Let's make it that it just busts you if you go into the river." In it
-   * with anyone after you: busted. With nobody after you, towed back to the nearest road. Anyone else in
-   * it -- police, traffic -- is taken out, as a car that fell out of the world is (_catchFallen).
+   * Ashfield's river (world/citygen.js, `waterAt`). "When you go in the water, you just start taking huge amounts of damage.
+   * But only ... when like most of your car is submerged. It obviously depends on the car." How much of its own body is
+   * under: a low car floods where a van is still wading. Past FLOOD_FROM, damage, faster the deeper; wrecked in it, you are
+   * busted ("when you go into the water, I think it should just bust you" was at the first touch, before this), a police
+   * player's car is fished out and mended, and anyone else's is taken out, out of sight or after a few seconds.
    */
-  _checkWater() {
-    const inWater = this.world.__map && this.world.__map.inWater;
-    if (!inWater) return;
-    const wet = (v) => inWater(v.position.x, v.position.z, v.position.y);
-    const p = this.player;
-    // Busted, wanted or not: "when you go into the water, I think it should just bust you". A police player's
-    // car is towed back out instead.
-    if (p && !p.isAircraft && !this.outcome && wet(p)) {
-      if (!p.isPolice) {
-        if (this.hud) this.hud.centreLine('In the river');
+  _checkWater(dt) {
+    const map = this.world.__map, at = map && map.waterAt;
+    if (!at) return;
+    for (const v of this.vehicles.slice()) {
+      if (v.remote || v.isAircraft || v.dormant) continue;
+      const level = at(v.position.x, v.position.z);
+      const under = level === null || v.position.y > level + 2.5 ? 0 : this.submerged(v, level);
+      v.flooded = under;
+      if (under < FLOOD_FROM) { if (v._wetFor) v._wetFor = 0; continue; }
+      const mine = v === this.player;
+      if (mine && this.outcome) continue;
+      if (mine && !v._wetFor && this.hud) this.hud.toast('FLOODING');
+      v._wetFor = (v._wetFor || 0) + dt;
+      v.drown(lerp(FLOOD_SLOW, FLOOD_FAST, (under - FLOOD_FROM) / (1 - FLOOD_FROM)) * dt);
+      if (v.damage < (v.spec.wreckAt ?? 0.92)) continue;
+      if (mine && !v.isPolice) {
+        if (this.hud) this.hud.centreLine('Sunk');
         this.onBusted();
-      } else {
+      } else if (mine) {
         this._recoverPlayer();
+        v.repair();
         if (this.hud) this.hud.toast('OUT OF THE RIVER');
+      } else {
+        v._sunkFor = (v._sunkFor || 0) + dt;
+        if (v._sunkFor > SUNK_SHOWN || !this.seenByAnyone(v.position)) this._takeOut(v, false);
       }
     }
-    for (const v of this.vehicles.slice()) {
-      if (v === this.player || v.remote || v.isAircraft || v.dormant || !wet(v)) continue;
-      this._takeOut(v, false);
+  }
+
+  /** How much of a car's body is under water at `level`, 0 to 1: its own size, as it lies. */
+  submerged(v, level) {
+    const d = v.spec.dims, cy = v.spec.colliderY === undefined ? 0.1 : v.spec.colliderY, cz = v.spec.colliderZ || 0;
+    let n = 0, wet = 0;
+    for (const x of [-0.35, 0.35]) for (const y of [-0.4, -0.2, 0, 0.2, 0.4]) for (const z of [-0.4, 0, 0.4]) {
+      _v.set(x * d.w, cy + y * d.h, cz + z * d.l).applyQuaternion(v.quaternion);
+      n++;
+      if (v.position.y + _v.y < level) wet++;
     }
+    return wet / n;
   }
 
   /**
@@ -3978,7 +4005,7 @@ class Game {
     if (steps === MAX_SUBSTEPS) this.accumulator = 0;   // give up on the backlog
 
     this._catchFallen();
-    this._checkWater();
+    this._checkWater(dt);
     this._updateSkids(dt);
     // The same part-way-through-a-substep pose the frame will be drawn in.
     // An aircraft is stepped once a frame, not on the physics clock, so the fraction
@@ -4344,6 +4371,7 @@ class Game {
     if (this.parkedCars) this.parkedCars.lights(this.hazards);
     this.lights.end();
     this.hazards.end();
+    this.runningLights.update(replaying ? [] : this.traffic.cars, this.camera);
 
     // ---- keep the shadow frustum on the player ----
     const p = this.player.position;

@@ -1071,6 +1071,12 @@ export class Vehicle {
     if (this.damage >= (this.spec.wreckAt ?? 0.92) && !this.spec.neverDisabled) this.disabled = true;
   }
 
+  /** Damage by water: nothing about a car's bodywork, or its being on its way to a chase, keeps it out. */
+  drown(amount) {
+    this.damage = clamp01(this.damage + amount);
+    if (this.damage >= (this.spec.wreckAt ?? 0.92)) this.disabled = true;
+  }
+
   _readState() {
     const t = this.body.translation();
     const r = this.body.rotation();

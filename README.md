@@ -10652,3 +10652,38 @@ within a few seconds either way, as the city is quick to cross: the gain is for 
 Rechecked: `viaducts` 15 of 15, `solidTest` 0 of 90, `deckError` 0, `wideturn` 24 of 24 twice, `motorpace` 185-248 (one unit of 16 left
 behind by a knock at the river; the wall there slid along eight times at 180-235 km/h, 7% at worst), traffic on the decks 97% moving and
 none stuck, `citychase` 120 s none stuck or fallen.
+
+### The river floods the car, traffic seen from far off, and three lanes each way
+
+*"When you go in the water, you just start taking huge amounts of damage. But only ... when like most of your car is submerged.
+It obviously depends on the car."* Ashfield's river busted you at the first touch. Now (`Game._checkWater`) how much of the
+car's own body is under the surface, as it lies: past 60% it takes damage, 0.15 of the car a second there to 0.9 right under,
+whatever its bodywork is worth. Sunk, you are busted; a police player's car is fished out and mended; anyone else's is
+taken out once out of sight or after 4 s. `tests/drown.js`, stood in it, floods at: supercar 0.8 m of water, Runner, patrol and
+interceptor 0.9, hatchback and estate 1.1, SUVs 1.2, off-roader 1.3, van 1.5. Driven in off the bank at 12 m/s, 1.1-1.6 s from
+the first damage to wrecked. On 130 places on the bridges, none.
+
+*"When driving fast it's hard to see the civilian cars until the last moment. They fade into existence too close."* Traffic on
+the motorway was made from 300 m off, in plain view. Now only past nine tenths of the fog (790 m) in view, up to 940; oftener the
+faster you go, three in four ahead, those behind you gone at 340 m. On the streets out to 560 m, but past 260 only up the way you
+are going (all round, it thinned those within 150 m from 9.5 to 4.1). 70 cars, not 50. And running lights on those over 60 m off
+(`game/runninglights.js`): a dark car at 300 m is six pixels of road. `tests/seenahead.js`, how far off each car met was first there:
+
+| | median | nearer than 350 m | made in front, nearest | met per km |
+|---|---|---|---|---|
+| motorway, 240 km/h | 382 -> 845 m | 39% -> 0 | 276 -> 788 m | 7.7 -> 21.6 |
+| expressway, 180 | none met -> 855 | 0 | 314 -> 780 | 0 -> 7.3 |
+| streets, 119 (not measured before) | 252 | 64% | 142, all out of sight | 8.5 |
+
+`tests/busyroads.js`, 70 cars: 7.6 within 150 m (9.5), 10.1 in front within 250 (6.1), 665,000 triangles (547,000 with 50; 769,000 two
+changes ago).
+
+*"The motorway has 3 lanes but the cars appear to use two and it's bidirectional ... there should be three lanes on each
+direction."* Both ways' traffic was 2.4 m either side of the middle of three lanes painted across the whole road. Six lanes
+of 3.7 m now fit the same 26 m, three each way with two yellow lines between (`LANES`, roadgraph.js), and two each way on the
+expressway. Each traffic car has a lane (`Traffic._inLane`), moving across over 90 m from a slip road, at 30, 27 or 23 m/s by the lane
+(all did 20), and on there does not stop for a siren. Where they are, off the middle: 3, 6 and 10 m, 547 of 616; the rest
+changing lane, and five knocked sideways by the rig's car. They were made all going one way, too (335 of 350 samples oncoming):
+out along any of a junction's roads now, not the first. Not a barrier between: a slip road serves both directions from one side.
+
+Rechecked: traffic on the decks 80 s, 70 cars, 99% moving, none stuck or off; `citychase` 90 s none stuck or fallen.

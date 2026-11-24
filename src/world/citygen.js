@@ -6,7 +6,7 @@
 //   * bigger -- "if it was the biggest map, it'd be really cool": 3 km across (WORLD_HALF 1500, against
 //     2 km for Wexbury and Haldon Vale), set by maps.js `half` before the build;
 //   * a river through the middle, north to south, in a channel below the streets, crossed by bridges;
-//     drive into it and you are busted (main.js, `inWater`);
+//     most of the car under, it floods (main.js, `waterAt`);
 //   * hills: mostly flat, with a hilly neighbourhood in the north-west -- Ashfield Heights -- and gentler
 //     rises east of the river, on Haldon Vale's terrain (world/terrain.js);
 //   * a mixed street grid: the downtown core square, the streets outside it bent by a smooth noise, curving
@@ -26,7 +26,7 @@ import { drawTree, treeDetail, chunkTrees, lowTrees } from './trees.js';
 import { buildingDetail } from './buildtex.js';
 import { groundDetail } from './groundtex.js';
 import { MeshBuilder, vertexColorMaterial } from '../util/meshbuild.js';
-import { RoadGraph, ROAD_KIND } from './roadgraph.js';
+import { RoadGraph, ROAD_KIND, LANE_LINES } from './roadgraph.js';
 import { approachesAt, addNodeWedges, sliceLine } from './junctions.js';
 import { GROUP, groups, RAPIER, addStaticBox, addCanopy, nearBuilding, EDGE_FACE } from '../physics/world.js';
 import { makeRng, rand, randInt, clamp, lerp, dist2, closestOnSegment, TAU } from '../util/math.js';
@@ -329,6 +329,8 @@ export function buildCity(sim, scene, seed = 20260822) {
     // Under a bridge too: asked whether a deck was below the car, a car in the water under one was dry.
     inWater: (x, z, y) => y < WATER + 0.4 && riverOn(z) > 0.3 && Math.abs(riverSide(x, z)) < WATER_HALF + BANK_RUN * 0.6,
     water: WATER,
+    /** The water's surface over (x, z), or null where there is none. */
+    waterAt: (x, z) => (riverOn(z) > 0.3 && Math.abs(riverSide(x, z)) < WATER_HALF + BANK_RUN * 0.6 ? WATER : null),
     clearAt: (x, z) => inChannel(x, z, 2),
     // The raised roads' deck colliders: a wheel on one is on road (Vehicle).
     decks: ctx.decks,
@@ -336,7 +338,9 @@ export function buildCity(sim, scene, seed = 20260822) {
     /** Stretches of raised road with no barrier (world/jumps.js). */
     jumps: ctx.jumps,
     // 28 to 50: "maybe we should have denser traffic ... it just looks so empty". Simulated only within 100 m, not 150.
-    trafficCount: 50,
+    trafficCount: 70,
+    // Seen coming from as far as the fog lets you: what may come into being in view does so past it.
+    trafficFar: 560,
     trafficSim: 100,
     // What is hidden past the fog (Game._fogCull): the map's cells of static meshes, by name.
     fogCull: ['roads', 'markings', 'towers', 'houses', 'kerbs', 'pavements', 'trees', 'decks', 'deck-markings', 'deck-edges', 'deck-slabs',
@@ -1578,8 +1582,10 @@ function buildDecks(ctx) {
     };
     const mid = slice5(line5, endsIn(a, true), e.length - endsIn(b, false));
     if (mid && mid.length > 1) {
-      if (e.kind === 'motorway') for (const off of [e.width / 6, -e.width / 6]) paint.addDashedRibbon(mid, 0.28, 0.04, PALETTE.marking, 6, 9, off);
-      else if (e.kind === 'dual') paint.addDashedRibbon(mid, 0.28, 0.04, PALETTE.marking, 6, 9, 0);
+      // Two yellow lines down the middle, and the lanes each side of them dashed (roadgraph.js LANES). It was three lanes
+      // across the whole of it, and the traffic both ways in the one in the middle.
+      for (const off of LANE_LINES[e.kind] || []) for (const sg of [1, -1]) paint.addDashedRibbon(mid, 0.24, 0.04, PALETTE.marking, 4, 9, off * sg);
+      if (LANE_LINES[e.kind]) for (const sg of [1, -1]) paint.addRibbon(mid, 0.2, 0.04, 0xd9a514, 0.32 * sg);
     }
     lift(paint, s0, yOf);
     // A raised road low over the ground is solid to it: walls down both its sides while there is no room to drive
