@@ -596,6 +596,8 @@ export class FlyingHelicopter {
   /** The landing pad, if the aircraft is over it. */
   onPad() {
     const g = this.game.garage;
+    // Any garage's pad, on a map with two (Garages.padAt).
+    if (g && g.padAt) return g.padAt(this.position.x, this.position.z);
     const pad = g && g.helipad;
     if (!pad) return null;
     const dx = this.position.x - pad.x, dz = this.position.z - pad.z;

@@ -895,8 +895,10 @@ export class Hud {
     // ---- the garage ----
     // Always on the map, and pinned to the edge in its direction when it is
     // further away than the map shows, so it can be found from anywhere.
-    const gm = this.game.garage && this.game.garage.marker;
-    if (gm) {
+    // Each of them, where a map has two (Garages.markers).
+    const gar = this.game.garage;
+    const gms = gar ? (gar.markers || (gar.marker ? [gar.marker] : [])) : [];
+    for (const gm of gms) {
       let p = toMap(gm.x, gm.z);
       const dx = p.x - W / 2, dy = p.y - W / 2;
       const lim = W / 2 - 18;

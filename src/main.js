@@ -66,7 +66,7 @@ const RUNNER_AHEAD_MAX = 190;
 const RUNNER_CONE = 0.55;
 import { TrafficLights, SIGNAL } from './game/trafficlights.js';
 import { StreetProps } from './game/streetprops.js';
-import { Garage } from './game/garage.js';
+import { Garages } from './game/garage.js';
 import { KnownCar } from './game/known.js';
 import { addParkedCars } from './game/parked.js';
 import { addVerges } from './game/verges.js';
@@ -469,7 +469,8 @@ class Game {
     // because the runner asks it who is after him on its very first tick.
     if (this.soloPolice && !this.openWorld) this._initRunner();
     // The garage before the props, so nothing is stood across its entrance.
-    this.garage = new Garage(this);
+    // Two on a map that asks (Ashfield City, 3 km across), at opposite ends.
+    this.garage = new Garages(this, this.mapDef.garages || 1);
     // Long grass and flowers along the verges (game/verges.js): after the garage, whose forecourt they keep off.
     addVerges(this, this._mapBlocks);
     this._gatherFogCull();

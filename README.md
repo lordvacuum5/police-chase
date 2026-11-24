@@ -10358,3 +10358,18 @@ Not like-for-like runs (the chases are not deterministic), 300 s each, police he
 | Haldon Vale (14) | 3 | 1, ramming you just before the rig moved you |
 
 The rig now also skips wrecks and lists the cars round a flagged unit.
+
+### Two garages on Ashfield City
+
+"I can't see the repair station. Can you make it so there's maybe like 2 repair stations, kind of at opposite
+ends of the map ... otherwise it's pretty hard to repair such a big map." There was none: the garage looks for
+a lot's worth of clear ground beside a straight road 110-700 m from the start, and Ashfield City's start is
+downtown with nothing that clear within 700 m, so `_findSite` came back empty. It now widens to 1,400 m and then
+anywhere when nothing is near. And a map can ask for two (`garages: 2` in maps.js, the city): the second goes as
+far from the first as it can while staying within 70% of the way out from the middle (in the town, not out past
+the ring). `Garages` (game/garage.js) stands in for the one garage everywhere -- the bay you are in, any pad a
+helicopter is over, any forecourt the street furniture and verges keep off, a spanner for each on the minimap.
+
+On the city: south-west on Halloway (-674, -925), 932 m from the start, and north-east on Twenty-Fourth Street
+(716, 1023), 2,393 m apart. Checked: car at 60% damage in the second one's bay, 37% eight seconds later. Sites
+also keep out of the map's clear mask now (the river). Wexbury and Haldon Vale: same site as before.

@@ -68,9 +68,17 @@ const LINE_WHITE = 0xd8dadd;
 const LINE_YELLOW = 0xe0b43a;
 
 export class Garage {
-  constructor(game) {
+  /**
+   * `far`: a second garage's -- the first one's site, and this one goes as far from it as it can while still
+   * in the built-up part of the map (Garages, below).
+   */
+  constructor(game, far = null) {
     this.game = game;
-    this.site = this._findSite();
+    this.far = far;
+    // Within 700 m of the start if it can be, further if not: Ashfield City's start is downtown, with no lot's
+    // worth of clear ground for 700 m round it, and the city had no garage at all -- "I can't see the repair
+    // station".
+    this.site = far ? this._findSite() : this._findSite(700) || this._findSite(1400) || this._findSite(Infinity);
     this.stillFor = 0;
     this.repairing = false;
     this.state = 'away';        // away | damaged-wait | repairing | done | clean
@@ -104,7 +112,7 @@ export class Garage {
       && v >= -(LOT_D * 0.5 + GAP + 2) - margin && v <= LOT_D * 0.5 + margin;
   }
 
-  _findSite() {
+  _findSite(maxD = 700) {
     const game = this.game;
     const g = game.graph;
     const start = game.startPlace ? game.startPlace.position : { x: 0, z: 0 };
@@ -129,8 +137,15 @@ export class Garage {
       solids.get(key).push({ x: t.x, z: t.z, r });
     });
 
+    const wet = game.world.__map && game.world.__map.clearAt;
     const clear = (cx, cz, ax, az, nx, nz, own) => {
       if (Math.abs(cx) > WORLD_HALF - 60 || Math.abs(cz) > WORLD_HALF - 60) return false;
+      // Not in what the map keeps clear (Ashfield's river, Haldon's railway and quarry).
+      if (wet) {
+        for (const [u, v] of [[0, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+          if (wet(cx + ax * u * LOT_L * 0.5 + nx * v * LOT_D * 0.5, cz + az * u * LOT_L * 0.5 + nz * v * LOT_D * 0.5)) return false;
+        }
+      }
       const reach = Math.hypot(LOT_L, LOT_D) * 0.5 + GAP + 4;
       // Solids anywhere on the lot or its entrance.
       const kx = Math.floor(cx / CELLS), kz = Math.floor(cz / CELLS);
@@ -185,8 +200,19 @@ export class Garage {
           const d = Math.hypot(cx - start.x, cz - start.z);
           // Somewhere you can find, but not so close it is the first thing you
           // drive into.
-          if (d < 110 || d > 700) continue;
-          let score = Math.abs(d - 280) + (e.kind === 'lane' || e.kind === 'country' ? 60 : 0);
+          let score;
+          if (this.far) {
+            // The other end of the map from the first: as far from it as can be, but in the town, not out
+            // past its edge (70% of the way out from the middle).
+            const lim = WORLD_HALF * 0.7;
+            if (Math.abs(cx) > lim || Math.abs(cz) > lim) continue;
+            const df = Math.hypot(cx - this.far.cx, cz - this.far.cz);
+            if (df < WORLD_HALF * 0.8) continue;
+            score = -df + (e.kind === 'lane' || e.kind === 'country' ? 60 : 0);
+          } else {
+            if (d < 110 || d > maxD) continue;
+            score = Math.abs(d - 280) + (e.kind === 'lane' || e.kind === 'country' ? 60 : 0);
+          }
           // On the hills (Haldon Vale), level ground: the lot is one flat slab
           // and the ground under the first site it took varied by three
           // metres, so the forecourt was half buried and half in the air.
@@ -551,6 +577,53 @@ export class Garage {
     if (!this.site) return null;
     const at = this.toWorld(PAD_U, PAD_V);
     return { x: at.x, z: at.z, y: PAD_Y + (this.game && this.game.groundAt ? this.game.groundAt(this.site.cx, this.site.cz) : 0), r: PAD_R };
+  }
+}
+
+/**
+ * The map's garages: one, or on a big map two at opposite ends. "I can't see the repair station. Can you make
+ * it so there's maybe like 2 repair stations, kind of at opposite ends of the map ... otherwise it's pretty
+ * hard to repair such a big map." Everything that asked the garage asks this instead, and gets the answer for
+ * whichever one it is about: the bay you are in, the pad you are over, any forecourt.
+ */
+export class Garages {
+  constructor(game, count = 1) {
+    this.game = game;
+    this.list = [new Garage(game)];
+    if (count > 1 && this.list[0].site) {
+      const second = new Garage(game, this.list[0].site);
+      if (second.site) this.list.push(second);
+    }
+    this.site = this.list[0].site;
+  }
+
+  covers(x, z, margin = 0) { return this.list.some((g) => g.covers(x, z, margin)); }
+
+  update(dt) { for (const g of this.list) g.update(dt); }
+
+  /** The one you are in, if you are in one. */
+  get readout() {
+    for (const g of this.list) { const r = g.readout; if (r) return r; }
+    return null;
+  }
+
+  get canSpray() { return this.list.some((g) => g.canSpray); }
+
+  /** Each, for the minimap. */
+  get markers() { return this.list.map((g) => g.marker).filter(Boolean); }
+
+  get marker() { return this.list[0].marker; }
+
+  /** Where a helicopter starts: the first's pad. */
+  get helipad() { return this.list[0].helipad; }
+
+  /** The pad over (x, z), if there is one. */
+  padAt(x, z) {
+    for (const g of this.list) {
+      const p = g.helipad;
+      if (p && (x - p.x) ** 2 + (z - p.z) ** 2 <= p.r * p.r) return p;
+    }
+    return null;
   }
 }
 

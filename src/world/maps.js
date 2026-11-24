@@ -18,6 +18,8 @@ export const MAPS = [
          + 'river and you are busted.',
     // 3 km across: Wexbury and Haldon Vale are 2 km (world/common.js setWorldSize).
     half: 1500,
+    // Two garages, at opposite ends: "it's pretty hard to repair such a big map" (game/garage.js Garages).
+    garages: 2,
     build: buildCity,
   },
   {
