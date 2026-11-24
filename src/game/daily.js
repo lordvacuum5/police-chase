@@ -456,7 +456,7 @@ export class DailyChallenge {
       const m = this.gateMeshes[shown];
       // Half a torus standing on the road, spanning it: the ring's plane across the direction of travel.
       m.scale.setScalar(g.r);
-      m.position.set(g.x, this.game.groundAt(g.x, g.z), g.z);
+      m.position.set(g.x, this._y(g.x, g.z), g.z);
       m.rotation.set(0, Math.atan2(g.tx, g.tz), 0);
       m.material.color.setHex(shown === 0 && missed ? 0xff8a3d : 0x3fa9ff);
       m.material.opacity = shown === 0 && missed ? 0.9 : 0.7 - shown * 0.2;
@@ -487,7 +487,8 @@ export class DailyChallenge {
     };
     const unitAt = (node) => {
       const place = node && g._placeOnRoad(node);
-      return place && { x: place.position.x, z: place.position.z, heading: place.heading, kind: KIND[Math.floor(rng() * KIND.length) % KIND.length] };
+      // Its height with it: one on a raised road is not on the route's.
+      return place && { x: place.position.x, y: place.position.y, z: place.position.z, heading: place.heading, kind: KIND[Math.floor(rng() * KIND.length) % KIND.length] };
     };
     this.spawnPlan = [];
     const st = this.route.start.position;
@@ -520,7 +521,7 @@ export class DailyChallenge {
     const g = this.game;
     while (this._spawnNext < this.spawnPlan.length && this.spawnPlan[this._spawnNext].s <= this.progress) {
       const sp = this.spawnPlan[this._spawnNext++];
-      const u = g.spawnUnitAt({ x: sp.x, y: 0.95 + g.groundAt(sp.x, sp.z), z: sp.z }, sp.heading, sp.kind);
+      const u = g.spawnUnitAt({ x: sp.x, y: g.sim.decks && sp.y !== undefined ? sp.y : 0.95 + this._y(sp.x, sp.z), z: sp.z }, sp.heading, sp.kind);
       if (u) g.dispatcher.adopt(u);
     }
   }
@@ -543,7 +544,7 @@ export class DailyChallenge {
 
   _finishMarker() {
     const end = this.route.pts[this.route.pts.length - 1];
-    const y = this.game.groundAt(end.x, end.z);
+    const y = this._y(end.x, end.z);
     const geo = new THREE.CylinderGeometry(FINISH_R * 0.6, FINISH_R * 0.6, 60, 24, 1, true);
     const mat = new THREE.MeshBasicMaterial({ color: 0x3fa9ff, transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide });
     this.marker = new THREE.Mesh(geo, mat);
@@ -618,7 +619,7 @@ export class DailyChallenge {
       g.traffic.clear();
       // The day's traffic, all of it, where it always is: see _planSpawns.
       g.traffic.preset = true;
-      for (const t of this.trafficPlan || []) g.traffic.place({ x: t.x, y: 0.95 + g.groundAt(t.x, t.z), z: t.z }, t.heading, t.kind);
+      for (const t of this.trafficPlan || []) g.traffic.place({ x: t.x, y: 0.95 + this._y(t.x, t.z), z: t.z }, t.heading, t.kind);
     }
     this._spawnNext = 0;
     if (g.suspects && g.suspects.reset) g.suspects.reset();
@@ -690,7 +691,7 @@ export class DailyChallenge {
     const q = this._siteAt(RUNNER_START);
     const v = r.vehicle;
     v.repair();
-    v.teleport({ x: q.x, y: 0.95 + g.groundAt(q.x, q.z), z: q.z }, Math.atan2(q.tx, q.tz));
+    v.teleport({ x: q.x, y: 0.95 + this._y(q.x, q.z), z: q.z }, Math.atan2(q.tx, q.tz));
     v.setVelocity({ x: 0, y: 0, z: 0 });
     r.running = false;
     r.breakIn = 1e9;
@@ -709,7 +710,7 @@ export class DailyChallenge {
     g.heat.bump(1, 'the daily challenge');
     g.heat.value = 3;
     for (const sp of this.backupPlan || []) {
-      const u = g.spawnUnitAt({ x: sp.x, y: 0.95 + g.groundAt(sp.x, sp.z), z: sp.z }, sp.heading, sp.kind);
+      const u = g.spawnUnitAt({ x: sp.x, y: g.sim.decks && sp.y !== undefined ? sp.y : 0.95 + this._y(sp.x, sp.z), z: sp.z }, sp.heading, sp.kind);
       if (u) g.dispatcher.adopt(u);
     }
     const k = g.dispatcher && g.dispatcher.knowledge;
@@ -910,6 +911,15 @@ export class DailyChallenge {
   }
 
   /** The point on the line `s` metres along, facing the way you will be going, and how wide the road is. */
+  /** The height of the route's road at (x, z): its deck, where the route is up on a raised one there. */
+  _y(x, z) {
+    const g = this.game;
+    if (!g.sim.decks) return g.groundAt(x, z);
+    let best = null, bd = Infinity;
+    for (const q of this.route.pts) { const d = (q.x - x) ** 2 + (q.z - z) ** 2; if (d < bd) { bd = d; best = q; } }
+    return g.roadY(x, z, best && best.edge);
+  }
+
   _siteAt(s) {
     const pts = this.route.pts;
     let i = 1;
@@ -918,7 +928,7 @@ export class DailyChallenge {
     const l = Math.hypot(b.x - a.x, b.z - a.z) || 1;
     const u = clamp((s - a.s) / l, 0, 1);
     const width = (b.edge && b.edge.width) || 9;
-    return { x: a.x + (b.x - a.x) * u, z: a.z + (b.z - a.z) * u, tx: (b.x - a.x) / l, tz: (b.z - a.z) / l, width, name: (b.edge && b.edge.name) || 'the route' };
+    return { x: a.x + (b.x - a.x) * u, z: a.z + (b.z - a.z) * u, tx: (b.x - a.x) / l, tz: (b.z - a.z) / l, width, name: (b.edge && b.edge.name) || 'the route', edge: b.edge };
   }
 
   /**

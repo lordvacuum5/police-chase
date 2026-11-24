@@ -143,7 +143,7 @@ export class Commentary {
    */
   junctionAhead(v) {
     const g = this.game.graph;
-    const snap = g.nearestEdge(v.position.x, v.position.z, 30);
+    const snap = g.nearestEdgeTo(v.position, 30);
     if (!snap) return null;
     const dir = g.edgeDirection(snap.edge, snap.along, { x: 0, z: 1 });
     const along = dir.x * v.linvel.x + dir.z * v.linvel.z;
@@ -349,7 +349,7 @@ export class Commentary {
     if (!this.primary || this.primary.vehicle.disabled || this.calledPrimary !== this.primary) return;
 
     const kph = Math.abs(p.forwardSpeed) * 3.6;
-    const snap = this.game.graph.nearestEdge(p.position.x, p.position.z, 20);
+    const snap = this.game.graph.nearestEdgeTo(p.position, 20);
     const ahead = this.junctionAhead(p);
     const v = {
       cs: this.primary.callsign, dir: this._heading(p.linvel, p.forward),

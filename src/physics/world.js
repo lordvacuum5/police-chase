@@ -246,7 +246,7 @@ export function addCone(world, x, y, z, radius = 0.30, height = 0.75) {
     .setDensity(38)               // ~2.5 kg for this size: it flies, you do not
     .setFriction(0.55)
     .setRestitution(0.12)
-    .setCollisionGroups(groups(GROUP.DEBRIS, GROUP.TERRAIN | GROUP.HILL | GROUP.VEHICLE));
+    .setCollisionGroups(groups(GROUP.DEBRIS, GROUP.TERRAIN | GROUP.HILL | GROUP.VEHICLE | GROUP.RAMP));
   world.createCollider(col, body);
   return body;
 }

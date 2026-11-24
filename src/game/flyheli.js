@@ -24,7 +24,7 @@
 import * as THREE from 'three';
 import { clamp, clamp01, lerp, damp, angleDelta } from '../util/math.js';
 import {
-  hasLineOfSight, sweepBox, addStaticBox, groups, GROUP,
+  hasLineOfSight, raycast, sweepBox, addStaticBox, groups, GROUP,
 } from '../physics/world.js';
 
 /** Gravity, which the rotor has to beat to go up. */
@@ -276,6 +276,11 @@ const MAST_H = 3.5;
  * refuelled or recovered from a crash.
  */
 const AIR_SOLID = groups(0xFFFF, GROUP.BUILDING | GROUP.PROP);
+/** And where the map has raised roads (Ashfield City): their decks, which it flew straight through. */
+const AIR_SOLID_DECKS = groups(0xFFFF, GROUP.BUILDING | GROUP.PROP | GROUP.RAMP);
+const DECK_RAYS = groups(0xFFFF, GROUP.RAMP);
+const _deckO = { x: 0, y: 0, z: 0 };
+const _deckD = { x: 0, y: -1, z: 0 };
 /**
  * Into something this fast and the rotor is gone. 14 m/s is about 50 km/h --
  * survivable in a car, and not something a helicopter walks away from.
@@ -589,7 +594,13 @@ export class FlyingHelicopter {
     const map = this.game.world && this.game.world.__map;
     const rock = map && map.solidTopAt ? map.solidTopAt(this.position.x, this.position.z) : null;
     const pad = this.onPad();
-    const g = rock !== null && rock !== undefined ? Math.max(ground, rock) : ground;
+    let g = rock !== null && rock !== undefined ? Math.max(ground, rock) : ground;
+    // A raised road's deck under it is ground to land on; one over it is not.
+    if (this.game.sim.decks && this.game.world) {
+      _deckO.x = this.position.x; _deckO.y = this.position.y + 0.8; _deckO.z = this.position.z;
+      const hit = raycast(this.game.world, _deckO, _deckD, 60, DECK_RAYS);
+      if (hit) g = Math.max(g, hit.point.y);
+    }
     return pad ? Math.max(g, pad.y) : g;
   }
 
@@ -970,6 +981,8 @@ export class FlyingHelicopter {
     // why. Separating the axes means a wall takes away the component going
     // into it and leaves the two that are not, so the aircraft slides along
     // the face and can always fly back out the way it came.
+    // A deck as well, but not the one it is down on or a metre over: the swept box is a metre tall, and touches it.
+    const solid = this.game.sim.decks && this.radarAlt > 1.6 ? AIR_SOLID_DECKS : AIR_SOLID;
     for (const axis of AXES) {
       const move = this.linvel[axis] * dt;
       const dist = Math.abs(move);
@@ -991,7 +1004,7 @@ export class FlyingHelicopter {
       // Excluding its own parked collider, or the box that lets cars hit a
       // landed helicopter would also stop that helicopter taking off.
       const toi = sweepBox(
-        world, this.position, _v, dist + CONTACT_GAP, AIR_SOLID, this._parked, HULL_R,
+        world, this.position, _v, dist + CONTACT_GAP, solid, this._parked, HULL_R,
       );
       // Room to move, keeping the gap. Swept a little further than the step
       // so that resting against something is seen as no room rather than as

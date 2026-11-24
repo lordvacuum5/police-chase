@@ -149,6 +149,25 @@ export function obstacleIndex(game) {
       }
     }
   }
+  // And water, in 6 m squares.
+  const map = game.world.__map, sim = game.sim;
+  if (map && map.inWater && map.clearAt && sim.terrainAt) {
+    const half = (game.mapDef && game.mapDef.half) || 1000;
+    for (let x = -half; x < half; x += 6) {
+      for (let z = -half; z < half; z += 6) {
+        if (!map.clearAt(x, z) || !map.inWater(x, z, sim.terrainAt(x, z))) continue;
+        const box = { x, z, hx: 3, hz: 3, c: 1, s: 0, rad: 4.3 };
+        for (let bx = Math.floor((x - 4.3) / B); bx <= Math.floor((x + 4.3) / B); bx++) {
+          for (let bz = Math.floor((z - 4.3) / B); bz <= Math.floor((z + 4.3) / B); bz++) {
+            const key = bx * 100003 + bz;
+            let list = buckets.get(key);
+            if (!list) buckets.set(key, list = []);
+            list.push(box);
+          }
+        }
+      }
+    }
+  }
   game._obstacleIndex = { B, buckets };
   return game._obstacleIndex;
 }

@@ -156,7 +156,7 @@ export class RoadblockManager {
     // rule out the side roads and the way back.
     const cone = clamp(0.5 + sp * 0.006, 0.5, 0.8);
 
-    const reach = g.reachable(target.position.x, target.position.z, dx, dz, 30, 0.9);
+    const reach = g.reachable(target.position.x, target.position.z, dx, dz, 30, 0.9, target.position.y);
     const candidates = [];
     for (const [id, rec] of reach) {
       const n = g.nodes[id];
@@ -203,9 +203,11 @@ export class RoadblockManager {
       // The block spans the carriageway, so check both ends of it as well as
       // the middle: a block half in shot is a block you watched appear.
       const nx = -p.tz * edge.width * 0.45, nz = p.tx * edge.width * 0.45;
-      if (this.game.inView({ x: p.x, z: p.z })
-        || this.game.inView({ x: p.x + nx, z: p.z + nz })
-        || this.game.inView({ x: p.x - nx, z: p.z - nz })
+      // At its own height: up on a deck, the ground under it being out of view says nothing.
+      const y = edge.deck ? g.levelOn(edge, p.x, p.z) + 0.95 : undefined;
+      if (this.game.inView({ x: p.x, y, z: p.z })
+        || this.game.inView({ x: p.x + nx, y, z: p.z + nz })
+        || this.game.inView({ x: p.x - nx, y, z: p.z - nz })
         || this.game.nearHuman({ x: p.x, z: p.z })) continue;
 
       // The tangent points along increasing `along`, which runs from the edge's
@@ -217,7 +219,7 @@ export class RoadblockManager {
 
       return {
         x: p.x, z: p.z, tx: p.tx * sgn, tz: p.tz * sgn,
-        width: edge.width, name: edge.name || 'the road ahead',
+        width: edge.width, name: edge.name || 'the road ahead', edge,
       };
     }
     return null;
@@ -228,6 +230,9 @@ export class RoadblockManager {
     const { x, z, tx, tz, width } = site;
     const heading = Math.atan2(tx, tz);
     const nx = -tz, nz = tx;                 // across the carriageway
+    // On the road it blocks: up on a raised one, everything in it was put on the ground underneath (207 of 207
+    // things put down for a chase on the motorway, tests/deckspawn.js).
+    const gy = (px, pz) => game.roadY(px, pz, site.edge);
 
     const block = { x, z, meshes: [], units: [], cones: [], spikes: null };
 
@@ -262,7 +267,7 @@ export class RoadblockManager {
       const pz = z + nz * f * spread + tz * back;
       const ang = heading + ANG * (i % 2 ? 1 : -1);
 
-      const unit = game.spawnPoliceAt({ x: px, y: 0.95 + game.groundAt(px, pz), z: pz }, ang, tier);
+      const unit = game.spawnPoliceAt({ x: px, y: 0.95 + gy(px, pz), z: pz }, ang, tier);
       if (!unit) continue;
       unit.setRole(ROLE.HOLD, {
         site: { x, z },
@@ -293,7 +298,7 @@ export class RoadblockManager {
       const cone = new THREE.Mesh(this.coneGeo, coneMat);
       cone.castShadow = true;
       game.scene.add(cone);
-      const body = addCone(game.world, cx, 0.02 + game.groundAt(cx, cz), cz, 0.30, 0.75);
+      const body = addCone(game.world, cx, 0.02 + gy(cx, cz), cz, 0.30, 0.75);
       block.cones.push({ mesh: cone, body });
     }
 
@@ -306,12 +311,12 @@ export class RoadblockManager {
     const sx = x - tx * SPIKE_BACK, sz = z - tz * SPIKE_BACK;
     const mesh = new THREE.Mesh(spikeStripGeometry(len), game.stingerMaterial
       || (game.stingerMaterial = vertexColorMaterial()));
-    mesh.position.set(sx, 0.012 + game.groundAt(sx, sz), sz);
+    mesh.position.set(sx, 0.012 + gy(sx, sz), sz);
     mesh.rotation.y = heading;
     mesh.receiveShadow = true;
     game.scene.add(mesh);
     block.meshes.push(mesh);
-    block.spikes = { x: sx, z: sz, tx, tz, halfLen: len * 0.5, halfDepth: 0.45 };
+    block.spikes = { x: sx, y: gy(sx, sz), z: sz, tx, tz, halfLen: len * 0.5, halfDepth: 0.45 };
 
     return block;
   }
@@ -342,6 +347,8 @@ export class RoadblockManager {
         const s = b.spikes;
         if (!s) continue;
         if (dist2(cur.x, cur.z, s.x, s.z) > s.halfLen + 30) continue;
+        // Not one on the road above or below.
+        if (s.y !== undefined && Math.abs(w.contact.y - s.y) > 3) continue;
         // Into the strip's frame: along the road, and across it.
         const along = (p) => (p.x - s.x) * s.tx + (p.z - s.z) * s.tz;
         const across = (p) => (p.x - s.x) * -s.tz + (p.z - s.z) * s.tx;
@@ -440,6 +447,7 @@ export class RoadblockManager {
     const width = Math.max(7, site.width);
     const nx = -tz, nz = tx;
     const heading = Math.atan2(tx, tz);
+    const gy = (px, pz) => game.roadY(px, pz, site.edge);
     const block = { x, z, meshes: [], units: [], cones: [], spikes: null, daily: true };
     const coneMat = game.coneMaterial();
     if (!this.coneGeo) this.coneGeo = new THREE.ConeGeometry(0.30, 0.75, 7);
@@ -447,7 +455,7 @@ export class RoadblockManager {
       const m = new THREE.Mesh(this.coneGeo, coneMat);
       m.castShadow = true;
       game.scene.add(m);
-      block.cones.push({ mesh: m, body: addCone(game.world, cx, 0.02 + game.groundAt(cx, cz), cz, 0.30, 0.75) });
+      block.cones.push({ mesh: m, body: addCone(game.world, cx, 0.02 + gy(cx, cz), cz, 0.30, 0.75) });
     };
     const half = width * 0.5;
     if (kind === 'stinger') {
@@ -456,12 +464,12 @@ export class RoadblockManager {
       const sx = x + nx * off, sz = z + nz * off;
       const mesh = new THREE.Mesh(spikeStripGeometry(len), game.stingerMaterial
         || (game.stingerMaterial = vertexColorMaterial()));
-      mesh.position.set(sx, 0.012 + game.groundAt(sx, sz), sz);
+      mesh.position.set(sx, 0.012 + gy(sx, sz), sz);
       mesh.rotation.y = heading;
       mesh.receiveShadow = true;
       game.scene.add(mesh);
       block.meshes.push(mesh);
-      block.spikes = { x: sx, z: sz, tx, tz, halfLen: len * 0.5, halfDepth: 0.45 };
+      block.spikes = { x: sx, y: gy(sx, sz), z: sz, tx, tz, halfLen: len * 0.5, halfDepth: 0.45 };
       for (let i = 0; i < 3; i++) {
         if (half - 1 - i * 1.6 < 0.8) break;      // never on the open half
         const a = side * (half - 1 - i * 1.6);
@@ -474,7 +482,7 @@ export class RoadblockManager {
         const a = side * (half - 1.6 - i * 2.6);
         const back = i ? 3 : -3;
         const px = x + nx * a + tx * back, pz = z + nz * a + tz * back;
-        const unit = game.spawnPoliceAt({ x: px, y: 0.95 + game.groundAt(px, pz), z: pz }, heading + ANG * (i ? 1 : -1), 5);
+        const unit = game.spawnPoliceAt({ x: px, y: 0.95 + gy(px, pz), z: pz }, heading + ANG * (i ? 1 : -1), 5);
         if (!unit) continue;
         unit.setRole(ROLE.HOLD, { site: { x, z }, approach: { x: -tx, z: -tz }, sawItFrom: 130 });
         game.dispatcher.adopt(unit);

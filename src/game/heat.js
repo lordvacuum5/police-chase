@@ -228,7 +228,7 @@ export class Heat {
     if (left <= 0) {
       this.strandTime = 0;
       if (this.value > 0) { g.onBusted(); return; }
-      const place = g.graph && g._placeOnRoad(g.graph.nearestNode(player.position.x, player.position.z));
+      const place = g.graph && g._placeOnRoad(g.graph.nearestNode(player.position.x, player.position.z, g.sim.decks ? player.position.y : null));
       if (place) {
         player.teleport(place.position, place.heading);
         player.setVelocity({ x: 0, y: 0, z: 0 });

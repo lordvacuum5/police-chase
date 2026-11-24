@@ -10439,3 +10439,41 @@ false: on a page whose physics had not stepped every ray misses. Stepped first: 
 - A traffic car under the ground is taken away: its bodywork ignores the hills, so one off an edge went through.
 
 `tests/deckTraffic.js`, 90 s: 85% moving (76% live), 5 stuck (6), 0 under the ground (3).
+
+### Walls you can slide along, an invisible wall at Broadway Bridge, blocks on the motorway, police in the river
+
+"Can you just see the inconsistency with like the wall there? ... I really wish it would be a smooth wall. Also, I
+was riding along a wall once ... I just hit almost an invisible little, a tiny almost joint, and then I just like
+went 100% damage."
+
+- **Snags.** `tests/scrape.js` leans the car into every wall at 180 km/h and slides: **418 of 502 slides wrecked it**.
+  Traced: 5 mm off a flat wall the next 5 m triangle's edge gave a contact straight back along the road, 47 m/s to
+  9. FIX_INTERNAL_EDGES does not stop it, on triangles sharing their vertices either (314 of 380). What cars hit is
+  now blocks, each as long as the wall is straight to 3 cm, run on past its ends with its faces tapered in, so no
+  edge is met: 32 of 502; then, an overlap's face brought in along its neighbour's where the wall turns away (its
+  blunt end met a car at 30 degrees on a straight), **33 of 502, and those that cost over 5% 484 -> 117**. Of the 33
+  about two thirds are where they should be: the points slip roads split off at, the expressway's corners, and where
+  a slip road's wall meets the motorway's at 25 degrees (easing that by 3 m on to the road left three slip roads
+  undriveable). The rest do not repeat from run to run. Not on ramps' side walls: with the engine's flag 24 of 90
+  let the car through again.
+- **One line.** The wall was pieced together from what each road knew of those at its own ends. It is now the outside
+  edge of all the raised decks together (`freeRuns`: a deck's edge lying on another deck has none), its pieces
+  joined end to end into 30 walls, rounded by up to 30 cm. `deckGaps`: 9 -> 0.
+- **The invisible wall.** Broadway's bridge crossed Twentieth Street's over the river with no junction (bridges are
+  left alone by the stitching), their decks up to 30 cm apart: one's slab stood 14-16 cm out of the other's tarmac,
+  hidden under it. `joinBridges`; and a bridge's slab slopes as the bridge does (level, it stood 17 cm out at its low
+  end). `tests/steps.js`, 61,543 places on and by the bridges: 0.
+- **Blocks on the motorway.** Every roadblock, rolling block, stinger, cone and van for a chase up there was put on the
+  ground underneath: **207 of 207** (`tests/deckspawn.js`), now 2, on a slope. `Game.roadY`; `nearestEdgeTo` for
+  "which road is this" asked by something that knows its height; "in view" asked of the deck, not the ground under
+  it; the daily challenge's gates, traffic and units likewise. A stinger no longer punctures a car on the road below.
+- **Police in the river.** Straight at you across it at 82-93 km/h: 7 in three minutes by the bank
+  (`tests/riverchase.js`), now 2. They go round by a bridge; water is an obstacle to the close planner.
+- **Roads near here** (`edgesNear`): its cells shared keys (4,225 cells, 3,541 keys), so 8,853 of 27,390 answers were
+  nowhere near, up to 3 km. Ashfield has a key a cell now; Wexbury and Haldon keep theirs until a day's challenge
+  there cannot be changed by it.
+- **A road folded over itself** at the roundabout (186 m in 92 m): mine, from laying roads in 40 m pieces.
+- The helicopter flew through the motorway; it lands on it now. The road sign named a street 100 m off in the docks.
+
+Every road driven, both ways (`tests/everyroad.js`): 2,386 ground drives, 0 stuck, hurt or off; 264 raised, 2, the
+driver wide into a barrier. `tests/snags.js`: 110,076 places in the lanes, nothing in the way.

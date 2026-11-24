@@ -845,6 +845,16 @@ export class RoadGraph {
     return this;
   }
 
+  /**
+   * A grid cell's key. The hash is shared by cells a long way apart -- of Ashfield City's 4,225 cells there are
+   * 3,541 keys -- so a third of the roads `edgesNear` gave back were nowhere near (up to 3 km), and `nearestEdge`,
+   * out where no road was close, answered with one of those. `exactCells` (Ashfield City) has a key a cell. The
+   * other maps keep the hash, and with it exactly how a day's challenge there plays.
+   */
+  _cell(cx, cz) {
+    return this.exactCells ? (cx + 4096) * 8192 + (cz + 4096) : cx * 73856093 ^ cz * 19349663;
+  }
+
   _buildIndex() {
     this.cells.clear();
     const cs = this.cellSize;
@@ -857,7 +867,7 @@ export class RoadGraph {
         const minZ = Math.min(s.a.z, s.b.z), maxZ = Math.max(s.a.z, s.b.z);
         for (let cx = Math.floor(minX / cs); cx <= Math.floor(maxX / cs); cx++) {
           for (let cz = Math.floor(minZ / cs); cz <= Math.floor(maxZ / cs); cz++) {
-            const key = cx * 73856093 ^ cz * 19349663;
+            const key = this._cell(cx, cz);
             let list = this.cells.get(key);
             if (!list) { list = []; this.cells.set(key, list); }
             if (list.indexOf(e.id) === -1) list.push(e.id);
@@ -894,7 +904,7 @@ export class RoadGraph {
     const cz0 = Math.floor((z - radius) / cs), cz1 = Math.floor((z + radius) / cs);
     for (let cx = cx0; cx <= cx1; cx++) {
       for (let cz = cz0; cz <= cz1; cz++) {
-        const list = this.cells.get(cx * 73856093 ^ cz * 19349663);
+        const list = this.cells.get(this._cell(cx, cz));
         if (!list) continue;
         for (const eid of list) {
           if (seen.has(eid)) continue;
@@ -971,7 +981,7 @@ export class RoadGraph {
     let bestE = null, bestS = null, bestD = Infinity, bestT = 0;
     for (let cx = cx0; cx <= cx1; cx++) {
       for (let cz = cz0; cz <= cz1; cz++) {
-        const list = this.cells.get(cx * 73856093 ^ cz * 19349663);
+        const list = this.cells.get(this._cell(cx, cz));
         if (!list) continue;
         for (let i = 0; i < list.length; i++) {
           const eid = list[i];
@@ -1030,6 +1040,20 @@ export class RoadGraph {
     while (k < s.length - 2 && s[k + 1] < along) k++;
     const u = Math.max(0, Math.min(1, (along - s[k]) / Math.max(1e-6, s[k + 1] - s[k])));
     return y[k] + (y[k + 1] - y[k]) * u;
+  }
+
+  /**
+   * The nearest road to something that knows how high up it is ({ x, y, z }): the one at its level, where a map
+   * has roads over roads. Asked without, a car up on Ashfield's motorway was on whatever street ran beneath it --
+   * the blocks put in its way, the name of the road it was on, where it was headed.
+   */
+  nearestEdgeTo(p, maxRadius = 90) {
+    const was = this.queryY;
+    if (p.y !== undefined) this.queryY = p.y - 0.9;
+    const r = this.nearestEdge(p.x, p.z, maxRadius);
+    this.queryY = was;
+    // Nothing at its level (in the air over a road, off a deck's end): whatever is nearest, as before.
+    return r || this.nearestEdge(p.x, p.z, maxRadius);
   }
 
   /** Is `e` at about height `y` at (x, z)? The ground's height from `levelGround` (the map sets it). */
@@ -1419,8 +1443,8 @@ export class RoadGraph {
    * because a car at 130 km/h is not about to make a U-turn. Returns a Map of
    * nodeId -> { eta, viaNode } which the dispatcher turns into intercepts.
    */
-  reachable(fromX, fromZ, dirX, dirZ, horizon = 22, speedFactor = 0.85) {
-    const snap = this.nearestEdge(fromX, fromZ);
+  reachable(fromX, fromZ, dirX, dirZ, horizon = 22, speedFactor = 0.85, fromY = undefined) {
+    const snap = this.nearestEdgeTo({ x: fromX, y: fromY, z: fromZ });
     const result = new Map();
     if (!snap) return result;
 

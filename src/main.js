@@ -941,6 +941,32 @@ class Game {
     return this.sim && this.sim.terrainAt ? this.sim.terrainAt(x, z) : 0;
   }
 
+  /** The height of road `e` at (x, z): its deck, where it is a raised one; else the ground. */
+  roadY(x, z, e) {
+    return e && e.deck ? this.graph.levelOn(e, x, z) : this.groundAt(x, z);
+  }
+
+  /**
+   * Is there water on the straight line between two points -- the river, and not where a bridge carries a road over
+   * it? The force drove straight at a car on the far bank, 82-93 km/h, and in (tests/riverchase.js).
+   */
+  waterBetween(a, b) {
+    const map = this.world.__map;
+    if (!map || !map.inWater || !this.sim.terrainAt) return false;
+    const d = Math.hypot(b.x - a.x, b.z - a.z), n = Math.min(160, Math.ceil(d / 5));
+    for (let k = 0; k <= n; k++) {
+      const x = a.x + (b.x - a.x) * k / n, z = a.z + (b.z - a.z) * k / n;
+      if (map.inWater(x, z, this.sim.terrainAt(x, z))) return true;
+    }
+    return false;
+  }
+
+  /** The height a car put at `pos` stands on: where `pos` is up on a deck, the deck (it knows its height). */
+  _standAt(pos) {
+    const g = this.groundAt(pos.x, pos.z);
+    return this.sim && this.sim.decks && pos.y !== undefined ? Math.max(g, pos.y - 0.95) : g;
+  }
+
   /**
    * Cars that count against `vehicleLimit`: everything but traffic, which has
    * its own small number (game/traffic.js) and must never be why a roadblock
@@ -1496,7 +1522,7 @@ class Game {
   /** A clear line from a car's driving seat to a point a car's height off the ground. */
   _sees(from, pos) {
     _eyeV.set(from.x, (from.y || this.groundAt(from.x, from.z)) + 1.3, from.z);
-    _atV.set(pos.x, this.groundAt(pos.x, pos.z) + 1.2, pos.z);
+    _atV.set(pos.x, this._standAt(pos) + 1.2, pos.z);
     return hasLineOfSight(this.world, _eyeV, _atV, 0.3, SPAWN_SIGHT);
   }
 
@@ -1534,7 +1560,7 @@ class Game {
     // above zero is inside the hill: it fell outside the camera's view and
     // the spot counted as hidden when it was in plain sight, which is most of
     // "they spawn right in front of me" on the new map.
-    _atV.set(pos.x, this.groundAt(pos.x, pos.z) + 1.2, pos.z);
+    _atV.set(pos.x, this._standAt(pos) + 1.2, pos.z);
     const d = cam.position.distanceTo(_atV);
     if (d > 700) return false;
     _viewMat.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
@@ -1671,7 +1697,7 @@ class Game {
   _roadAhead(from, reach) {
     const g = this.graph;
     const p = this.player;
-    const snap = g.nearestEdge(from.x, from.z, 60);
+    const snap = g.nearestEdgeTo(from, 60);
     if (!snap || !p) return [];
 
     let dx = p.forward.x, dz = p.forward.z;
@@ -1775,7 +1801,7 @@ class Game {
     // the far clip of a city street, so the car is never seen to appear, but
     // close enough that they run up on it within a few seconds rather than
     // spending half the chase reeling it in.
-    const reach = g.reachable(target.position.x, target.position.z, dx, dz, 26, 0.9);
+    const reach = g.reachable(target.position.x, target.position.z, dx, dz, 26, 0.9, target.position.y);
     const candidates = [];
     for (const [id, rec] of reach) {
       const n = g.nodes[id];
@@ -1834,7 +1860,7 @@ class Game {
         y: 0.95,
         z: p.z + p.tx * sign * lane * DRIVE_SIDE,
       };
-      pos.y += this.groundAt(pos.x, pos.z);
+      pos.y += this.roadY(pos.x, pos.z, edge);
       if (this.sim.surfaceAt(pos.x, pos.z) !== 1) continue;
       // In view means no block this time. A car materialising a hundred and
       // fifty metres up the road is worse than no rolling block; the
@@ -1881,7 +1907,7 @@ class Game {
    */
   _siteUpRoad(target, dx, dz) {
     const g = this.graph;
-    const snap = g.nearestEdge(target.position.x, target.position.z);
+    const snap = g.nearestEdgeTo(target.position);
     if (!snap || snap.edge.cut) return null;
     let e = snap.edge;
     const t0 = g.pointAt(e, snap.along);
@@ -1927,7 +1953,7 @@ class Game {
     const usable = (q) => {
       const lane = Math.min(3.0, q.edge.width * 0.25);
       const pos = { x: q.x - q.tz * lane * DRIVE_SIDE, y: 0.95, z: q.z + q.tx * lane * DRIVE_SIDE };
-      pos.y += this.groundAt(pos.x, pos.z);
+      pos.y += this.roadY(pos.x, pos.z, q.edge);
       if (this.sim.surfaceAt(pos.x, pos.z) !== 1) return null;
       if (this.nearHuman(pos)) return null;
       for (const v of this.vehicles) {
@@ -1971,7 +1997,7 @@ class Game {
   spawnBlockMates(leader, tier) {
     const g = this.graph;
     const lv = leader.vehicle;
-    const snap = g.nearestEdge(lv.position.x, lv.position.z);
+    const snap = g.nearestEdgeTo(lv.position);
     if (!snap || snap.edge.cut) return null;
     const W = snap.edge.width;
     const count = W >= 11 ? 3 : W >= 7 ? 2 : 1;
@@ -2000,7 +2026,7 @@ class Game {
       if (this.carCount() >= this.vehicleLimit) break;
       const s = slots[i];
       const pos = { x: snap.x + tz * s * W, y: 0.95, z: snap.z - tx * s * W };
-      pos.y += this.groundAt(pos.x, pos.z);
+      pos.y += this.roadY(pos.x, pos.z, snap.edge);
       if (this.sim.surfaceAt(pos.x, pos.z) !== 1) continue;
       // Never appearing in front of anyone, the same as the leader.
       if (this.seenByAnyone(pos)) continue;
@@ -2040,7 +2066,7 @@ class Game {
     if (Math.hypot(dx, dz) < 4) { dx = target.forward.x; dz = target.forward.z; }
     const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
 
-    const reach = g.reachable(target.position.x, target.position.z, dx, dz, 30, 0.9);
+    const reach = g.reachable(target.position.x, target.position.z, dx, dz, 30, 0.9, target.position.y);
     const candidates = [];
     for (const [id, rec] of reach) {
       const n = g.nodes[id];
@@ -2084,7 +2110,7 @@ class Game {
         y: 0.95,
         z: p.z + p.tx * sign * lane * -DRIVE_SIDE,
       };
-      pos.y += this.groundAt(pos.x, pos.z);
+      pos.y += this.roadY(pos.x, pos.z, edge);
       if (this.sim.surfaceAt(pos.x, pos.z) !== 1) continue;
       // Appearing in plain view is only acceptable a long way off.
       if ((this.inView(pos) && dist2(pos.x, pos.z, target.position.x, target.position.z) < 260)
@@ -2187,7 +2213,7 @@ class Game {
   }
 
   roadName(pos) {
-    const snap = this.graph.nearestEdge(pos.x, pos.z);
+    const snap = this.graph.nearestEdgeTo(pos);
     return snap && snap.edge.name ? 'on ' + snap.edge.name : 'in the city';
   }
 
@@ -2197,8 +2223,8 @@ class Game {
    * 40 m means there is no road to name -- a field, or the far side of one.
    */
   roadSign(pos) {
-    const snap = this.graph.nearestEdge(pos.x, pos.z, 40);
-    const name = snap && snap.edge.name;
+    const snap = this.graph.nearestEdgeTo(pos, 40);
+    const name = snap && snap.dist - snap.edge.width * 0.5 < 40 && snap.edge.name;
     return name ? name.replace(/^the\s+/i, '') : '';
   }
 
@@ -3527,7 +3553,7 @@ class Game {
   /** Towed back to the nearest road, facing along it, stopped. */
   _recoverPlayer() {
     const p = this.player;
-    const node = this.graph.nearestNode(p.position.x, p.position.z);
+    const node = this.graph.nearestNode(p.position.x, p.position.z, this.sim.decks ? p.position.y : null);
     const place = (node && this._placeOnRoad(node)) || this.startPlace;
     if (!place) return;
     p.teleport(place.position, place.heading);

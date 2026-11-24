@@ -1440,6 +1440,11 @@ export class Officer {
       this.repathTimer = far ? 4.5 : 1.4;
     }
 
+    // The end of the road, and the river between: stop there.
+    if (this.driver.remaining() < 22 && this._waterTo(dt, point)) {
+      return this.driver.remaining() > 4 ? this.driver.followPath(dt, 9)
+        : this.driver.driveTo(point, 0, dt, { holdStill: true });
+    }
     if (this.driver.remaining() < 22) {
       // Close enough to drive at it directly -- no faster than the caller
       // asked for the rest of the way.
@@ -1475,6 +1480,7 @@ export class Officer {
     const road = this.driver.remaining();
     this._ccOpen = false;
     if (d < 25 || d > CROSS_MAX || road < d * CROSS_SAVING + 25) return false;
+    if (this.game.waterBetween(v.position, point)) return false;
     _ccDir.set(dx / d, 0, dz / d);
     _ccFrom.set(v.position.x, v.position.y + 0.5, v.position.z);
     const toi = sweepBox(v.world, _ccFrom, _ccDir, d, RAY_GROUNDS, v.body, this.driver.halfWidth + 0.6);
@@ -1957,6 +1963,15 @@ export class Officer {
     return this.driver.driveTo(_aim, this._chaseSpeed(), dt);
   }
 
+  /** Is the river between this car and `p`? Asked three times a second. */
+  _waterTo(dt, p) {
+    this._wtFor = (this._wtFor || 0) - dt;
+    if (this._wtFor > 0) return this._wt;
+    this._wtFor = 0.33;
+    this._wt = this.game.waterBetween(this.vehicle.position, p);
+    return this._wt;
+  }
+
   _pursue(dt, target) {
     if (!target) return this._patrol(dt);
     const v = this.vehicle;
@@ -1977,6 +1992,12 @@ export class Officer {
     // about under the deck it was on. `_goTo` asks for the junction at the target's height (nearestNode, y).
     if (Math.abs(target.position.y - v.position.y) > 4 && this.game.graph && this.game.graph.levelGround) {
       this._mode = 'level';
+      this._hasLos = false;
+      return this._goTo(dt, target.position, 1.0);
+    }
+    // Across the river: by a bridge.
+    if (this._waterTo(dt, target.position)) {
+      this._mode = 'river';
       this._hasLos = false;
       return this._goTo(dt, target.position, 1.0);
     }
