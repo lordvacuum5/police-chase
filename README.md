@@ -10687,3 +10687,9 @@ changing lane, and five knocked sideways by the rig's car. They were made all go
 out along any of a junction's roads now, not the first. Not a barrier between: a slip road serves both directions from one side.
 
 Rechecked: traffic on the decks 80 s, 70 cars, 99% moving, none stuck or off; `citychase` 90 s none stuck or fallen.
+
+### Wexbury's High Street joined at its crossings
+
+`RoadGraph.stitchCrossings` filed each segment only in the 60 m cell its start corner was in, so a segment longer than a cell never met a road near its far end. Wexbury's 507 m High Street avenue crossed lanes and streets with no junction. Now each segment is filed in every cell it covers. `tests/cityaudit.js` `auditCity()`: 9 -> 1 roads crossing with no junction (the last a 4 m stub grazing a roundabout ring). Graph 286/367 -> 300/396 nodes/edges. Ashfield City and Haldon Vale unchanged.
+
+*"If you can find any more bugs or inconsistencies."*

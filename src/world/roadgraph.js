@@ -698,16 +698,23 @@ export class RoadGraph {
       for (const s of e.segs) items.push({ e, s });
     }
 
-    // Buckets, because this is otherwise forty thousand segments squared.
+    // Buckets, because this is otherwise forty thousand segments squared. Each segment in every cell it
+    // covers: filed only by the corner it starts in, and the cells either side searched, a segment longer
+    // than a cell never met a road near its far end -- Wexbury's 507 m avenue crossed lanes and streets with no
+    // junction (9 crossings), Ashfield City's long roads 16.
     const CELL = 60;
     const buckets = new Map();
-    const keyOf = (s) => `${Math.floor(Math.min(s.a.x, s.b.x) / CELL)},`
-      + `${Math.floor(Math.min(s.a.z, s.b.z) / CELL)}`;
+    const cellsOf = (s, fn) => {
+      const x0 = Math.floor(Math.min(s.a.x, s.b.x) / CELL), x1 = Math.floor(Math.max(s.a.x, s.b.x) / CELL);
+      const z0 = Math.floor(Math.min(s.a.z, s.b.z) / CELL), z1 = Math.floor(Math.max(s.a.z, s.b.z) / CELL);
+      for (let cx = x0; cx <= x1; cx++) for (let cz = z0; cz <= z1; cz++) fn(`${cx},${cz}`);
+    };
     items.forEach((it, i) => {
-      const k = keyOf(it.s);
-      let b = buckets.get(k);
-      if (!b) { b = []; buckets.set(k, b); }
-      b.push(i);
+      cellsOf(it.s, (k) => {
+        let b = buckets.get(k);
+        if (!b) { b = []; buckets.set(k, b); }
+        b.push(i);
+      });
     });
 
     const cuts = new Map();
@@ -721,53 +728,47 @@ export class RoadGraph {
     for (let i = 0; i < items.length; i++) {
       const A = items[i];
       if (A.e.bridge) continue;
-      const cx = Math.floor(Math.min(A.s.a.x, A.s.b.x) / CELL);
-      const cz = Math.floor(Math.min(A.s.a.z, A.s.b.z) / CELL);
-      for (let dx = -1; dx <= 1; dx++) {
-        for (let dz = -1; dz <= 1; dz++) {
-          const b = buckets.get(`${cx + dx},${cz + dz}`);
-          if (!b) continue;
-          for (const j of b) {
-            if (j <= i) continue;
-            const B = items[j];
-            if (A.e === B.e || B.e.bridge) continue;
-            if (A.e.a === B.e.a || A.e.a === B.e.b
-              || A.e.b === B.e.a || A.e.b === B.e.b) continue;
-            const key = A.e.id < B.e.id
-              ? `${A.e.id}-${B.e.id}` : `${B.e.id}-${A.e.id}`;
-            if (done.has(key)) continue;
+      const near = new Set();
+      cellsOf(A.s, (k) => { const b = buckets.get(k); if (b) for (const j of b) near.add(j); });
+      for (const j of near) {
+        if (j <= i) continue;
+        const B = items[j];
+        if (A.e === B.e || B.e.bridge) continue;
+        if (A.e.a === B.e.a || A.e.a === B.e.b
+          || A.e.b === B.e.a || A.e.b === B.e.b) continue;
+        const key = A.e.id < B.e.id
+          ? `${A.e.id}-${B.e.id}` : `${B.e.id}-${A.e.id}`;
+        if (done.has(key)) continue;
 
-            const hit = segmentCross(A.s, B.s);
-            if (!hit) continue;
-            done.add(key);
+        const hit = segmentCross(A.s, B.s);
+        if (!hit) continue;
+        done.add(key);
 
-            const alongA = A.s.start + dist2(A.s.a.x, A.s.a.z, hit.x, hit.z);
-            const alongB = B.s.start + dist2(B.s.a.x, B.s.a.z, hit.x, hit.z);
+        const alongA = A.s.start + dist2(A.s.a.x, A.s.a.z, hit.x, hit.z);
+        const alongB = B.s.start + dist2(B.s.a.x, B.s.a.z, hit.x, hit.z);
 
-            // Reuse an existing end node if the crossing is near one, rather
-            // than planting a second node a metre from it and leaving a stub.
-            let node = null;
-            if (alongA < snap) node = this.nodes[A.e.a];
-            else if (A.e.length - alongA < snap) node = this.nodes[A.e.b];
-            else if (alongB < snap) node = this.nodes[B.e.a];
-            else if (B.e.length - alongB < snap) node = this.nodes[B.e.b];
-            // Or a crossing either road already has within 3 m: two roads crossing a third a metre apart cut it
-            // at two nodes, the second cut was thrown away as too short, and its road was left joined to nothing.
-            if (!node) {
-              for (const [e, along] of [[A.e, alongA], [B.e, alongB]]) {
-                const c = (cuts.get(e) || []).find((c) => Math.abs(c.along - along) < 3);
-                if (c) { node = c.node; break; }
-              }
-            }
-            if (!node) node = this.addNode(hit.x, hit.z, 'cross');
-
-            if (node !== this.nodes[A.e.a] && node !== this.nodes[A.e.b]) {
-              addCut(A.e, alongA, node);
-            }
-            if (node !== this.nodes[B.e.a] && node !== this.nodes[B.e.b]) {
-              addCut(B.e, alongB, node);
-            }
+        // Reuse an existing end node if the crossing is near one, rather
+        // than planting a second node a metre from it and leaving a stub.
+        let node = null;
+        if (alongA < snap) node = this.nodes[A.e.a];
+        else if (A.e.length - alongA < snap) node = this.nodes[A.e.b];
+        else if (alongB < snap) node = this.nodes[B.e.a];
+        else if (B.e.length - alongB < snap) node = this.nodes[B.e.b];
+        // Or a crossing either road already has within 3 m: two roads crossing a third a metre apart cut it
+        // at two nodes, the second cut was thrown away as too short, and its road was left joined to nothing.
+        if (!node) {
+          for (const [e, along] of [[A.e, alongA], [B.e, alongB]]) {
+            const c = (cuts.get(e) || []).find((c) => Math.abs(c.along - along) < 3);
+            if (c) { node = c.node; break; }
           }
+        }
+        if (!node) node = this.addNode(hit.x, hit.z, 'cross');
+
+        if (node !== this.nodes[A.e.a] && node !== this.nodes[A.e.b]) {
+          addCut(A.e, alongA, node);
+        }
+        if (node !== this.nodes[B.e.a] && node !== this.nodes[B.e.b]) {
+          addCut(B.e, alongB, node);
         }
       }
     }
