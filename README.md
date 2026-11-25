@@ -10693,3 +10693,18 @@ Rechecked: traffic on the decks 80 s, 70 cars, 99% moving, none stuck or off; `c
 `RoadGraph.stitchCrossings` filed each segment only in the 60 m cell its start corner was in, so a segment longer than a cell never met a road near its far end. Wexbury's 507 m High Street avenue crossed lanes and streets with no junction. Now each segment is filed in every cell it covers. `tests/cityaudit.js` `auditCity()`: 9 -> 1 roads crossing with no junction (the last a 4 m stub grazing a roundabout ring). Graph 286/367 -> 300/396 nodes/edges. Ashfield City and Haldon Vale unchanged.
 
 *"If you can find any more bugs or inconsistencies."*
+
+### Far traffic as simple shapes by day, its lights by night; no flick on the helicopter
+
+*"It looks really dense, and then when you get close, it is dense ... the lights are good in the dark, but not good in the day ...
+maybe just like almost just an outline of the car. Would it lag out the game?"* The running lights are at night only. By day and
+night, past 112 m, the real body (5,600 triangles) is swapped for a car of 92, in its own paint, all of them one draw
+(`game/farcars.js`): a body, a cabin, dark glass and sills, lifted a little and up to a third larger the further off, which is what
+makes a dark car show on dark tarmac. `tests/busyroads.js`, streets: 70 cars 665,000 triangles and 353 calls to 401,000 and 280;
+150 cars 401,000 and 280. So 110 cars, not 70. Simulation in one run, ms a frame: 70 cars 6.6 and 7.2, 110 9.1, 150 9.8 (the order
+they were run in; the same 70 twice differed by 0.6). `tests/seenahead.js`, motorway, 35 s, cars met a km: 70 11.5, 110 17.9, 150 24.3;
+first there at a median 855, 866 and 828 m. Checked: by day 43 shapes and no lights, at night 43 and 86 lights.
+
+*"If you move the cursor really quickly, it thinks you're a mouse ... just remove that bit because I'm never gonna fly on a mouse."* The
+flick (1500 px/s, then still for 70 ms: the stick put where the aircraft had got to) is gone: `Input.settleCyclic`,
+`FlyingHelicopter.settle`. Checked by ten 170 px moves in a burst and 200 ms still: the stick stays at 0.5.

@@ -621,16 +621,6 @@ export class FlyingHelicopter {
    * `c` is the control set: collective -1..1, pitch -1..1 (positive is nose
    * down, which is how a cyclic works -- push to go), roll -1..1, yaw -1..1.
    */
-  /**
-   * Stopped where it has got to: the stick, as a share of the full lean, for Input.settleCyclic; and the
-   * turn that was carrying it on, gone. See Input.sampleAir.
-   */
-  settle() {
-    this.pitchRate = 0;
-    this.rollRate = 0;
-    return { pitch: this.pitch / MAX_PITCH, roll: this.roll / MAX_ROLL };
-  }
-
   update(dt, c) {
     this.prevPos.copy(this.position);
     this.prevQuat.copy(this.quaternion);

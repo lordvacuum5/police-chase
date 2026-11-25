@@ -386,7 +386,7 @@ export class Traffic {
       // the hatchback and the estate, a little more on the SUV's bigger
       // wheels. Kept up to date while it is simulated (see _drive).
       const rideY = RIDE + (v.spec.wheelRadius - 0.32);
-      const c = { v, driver: new Driver(v, SKILL.regular), id, stuckFor: 0, pullFor: 0, rideY, lane };
+      const c = { v, driver: new Driver(v, SKILL.regular), id, stuckFor: 0, pullFor: 0, rideY, lane, paint: trafficPaint(id) };
       this.cars.push(c);
       this._route(c);
       return;
@@ -405,7 +405,7 @@ export class Traffic {
     v.isTraffic = true;
     v.setVelocity({ x: Math.sin(heading) * 9, y: 0, z: Math.cos(heading) * 9 });
     const rideY = RIDE + (v.spec.wheelRadius - 0.32);
-    const c = { v, driver: new Driver(v, SKILL.regular), id, stuckFor: 0, pullFor: 0, rideY };
+    const c = { v, driver: new Driver(v, SKILL.regular), id, stuckFor: 0, pullFor: 0, rideY, paint: trafficPaint(id) };
     this.cars.push(c);
     this._route(c);
     return c;
@@ -614,7 +614,7 @@ export class Traffic {
     // Traffic's bodywork ignores the hills, as when it was made (Vehicle, and Suspects._groundIt).
     if (this.game.sim.terrainAt) v.collider.setCollisionGroups(groups(GROUP.VEHICLE, 0xFFFF & ~GROUP.HILL));
     const rideY = RIDE + (v.spec.wheelRadius - 0.32);
-    const c = { v, driver: new Driver(v, SKILL.regular), id: id || `t${++this._made}`, stuckFor: 0, pullFor: 0, rideY };
+    const c = { v, driver: new Driver(v, SKILL.regular), id: id || `t${++this._made}`, stuckFor: 0, pullFor: 0, rideY, paint: trafficPaint(id) };
     this.cars.push(c);
     this._route(c);
     return true;
@@ -637,6 +637,7 @@ export class Traffic {
     // Drawn like any car again (Game._cullTraffic).
     if (c.v.view) { c.v.view.visible = true; c.v.view.traverse((o) => { if (o.isMesh && c.v._shadowOn === false) o.castShadow = this.game.renderer.shadowMap.enabled; }); }
     c.v._shadowOn = undefined;
+    c.v._far = false;
   }
 
   _remove(c) {

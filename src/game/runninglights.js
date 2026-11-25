@@ -1,4 +1,4 @@
-// Traffic's running lights, far off: white to the front, red to the rear, a few pixels each whatever the distance.
+// Traffic's running lights at night, far off: white to the front, red to the rear, a few pixels each whatever the distance.
 //
 // "When driving fast it's hard to see the civilian cars until the last moment." A dark car on dark tarmac 300 m off is six
 // pixels of nearly the same colour, and at 240 km/h that is four seconds away. Near, the car is plain enough without.
@@ -6,7 +6,7 @@ import * as THREE from 'three';
 
 /** Not nearer than this, m, full by the second; gone by the third from the fourth, where the haze has the car. */
 const NEAR = 60, NEAR_FULL = 110, FAR = 900, FAR_FULL = 620;
-const MAX = 160;
+const MAX = 320;
 
 export class RunningLights {
   constructor(scene) {
@@ -37,7 +37,7 @@ export class RunningLights {
     const p = this.pos, col = this.col, cp = camera.position;
     for (const { v } of cars) {
       if (n >= MAX - 2) break;
-      if (!v.view || !v.view.visible || v.disabled) continue;
+      if (!v.view || !(v.view.visible || v._far) || v.disabled) continue;
       const q = v.view.position, dx = cp.x - q.x, dy = cp.y - q.y, dz = cp.z - q.z, d = Math.hypot(dx, dy, dz);
       if (d < NEAR || d > FAR) continue;
       const f = v.forward, l = v.left, toward = f.x * dx + f.z * dz > 0 ? 1 : -1;

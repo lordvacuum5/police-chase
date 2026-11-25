@@ -22,6 +22,7 @@ import {
 import { Driver, SKILL } from './ai/driver.js';
 import { Traffic, trafficPaint } from './game/traffic.js';
 import { RunningLights } from './game/runninglights.js';
+import { FarCars, FROM as FAR_FROM, BACK as FAR_BACK } from './game/farcars.js';
 import { Suspects, suspectSight, SUSPECT_TRACK } from './game/suspects.js';
 import { Runner, pickRunnerCar } from './ai/runner.js';
 import { warmLocalPlanner, pumpPlanner, boxesNear } from './ai/localplan.js';
@@ -482,6 +483,7 @@ class Game {
     this.roadblocks = new RoadblockManager(this);
     this.traffic = new Traffic(this);
     this.runningLights = new RunningLights(this.scene);
+    this.farCars = new FarCars(this.scene);
     // Traffic that gets itself chased: game/suspects.js.
     this.suspects = new Suspects(this);
     this.score = new Score(this);
@@ -3870,12 +3872,6 @@ class Game {
       const stick = this.outcome
         ? { collective: -1, pitch: 0, roll: 0, yaw: 0 }
         : this.input.sampleAir(dt);
-      if (stick.settle && player.settle) {
-        const at = player.settle();
-        this.input.settleCyclic(at.pitch, at.roll);
-        stick.pitch = at.pitch;
-        stick.roll = at.roll;
-      }
       player.update(dt, stick);
     } else if (this.outcome) {
       player.setControls({ throttle: 0, brake: 1, steer: 0, handbrake: 1 });
@@ -4371,7 +4367,10 @@ class Game {
     if (this.parkedCars) this.parkedCars.lights(this.hazards);
     this.lights.end();
     this.hazards.end();
-    this.runningLights.update(replaying ? [] : this.traffic.cars, this.camera);
+    const night = !!(this.weather && this.weather.night);
+    this.farCars.update(replaying ? [] : this.traffic.cars, this.camera, night);
+    // Lights in the dark only: "the lights are good in the dark, but not good in the day".
+    this.runningLights.update(replaying || !night ? [] : this.traffic.cars, this.camera);
 
     // ---- keep the shadow frustum on the player ----
     const p = this.player.position;
@@ -4406,7 +4405,9 @@ class Game {
       _ball.radius = 8;
       const show = d < 45 || (d < far && _frustum.intersectsSphere(_ball));
       const shadow = this.renderer.shadowMap.enabled && d < SHADOW_TRAFFIC;
-      v.view.visible = show;
+      // Far off, a simple shape of it instead (game/farcars.js).
+      v._far = show && d > (v._far ? FAR_BACK : FAR_FROM);
+      v.view.visible = show && !v._far;
       if (v._shadowOn !== shadow) {
         v._shadowOn = shadow;
         v.view.traverse((o) => { if (o.isMesh) o.castShadow = shadow; });

@@ -338,7 +338,7 @@ export function buildCity(sim, scene, seed = 20260822) {
     /** Stretches of raised road with no barrier (world/jumps.js). */
     jumps: ctx.jumps,
     // 28 to 50: "maybe we should have denser traffic ... it just looks so empty". Simulated only within 100 m, not 150.
-    trafficCount: 70,
+    trafficCount: 110,
     // Seen coming from as far as the fog lets you: what may come into being in view does so past it.
     trafficFar: 560,
     trafficSim: 100,

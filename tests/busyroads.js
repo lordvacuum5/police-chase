@@ -51,6 +51,8 @@ export async function busyRoads(settings, secs = 60, opts = {}) {
       if (i % 120 === 119) {
         g._fogTick = 14; g._fogCull();
         if (g._cullTraffic && opts.cull !== false) g._cullTraffic();
+        // And the far ones' shapes (game/farcars.js), as Game._render does.
+        if (g.farCars) { for (const q of g.traffic.cars) { q.v.view.position.copy(q.v.position); q.v.view.quaternion.copy(q.v.quaternion); } g.farCars.update(g.traffic.cars, c, false); }
         g.renderer.info.autoReset = true;
         g.renderer.render(g.scene, c);
         if (i > 600) { r.tris += g.renderer.info.render.triangles; r.calls += g.renderer.info.render.calls; r.frames++; }
