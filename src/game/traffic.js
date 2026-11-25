@@ -463,6 +463,8 @@ export class Traffic {
    * in the sky, certain positions when they're on the highway and I'm beneath."
    */
   _onItsRoads(pts, y) {
+    // Only Ashfield has roads over roads, and says how high the ground is under them.
+    if (!this.game.graph.levelGround) return pts;
     const gr = this.game.graph, off = (e, p) => {
       let best = Infinity;
       for (const s of e.segs) {
