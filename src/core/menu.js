@@ -44,7 +44,7 @@ import { carCards } from '../game/cards.js';
 import { TYPE_RULES, dailyPlan, dailyBest, setDaily, fetchBoard, boardHtml, fmtTime, savedName } from '../game/daily.js';
 import { makeRng, TAU } from '../util/math.js';
 import {
-  englishVoices, pickVoices, voiceChoices, setVoiceChoice, speakSample, SPEAKER_NAMES,
+  englishVoices, pickVoices, voiceChoices, setVoiceChoice, speakSample, SPEAKER_NAMES, voicePack, setVoicePack, fetchVoicePack,
 } from '../game/audio.js';
 
 /**
@@ -787,11 +787,44 @@ function buildBestScores() {
  * suits them. Choosing one plays a sample; the choice is remembered.
  */
 let voicesListening = false;
+
+/**
+ * The optional voice pack, at the very bottom: recorded police voices, fetched from the server when switched on and
+ * remembered. "Can you make it possible that I can? ... a thing at the very bottom saying optional like voice pack."
+ */
+function buildVoicePack(changed) {
+  const box = document.getElementById('voicepack');
+  if (!box) return;
+  const show = (note) => {
+    const on = voicePack();
+    box.innerHTML = `<div class="menusub">VOICE PACK · OPTIONAL</div><div class="row">`
+      + `<button type="button" id="vpon" class="${on ? 'on' : ''}" aria-pressed="${on}">${on ? 'ON' : 'TURN ON'}</button>`
+      + (on ? Object.keys(SPEAKER_NAMES).map((w) => `<button type="button" data-who="${w}">&#9654; ${SPEAKER_NAMES[w]}</button>`).join('') : '')
+      + `</div><div class="note">${note || (on ? 'Recorded police voices, through the radio.' : 'Recorded police voices instead of the browser’s. About 8 MB the first time.')}</div>`;
+    box.querySelector('#vpon').addEventListener('click', async () => {
+      if (voicePack()) { setVoicePack(false); show(); changed(); return; }
+      show('Downloading…');
+      const ok = await fetchVoicePack();
+      setVoicePack(ok);
+      show(ok ? '' : 'Could not be downloaded. Try again in a minute.');
+      changed();
+    });
+    for (const b of box.querySelectorAll('[data-who]')) b.addEventListener('click', () => {
+      // The pack's own, whatever voice is picked above.
+      setVoiceChoice(b.dataset.who, '');
+      speakSample(b.dataset.who, null);
+      changed();
+    });
+  };
+  show();
+}
+
 function buildVoicePicker() {
   const holder = document.getElementById('voices');
   const sub = document.getElementById('voicesub');
   const hint = document.getElementById('voicehint');
   const speech = window.speechSynthesis;
+  if (!speech) buildVoicePack(() => {});
   if (!holder || !speech) return;
 
   const short = (v) => (v ? v.name
@@ -807,8 +840,7 @@ function buildVoicePicker() {
     holder.hidden = sub.hidden = hint.hidden = !shown;
     if (!shown) return;
 
-    const auto = pickVoices(all, {});
-    const chosen = voiceChoices();
+    const chosen = voiceChoices(), auto = pickVoices(all, {});
     holder.innerHTML = '';
     for (const who of Object.keys(SPEAKER_NAMES)) {
       const card = document.createElement('div');
@@ -818,7 +850,7 @@ function buildVoicePicker() {
         + `<div class="row"><select id="${id}"></select>`
         + `<button type="button" title="Hear it">&#9654;</button></div>`;
       const select = card.querySelector('select');
-      select.add(new Option(`Auto: ${short(auto[who])}`, ''));
+      select.add(new Option(voicePack() ? 'Voice pack' : `Auto: ${short(auto[who])}`, ''));
       for (const v of list) select.add(new Option(short(v), v.name, false, chosen[who] === v.name));
       const current = () => (pickVoices(speech.getVoices()) || {})[who];
       select.addEventListener('change', () => {
@@ -837,6 +869,7 @@ function buildVoicePicker() {
         edge ? '.' : ', or play in Microsoft Edge, which has clearer natural voices.'}`;
   };
 
+  buildVoicePack(render);
   render();
   if (!voicesListening) {
     voicesListening = true;

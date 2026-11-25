@@ -460,6 +460,11 @@
   .voice select { flex: 1; min-width: 0; padding: 4px 3px; }
   .voice button { color: var(--blue); padding: 0 9px; cursor: pointer; }
   .voice select:focus, .voice button:focus, .voice button:hover { border-color: var(--blue); outline: none; }
+  #voicepack { margin-top: 20px; text-align: center; }
+  #voicepack .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
+  #voicepack button { background: #0d1116; color: var(--blue); border: 1px solid var(--edge); border-radius: 4px; font: inherit; font-size: 11px; letter-spacing: 1px; padding: 7px 14px; cursor: pointer; }
+  #voicepack button.on, #voicepack button:hover, #voicepack button:focus { border-color: var(--blue); outline: none; }
+  #voicepack .note { margin-top: 8px; font-size: 10.5px; color: var(--dim); }
   #voicehint { margin-top: 8px; max-width: 640px; padding: 0 20px; font-size: 10.5px; line-height: 1.5; color: var(--dim); text-align: center; }
 
   /* ---- loading ---- */
@@ -1036,6 +1041,7 @@
   <div class="menusub" id="voicesub" hidden>RADIO VOICES</div>
   <div id="voices" hidden></div>
   <div id="voicehint" hidden></div>
+  <div id="voicepack"></div>
   <div id="menuhint">Press <b>M</b> in game to come back here</div>
 </div>
 

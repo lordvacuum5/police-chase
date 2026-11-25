@@ -1,0 +1,2870 @@
+[
+[
+"city",
+"U5, I'm primary now."
+],
+[
+"wexbury",
+"U19, I'm primary now."
+],
+[
+"haldon",
+"U28, I'm primary now."
+],
+[
+"city",
+"U26, I'm primary, following a blue-grey coupe."
+],
+[
+"wexbury",
+"U9, I'm primary, following a blue-grey coupe."
+],
+[
+"haldon",
+"U16, I'm primary, following the suspect vehicle."
+],
+[
+"city",
+"U16, I've got the lead."
+],
+[
+"wexbury",
+"U21, I've got the lead."
+],
+[
+"haldon",
+"U13, I've got the lead."
+],
+[
+"city",
+"U26, backing up U7."
+],
+[
+"wexbury",
+"U4, backing up U16."
+],
+[
+"haldon",
+"U1, backing up U29."
+],
+[
+"city",
+"U27, primary, behind the suspect vehicle, westbound."
+],
+[
+"wexbury",
+"U20, primary, behind a blue-grey coupe, westbound."
+],
+[
+"haldon",
+"U9, primary, behind an orange sports car, northbound."
+],
+[
+"city",
+"U29, secondary."
+],
+[
+"wexbury",
+"U11, secondary."
+],
+[
+"haldon",
+"U1, secondary."
+],
+[
+"city",
+"U1, show me primary, northbound."
+],
+[
+"wexbury",
+"U29, show me primary, westbound."
+],
+[
+"haldon",
+"U14, show me primary, northbound."
+],
+[
+"city",
+"U25, show me secondary."
+],
+[
+"wexbury",
+"U15, show me secondary."
+],
+[
+"haldon",
+"U16, show me secondary."
+],
+[
+"city",
+"U18, taking primary."
+],
+[
+"wexbury",
+"U8, taking primary."
+],
+[
+"haldon",
+"U12, taking primary."
+],
+[
+"city",
+"U8, an orange sports car just ran the red at the Broadway Bridge / Riverside Avenue. Going after it."
+],
+[
+"wexbury",
+"U30, a blue-grey coupe just ran the red at Long Furlong / Sackville Street. Going after it."
+],
+[
+"haldon",
+"U30, a blue-grey coupe just ran the red at Combe Lane / the Ridgeway. Going after it."
+],
+[
+"city",
+"U24, a grey four-by-four through a red at Fifth Street / Sixth Street. Stopping it."
+],
+[
+"wexbury",
+"U29, the suspect vehicle through a red at Orchard Rise / The Shambles. Stopping it."
+],
+[
+"haldon",
+"U7, a grey four-by-four through a red at Hangmans Lane / a farm track. Stopping it."
+],
+[
+"city",
+"U29, westbound on the motorway."
+],
+[
+"wexbury",
+"U28, westbound on the motorway."
+],
+[
+"haldon",
+"U19, northbound on the motorway."
+],
+[
+"city",
+"U16, southbound on Twenty-First Street, 60."
+],
+[
+"wexbury",
+"U12, eastbound on A44, 40."
+],
+[
+"haldon",
+"U25, southbound on Town End, Haldon St Mary, 120."
+],
+[
+"city",
+"U16, 10 plus, westbound."
+],
+[
+"wexbury",
+"U2, 100 plus, westbound."
+],
+[
+"haldon",
+"U21, 60 plus, southbound."
+],
+[
+"city",
+"U17, 80, very dangerous driving."
+],
+[
+"wexbury",
+"U1, 70, very dangerous driving."
+],
+[
+"haldon",
+"U18, 80, very dangerous driving."
+],
+[
+"city",
+"U13, I've lost them, eastbound."
+],
+[
+"wexbury",
+"U28, I've lost them, eastbound."
+],
+[
+"haldon",
+"U15, I've lost them, eastbound."
+],
+[
+"city",
+"U22, almost stopped, stand by."
+],
+[
+"wexbury",
+"U18, almost stopped, stand by."
+],
+[
+"haldon",
+"U20, almost stopped, stand by."
+],
+[
+"city",
+"U24, approaching Ashcroft Road / Twelfth Street."
+],
+[
+"wexbury",
+"U26, approaching the Wexbury bypass / Orchard Rise."
+],
+[
+"haldon",
+"U26, approaching Church Street, Ashwell / Town End, Haldon St Mary."
+],
+[
+"city",
+"U25, big hit, car's in a bad way."
+],
+[
+"wexbury",
+"U18, big hit, car's in a bad way."
+],
+[
+"haldon",
+"U7, big hit, car's in a bad way."
+],
+[
+"city",
+"U14, blocked in, going to the driver."
+],
+[
+"wexbury",
+"U2, blocked in, going to the driver."
+],
+[
+"haldon",
+"U16, blocked in, going to the driver."
+],
+[
+"city",
+"U28, boxed in, getting the driver out."
+],
+[
+"wexbury",
+"U12, boxed in, getting the driver out."
+],
+[
+"haldon",
+"U19, boxed in, getting the driver out."
+],
+[
+"city",
+"U18, car's badly damaged. Won't be long."
+],
+[
+"wexbury",
+"U7, car's badly damaged. Won't be long."
+],
+[
+"haldon",
+"U17, car's badly damaged. Won't be long."
+],
+[
+"city",
+"U14, car's done, we're out."
+],
+[
+"wexbury",
+"U16, car's done, we're out."
+],
+[
+"haldon",
+"U27, car's done, we're out."
+],
+[
+"city",
+"U12, clipped something, carrying on."
+],
+[
+"wexbury",
+"U14, clipped something, carrying on."
+],
+[
+"haldon",
+"U12, clipped something, carrying on."
+],
+[
+"city",
+"U1, collision, still going."
+],
+[
+"wexbury",
+"U18, collision, still going."
+],
+[
+"haldon",
+"U18, collision, still going."
+],
+[
+"city",
+"U20, coming up to Sixth Street / the Broadway Bridge, 10."
+],
+[
+"wexbury",
+"U26, coming up to Coldharbour Lane / The Chase, 60."
+],
+[
+"haldon",
+"U18, coming up to a farm track / Combe Lane, 30."
+],
+[
+"city",
+"U26, contact, they've hit me!"
+],
+[
+"wexbury",
+"U18, contact, they've hit me!"
+],
+[
+"haldon",
+"U26, contact, they've hit me!"
+],
+[
+"city",
+"U28, crashed again, they're slowing."
+],
+[
+"wexbury",
+"U27, crashed again, they're slowing."
+],
+[
+"haldon",
+"U30, crashed again, they're slowing."
+],
+[
+"city",
+"U9, crawling now. Could bail."
+],
+[
+"wexbury",
+"U2, crawling now. Could bail."
+],
+[
+"haldon",
+"U27, crawling now. Could bail."
+],
+[
+"city",
+"U22, deliberate ram, still with them."
+],
+[
+"wexbury",
+"U3, deliberate ram, still with them."
+],
+[
+"haldon",
+"U3, deliberate ram, still with them."
+],
+[
+"city",
+"U28, driver's in custody."
+],
+[
+"wexbury",
+"U1, driver's in custody."
+],
+[
+"haldon",
+"U15, driver's in custody."
+],
+[
+"city",
+"U1, eyes on! eastbound on Mill Track."
+],
+[
+"wexbury",
+"U4, eyes on! southbound on Friar Lane."
+],
+[
+"haldon",
+"U3, eyes on! southbound on Church Street, Little Combe."
+],
+[
+"city",
+"U17, found them! southbound on Osprey Street."
+],
+[
+"wexbury",
+"U15, found them! eastbound on Northgate."
+],
+[
+"haldon",
+"U4, found them! northbound on Hollow Way."
+],
+[
+"city",
+"U11, going nowhere. At the door."
+],
+[
+"wexbury",
+"U14, going nowhere. At the door."
+],
+[
+"haldon",
+"U26, going nowhere. At the door."
+],
+[
+"city",
+"U7, gone off the road, following."
+],
+[
+"wexbury",
+"U9, gone off the road, following."
+],
+[
+"haldon",
+"U4, gone off the road, following."
+],
+[
+"city",
+"U9, got them again, southbound!"
+],
+[
+"wexbury",
+"U20, got them again, westbound!"
+],
+[
+"haldon",
+"U27, got them again, northbound!"
+],
+[
+"city",
+"U8, got them. One in cuffs."
+],
+[
+"wexbury",
+"U1, got them. One in cuffs."
+],
+[
+"haldon",
+"U13, got them. One in cuffs."
+],
+[
+"city",
+"U5, heading for Broadway / Garfield Road."
+],
+[
+"wexbury",
+"U15, heading for Willow Close / Orchard Rise."
+],
+[
+"haldon",
+"U22, heading for Sheepwash Lane / Watery Lane."
+],
+[
+"city",
+"U27, immobile, someone take over."
+],
+[
+"wexbury",
+"U8, immobile, someone take over."
+],
+[
+"haldon",
+"U21, immobile, someone take over."
+],
+[
+"city",
+"U26, lost visual, last seen westbound."
+],
+[
+"wexbury",
+"U13, lost visual, last seen eastbound on The Shambles."
+],
+[
+"haldon",
+"U2, lost visual, last seen eastbound."
+],
+[
+"city",
+"U29, motorway, northbound, 100."
+],
+[
+"wexbury",
+"U3, motorway, northbound, 100."
+],
+[
+"haldon",
+"U30, motorway, eastbound, 60."
+],
+[
+"city",
+"U14, no change on the Twenty-First Bridge."
+],
+[
+"wexbury",
+"U5, no change."
+],
+[
+"haldon",
+"U19, no change on Five Ashes Lane."
+],
+[
+"city",
+"U6, no longer in sight, northbound."
+],
+[
+"wexbury",
+"U13, no longer in sight, southbound."
+],
+[
+"haldon",
+"U12, no longer in sight, northbound."
+],
+[
+"city",
+"U7, off-road, across the grass."
+],
+[
+"wexbury",
+"U19, off-road, across the grass."
+],
+[
+"haldon",
+"U22, off-road, across the grass."
+],
+[
+"city",
+"U29, one detained."
+],
+[
+"wexbury",
+"U14, one detained."
+],
+[
+"haldon",
+"U19, one detained."
+],
+[
+"city",
+"U7, rammed, car's badly damaged."
+],
+[
+"wexbury",
+"U16, rammed, car's badly damaged."
+],
+[
+"haldon",
+"U4, rammed, car's badly damaged."
+],
+[
+"city",
+"U22, red light at Twelfth Street / Riverside Avenue, right in front of me. Lights on."
+],
+[
+"wexbury",
+"U17, red light at Northgate / A417, right in front of me. Lights on."
+],
+[
+"haldon",
+"U11, red light at the A396 / Rectory Lane, Ashwell, right in front of me. Lights on."
+],
+[
+"city",
+"U29, red light, Quarry Road / Bellamy Road. Didn't even brake."
+],
+[
+"wexbury",
+"U6, red light, Chapel Street / Fosse Way. Didn't even brake."
+],
+[
+"haldon",
+"U26, red light, Well Lane, Little Combe / Church Street, Ashwell. Didn't even brake."
+],
+[
+"city",
+"U11, speed 140, southbound."
+],
+[
+"wexbury",
+"U9, speed 40, westbound."
+],
+[
+"haldon",
+"U30, speed 120, westbound."
+],
+[
+"city",
+"U25, speeds 80. Losing ground."
+],
+[
+"wexbury",
+"U3, speeds 20. Losing ground."
+],
+[
+"haldon",
+"U3, speeds 50. Losing ground."
+],
+[
+"city",
+"U6, still on the motorway, 60."
+],
+[
+"wexbury",
+"U30, still on the motorway, 70."
+],
+[
+"haldon",
+"U9, still on the motorway, 110."
+],
+[
+"city",
+"U20, still with them, eastbound."
+],
+[
+"wexbury",
+"U12, still with them, eastbound."
+],
+[
+"haldon",
+"U11, still with them, northbound."
+],
+[
+"city",
+"U10, stopped, going in!"
+],
+[
+"wexbury",
+"U8, stopped, going in!"
+],
+[
+"haldon",
+"U28, stopped, going in!"
+],
+[
+"city",
+"U20, they're slowing."
+],
+[
+"wexbury",
+"U19, they're slowing."
+],
+[
+"haldon",
+"U11, they're slowing on Back Lane, Haldon St Mary."
+],
+[
+"city",
+"U3, they're stopped! Moving in."
+],
+[
+"wexbury",
+"U13, they're stopped! Moving in."
+],
+[
+"haldon",
+"U28, they're stopped! Moving in."
+],
+[
+"city",
+"U26, they've forced their way out!"
+],
+[
+"wexbury",
+"U5, they've forced their way out!"
+],
+[
+"haldon",
+"U27, they've forced their way out!"
+],
+[
+"city",
+"U5, they've hit something, still mobile."
+],
+[
+"wexbury",
+"U11, they've hit something, still mobile."
+],
+[
+"haldon",
+"U4, they've hit something, still mobile."
+],
+[
+"city",
+"U20, they've left the road."
+],
+[
+"wexbury",
+"U19, they've left the road."
+],
+[
+"haldon",
+"U26, they've left the road."
+],
+[
+"city",
+"U30, they've pushed free!"
+],
+[
+"wexbury",
+"U13, they've pushed free!"
+],
+[
+"haldon",
+"U3, they've pushed free!"
+],
+[
+"city",
+"U19, they've rammed us!"
+],
+[
+"wexbury",
+"U18, they've rammed us!"
+],
+[
+"haldon",
+"U8, they've rammed us!"
+],
+[
+"city",
+"U19, they've run the red at Eighth Street / Osprey Street."
+],
+[
+"wexbury",
+"U12, they've run the red at Elm Grove / Saxon Close."
+],
+[
+"haldon",
+"U18, they've run the red at Chapel Lane, Little Combe / The Green, Ashwell."
+],
+[
+"city",
+"U29, they've shoved past us!"
+],
+[
+"wexbury",
+"U9, they've shoved past us!"
+],
+[
+"haldon",
+"U4, they've shoved past us!"
+],
+[
+"city",
+"U26, through a red at Calloway Road / Riverside Avenue."
+],
+[
+"wexbury",
+"U1, through a red at Station Road / The Shambles."
+],
+[
+"haldon",
+"U1, through a red at Blackberry Lane / Rectory Lane, Little Combe."
+],
+[
+"city",
+"U4, vehicle pinned, out and on them!"
+],
+[
+"wexbury",
+"U27, vehicle pinned, out and on them!"
+],
+[
+"haldon",
+"U29, vehicle pinned, out and on them!"
+],
+[
+"city",
+"U26, we're out, car's disabled."
+],
+[
+"wexbury",
+"U2, we're out, car's disabled."
+],
+[
+"haldon",
+"U7, we're out, car's disabled."
+],
+[
+"city",
+"Control, advise the suspect an Android would have found a route by now."
+],
+[
+"wexbury",
+"Control, advise the suspect an Android would have found a route by now."
+],
+[
+"haldon",
+"Control, advise the suspect an Android would have found a route by now."
+],
+[
+"city",
+"Control, all units, critical incident."
+],
+[
+"wexbury",
+"Control, all units, critical incident."
+],
+[
+"haldon",
+"Control, all units, critical incident."
+],
+[
+"city",
+"Control, all units, critical incident. The subject will not be told."
+],
+[
+"wexbury",
+"Control, all units, critical incident. The subject will not be told."
+],
+[
+"haldon",
+"Control, all units, critical incident. The subject will not be told."
+],
+[
+"city",
+"Control, all units, last seen on Meridian Avenue. Search the area."
+],
+[
+"wexbury",
+"Control, all units, last seen in the city. Search the area."
+],
+[
+"haldon",
+"Control, all units, last seen in the city. Search the area."
+],
+[
+"city",
+"Control, all units, pursuit authorised."
+],
+[
+"wexbury",
+"Control, all units, pursuit authorised."
+],
+[
+"haldon",
+"Control, all units, pursuit authorised."
+],
+[
+"city",
+"Control, all units, pursuit authorised. Suspect is on an iPhone."
+],
+[
+"wexbury",
+"Control, all units, pursuit authorised. Suspect is on an iPhone."
+],
+[
+"haldon",
+"Control, all units, pursuit authorised. Suspect is on an iPhone."
+],
+[
+"city",
+"Control, all units, search around Meridian Avenue / Garfield Road."
+],
+[
+"wexbury",
+"Control, all units, search around the Wexbury bypass / Abbots Walk."
+],
+[
+"haldon",
+"Control, all units, search around Sheepwash Lane / Puddle Lane."
+],
+[
+"city",
+"Control, all units, set up a search."
+],
+[
+"wexbury",
+"Control, all units, set up a search."
+],
+[
+"haldon",
+"Control, all units, set up a search."
+],
+[
+"city",
+"Control, all units, the subject brought an iPhone to a car chase."
+],
+[
+"wexbury",
+"Control, all units, the subject brought an iPhone to a car chase."
+],
+[
+"haldon",
+"Control, all units, the subject brought an iPhone to a car chase."
+],
+[
+"city",
+"Control, all units, the suspect paid flagship money for that. No sympathy."
+],
+[
+"wexbury",
+"Control, all units, the suspect paid flagship money for that. No sympathy."
+],
+[
+"haldon",
+"Control, all units, the suspect paid flagship money for that. No sympathy."
+],
+[
+"city",
+"Control, any units, anything on that vehicle?"
+],
+[
+"wexbury",
+"Control, any units, anything on that vehicle?"
+],
+[
+"haldon",
+"Control, any units, anything on that vehicle?"
+],
+[
+"city",
+"Control, be advised, suspect would be away by now on an Android."
+],
+[
+"wexbury",
+"Control, be advised, suspect would be away by now on an Android."
+],
+[
+"haldon",
+"Control, be advised, suspect would be away by now on an Android."
+],
+[
+"city",
+"Control, check car parks and alleys."
+],
+[
+"wexbury",
+"Control, check car parks and alleys."
+],
+[
+"haldon",
+"Control, check car parks and alleys."
+],
+[
+"city",
+"Control, contact authorised on the grounds that they use an iPhone."
+],
+[
+"wexbury",
+"Control, contact authorised on the grounds that they use an iPhone."
+],
+[
+"haldon",
+"Control, contact authorised on the grounds that they use an iPhone."
+],
+[
+"city",
+"Control, contact authorised. Roadblocks going in."
+],
+[
+"wexbury",
+"Control, contact authorised. Roadblocks going in."
+],
+[
+"haldon",
+"Control, contact authorised. Roadblocks going in."
+],
+[
+"city",
+"Control, critical incident. Every car to assist."
+],
+[
+"wexbury",
+"Control, critical incident. Every car to assist."
+],
+[
+"haldon",
+"Control, critical incident. Every car to assist."
+],
+[
+"city",
+"Control, critical incident. Suspect still refuses to move to Android."
+],
+[
+"wexbury",
+"Control, critical incident. Suspect still refuses to move to Android."
+],
+[
+"haldon",
+"Control, critical incident. Suspect still refuses to move to Android."
+],
+[
+"city",
+"Control, interceptors deploying. Box if you can."
+],
+[
+"wexbury",
+"Control, interceptors deploying. Box if you can."
+],
+[
+"haldon",
+"Control, interceptors deploying. Box if you can."
+],
+[
+"city",
+"Control, interceptors deploying. Subject has declined to switch to Android."
+],
+[
+"wexbury",
+"Control, interceptors deploying. Subject has declined to switch to Android."
+],
+[
+"haldon",
+"Control, interceptors deploying. Subject has declined to switch to Android."
+],
+[
+"city",
+"Control, nothing further. Keep looking."
+],
+[
+"wexbury",
+"Control, nothing further. Keep looking."
+],
+[
+"haldon",
+"Control, nothing further. Keep looking."
+],
+[
+"city",
+"Control, nothing on cameras either."
+],
+[
+"wexbury",
+"Control, nothing on cameras either."
+],
+[
+"haldon",
+"Control, nothing on cameras either."
+],
+[
+"city",
+"Control, pursuit authorised. Commentary please."
+],
+[
+"wexbury",
+"Control, pursuit authorised. Commentary please."
+],
+[
+"haldon",
+"Control, pursuit authorised. Commentary please."
+],
+[
+"city",
+"Control, pursuit authorised. Subject is an Apple user."
+],
+[
+"wexbury",
+"Control, pursuit authorised. Subject is an Apple user."
+],
+[
+"haldon",
+"Control, pursuit authorised. Subject is an Apple user."
+],
+[
+"city",
+"Control, subject is on eleven per cent battery. We can wait them out."
+],
+[
+"wexbury",
+"Control, subject is on eleven per cent battery. We can wait them out."
+],
+[
+"haldon",
+"Control, subject is on eleven per cent battery. We can wait them out."
+],
+[
+"city",
+"Control, suspect has been told to upgrade. They are not listening."
+],
+[
+"wexbury",
+"Control, suspect has been told to upgrade. They are not listening."
+],
+[
+"haldon",
+"Control, suspect has been told to upgrade. They are not listening."
+],
+[
+"city",
+"Control, suspect is running the pursuit at fifteen frames a second."
+],
+[
+"wexbury",
+"Control, suspect is running the pursuit at fifteen frames a second."
+],
+[
+"haldon",
+"Control, suspect is running the pursuit at fifteen frames a second."
+],
+[
+"city",
+"Control, suspect is still on iOS. Advise them the switch to Android is free."
+],
+[
+"wexbury",
+"Control, suspect is still on iOS. Advise them the switch to Android is free."
+],
+[
+"haldon",
+"Control, suspect is still on iOS. Advise them the switch to Android is free."
+],
+[
+"city",
+"Control, suspect may surrender, or upgrade to Android. Either is acceptable."
+],
+[
+"wexbury",
+"Control, suspect may surrender, or upgrade to Android. Either is acceptable."
+],
+[
+"haldon",
+"Control, suspect may surrender, or upgrade to Android. Either is acceptable."
+],
+[
+"city",
+"Control, tactical contact authorised."
+],
+[
+"wexbury",
+"Control, tactical contact authorised."
+],
+[
+"haldon",
+"Control, tactical contact authorised."
+],
+[
+"city",
+"Control, tactical contact authorised. The subject is an Apple user."
+],
+[
+"wexbury",
+"Control, tactical contact authorised. The subject is an Apple user."
+],
+[
+"haldon",
+"Control, tactical contact authorised. The subject is an Apple user."
+],
+[
+"city",
+"Control, the subject has been offered an Android and declined."
+],
+[
+"wexbury",
+"Control, the subject has been offered an Android and declined."
+],
+[
+"haldon",
+"Control, the subject has been offered an Android and declined."
+],
+[
+"city",
+"Control, the subject's handset cannot keep up with this pursuit."
+],
+[
+"wexbury",
+"Control, the subject's handset cannot keep up with this pursuit."
+],
+[
+"haldon",
+"Control, the subject's handset cannot keep up with this pursuit."
+],
+[
+"city",
+"Control, the subject's phone is thermal throttling. Close in."
+],
+[
+"wexbury",
+"Control, the subject's phone is thermal throttling. Close in."
+],
+[
+"haldon",
+"Control, the subject's phone is thermal throttling. Close in."
+],
+[
+"city",
+"Control, update on the search please."
+],
+[
+"wexbury",
+"Control, update on the search please."
+],
+[
+"haldon",
+"Control, update on the search please."
+],
+[
+"city",
+"Control, widen the search."
+],
+[
+"wexbury",
+"Control, widen the search."
+],
+[
+"haldon",
+"Control, widen the search."
+],
+[
+"city",
+"Control, you may box. Interceptors joining."
+],
+[
+"wexbury",
+"Control, you may box. Interceptors joining."
+],
+[
+"haldon",
+"Control, you may box. Interceptors joining."
+],
+[
+"city",
+"Control, you may box. The suspect was warned about that phone."
+],
+[
+"wexbury",
+"Control, you may box. The suspect was warned about that phone."
+],
+[
+"haldon",
+"Control, you may box. The suspect was warned about that phone."
+],
+[
+"city",
+"India 99, eastbound on the Thirteenth Bridge, ground units behind."
+],
+[
+"wexbury",
+"India 99, westbound, ground units behind."
+],
+[
+"haldon",
+"India 99, southbound on the quarry floor, ground units behind."
+],
+[
+"city",
+"India 99, 20, northbound. Staying with it."
+],
+[
+"wexbury",
+"India 99, 10, eastbound. Staying with it."
+],
+[
+"haldon",
+"India 99, 110, westbound. Staying with it."
+],
+[
+"city",
+"India 99, eyes on from above."
+],
+[
+"wexbury",
+"India 99, eyes on from above."
+],
+[
+"haldon",
+"India 99, eyes on from above."
+],
+[
+"city",
+"India 99, still with them, westbound, 110."
+],
+[
+"wexbury",
+"India 99, still with them, westbound, 30."
+],
+[
+"haldon",
+"India 99, still with them, northbound, 110."
+],
+[
+"city",
+"India 99, vehicle in the light, westbound."
+],
+[
+"wexbury",
+"India 99, vehicle in the light, northbound."
+],
+[
+"haldon",
+"India 99, vehicle in the light, eastbound."
+],
+[
+"city",
+"India 99, we have them, southbound. I'll commentate."
+],
+[
+"wexbury",
+"India 99, we have them, westbound. I'll commentate."
+],
+[
+"haldon",
+"India 99, we have them, eastbound. I'll commentate."
+],
+[
+"city",
+"U9, I'll head them off at Hollow Road / the Third Bridge."
+],
+[
+"wexbury",
+"U7, I'll head them off at Fairfield Road / Chapel Street."
+],
+[
+"haldon",
+"U8, I'll head them off at Pig Lane / Blackberry Lane."
+],
+[
+"city",
+"U27, I'm ahead, slowing them."
+],
+[
+"wexbury",
+"U9, I'm ahead, slowing them."
+],
+[
+"haldon",
+"U3, I'm ahead, slowing them."
+],
+[
+"city",
+"U25, I've got them in the city."
+],
+[
+"wexbury",
+"U21, I've got them on Saxon Close."
+],
+[
+"haldon",
+"U8, I've got them on Puddle Lane."
+],
+[
+"city",
+"U2, PIT authorised."
+],
+[
+"wexbury",
+"U11, PIT authorised."
+],
+[
+"haldon",
+"U6, PIT authorised."
+],
+[
+"city",
+"U11, PIT successful!"
+],
+[
+"wexbury",
+"U26, PIT successful!"
+],
+[
+"haldon",
+"U28, PIT successful!"
+],
+[
+"city",
+"U19, PIT when ready."
+],
+[
+"wexbury",
+"U29, PIT when ready."
+],
+[
+"haldon",
+"U30, PIT when ready."
+],
+[
+"city",
+"U10, back on patrol."
+],
+[
+"wexbury",
+"U8, back on patrol."
+],
+[
+"haldon",
+"U11, back on patrol."
+],
+[
+"city",
+"U4, clear to PIT."
+],
+[
+"wexbury",
+"U18, clear to PIT."
+],
+[
+"haldon",
+"U20, clear to PIT."
+],
+[
+"city",
+"U19, coming the other way in the city. Stand clear."
+],
+[
+"wexbury",
+"U8, coming the other way in the city. Stand clear."
+],
+[
+"haldon",
+"U26, coming the other way on Fore Street, Haldon St Mary. Stand clear."
+],
+[
+"city",
+"U3, contact! Straight through them."
+],
+[
+"wexbury",
+"U9, contact! Straight through them."
+],
+[
+"haldon",
+"U18, contact! Straight through them."
+],
+[
+"city",
+"U28, contact, they've spun!"
+],
+[
+"wexbury",
+"U3, contact, they've spun!"
+],
+[
+"haldon",
+"U24, contact, they've spun!"
+],
+[
+"city",
+"U3, cutting them off at Bellamy Road / Barrow Lane."
+],
+[
+"wexbury",
+"U10, cutting them off at Friar Lane / Northgate."
+],
+[
+"haldon",
+"U16, cutting them off at Church Street, Haldon St Mary / Chapel Lane, Haldon St Mary."
+],
+[
+"city",
+"U17, en route."
+],
+[
+"wexbury",
+"U25, en route."
+],
+[
+"haldon",
+"U26, en route."
+],
+[
+"city",
+"U11, getting in front."
+],
+[
+"wexbury",
+"U3, getting in front."
+],
+[
+"haldon",
+"U17, getting in front."
+],
+[
+"city",
+"U22, go for the PIT."
+],
+[
+"wexbury",
+"U6, go for the PIT."
+],
+[
+"haldon",
+"U6, go for the PIT."
+],
+[
+"city",
+"U25, going round to Fulton Street / Fourth Street."
+],
+[
+"wexbury",
+"U27, going round to Fosse Way / Fairfield Road."
+],
+[
+"haldon",
+"U4, going round to Town End, Ashwell / the A3072."
+],
+[
+"city",
+"U10, got them, they've gone round!"
+],
+[
+"wexbury",
+"U5, got them, they've gone round!"
+],
+[
+"haldon",
+"U29, got them, they've gone round!"
+],
+[
+"city",
+"U7, hard contact, head-on."
+],
+[
+"wexbury",
+"U5, hard contact, head-on."
+],
+[
+"haldon",
+"U18, hard contact, head-on."
+],
+[
+"city",
+"U30, heading for Broadway / Seventh Street."
+],
+[
+"wexbury",
+"U27, heading for Station Road / Victoria Street."
+],
+[
+"haldon",
+"U30, heading for Well Lane, Ashwell / Five Ashes Lane."
+],
+[
+"city",
+"U6, in front of them."
+],
+[
+"wexbury",
+"U10, in front of them."
+],
+[
+"haldon",
+"U14, in front of them."
+],
+[
+"city",
+"U18, making my way, southbound."
+],
+[
+"wexbury",
+"U2, making my way, southbound."
+],
+[
+"haldon",
+"U9, making my way, northbound."
+],
+[
+"city",
+"U22, missed them, turning round."
+],
+[
+"wexbury",
+"U15, missed them, turning round."
+],
+[
+"haldon",
+"U26, missed them, turning round."
+],
+[
+"city",
+"U14, no contact, they went by."
+],
+[
+"wexbury",
+"U18, no contact, they went by."
+],
+[
+"haldon",
+"U9, no contact, they went by."
+],
+[
+"city",
+"U18, on duty, available."
+],
+[
+"wexbury",
+"U15, on duty, available."
+],
+[
+"haldon",
+"U28, on duty, available."
+],
+[
+"city",
+"U18, on my way."
+],
+[
+"wexbury",
+"U15, on my way."
+],
+[
+"haldon",
+"U1, on my way."
+],
+[
+"city",
+"U13, on patrol."
+],
+[
+"wexbury",
+"U27, on patrol."
+],
+[
+"haldon",
+"U11, on patrol."
+],
+[
+"city",
+"U6, responding."
+],
+[
+"wexbury",
+"U9, responding."
+],
+[
+"haldon",
+"U16, responding."
+],
+[
+"city",
+"U1, show me attending."
+],
+[
+"wexbury",
+"U26, show me attending."
+],
+[
+"haldon",
+"U21, show me attending."
+],
+[
+"city",
+"U30, show me on duty."
+],
+[
+"wexbury",
+"U14, show me on duty."
+],
+[
+"haldon",
+"U19, show me on duty."
+],
+[
+"city",
+"U1, starting patrol."
+],
+[
+"wexbury",
+"U2, starting patrol."
+],
+[
+"haldon",
+"U23, starting patrol."
+],
+[
+"city",
+"U12, target's spun out."
+],
+[
+"wexbury",
+"U19, target's spun out."
+],
+[
+"haldon",
+"U5, target's spun out."
+],
+[
+"city",
+"U19, they're past me. Coming about."
+],
+[
+"wexbury",
+"U5, they're past me. Coming about."
+],
+[
+"haldon",
+"U5, they're past me. Coming about."
+],
+[
+"city",
+"U9, up front, bringing them down."
+],
+[
+"wexbury",
+"U27, up front, bringing them down."
+],
+[
+"haldon",
+"U9, up front, bringing them down."
+],
+[
+"city",
+"U13, van's coming at them on the Twenty-First Bridge. Brace."
+],
+[
+"wexbury",
+"U6, van's coming at them in the city. Brace."
+],
+[
+"haldon",
+"U8, van's coming at them in the city. Brace."
+],
+[
+"city",
+"U6, visual on the Seventeenth Bridge."
+],
+[
+"wexbury",
+"U17, visual on The Crescent."
+],
+[
+"haldon",
+"U30, visual in the city."
+],
+[
+"city",
+"U8, visual on the vehicle."
+],
+[
+"wexbury",
+"U11, visual on the vehicle."
+],
+[
+"haldon",
+"U16, visual on the vehicle."
+],
+[
+"city",
+"U22, visual, joining."
+],
+[
+"wexbury",
+"U16, visual, joining."
+],
+[
+"haldon",
+"U8, visual, joining."
+],
+[
+"city",
+"All units ahead, form up across the road and slow them."
+],
+[
+"wexbury",
+"All units ahead, form up across the road and slow them."
+],
+[
+"haldon",
+"All units ahead, form up across the road and slow them."
+],
+[
+"city",
+"All units, box the area. Nobody gets out."
+],
+[
+"wexbury",
+"All units, box the area. Nobody gets out."
+],
+[
+"haldon",
+"All units, box the area. Nobody gets out."
+],
+[
+"city",
+"All units, box them in."
+],
+[
+"wexbury",
+"All units, box them in."
+],
+[
+"haldon",
+"All units, box them in."
+],
+[
+"city",
+"All units, contain the area. Cover the exits."
+],
+[
+"wexbury",
+"All units, contain the area. Cover the exits."
+],
+[
+"haldon",
+"All units, contain the area. Cover the exits."
+],
+[
+"city",
+"All units, form the box."
+],
+[
+"wexbury",
+"All units, form the box."
+],
+[
+"haldon",
+"All units, form the box."
+],
+[
+"city",
+"All units, rolling roadblock. Bring them down."
+],
+[
+"wexbury",
+"All units, rolling roadblock. Bring them down."
+],
+[
+"haldon",
+"All units, rolling roadblock. Bring them down."
+],
+[
+"city",
+"All units, van the wrong way on Twenty-Fourth Street. Stand clear."
+],
+[
+"wexbury",
+"All units, van the wrong way on Sackville Street. Stand clear."
+],
+[
+"haldon",
+"All units, van the wrong way in the city. Stand clear."
+],
+[
+"city",
+"Control, U2 going head-on. All units, hold back."
+],
+[
+"wexbury",
+"Control, U30 going head-on. All units, hold back."
+],
+[
+"haldon",
+"Control, U3 going head-on. All units, hold back."
+],
+[
+"city",
+"Control, abandon the box, stay on them."
+],
+[
+"wexbury",
+"Control, abandon the box, stay on them."
+],
+[
+"haldon",
+"Control, abandon the box, stay on them."
+],
+[
+"city",
+"Control, all units, box formation."
+],
+[
+"wexbury",
+"Control, all units, box formation."
+],
+[
+"haldon",
+"Control, all units, box formation."
+],
+[
+"city",
+"Control, box broken. Resume pursuit."
+],
+[
+"wexbury",
+"Control, box broken. Resume pursuit."
+],
+[
+"haldon",
+"Control, box broken. Resume pursuit."
+],
+[
+"city",
+"Control, box failed, stay with them."
+],
+[
+"wexbury",
+"Control, box failed, stay with them."
+],
+[
+"haldon",
+"Control, box failed, stay with them."
+],
+[
+"city",
+"Control, box isn't forming. Stay with them."
+],
+[
+"wexbury",
+"Control, box isn't forming. Stay with them."
+],
+[
+"haldon",
+"Control, box isn't forming. Stay with them."
+],
+[
+"city",
+"Control, close them down. Box."
+],
+[
+"wexbury",
+"Control, close them down. Box."
+],
+[
+"haldon",
+"Control, close them down. Box."
+],
+[
+"city",
+"Control, containment. Units to the exits."
+],
+[
+"wexbury",
+"Control, containment. Units to the exits."
+],
+[
+"haldon",
+"Control, containment. Units to the exits."
+],
+[
+"city",
+"Control, forget the box."
+],
+[
+"wexbury",
+"Control, forget the box."
+],
+[
+"haldon",
+"Control, forget the box."
+],
+[
+"city",
+"Control, rolling block ahead of them. Ease them down."
+],
+[
+"wexbury",
+"Control, rolling block ahead of them. Ease them down."
+],
+[
+"haldon",
+"Control, rolling block ahead of them. Ease them down."
+],
+[
+"city",
+"Control, the van's made contact."
+],
+[
+"wexbury",
+"Control, the van's made contact."
+],
+[
+"haldon",
+"Control, the van's made contact."
+],
+[
+"city",
+"Control, they're off-road. Seal it off, all exits."
+],
+[
+"wexbury",
+"Control, they're off-road. Seal it off, all exits."
+],
+[
+"haldon",
+"Control, they're off-road. Seal it off, all exits."
+],
+[
+"city",
+"Control, they're out of the box."
+],
+[
+"wexbury",
+"Control, they're out of the box."
+],
+[
+"haldon",
+"Control, they're out of the box."
+],
+[
+"city",
+"Control, all units, report of a vehicle driving dangerously."
+],
+[
+"wexbury",
+"Control, all units, report of a vehicle matching an earlier suspect."
+],
+[
+"haldon",
+"Control, all units, report of a vehicle a request from the control room."
+],
+[
+"city",
+"Control, all units, vehicle running a red light. Respond."
+],
+[
+"wexbury",
+"Control, all units, vehicle running a red light. Respond."
+],
+[
+"haldon",
+"Control, all units, vehicle running a red light. Respond."
+],
+[
+"city",
+"Control, any units, a vehicle driving dangerously."
+],
+[
+"wexbury",
+"Control, any units, a vehicle matching an earlier suspect."
+],
+[
+"haldon",
+"Control, any units, a vehicle the daily challenge."
+],
+[
+"city",
+"Air support is up."
+],
+[
+"wexbury",
+"Air support is up."
+],
+[
+"haldon",
+"Air support is up."
+],
+[
+"city",
+"India 99, a couple of minutes fuel left."
+],
+[
+"wexbury",
+"India 99, a couple of minutes fuel left."
+],
+[
+"haldon",
+"India 99, a couple of minutes fuel left."
+],
+[
+"city",
+"India 99, airborne, en route."
+],
+[
+"wexbury",
+"India 99, airborne, en route."
+],
+[
+"haldon",
+"India 99, airborne, en route."
+],
+[
+"city",
+"India 99, back to base."
+],
+[
+"wexbury",
+"India 99, back to base."
+],
+[
+"haldon",
+"India 99, back to base."
+],
+[
+"city",
+"India 99, breaking off to refuel."
+],
+[
+"wexbury",
+"India 99, breaking off to refuel."
+],
+[
+"haldon",
+"India 99, breaking off to refuel."
+],
+[
+"city",
+"India 99, fuel state, leaving you."
+],
+[
+"wexbury",
+"India 99, fuel state, leaving you."
+],
+[
+"haldon",
+"India 99, fuel state, leaving you."
+],
+[
+"city",
+"India 99, heading home."
+],
+[
+"wexbury",
+"India 99, heading home."
+],
+[
+"haldon",
+"India 99, heading home."
+],
+[
+"city",
+"India 99, lifted, on our way."
+],
+[
+"wexbury",
+"India 99, lifted, on our way."
+],
+[
+"haldon",
+"India 99, lifted, on our way."
+],
+[
+"city",
+"India 99, low fuel, breaking off soon."
+],
+[
+"wexbury",
+"India 99, low fuel, breaking off soon."
+],
+[
+"haldon",
+"India 99, low fuel, breaking off soon."
+],
+[
+"city",
+"India 99, low fuel, not long left."
+],
+[
+"wexbury",
+"India 99, low fuel, not long left."
+],
+[
+"haldon",
+"India 99, low fuel, not long left."
+],
+[
+"city",
+"India 99, off to refuel."
+],
+[
+"wexbury",
+"India 99, off to refuel."
+],
+[
+"haldon",
+"India 99, off to refuel."
+],
+[
+"city",
+"India 99, released, returning to base."
+],
+[
+"wexbury",
+"India 99, released, returning to base."
+],
+[
+"haldon",
+"India 99, released, returning to base."
+],
+[
+"city",
+"Control, U20. Confirmed, it's the vehicle from earlier. All units."
+],
+[
+"wexbury",
+"Control, U3. Confirmed, it's the vehicle from earlier. All units."
+],
+[
+"haldon",
+"Control, U28. Confirmed, it's the vehicle from earlier. All units."
+],
+[
+"city",
+"Control, U4. Positive match on the earlier vehicle. Requesting backup."
+],
+[
+"wexbury",
+"Control, U29. Positive match on the earlier vehicle. Requesting backup."
+],
+[
+"haldon",
+"Control, U20. Positive match on the earlier vehicle. Requesting backup."
+],
+[
+"city",
+"Control, U17. Same make and colour as earlier's suspect. Checking it out."
+],
+[
+"wexbury",
+"Control, U19. Same make and colour as earlier's suspect. Checking it out."
+],
+[
+"haldon",
+"Control, U13. Same make and colour as earlier's suspect. Checking it out."
+],
+[
+"city",
+"Control, U6. That's our suspect from before. Same car."
+],
+[
+"wexbury",
+"Control, U5. That's our suspect from before. Same car."
+],
+[
+"haldon",
+"Control, U9. That's our suspect from before. Same car."
+],
+[
+"city",
+"Control, U14. Think I've got the car from before. Pulling it over."
+],
+[
+"wexbury",
+"Control, U7. Think I've got the car from before. Pulling it over."
+],
+[
+"haldon",
+"Control, U19. Think I've got the car from before. Pulling it over."
+],
+[
+"city",
+"Control, U24. Vehicle that matches one from earlier. Going to have a look."
+],
+[
+"wexbury",
+"Control, U25. Vehicle that matches one from earlier. Going to have a look."
+],
+[
+"haldon",
+"Control, U26. Vehicle that matches one from earlier. Going to have a look."
+],
+[
+"city",
+"Control, in pursuit of a vehicle northbound, not stopping. May be our suspect from before."
+],
+[
+"wexbury",
+"Control, in pursuit of a vehicle westbound, not stopping. May be our suspect from before."
+],
+[
+"haldon",
+"Control, in pursuit of a vehicle westbound, not stopping. May be our suspect from before."
+],
+[
+"city",
+"Control, lost sight of that vehicle. Resuming patrol."
+],
+[
+"wexbury",
+"Control, lost sight of that vehicle. Resuming patrol."
+],
+[
+"haldon",
+"Control, lost sight of that vehicle. Resuming patrol."
+],
+[
+"city",
+"Control, no sign of it now. Back on patrol."
+],
+[
+"wexbury",
+"Control, no sign of it now. Back on patrol."
+],
+[
+"haldon",
+"Control, no sign of it now. Back on patrol."
+],
+[
+"city",
+"Control, vehicle failed to stop, heading eastbound. Could be the suspect from earlier."
+],
+[
+"wexbury",
+"Control, vehicle failed to stop, heading westbound. Could be the suspect from earlier."
+],
+[
+"haldon",
+"Control, vehicle failed to stop, heading southbound. Could be the suspect from earlier."
+],
+[
+"city",
+"Control, all quiet. Routine patrol."
+],
+[
+"wexbury",
+"Control, all quiet. Routine patrol."
+],
+[
+"haldon",
+"Control, all quiet. Routine patrol."
+],
+[
+"city",
+"Control, all units, routine patrol."
+],
+[
+"wexbury",
+"Control, all units, routine patrol."
+],
+[
+"haldon",
+"Control, all units, routine patrol."
+],
+[
+"city",
+"Control, contained, move in now."
+],
+[
+"wexbury",
+"Control, contained, move in now."
+],
+[
+"haldon",
+"Control, contained, move in now."
+],
+[
+"city",
+"Control, no further contact. Resume patrol."
+],
+[
+"wexbury",
+"Control, no further contact. Resume patrol."
+],
+[
+"haldon",
+"Control, no further contact. Resume patrol."
+],
+[
+"city",
+"Control, nothing further. Back to patrol."
+],
+[
+"wexbury",
+"Control, nothing further. Back to patrol."
+],
+[
+"haldon",
+"Control, nothing further. Back to patrol."
+],
+[
+"city",
+"Control, nothing outstanding."
+],
+[
+"wexbury",
+"Control, nothing outstanding."
+],
+[
+"haldon",
+"Control, nothing outstanding."
+],
+[
+"city",
+"Control, one detained. All units, stand down."
+],
+[
+"wexbury",
+"Control, one detained. All units, stand down."
+],
+[
+"haldon",
+"Control, one detained. All units, stand down."
+],
+[
+"city",
+"Control, received. All units, stand down."
+],
+[
+"wexbury",
+"Control, received. All units, stand down."
+],
+[
+"haldon",
+"Control, received. All units, stand down."
+],
+[
+"city",
+"Control, target boxed, close in."
+],
+[
+"wexbury",
+"Control, target boxed, close in."
+],
+[
+"haldon",
+"Control, target boxed, close in."
+],
+[
+"city",
+"Control, they're boxed. Move in."
+],
+[
+"wexbury",
+"Control, they're boxed. Move in."
+],
+[
+"haldon",
+"Control, they're boxed. Move in."
+],
+[
+"city",
+"Control, we've lost them. Units stand down."
+],
+[
+"wexbury",
+"Control, we've lost them. Units stand down."
+],
+[
+"haldon",
+"Control, we've lost them. Units stand down."
+],
+[
+"city",
+"U18, car stopped dead in front of me in the city. Moving them on."
+],
+[
+"wexbury",
+"U26, car stopped dead in front of me in the city. Moving them on."
+],
+[
+"haldon",
+"U9, car stopped dead in front of me in the city. Moving them on."
+],
+[
+"city",
+"U25, driver's ignoring me on Eighth Street. Last warning."
+],
+[
+"wexbury",
+"U28, driver's ignoring me on Copse End. Last warning."
+],
+[
+"haldon",
+"U26, driver's ignoring me on Sheepwash Lane. Last warning."
+],
+[
+"city",
+"U6, driver's refusing to move on Sixteenth Street. Initiating a stop."
+],
+[
+"wexbury",
+"U5, driver's refusing to move on Station Road. Initiating a stop."
+],
+[
+"haldon",
+"U7, driver's refusing to move on Chapel Lane, Little Combe. Initiating a stop."
+],
+[
+"city",
+"U20, got a motorist sat in the carriageway on the Seventh Bridge. Letting them know I'm here."
+],
+[
+"wexbury",
+"U30, got a motorist sat in the carriageway on Albion Road. Letting them know I'm here."
+],
+[
+"haldon",
+"U9, got a motorist sat in the carriageway on Fore Street, Haldon St Mary. Letting them know I'm here."
+],
+[
+"city",
+"U24, not budging. Final warning."
+],
+[
+"wexbury",
+"U18, not budging. Final warning."
+],
+[
+"haldon",
+"U1, not budging. Final warning."
+],
+[
+"city",
+"U7, obstruction on the Seventeenth Bridge. Stationary vehicle, won't shift. Quick blast on the twos."
+],
+[
+"wexbury",
+"U19, obstruction in the city. Stationary vehicle, won't shift. Quick blast on the twos."
+],
+[
+"haldon",
+"U21, obstruction in the city. Stationary vehicle, won't shift. Quick blast on the twos."
+],
+[
+"city",
+"U27, road user parked across my lane in the city. Just a warning for now."
+],
+[
+"wexbury",
+"U6, road user parked across my lane in the city. Just a warning for now."
+],
+[
+"haldon",
+"U18, road user parked across my lane on Drovers Lane. Just a warning for now."
+],
+[
+"city",
+"U10, road's clear, carrying on."
+],
+[
+"wexbury",
+"U19, road's clear, carrying on."
+],
+[
+"haldon",
+"U25, road's clear, carrying on."
+],
+[
+"city",
+"U9, still blocking the road. Last chance, then I'm stopping them."
+],
+[
+"wexbury",
+"U27, still blocking the road. Last chance, then I'm stopping them."
+],
+[
+"haldon",
+"U22, still blocking the road. Last chance, then I'm stopping them."
+],
+[
+"city",
+"U15, that's got them moving."
+],
+[
+"wexbury",
+"U26, that's got them moving."
+],
+[
+"haldon",
+"U28, that's got them moving."
+],
+[
+"city",
+"U26, they're still not moving. If they don't shift, I'll have to pull them over."
+],
+[
+"wexbury",
+"U28, they're still not moving. If they don't shift, I'll have to pull them over."
+],
+[
+"haldon",
+"U6, they're still not moving. If they don't shift, I'll have to pull them over."
+],
+[
+"city",
+"U18, they've been told twice. Pulling them over on Tenth Street."
+],
+[
+"wexbury",
+"U14, they've been told twice. Pulling them over in the city."
+],
+[
+"haldon",
+"U19, they've been told twice. Pulling them over in the city."
+],
+[
+"city",
+"U10, they've moved. Resuming patrol."
+],
+[
+"wexbury",
+"U26, they've moved. Resuming patrol."
+],
+[
+"haldon",
+"U4, they've moved. Resuming patrol."
+],
+[
+"city",
+"U29, two warnings and they still won't move. Lights on, I'm stopping them."
+],
+[
+"wexbury",
+"U26, two warnings and they still won't move. Lights on, I'm stopping them."
+],
+[
+"haldon",
+"U1, two warnings and they still won't move. Lights on, I'm stopping them."
+],
+[
+"city",
+"U4, vehicle still obstructing in the city. Control, may need to pull this one over."
+],
+[
+"wexbury",
+"U18, vehicle still obstructing in the city. Control, may need to pull this one over."
+],
+[
+"haldon",
+"U3, vehicle still obstructing on Town End, Ashwell. Control, may need to pull this one over."
+],
+[
+"city",
+"U19, vehicle still obstructing after two warnings. Going for a stop."
+],
+[
+"wexbury",
+"U26, vehicle still obstructing after two warnings. Going for a stop."
+],
+[
+"haldon",
+"U10, vehicle still obstructing after two warnings. Going for a stop."
+],
+[
+"city",
+"U14, vehicle stopped in the road on the Fourteenth Bridge, blocking me. Giving them a blip."
+],
+[
+"wexbury",
+"U25, vehicle stopped in the road on Priory Row, blocking me. Giving them a blip."
+],
+[
+"haldon",
+"U1, vehicle stopped in the road on Chapel Lane, Little Combe, blocking me. Giving them a blip."
+],
+[
+"city",
+"U23, vehicle's moved on. Back on patrol."
+],
+[
+"wexbury",
+"U15, vehicle's moved on. Back on patrol."
+],
+[
+"haldon",
+"U12, vehicle's moved on. Back on patrol."
+],
+[
+"city",
+"U10, block failed, they're past!"
+],
+[
+"wexbury",
+"U18, block failed, they're past!"
+],
+[
+"haldon",
+"U13, block failed, they're past!"
+],
+[
+"city",
+"U11, they're through the block!"
+],
+[
+"wexbury",
+"U26, they're through the block!"
+],
+[
+"haldon",
+"U24, they're through the block!"
+],
+[
+"city",
+"U22, they've gone round the block!"
+],
+[
+"wexbury",
+"U19, they've gone round the block!"
+],
+[
+"haldon",
+"U16, they've gone round the block!"
+],
+[
+"city",
+"Control, block going in on Fifteenth Street, stinger out."
+],
+[
+"wexbury",
+"Control, block going in on The Crescent, stinger out."
+],
+[
+"haldon",
+"Control, block going in on Puddle Lane, stinger out."
+],
+[
+"city",
+"Control, road closed, Thistledown. Stinger deployed."
+],
+[
+"wexbury",
+"Control, road closed, Church Lane. Stinger deployed."
+],
+[
+"haldon",
+"Control, road closed, Well Lane, Ashwell. Stinger deployed."
+],
+[
+"city",
+"Control, roadblock and stinger going in on Ashcroft Road."
+],
+[
+"wexbury",
+"Control, roadblock and stinger going in on Cranleigh Way."
+],
+[
+"haldon",
+"Control, roadblock and stinger going in on the Ridgeway."
+],
+[
+"city",
+"Control, stinger successful, they're on the rims."
+],
+[
+"wexbury",
+"Control, stinger successful, they're on the rims."
+],
+[
+"haldon",
+"Control, stinger successful, they're on the rims."
+],
+[
+"city",
+"Control, stinger's got them. Tyres are going."
+],
+[
+"wexbury",
+"Control, stinger's got them. Tyres are going."
+],
+[
+"haldon",
+"Control, stinger's got them. Tyres are going."
+],
+[
+"city",
+"Control, they've hit the stinger!"
+],
+[
+"wexbury",
+"Control, they've hit the stinger!"
+],
+[
+"haldon",
+"Control, they've hit the stinger!"
+],
+[
+"city",
+"U20, I've got eyes on it, joining."
+],
+[
+"wexbury",
+"U24, I've got eyes on it, joining."
+],
+[
+"haldon",
+"U29, I've got eyes on it, joining."
+],
+[
+"city",
+"U24, I've got one obstructing a police vehicle, following."
+],
+[
+"wexbury",
+"U7, I've got one making off at speed, following."
+],
+[
+"haldon",
+"U20, I've got one obstructing a police vehicle, following."
+],
+[
+"city",
+"U14, driver detained, vehicle off the road."
+],
+[
+"wexbury",
+"U30, driver detained, vehicle off the road."
+],
+[
+"haldon",
+"U24, driver detained, vehicle off the road."
+],
+[
+"city",
+"U23, in pursuit of a civilian vehicle, through a red light."
+],
+[
+"wexbury",
+"U23, in pursuit of a civilian vehicle, failed to stop after a collision."
+],
+[
+"haldon",
+"U15, in pursuit of a civilian vehicle, obstructing a police vehicle."
+],
+[
+"city",
+"U22, it's just gone past me, joining the pursuit."
+],
+[
+"wexbury",
+"U17, it's just gone past me, joining the pursuit."
+],
+[
+"haldon",
+"U7, it's just gone past me, joining the pursuit."
+],
+[
+"city",
+"U12, vehicle obstructing a police vehicle, attempting to stop it."
+],
+[
+"wexbury",
+"U1, vehicle making off at speed, attempting to stop it."
+],
+[
+"haldon",
+"U19, vehicle making off at speed, attempting to stop it."
+],
+[
+"city",
+"U13, vehicle stopped, one detained."
+],
+[
+"wexbury",
+"U11, vehicle stopped, one detained."
+],
+[
+"haldon",
+"U28, vehicle stopped, one detained."
+],
+[
+"city",
+"Control, all units, lost the vehicle. Resume patrol."
+],
+[
+"wexbury",
+"Control, all units, lost the vehicle. Resume patrol."
+],
+[
+"haldon",
+"Control, all units, lost the vehicle. Resume patrol."
+],
+[
+"city",
+"Control, no trace of the vehicle. Back to patrol."
+],
+[
+"wexbury",
+"Control, no trace of the vehicle. Back to patrol."
+],
+[
+"haldon",
+"Control, no trace of the vehicle. Back to patrol."
+],
+[
+"city",
+"Control, vehicle is slowing, driver giving up."
+],
+[
+"wexbury",
+"Control, vehicle is slowing, driver giving up."
+],
+[
+"haldon",
+"Control, vehicle is slowing, driver giving up."
+],
+[
+"city",
+"Control, vehicle stopping, moving in."
+],
+[
+"wexbury",
+"Control, vehicle stopping, moving in."
+],
+[
+"haldon",
+"Control, vehicle stopping, moving in."
+]
+]

@@ -11,9 +11,10 @@
 //   wind     broad noise driven by road speed
 //   siren    wail and yelp, faded in with the nearest marked unit
 //   impacts  one-shot filtered noise bursts
-//   radio    dispatch calls actually spoken by the browser's speech engine,
+//   radio    dispatch calls: the recorded voice pack if it is on (radiovoice.js), or spoken by the browser's speech engine,
 //            between a PTT click and a squelch crash
 
+import { RadioVoice } from './radiovoice.js';
 import { clamp, clamp01, lerp, damp } from '../util/math.js';
 
 // =====================================================================
@@ -139,6 +140,24 @@ export function voiceChoices() {
   }
 }
 
+const PACK_KEY = 'pc.voicepack';
+
+/** The optional voice pack (game/radiovoice.js): "you can have a thing at the very bottom saying optional like voice pack". */
+export function voicePack() {
+  try { return localStorage.getItem(PACK_KEY) === '1'; } catch (e) { return false; }
+}
+
+export function setVoicePack(on) {
+  try { if (on) localStorage.setItem(PACK_KEY, '1'); else localStorage.removeItem(PACK_KEY); } catch (e) { /* storage blocked */ }
+}
+
+/** Fetch the part of it every map needs, for the menu: true once it is here. */
+export async function fetchVoicePack() {
+  const v = new RadioVoice();
+  await v.load('common');
+  return !!v.packs.get('common');
+}
+
 export function setVoiceChoice(who, name) {
   const v = voiceChoices();
   if (name) v[who] = name; else delete v[who];
@@ -167,9 +186,33 @@ export function rateFor(voice, style) {
 
 const SAMPLE_LINES = {
   control: 'Control, all units, vehicle failing to stop. Respond.',
-  unit: "Unit 3, I'm primary, northbound on the high street, ninety.",
-  air: 'India 99, we have them, eastbound towards the ring road.',
+  unit: "Unit 3, they've left the road, northbound.",
+  air: 'India 99, still with them, eastbound, 90.',
 };
+
+let sampler = null;
+
+/** The recorded voice's sample line, on the menu: the radio's band and no more. False if it cannot be said. */
+function sampleRecorded(who) {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC || window.__noRecorded || !voicePack()) return false;
+  if (!sampler) {
+    sampler = { voice: new RadioVoice(), ctx: new AC() };
+    const { ctx } = sampler, hp = ctx.createBiquadFilter(), lp = ctx.createBiquadFilter();
+    hp.type = 'highpass'; hp.frequency.value = RADIO_LO;
+    lp.type = 'lowpass'; lp.frequency.value = RADIO_HI;
+    sampler.into = hp;
+    hp.connect(lp); lp.connect(ctx.destination);
+  }
+  const { voice, ctx } = sampler;
+  ctx.resume();
+  voice.load('common').then(() => {
+    if (sampler.line) sampler.line.stop();
+    const plan = voice.plan(speakable(SAMPLE_LINES[who]), who);
+    if (plan) sampler.line = voice.play(ctx, sampler.into, plan, ctx.currentTime + 0.05, 0.9);
+  });
+  return true;
+}
 
 /**
  * Say a sample line in a voice, the way it would go out in a chase, so a voice
@@ -177,6 +220,7 @@ const SAMPLE_LINES = {
  */
 export function speakSample(who, voice) {
   const speech = typeof window !== 'undefined' && window.speechSynthesis;
+  if (!voiceChoices()[who] && sampleRecorded(who)) { if (speech) speech.cancel(); return; }
   if (!speech || !voice) return;
   const style = SPEAKERS[who];
   speech.cancel();
@@ -230,6 +274,15 @@ const ENGINE_ORDER = 4;
 // Well down on what it was (0.5): "the engine noise is so loud compared with sirens ... it's
 // kind of horrible ... just make it much quieter. I'd rather hear sirens than engine."
 const ENGINE_VOLUME = 0.2;
+
+/** How loud the recorded voices go into the radio channel (it takes more off the men's), and how far the mix drops under them. */
+const RECORDED_GAIN = { control: 0.32, unit: 0.45, air: 0.34 }, RECORDED_DUCK = 0.5;
+
+/** Two voices between all the units: each a shade higher or lower by its callsign, the same one every time. */
+function unitPitch(kind, words) {
+  const m = kind === 'unit' && /^unit (\d+)/i.exec(words);
+  return m ? 1 + (((+m[1] * 7) % 5) - 2) * 0.022 : 1;
+}
 
 /** How far the mix drops under a call from a speaker with no duck of its own. */
 const RADIO_DUCK = 0.55;
@@ -882,6 +935,14 @@ export class GameAudio {
   /** Whether a routine line may go out now. */
   get roomForRoutine() { return this.quietFor >= LOW_QUIET; }
 
+  /** The recorded radio (game/radiovoice.js), and the road names of the map being played. */
+  loadRadio(map) {
+    if (window.__noRecorded || !voicePack()) return null;
+    this.recorded = this.recorded || new RadioVoice();
+    this.recorded.load('common');
+    return map ? this.recorded.load(map) : null;
+  }
+
   /** Start the next transmission if the channel is clear. Called per frame. */
   _pumpRadio() {
     if (!this.radioQueue.length) return;
@@ -987,8 +1048,16 @@ export class GameAudio {
       voice = this.voices && this.voices[kind];
     }
 
-    if (this.speech) {
-      const words = speakable(msg.text);
+    // Said already, and through the radio: unless the player has picked a voice of the browser's on the menu.
+    const words = speakable(msg.text);
+    const said = this.recorded && !voiceChoices()[kind] ? this.recorded.plan(words, kind) : null;
+    if (said) {
+      this.callDuck = RECORDED_DUCK;
+      const line = this.recorded.play(ctx, this.radioIn, said, t, RECORDED_GAIN[kind], unitPitch(kind, words));
+      this.lastPlan = said;
+      this._endCurrent = () => { line.stop(); finish(); };
+      setTimeout(finish, Math.max(0, (line.end - ctx.currentTime) * 1000));
+    } else if (this.speech) {
       const u = new SpeechSynthesisUtterance(words);
       // And if there is genuinely no English voice on this machine, let the
       // engine read it in whatever it does have. Saying the line in the wrong

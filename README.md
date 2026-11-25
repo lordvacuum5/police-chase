@@ -10778,3 +10778,24 @@ pinned in one run of two and nothing compared):
 
 *"It takes double as long to sink."* Damage a second 0.05 to 0.29 (0.1 to 0.58). `tests/drown.js`: Runner, supercar and hatchback 3.3 s, patrol 3.6, van 3.9; none on
 130 places on the bridges.
+
+### An optional voice pack: the police radio recorded, and through the radio
+
+*"Is it possible to find like a really cool like police speak text to speech engine thing?"* and *"I play it through a link on the server ... can you
+make it possible that I can? ... a thing at the very bottom saying optional like voice pack."* At the bottom of the menu, off until it is
+turned on, and remembered; then fetched from the server (7.9 MB with Ashfield's road names, 6.9 Wexbury's, 7.1 Haldon's, and kept a week). Off, or
+with a voice of the browser's picked, the radio is as it was.
+
+Every line the game can say was said once by Kokoro-82M (Apache 2.0; `tools/voice`, which reads the lines out of the source), in 2,185 pieces: Control a
+woman (`bf_emma`), the units two men by callsign (`bm_george`, `bm_fable`, each callsign a little higher or lower), the helicopter another woman
+(`bf_isabella`). 8 kHz, IMA ADPCM. `game/radiovoice.js` puts as few pieces end to end as will say the line and plays it into the radio channel -- its band, its
+limiter -- which the browser's speech cannot be put through. Not a speech model in the browser: it took 2-4 s of this laptop's processor a clip, and
+that is what a chase has none of.
+
+`tests/radiovoice.js`: 717 lines, every wording in the source filled in at random for each map: 717 said, 2.1 pieces each, the words all there and
+in order, 0.10 ms to work out. Out of the radio channel -15.3 to -16.6 dB, all four voices (the men were 2.5 dB under before they were turned up; a
+louder drive, 0.5, was clipped flat at -13.3). In the game: "U4, northbound on Mercer Street, 70." from the first man in four pieces, then Control. Nobody has listened to
+it yet. Clip lengths were looked through for any that came out wrong; none did. Recording took 54 minutes at low priority.
+
+A new wording in the game: `C:/Code/kokoro-voice/venv/Scripts/python tools/voice/build.py`, which says only what it has not said before; a
+new road name goes in `tools/voice/names.json` first. A line with a piece missing is said by the browser's voice.

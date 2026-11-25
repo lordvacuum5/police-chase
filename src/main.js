@@ -558,6 +558,7 @@ class Game {
     // A finger going down does not count as that interaction in the spec --
     // only lifting it does -- so phones need pointerup and touchend too.
     this.audio = new GameAudio();
+    this.audio.loadRadio(this.mapDef && this.mapDef.id);
     this.audio.setVolume(savedVolume());
     this.audio.rainLevel = this.weather.rain ? 1 : 0;
     const wake = () => this.audio.resume();
