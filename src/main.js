@@ -123,8 +123,8 @@ const KERB_FAR = 300;
 const _ball = new THREE.Sphere();
 /** Game._checkWater: this much of a car under before it floods; damage a second just under that and right under; a wreck shown, s. */
 const FLOOD_FROM = 0.6;
-const FLOOD_SLOW = 0.1;
-const FLOOD_FAST = 0.58;
+const FLOOD_SLOW = 0.05;
+const FLOOD_FAST = 0.29;
 const SUNK_SHOWN = 4;
 /** The most a car that has come down hard is drawn up, m (Game._landedLift). */
 const LANDED_MAX = 1.2;

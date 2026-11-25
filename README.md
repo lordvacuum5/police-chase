@@ -10754,3 +10754,27 @@ Not worth it: fog at 560 m saved 0.3-0.6 ms on the ground, 2.8 from 120 m up, an
 
 *"Make the flooding take slightly longer."* Damage a second 0.1 to 0.58 (0.15 to 0.9). `tests/drown.js`, driven in off the bank, first damage to wrecked: Runner,
 supercar and hatchback 1.7 s, patrol 1.9, van 2.2; they were 1.1-1.6. None on 130 places on the bridges.
+
+### Police straight through the traffic, where nobody is looking; sinking takes twice as long
+
+*"The police cars are really struggling with the high density of traffic, and I love the high density of traffic ... if they're chasing
+me and I'm going pretty fast and I'm not looking behind me ... the police cars can literally just go straight through civilian cars.
+Don't let me see."* `Officer._ghosting`: a unit after a person's car going 54 km/h or more, out of the picture (asked ten times a second, where
+it is and where it will be by the next but one) and not near or in clear sight of anybody else playing, neither meets civilian cars nor steers or brakes for
+them. Solid again as soon as it may be seen or the chase slows, unless it is inside one. Every car but the civilian ones is also in a group of its
+own (FORCE), which a ghost still meets: the player, other police, walls and everything else are as solid as ever.
+
+`tests/ghosttraffic.js`, Ashfield, four stars, the car carried along the roads at 86 km/h, 90 s, 14.6 units, 15-16 civilian cars within 150 m (driven, it was
+pinned in one run of two and nothing compared):
+
+| | off | on | on, looking back all the time (60 s) |
+|---|---|---|---|
+| police into civilian cars, a minute | 24.7 | 2.0 | 9.0 |
+| their speed, km/h | 64 | 69 | 73 |
+| one within 60 m | 75% | 81% | 68% |
+| ghosts, of the time they chase | 0 | 92% | 62% |
+| inside one in sight, steps | - | 0 | 0 |
+| thrown apart | - | 0 | 0 |
+
+*"It takes double as long to sink."* Damage a second 0.05 to 0.29 (0.1 to 0.58). `tests/drown.js`: Runner, supercar and hatchback 3.3 s, patrol 3.6, van 3.9; none on
+130 places on the bridges.

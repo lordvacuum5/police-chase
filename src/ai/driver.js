@@ -2977,7 +2977,7 @@ export class Driver {
     }
 
     for (const o of others) {
-      if (o === v || o === ignore) continue;
+      if (o === v || o === ignore || (v.ghost && o.isTraffic)) continue;
       _p.copy(o.position).sub(v.position);
       const ahead = _p.dot(v.forward);
       if (ahead < 1 || ahead > range) continue;

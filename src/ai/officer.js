@@ -435,6 +435,8 @@ const BLIP_SECONDS = 1.0;
 const BLOCK_WARNINGS = 2;
 const BLOCK_PURSUE_AFTER = 3;
 /** What a search spot has to be clear of, tested straight down at its middle and a car's length round it. */
+/** Officer._ghosting: how fast the car being chased goes, m/s; how often it is looked at again, s; this near another person, m, or in clear sight of one, never; as far from a civilian car, m, to be solid again. */
+const GHOST_SPEED = 15, GHOST_LOOK = 0.1, GHOST_HUMAN = 60, GHOST_CLEAR = 5.4;
 const SPOT_SOLID = groups(0xFFFF, GROUP.BUILDING | GROUP.PROP);
 const SPOT_PROBES = [[0, 0], [3, 0], [-3, 0], [0, 3], [0, -3]];
 const DOWN = { x: 0, y: -1, z: 0 };
@@ -806,6 +808,7 @@ export class Officer {
     // A unit driving at the player does not steer round the player: that is
     // the car it is trying to reach, or to hit.
     const atTarget = this.role === ROLE.PURSUE || this.role === ROLE.RHINO;
+    this._ghosting(dt, target);
     this.driver.avoid(this.game.vehicles, dt, atTarget && target ? target : null);
     // A car on its beat waits behind the player's car if it is in the way,
     // rather than driving into it -- and after a while, tells them to move.
@@ -1931,7 +1934,7 @@ export class Officer {
     for (const o of this.game.vehicles) {
       // A stopped car is something to steer round (Driver.avoid), not to queue
       // behind for the rest of the chase.
-      if (o === v || o === target || o.disabled || o.speed < 3) continue;
+      if (o === v || o === target || o.disabled || o.speed < 3 || (v.ghost && o.isTraffic)) continue;
       const dx = o.position.x - v.position.x, dz = o.position.z - v.position.z;
       const ahead = dx * v.forward.x + dz * v.forward.z;
       if (ahead < 0 || ahead > 45 || ahead > targetAhead - 3) continue;
@@ -2467,6 +2470,34 @@ export class Officer {
     return false;
   }
 
+  /**
+   * Through the traffic, where nobody is looking. "The police cars are really struggling with the high density of traffic, and I
+   * love the high density of traffic ... if they're chasing me and I'm going pretty fast and I'm not looking behind me ... the
+   * police cars can literally just go straight through civilian cars. Don't let me see." A unit after a person's car going
+   * GHOST_SPEED or more, out of everyone's sight, does not meet civilian cars nor steer round them. Solid again as soon as it
+   * might be seen or the chase slows, but never inside one: the two would be thrown apart.
+   */
+  _ghosting(dt, target) {
+    const v = this.vehicle, g = this.game, r = this.role;
+    const after = !window.__noGhost && target && (target === g.player || target.remote || target.humanDriven) && !v.disabled
+      && r !== ROLE.PATROL && r !== ROLE.HOLD && g.heat.tier > 0 && target.speed > (v.ghost ? GHOST_SPEED - 4 : GHOST_SPEED);
+    this._ghostLook = (this._ghostLook || 0) - dt;
+    if (after && this._ghostLook <= 0) {
+      this._ghostLook = GHOST_LOOK;
+      const p = v.position;
+      // Here, and where it will be by the next look: a car coming round the corner into the picture is solid when it gets there.
+      _seen.set(p.x + v.linvel.x * GHOST_LOOK * 2, p.y, p.z + v.linvel.z * GHOST_LOOK * 2);
+      this._hidden = !g.inView(p) && !g.inView(_seen) && !g.nearHuman(p, GHOST_HUMAN);
+    }
+    if (after && this._hidden) { v.ghost = true; return; }
+    if (!v.ghost) return;
+    for (const o of g.vehicles) {
+      if (!o.isTraffic || o.dormant) continue;
+      if (Math.hypot(o.position.x - v.position.x, o.position.z - v.position.z) < GHOST_CLEAR && Math.abs(o.position.y - v.position.y) < 3) return;
+    }
+    v.ghost = false;
+  }
+
   /** A split second from another car that is not one of ours? Vehicle._bumpPass eases the tyres for it. */
   _aboutToHit() {
     const v = this.vehicle;
@@ -2474,7 +2505,7 @@ export class Officer {
     const list = this.game.vehicles;
     for (let i = 0; i < list.length; i++) {
       const o = list[i];
-      if (o === v || o.removed || o.dormant || (o.isPolice && !o.humanDriven)) continue;
+      if (o === v || o.removed || o.dormant || (o.isPolice && !o.humanDriven) || (v.ghost && o.isTraffic)) continue;
       const dx = o.position.x - v.position.x, dz = o.position.z - v.position.z;
       const d2 = dx * dx + dz * dz;
       if (d2 > BUMP_LOOK * BUMP_LOOK) continue;

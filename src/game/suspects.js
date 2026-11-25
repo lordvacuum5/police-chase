@@ -45,7 +45,6 @@
 import { Runner } from '../ai/runner.js';
 import { ROLE } from '../ai/officer.js';
 import { dist2 } from '../util/math.js';
-import { groups, GROUP } from '../physics/world.js';
 import { fleeingSpec } from './vehicles.js';
 import * as THREE from 'three';
 import { session, AI_ID } from '../net/session.js';
@@ -276,7 +275,7 @@ export class Suspects {
    * the floor and you can't bust it."
    */
   _groundIt(v) {
-    if (this.game.sim.terrainAt) v.collider.setCollisionGroups(groups(GROUP.VEHICLE, 0xFFFF));
+    if (this.game.sim.terrainAt) v.meets(0xFFFF);
   }
 
   /** Under the ground regardless: back up on the nearest road. */

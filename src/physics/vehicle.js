@@ -301,6 +301,24 @@ export class Vehicle {
     this._prevVel.copy(this.linvel);
   }
 
+  /** What the bodywork collides with, from here on. */
+  meets(filter) {
+    this._meets = filter;
+    if (!this.collider) return;
+    this.collider.setCollisionGroups(groups(
+      GROUP.VEHICLE | (this._isTraffic ? 0 : GROUP.FORCE),
+      this._ghost ? filter & ~GROUP.VEHICLE : filter,
+    ));
+  }
+
+  /** Civilian traffic: the one kind of car a ghost goes through. */
+  get isTraffic() { return !!this._isTraffic; }
+  set isTraffic(on) { if (on !== this._isTraffic) { this._isTraffic = on; this.meets(this._meets); } }
+
+  /** Going through the traffic (Officer._ghosting). */
+  get ghost() { return !!this._ghost; }
+  set ghost(on) { if (on !== !!this._ghost) { this._ghost = on; this.meets(this._meets); } }
+
   /**
    * Set the body velocity without it being mistaken for a collision.
    * postStep infers impacts from sudden velocity changes, so anything that
@@ -362,10 +380,11 @@ export class Vehicle {
       // instead of 2.4, against 3.6 with nobody there (tests/pinfree.js).
       .setFriction(0.2)
       .setRestitution(0.12)
-      .setCollisionGroups(groups(GROUP.VEHICLE, 0xFFFF));
+      .setCollisionGroups(groups(GROUP.VEHICLE | GROUP.FORCE, 0xFFFF));
 
     this.collider = this.world.createCollider(colDesc, this.body);
     this.collider.__vehicle = this;
+    this._meets = 0xFFFF;
 
     // On a hilly map, a keel: a low box under the middle of the car that meets
     // the hill and nothing else, while the bodywork itself does not. See
@@ -375,7 +394,7 @@ export class Vehicle {
     // what each traffic car cost. It does without -- no keel, and the body
     // never meets the hill (game/traffic.js removes one that comes to grief).
     if (this.sim.terrainAt && s.traffic) {
-      this.collider.setCollisionGroups(groups(GROUP.VEHICLE, 0xFFFF & ~GROUP.HILL));
+      this.meets(0xFFFF & ~GROUP.HILL);
     } else if (this.sim.terrainAt && window.__keel !== false) {
       const keelY = (s.colliderY === undefined ? 0.1 : s.colliderY) - h * 0.5 + KEEL_H;
       this.keel = this.world.createCollider(
@@ -474,7 +493,7 @@ export class Vehicle {
     const free = this.up.y > 0.5;
     if (free === this._hillFree) return;
     this._hillFree = free;
-    this.collider.setCollisionGroups(groups(GROUP.VEHICLE, free ? 0xFFFF & ~GROUP.HILL : 0xFFFF));
+    this.meets(free ? 0xFFFF & ~GROUP.HILL : 0xFFFF);
   }
 
   /**
@@ -492,7 +511,7 @@ export class Vehicle {
     const want = mode === 'old' ? 'old' : mode === 'body' ? (this.up.y > 0.5 ? 'body' : 'old') : 'none';
     if (want === this._remoteHill) return;
     this._remoteHill = want;
-    this.collider.setCollisionGroups(groups(GROUP.VEHICLE, want === 'old' ? 0xFFFF : 0xFFFF & ~GROUP.HILL));
+    this.meets(want === 'old' ? 0xFFFF : 0xFFFF & ~GROUP.HILL);
     this.keel.setCollisionGroups(groups(GROUP.VEHICLE, want === 'none' ? 0 : GROUP.HILL));
   }
 

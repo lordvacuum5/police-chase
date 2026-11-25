@@ -35,6 +35,9 @@ export const GROUP = {
   // meets it, as on a hill; but in the wheels' mask, so they ride up it. In
   // the body's way, a ramp caught the nose and flicked the car onto its tail.
   RAMP: 0x0200,
+  // Every car that is not civilian traffic, as well as VEHICLE: what a police car going through the traffic
+  // unseen (Officer._ghosting) still meets, when it has stopped meeting VEHICLE.
+  FORCE: 0x0400,
 };
 
 export const groups = (membership, filter) => ((membership << 16) | filter) >>> 0;

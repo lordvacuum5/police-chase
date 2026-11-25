@@ -612,7 +612,7 @@ export class Traffic {
     v.isTraffic = true;
     v.fleeing = false;
     // Traffic's bodywork ignores the hills, as when it was made (Vehicle, and Suspects._groundIt).
-    if (this.game.sim.terrainAt) v.collider.setCollisionGroups(groups(GROUP.VEHICLE, 0xFFFF & ~GROUP.HILL));
+    if (this.game.sim.terrainAt) v.meets(0xFFFF & ~GROUP.HILL);
     const rideY = RIDE + (v.spec.wheelRadius - 0.32);
     const c = { v, driver: new Driver(v, SKILL.regular), id: id || `t${++this._made}`, stuckFor: 0, pullFor: 0, rideY, paint: trafficPaint(id) };
     this.cars.push(c);
