@@ -818,6 +818,7 @@ export class DailyChallenge {
     // Nothing ends it on touch any more: "even if I hit a building, I don't want you to instantly end it."
     // A hit costs damage as it does in any chase, and 100% is the end. (_hitWhat is kept for tests/daily.js,
     // which counts what the game's own driver touches.)
+    if (g.drowned) { this._fail('flooded'); return; }
     if ((p.damage || 0) >= 0.999 || p.disabled) { this._fail('wrecked'); return; }
     if (g.outcome === 'busted') { this._fail('busted'); return; }
     if (this.state === 'running' && this.time > this.limit) { this._fail('time'); return; }
@@ -999,6 +1000,7 @@ export class DailyChallenge {
     if (!g.outcome) g.outcome = 'daily';
     const line = why === 'time' ? `Out of time at <b>${fmtTime(this.limit)}</b>`
       : why === 'busted' ? 'Busted'
+        : why === 'flooded' ? 'Engine flooded: you drowned'
         : why === 'wrecked' ? 'Wrecked: <b>100%</b> damage'
         : why === 'lost' ? 'They got away'
         : `You hit <b>${why}</b>`;

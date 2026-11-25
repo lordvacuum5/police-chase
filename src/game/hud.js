@@ -50,6 +50,10 @@ export class Hud {
     this.dmgFill = document.getElementById('dmgfill');
     this.dmgPct = document.getElementById('dmgpct');
     this._lastDmg = -1;
+    this.floodEl = document.getElementById('floodwrap');
+    this.floodFill = document.getElementById('floodfill');
+    this.floodPct = document.getElementById('floodpct');
+    this._flood = null;
 
     this.bustEl = document.getElementById('bust');
     this.bustFill = document.getElementById('bustfill');
@@ -274,6 +278,21 @@ export class Hud {
       this.dmgFill.style.background = dmg > 70 ? '#ff3b30' : dmg > 35 ? '#ffb020' : '#35d0a5';
       this.dmgPct.textContent = dmg + '%' + (dmg > 35 ? '  ▼ PWR' : '');
       this.dmgPct.className = dmg > 70 ? 'bad' : dmg > 35 ? 'warn' : '';
+    }
+
+    // ---- the engine flooding ----
+    // "If you go into the water at any point, a little bar ... just below the damage [bar] ... but obviously don't make that
+    // appear until you actually go into any water, so it doesn't get in people's way." Gone once it is out and dry.
+    const in_ = !player.isAircraft && (player.wet || player.flood > 0.004) ? Math.round((player.flood || 0) * 100) : null;
+    if (in_ !== this._flood && this.floodEl) {
+      this._flood = in_;
+      this.floodEl.classList.toggle('on', in_ !== null);
+      if (in_ !== null) {
+        this.floodFill.style.width = in_ + '%';
+        this.floodFill.style.background = in_ > 60 ? '#ff3b30' : '#2f9bff';
+        this.floodPct.textContent = in_ + '%';
+        this.floodPct.className = in_ > 60 ? 'bad' : '';
+      }
     }
 
     // ---- busted meter ----

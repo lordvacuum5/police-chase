@@ -1090,10 +1090,10 @@ export class Vehicle {
     if (this.damage >= (this.spec.wreckAt ?? 0.92) && !this.spec.neverDisabled) this.disabled = true;
   }
 
-  /** Damage by water: nothing about a car's bodywork, or its being on its way to a chase, keeps it out. */
+  /** Water in the engine, 0 to 1, or out of it again (`amount` under nought): full, the car is done. Nothing to do with its damage. */
   drown(amount) {
-    this.damage = clamp01(this.damage + amount);
-    if (this.damage >= (this.spec.wreckAt ?? 0.92)) this.disabled = true;
+    this.flood = clamp01((this.flood || 0) + amount);
+    if (this.flood >= 1) this.disabled = true;
   }
 
   _readState() {
@@ -2002,6 +2002,7 @@ export class Vehicle {
 
   repair() {
     this.damage = 0;
+    this.flood = 0;
     this.repairs = (this.repairs || 0) + 1;     // game/dents.js knocks the dents out on this
     this.disabled = false;
     for (const w of this.wheels) { w.condition = 1; w.punctured = false; }

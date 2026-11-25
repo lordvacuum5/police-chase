@@ -10799,3 +10799,15 @@ it yet. Clip lengths were looked through for any that came out wrong; none did. 
 
 A new wording in the game: `C:/Code/kokoro-voice/venv/Scripts/python tools/voice/build.py`, which says only what it has not said before; a
 new road name goes in `tools/voice/names.json` first. A line with a piece missing is said by the browser's voice.
+
+### The engine floods, on a bar of its own
+
+*"When you go into the river and say you already have 100% damage, you instant die ... a little bar ... just below the damage [bar] appears. Is like engine
+flooding, and once that gets to 100%, then you die ... instead of busted ... you drowned ... don't make that appear until you actually go into any water."* Water does no damage now. Past
+60% under, `Vehicle.flood` fills (0.054 to 0.315 a second: as long as it took before) and out of it empties in 8 s. The bar is under DAMAGE from the first
+wheel in the water until it is out and dry. Full: ENGINE FLOODED, "You drowned", no arrest on the radio ("vehicle has gone under", recorded too); SUSPECT DROWNED for
+police players; "Engine flooded" in the daily challenge, which would have said wrecked. Mended in the garage or by a restart.
+
+`tests/drown.js`: every car 3.3-3.6 s, damage 0 (was all of it); the Runner at 90% damage 3.3 s, the same as at none; half flooded and out, dry in 4.2 s; 130 places on
+the bridges, no bar and no flooding. Played through: the bar hidden on the bank, shown at the first wheel, 100% at the ending. At full throttle the Runner drives on across the
+bed at 70 km/h and has been seen to come out of the far side at 95%, which double the time allows.

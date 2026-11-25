@@ -1,15 +1,17 @@
 // "When you go in the water, you just start taking huge amounts of damage. But only when like most of your car is submerged.
 // It obviously depends on the car." Ashfield's river.
 //   const m = await import('/tests/drown.js');  await m.drown()       // window.__dr
-//   cars     every car driven off the bank into the river at 12 m/s: how deep the water was where it stood when damage began
-//            (depth, m) and how much of it was under; seconds from then to wrecked; whether it was wrecked
+//   cars     every car driven off the bank into the river at 12 m/s: how deep the water was where it stood when its engine began
+//            to flood (depth, m) and how much of it was under; seconds from then to flooded; the most damage the water did (hurt)
 //   wade     each stood on its wheels in the river, deeper by 10 cm at a time, to the first depth it floods at
-//   dry      parked on the banks, and on every bridge: any damage?
+//   player   driven in at 90% damage and at none: seconds to drowned, and that it was drowned and not busted
+//   dries    half flooded and out of it: seconds to dry
+//   dry      parked on every bridge: any flooding, or the bar shown?
 const breathe = () => new Promise((r) => { const c = new MessageChannel(); c.port1.onmessage = () => { c.port1.close(); r(); }; c.port2.postMessage(0); });
 
 export async function drown(kinds = ['runner', 'supercar', 'offroad', 'patrol', 'interceptor', 'suv', 'van', 'hatchback', 'estate', 'civsuv']) {
   const g = window.__game, G = g.graph, sim = g.sim, map = g.world.__map, at = map.waterAt, SPECS = window.__modules.SPECS;
-  g.onBusted = () => { g.outcome = null; out.busted++; };
+  g.onBusted = (how) => { g.outcome = null; out.busted++; out.how = how; };
   g.paused = true;
   g.vehicleLimit = 30;
   for (const u of g.dispatcher.units.slice()) g.dispatcher.retire(u);
@@ -51,9 +53,10 @@ export async function drown(kinds = ['runner', 'supercar', 'offroad', 'patrol', 
       g.stepHeadless(1 / 60, { throttle: 0, brake: 1, steer: 0, handbrake: 1 });
       r.most = Math.max(r.most, v.flooded || 0);
       if (t0 === null && v._wetFor > 0) { t0 = i; r.depth = +(at(v.position.x, v.position.z) - sim.terrainAt(v.position.x, v.position.z)).toFixed(2); r.under = +v.flooded.toFixed(2); r.before = +(v.damage).toFixed(2); }
-      if (t0 !== null && v.damage >= (v.spec.wreckAt === undefined ? 0.92 : v.spec.wreckAt)) { r.secs = +((i - t0) / 60).toFixed(1); r.wrecked = true; }
+      r.hurt = +Math.max(r.hurt || 0, v.damage).toFixed(2);
+      if (t0 !== null && v.flood >= 1) { r.secs = +((i - t0) / 60).toFixed(1); r.wrecked = true; }
     }
-    r.end = [Math.round(v.position.x - x0), +v.damage.toFixed(2)];
+    r.end = [Math.round(v.position.x - x0), +v.flood.toFixed(2)];
     out.cars.push(r);
     if (!gone || true) g.removeVehicle(v);
     await breathe();
@@ -68,19 +71,24 @@ export async function drown(kinds = ['runner', 'supercar', 'offroad', 'patrol', 
     }
     out.wade.push(s);
   }
-  // Your own: to busted.
-  {
+  // Your own, as damaged as it can be before it stops, and then not: to drowned. And half flooded, then out: how long to dry.
+  for (const hurt of [0.9, 0]) {
     const p = g.player;
     p.repair();
+    p.damage = hurt;
+    out.busted = 0;
     p.teleport({ x: x0, y: sim.terrainAt(x0, z) + 0.8, z }, Math.PI / 2 * dir);
     p.setVelocity({ x: 14 * dir, y: 0, z: 0 });
     p._readState();
     let t = null;
-    for (let i = 0; i < 900 && !out.busted; i++) { g.stepHeadless(1 / 60, { throttle: 0.5, brake: 0, steer: 0, handbrake: 0 }); if (t === null && p._wetFor > 0) t = i; if (out.busted) out.player = +((i - t) / 60).toFixed(1); }
+    for (let i = 0; i < 900 && !out.busted; i++) { g.stepHeadless(1 / 60, { throttle: p.wet ? 0 : 0.5, brake: 0, steer: 0, handbrake: 0 }); if (t === null && p._wetFor > 0) t = i; if (out.busted) (out.player = out.player || []).push([hurt, +((i - t) / 60).toFixed(1), out.how]); }
     p.repair();
   }
   // Dry places.
   const p = g.player;
+  p.teleport({ x: x0 - 20, y: sim.terrainAt(x0 - 20, z) + 0.8, z }, 0);
+  p.flood = 0.5;
+  for (let i = 0; i < 1200 && out.dries === undefined; i++) { g.stepHeadless(1 / 60, { throttle: 0, brake: 1, steer: 0, handbrake: 1 }); if (!(p.flood > 0)) out.dries = +(i / 60).toFixed(1); }
   for (const e of G.edges) {
     if (!e.bridge || e.elevated) continue;
     for (let s = 4; s < e.length - 2; s += 10) {
@@ -90,7 +98,7 @@ export async function drown(kinds = ['runner', 'supercar', 'offroad', 'patrol', 
       p.repair();
       for (let i = 0; i < 20; i++) g.stepHeadless(1 / 60, { throttle: 0, brake: 1, steer: 0, handbrake: 1 });
       out.dry.bridges++;
-      if (p.damage > 0.01 || p.flooded > 0) out.dry.bridgeHurt++;
+      if (p.flood > 0 || p.flooded > 0 || p.wet) out.dry.bridgeHurt++;
     }
     await breathe();
   }

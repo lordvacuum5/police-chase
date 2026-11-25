@@ -121,10 +121,11 @@ const RES_DOWN = 50, RES_UP = 57;
 /** Kerbs further off than this are not drawn, m. */
 const KERB_FAR = 300;
 const _ball = new THREE.Sphere();
-/** Game._checkWater: this much of a car under before it floods; damage a second just under that and right under; a wreck shown, s. */
+/** Game._checkWater: this much of a car under before its engine floods; how much of it a second just past that and right under; drying out, a second; a wreck shown, s. */
 const FLOOD_FROM = 0.6;
-const FLOOD_SLOW = 0.05;
-const FLOOD_FAST = 0.29;
+const FLOOD_SLOW = 0.054;
+const FLOOD_FAST = 0.315;
+const FLOOD_DRY = 0.12;
 const SUNK_SHOWN = 4;
 /** The most a car that has come down hard is drawn up, m (Game._landedLift). */
 const LANDED_MAX = 1.2;
@@ -2411,9 +2412,11 @@ class Game {
     if (this.replay.play()) this.hud.overlay.classList.remove('show');
   }
 
-  onBusted() {
+  /** The end of the run: arrested, or `drowned` (_checkWater). */
+  onBusted(drowned = false) {
     if (this.outcome) return;
     this.outcome = 'busted';
+    this.drowned = drowned;
     // The same event read from the other side of the windscreen. Chasing the
     // computer, an arrest is the thing you were trying to make happen, and
     // calling it BUSTED over a score for how long you survived would be
@@ -2430,16 +2433,18 @@ class Game {
       return;
     }
     const run = this.score.finish();
-    this.hud.showOverlay('BUSTED', [
+    this.hud.showOverlay(drowned ? 'ENGINE FLOODED' : 'BUSTED', [
+      ...(drowned ? ['You drowned'] : []),
       `Score <b>${run.score.toLocaleString()}</b>${run.newBest ? ' &nbsp;<b class="best">NEW BEST</b>' : ` &nbsp;(best ${run.best.toLocaleString()})`}`,
       `Survived <b>${this.heat.elapsed.toFixed(1)}s</b>`,
       `Peak heat <b>${this.heat.peak.toFixed(1)}</b>`,
       `Damage <b>${(this.player.damage * 100).toFixed(0)}%</b>`,
     ].join(' &nbsp;·&nbsp; '));
-    this.commentary.onBusted();
+    if (!drowned) this.commentary.onBusted();
     this.replay.play(true);
-    this.radio('Control, received. All units, stand down.', true, { final: true });
-    if (session.active && session.isHost) session.sendEvent('busted');
+    if (!drowned) this.radio('Control, received. All units, stand down.', true, { final: true });
+    else if (this.heat.value > 0) this.radio('Control, vehicle has gone under. All units, stand down.', true, { final: true });
+    if (session.active && session.isHost) session.sendEvent('busted', drowned ? { drowned: 1 } : undefined);
   }
 
   /**
@@ -2776,6 +2781,7 @@ class Game {
   restart() {
     if (session.active && session.isHost) session.sendEvent('restart');
     this.outcome = null;
+    this.drowned = false;
     this.score.reset();
     this.hud.hideOverlay();
     this.heat.reset();
@@ -3506,9 +3512,10 @@ class Game {
   /**
    * Ashfield's river (world/citygen.js, `waterAt`). "When you go in the water, you just start taking huge amounts of damage.
    * But only ... when like most of your car is submerged. It obviously depends on the car." How much of its own body is
-   * under: a low car floods where a van is still wading. Past FLOOD_FROM, damage, faster the deeper; wrecked in it, you are
-   * busted ("when you go into the water, I think it should just bust you" was at the first touch, before this), a police
-   * player's car is fished out and mended, and anyone else's is taken out, out of sight or after a few seconds.
+   * under: a low car floods where a van is still wading. Past FLOOD_FROM its engine floods, faster the deeper, and dries out
+   * again when it is not. It was damage, and *"say you already have 100% damage, you instant die"*: now a bar of its own,
+   * shown only in the water (Hud). Full, you have drowned, a police player's car is fished out and mended, and anyone
+   * else's is taken out, out of sight or after a few seconds.
    */
   _checkWater(dt) {
     const map = this.world.__map, at = map && map.waterAt;
@@ -3518,16 +3525,20 @@ class Game {
       const level = at(v.position.x, v.position.z);
       const under = level === null || v.position.y > level + 2.5 ? 0 : this.submerged(v, level);
       v.flooded = under;
-      if (under < FLOOD_FROM) { if (v._wetFor) v._wetFor = 0; continue; }
+      // Any of it in the water at all, wheels and all.
+      v.wet = level !== null && v.position.y - v.spec.dims.h * 0.5 < level;
+      if (under < FLOOD_FROM) {
+        if (v._wetFor) v._wetFor = 0;
+        if (v.flood > 0 && !v.disabled) v.drown(-FLOOD_DRY * dt);
+        continue;
+      }
       const mine = v === this.player;
       if (mine && this.outcome) continue;
-      if (mine && !v._wetFor && this.hud) this.hud.toast('FLOODING');
       v._wetFor = (v._wetFor || 0) + dt;
       v.drown(lerp(FLOOD_SLOW, FLOOD_FAST, (under - FLOOD_FROM) / (1 - FLOOD_FROM)) * dt);
-      if (v.damage < (v.spec.wreckAt ?? 0.92)) continue;
+      if (v.flood < 1) continue;
       if (mine && !v.isPolice) {
-        if (this.hud) this.hud.centreLine('Sunk');
-        this.onBusted();
+        this.onBusted(true);
       } else if (mine) {
         this._recoverPlayer();
         v.repair();
@@ -3825,7 +3836,7 @@ class Game {
         // below lets them go again when the escapee runs again. Starting the
         // chase over is still the escapee's call, not theirs.
         this.outcome = 'busted';
-        this.hud.showOverlay('SUSPECT ARRESTED', 'Waiting for the escapee to run again…', { canRestart: false });
+        this.hud.showOverlay(msg.drowned ? 'SUSPECT DROWNED' : 'SUSPECT ARRESTED', 'Waiting for the escapee to run again…', { canRestart: false });
       } else if (msg.e === 'escaped') {
         // Getting away is not an ending for anybody. The escapee's banner says
         // so for a few seconds and they drive on; this is the same banner from
