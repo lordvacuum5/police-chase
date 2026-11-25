@@ -10821,3 +10821,9 @@ only VEHICLE by. Both now. Haldon: 5,943 hedges, and of every collider on the th
 *"I still can't hear the voices ... they sound the same."* A voice of the browser's picked on the menu, however long before, won over the voice pack. With the pack on it is the pack,
 and the pickers are put away until it is off. Checked with Hazel and George picked and the pack on: a whole chase, nine calls, all nine recorded, in both men's voices and
 Control's. On the link the recordings were there and served (206, octet-stream). And the helicopter's flick (*"I did tell you that, didn't I?"*) is gone, as of 76fd9a2: nothing of it is left in the source.
+
+### The daily off Ashfield until Saturday
+
+*"The daily challenge at the moment doesn't do the American map ... you will start using the map for the daily challenge on Saturday. So, Friday evening ... for the UK."* 26 and 27 November had
+fallen on Ashfield: Haldon (Escape) and Wexbury (Air Rescue) now. Saturday the 28th, from midnight UK, is Ashfield (Air Rescue; it had fallen on Wexbury), and after that as the numbers fall. Of 460 days round it
+only those three differ. All three load, with their route or their three landing places. The map is still on the menu.

@@ -97,11 +97,22 @@ function hash(s) {
   return h >>> 0;
 }
 
+/** The first day the daily may be on Ashfield: Saturday, so from midnight at the end of Friday evening in the UK. */
+const CITY_FROM = '2026-11-28';
+
 /** The parts of a day that are chosen before a map is built: which map, and which car. */
 export function dailyPlan(day = dayKey()) {
   const rng = makeRng(hash(`daily:${day}`));
   const maps = MAPS.filter((m) => !m.hidden);
-  const map = maps[Math.floor(rng() * maps.length) % maps.length];
+  let map = maps[Math.floor(rng() * maps.length) % maps.length];
+  // Not Ashfield yet: "until then, I don't want the American map being used for the daily challenge". A day that falls on it
+  // is one of the others', from numbers of its own, and every other day is as it was. The days before this was asked are too.
+  if (map.id === 'city' && day >= '2026-11-26' && day < CITY_FROM) {
+    const rest = maps.filter((m) => m.id !== 'city');
+    map = rest[hash(`instead:${day}`) % rest.length];
+  }
+  // And it starts with it: "you will start using the map for the daily challenge on Saturday" (that day fell on Wexbury).
+  if (day === CITY_FROM) map = maps.find((m) => m.id === 'city') || map;
   let car = DAILY_CARS[Math.floor(rng() * DAILY_CARS.length) % DAILY_CARS.length];
   // What kind of challenge, from its own numbers so the map and car above are what they always were.
   // "Loads more different daily challenges ... where you're the police and you have to stop a criminal but
