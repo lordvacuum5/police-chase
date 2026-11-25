@@ -10751,3 +10751,6 @@ run in is hidden. `tests/fpslive.js`, frame after frame: motorway median 16.9 ms
 
 Not worth it: fog at 560 m saved 0.3-0.6 ms on the ground, 2.8 from 120 m up, and would take away the far traffic. Gliding cars' height every fourth frame:
 0.2 ms, taken out again. One frame of 27 s in a wrapped run was the whole page stopped, not the function it fell in.
+
+*"Make the flooding take slightly longer."* Damage a second 0.1 to 0.58 (0.15 to 0.9). `tests/drown.js`, driven in off the bank, first damage to wrecked: Runner,
+supercar and hatchback 1.7 s, patrol 1.9, van 2.2; they were 1.1-1.6. None on 130 places on the bridges.
