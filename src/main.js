@@ -8,7 +8,6 @@ import {
   carMaterials, drivablePoliceSpec, getawaySpec,
 } from './game/vehicles.js';
 import { WORLD_HALF, setWorldSize } from './world/common.js';
-import { appleMode, realApple, setAppleMode } from './core/platform.js';
 import { MAPS, mapById } from './world/maps.js';
 import { buildCutGraph, CUTS_ON } from './world/cutgraph.js';
 import { addJumps } from './world/jumps.js';
@@ -48,12 +47,6 @@ const _markAt = new THREE.Vector3();
 const _markVel = new THREE.Vector3();
 const _qN = new THREE.Quaternion();
 
-/**
- * How long after typing `five` an H still means "and bring the helicopter",
- * in milliseconds. Long enough to be a deliberate second keystroke, short
- * enough that an H a few seconds later is the controls card again.
- */
-const FIVE_H_WINDOW = 1500;
 /** The daily challenge's "in view" (Game.inView): this many degrees either side of the car's nose. */
 const DAILY_VIEW_DEG = 55;
 
@@ -697,7 +690,6 @@ class Game {
         } else {
           this.player = this.createVehicle(car, car, d.route.start.position, d.route.start.heading, {});
         }
-        this._syncApple();
         this.startPlace = d.route.start;
         return;
       }
@@ -740,7 +732,6 @@ class Game {
       this.player = this.createVehicle(kind, kind, place.position, place.heading,
         { police: true, spec: drivablePoliceSpec(kind) });
       this.player.humanDriven = true;
-      this._syncApple();
       this.player.lampPhase = this.rng();
       this.startPlace = place;
       return;
@@ -749,7 +740,6 @@ class Game {
     // refresh or a trip back through M keeps it.
     const car = SPECS[chosenCar()] ? chosenCar() : 'runner';
     this.player = this.createVehicle(car, car, place.position, place.heading, {});
-    this._syncApple();
     this.startPlace = place;
   }
 
@@ -2481,57 +2471,6 @@ class Game {
   }
 
   /**
-   * Type APPLE to be treated as an Apple device, and again to stop.
-   *
-   * The joke in core/platform.js only happens on Apple hardware, which makes
-   * it impossible to look at from anything else -- and the person who asked
-   * for it is on Windows and Android by choice. So this pretends. Everything
-   * downstream reads appleMode() rather than a constant fixed at load, so it
-   * takes effect on the spot: the damage the car is about to take, the rate
-   * the heat climbs at, and the control room's opinion of your telephone.
-   *
-   * Two of those five letters do other things -- A steers and P pauses -- so
-   * typing it twitches the wheel and blinks the pause panel on the way past.
-   * That is the price of the word being the word. The two P presses usually
-   * cancel out, but not always: pressed keys are a set, so a fast typist puts
-   * both inside one frame, they collapse into a single tap and the game is
-   * left sitting on the pause screen. So the shortcut ends by unpausing --
-   * somebody who has just asked to be punished wants to be driving.
-   *
-   * ?apple=1 does the same thing at load, for a phone with no keyboard.
-   */
-  /**
-   * Is the Apple punishment actually in force?
-   *
-   * Not when there is somebody else in the room. Making one player's car take
-   * double damage and their heat climb three times as fast is a joke when it
-   * is their own run; in a game with other people in it, it is one player
-   * being quietly handicapped in a race against the others, and the heat is
-   * shared -- the escapee's wanted level is sent to every police player -- so
-   * an Apple host would drag everybody's chase up to five stars with them.
-   *
-   * Hosting a game nobody has joined yet is still playing on your own, so the
-   * count is of people rather than of sessions.
-   */
-  get appleHarder() {
-    if (session.active && session.players && session.players.length > 1) return false;
-    return appleMode();
-  }
-
-  /** Put the car's damage where the flag says it should be. */
-  _syncApple() {
-    if (this.player) this.player.damageScale = this.appleHarder ? 2 : 1;
-  }
-
-  _appleShortcut(i) {
-    if (!i.typed('apple')) return;
-    const on = setAppleMode(!appleMode());
-    this._syncApple();
-    this.paused = false;
-    this.hud.toast(`APPLE MODE: ${on ? 'ON' : 'OFF'}`);
-  }
-
-  /**
    * Skip to the wanted level you want to look at.
    *
    * Five stars is ten minutes of clean driving away, which is a long time to
@@ -2555,21 +2494,12 @@ class Game {
    */
   _wantedShortcut(i) {
     let want = null;
-    if (i.typed('five')) {
-      want = 5;
-      // Arm the H that brings air support with it -- see _handleKeys. This
-      // cannot be done as typed('fiveh'), which is where I started: typed()
-      // clears the letter buffer when it matches, so the E that completes
-      // `five` wipes the very letters `fiveh` would need.
-      this._fiveAt = performance.now();
-    }
     for (let n = 1; n <= 5; n++) {
       if (i.tapped(`Digit${n}`) || i.tapped(`Numpad${n}`)) want = n;
     }
     // And the rest as words, the way `five` is: "when I type in the 1 to
     // level, I want like 4, 1, 2, doesn't work." Only five was ever a word.
-    // (Not `fiveh`: see above -- five arms the H.)
-    const WORDS = ['one', 'two', 'three', 'four'];
+    const WORDS = ['one', 'two', 'three', 'four', 'five'];
     for (let n = 0; n < WORDS.length; n++) {
       if (i.typed(WORDS[n])) want = n + 1;
     }
@@ -2578,13 +2508,14 @@ class Game {
     // because he was about to die ... we just started spamming the buttons ... I don't want to be able to
     // change the wanted level down in any way. So I can go up 1, 2, 3, but I can't go back to 2."
     const now = Math.floor(session.active && !session.isHost ? (session.heat || 0) : this.heat.value);
-    if (want <= now) return;
+    if (want <= now && !(want === 5 && this.heliGrounded)) return;
 
     // A police player's copy of the heat is told to it by the escapee, so
     // setting it here would last until the next packet. Send it instead and
     // let the machine that owns the chase do it -- the answer comes back the
     // ordinary way, in the world update, and everybody sees the same stars.
-    this._askWanted(want, false);
+    // Five with the helicopter: "when I press the number 5, make it so it summons the helicopter as well, like a proper number 5".
+    this._askWanted(want, want === 5);
   }
 
   /**
@@ -2750,9 +2681,7 @@ class Game {
     // Helicopter.wanted. The shortcut exists to test the chase, and the chase
     // being tested is usually the one on the roads.
     //
-    // Unless air support is what you are trying to test, which is what the H
-    // is for: typing `fiveh` asks for the same five stars with the aircraft
-    // left in play.
+    // Unless it is all five, which bring it.
     this.heliGrounded = want > 0 && !air;
 
     if (want <= 0) {
@@ -2767,7 +2696,7 @@ class Game {
     if (this.heat.value <= 0) this.heat.bump(1, 'a request from the control room');
     this.heat.value = want;
     this.heat.peak = Math.max(this.heat.peak, want);
-    this.hud.toast(`WANTED: ${'★'.repeat(want)} · NO SCORE · NO AIR`);
+    this.hud.toast(`WANTED: ${'★'.repeat(want)} · NO SCORE${air ? '' : ' · NO AIR'}`);
   }
 
   /**
@@ -2959,24 +2888,7 @@ class Game {
     if (i.tapped('KeyP')) this.paused = !this.paused;
     // E in the garage bay: the next colour (Garage.canSpray, Game.respray).
     if (i.tapped('KeyE') && this.garage && this.garage.canSpray) this.respray(((this.player.paint || 0) + 1) % SPRAY_COLOURS.length);
-    // H is the controls card, unless it is the H on the end of `five`.
-    //
-    // "If I type in five and then H on the end, it spawns the one to level
-    // five with the helicopter." So the H has two jobs, and which one it does
-    // depends on whether `five` was typed in the last second and a half. It
-    // never does both: asking for air support should not also throw the
-    // controls card up over the game.
-    if (i.tapped('KeyH')) {
-      // `five` only arms it while the shortcuts are on (window.__wantedKeys).
-      const armed = this._fiveAt && performance.now() - this._fiveAt < FIVE_H_WINDOW;
-      this._fiveAt = 0;
-      if (armed) {
-        this._askWanted(5, true);
-        this.hud.toast('WANTED: ★★★★★ · AIR SUPPORT · NO SCORE');
-      } else {
-        this.hud.toggleHelp();
-      }
-    }
+    if (i.tapped('KeyH')) this.hud.toggleHelp();
     // In a replay, C goes round the replay's own views as well: see Replay.cycleView.
     if (i.tapped('KeyC')) {
       if (this.replay.playing && !this.replay.behind) this.replay.cycleView();
@@ -2987,7 +2899,7 @@ class Game {
     // Lights and siren on your own police car. "Can we add on the phone like
     // a tiny button at the side named sirens, and it can turn off and on the
     // sirens ... and on keyboard ... Is Q a good key?" Q is bound to nothing,
-    // sits by WASD, and no typed shortcut (apple, five, st, log) has one in it.
+    // sits by WASD, and no typed shortcut (five, st, log) has one in it.
     // The phone's SIRENS button presses it (core/touch.js).
     const me = this.player;
     if (me && me.isPolice && !me.isAircraft) {
@@ -3018,7 +2930,6 @@ class Game {
     }
     // Up only, and not in the daily challenge: see _wantedShortcut.
     if (!this.daily) this._wantedShortcut(i);
-    this._appleShortcut(i);
     // Two letters, not a key: "make sure the key is like really hard to press
     // and no one else is in accidentally press it." It was `stuck`; then
     // "can you make it that I have to type in ST? Because it's easier." T is
@@ -3203,8 +3114,6 @@ class Game {
       this.hud.addMessage(`[net] ${nameOf(p)} left`);
       this.hud.toast(`${nameOf(p).toUpperCase()} LEFT`);
     }
-    // Somebody arriving or leaving can switch the Apple punishment on or off.
-    this._syncApple();
   }
 
   /**

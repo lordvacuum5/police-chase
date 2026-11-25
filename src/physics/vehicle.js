@@ -267,7 +267,6 @@ export class Vehicle {
     // Multiplies what a hit costs this particular car. Everything drives the
     // same way and takes the same knocks; this is the one dial on top, and
     // only one thing turns it. See core/platform.js.
-    this.damageScale = 1;
     this.linvel = new THREE.Vector3();
     this.angvel = new THREE.Vector3();
     this.forward = new THREE.Vector3(0, 0, 1);
@@ -810,7 +809,7 @@ export class Vehicle {
       }
       this.damage = clamp01(
         this.damage
-          + ((dv - 2.6) * 0.042 * friendly * share * (this.damageScale || 1)) / (this.spec.durability || 1),
+          + ((dv - 2.6) * 0.042 * friendly * share) / (this.spec.durability || 1),
       );
     }
     this.lastImpact = dv;

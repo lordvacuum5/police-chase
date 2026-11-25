@@ -252,25 +252,6 @@
 
   #scorevalue.off { color: var(--dim); }
 
-  /* The answer to tapping the title seven times. Big, because it is the one
-     thing in the game that tells you the joke can be turned off. */
-  #applebig {
-    position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(.94);
-    z-index: 70; padding: 22px 34px; border-radius: 10px; pointer-events: none;
-    background: rgba(8, 11, 16, .92); border: 1px solid var(--edge);
-    color: var(--ink); font-size: 26px; letter-spacing: 5px; white-space: nowrap;
-    opacity: 0; transition: opacity .35s ease, transform .35s ease;
-  }
-  #applebig.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-  #applebig.on { color: var(--hot); border-color: var(--hot); }
-  /* Seven quick taps on a phone otherwise select the words and trip the
-     double-tap zoom, neither of which is wanted here. */
-  #menu h1 {
-    cursor: pointer; -webkit-tap-highlight-color: transparent;
-    user-select: none; -webkit-user-select: none; touch-action: manipulation;
-  }
-  @media (max-width: 520px) { #applebig { font-size: 19px; padding: 16px 22px; letter-spacing: 3px; } }
-
   /* ---- pause and settings ----
      One panel behind P and behind the pause button on a phone. It is where
      the sound lives now: a phone has no N key, and a row of six small buttons
@@ -336,12 +317,8 @@
      pause button can close what it opened. */
   #touch.held #t-steer, #touch.held #t-pedals, #touch.held #t-cyc { pointer-events: none; opacity: .35; }
 
-  /* ---- what Control is saying about your phone ----
-     The joke is deaf otherwise: with the sound off the radio says all this to
-     nobody, and even with it on a line can go past while you are busy driving.
-     So an Apple line is put on the screen as well, in the middle, where it
-     cannot be missed and does not have to be read quickly. */
-  #applesay {
+  /* ---- a line in the middle of the screen (Hud.centreLine) ---- */
+  #centresay {
     position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%);
     z-index: 44; max-width: min(78vw, 560px); text-align: center;
     padding: 14px 20px; border-radius: 8px; pointer-events: none;
@@ -350,8 +327,8 @@
     text-shadow: 0 1px 10px rgba(4, 6, 9, .95);
     opacity: 0; transition: opacity .45s ease;
   }
-  #applesay.show { opacity: 1; }
-  @media (max-width: 520px) { #applesay { font-size: 13px; padding: 11px 15px; } }
+  #centresay.show { opacity: 1; }
+  @media (max-width: 520px) { #centresay { font-size: 13px; padding: 11px 15px; } }
 
   /* ---- transient banner ---- */
   /* Says something big without taking the game away: no curtain, no key to
@@ -993,8 +970,7 @@
   <div id="replaytag">REPLAY &nbsp;·&nbsp; V to stop &nbsp;·&nbsp; C camera <span id="replayview"></span></div>
 </div>
 
-<div id="applesay" aria-live="polite"></div>
-<div id="applebig" aria-live="polite"></div>
+<div id="centresay" aria-live="polite"></div>
 
 <div id="pause">
   <div id="pausebox">

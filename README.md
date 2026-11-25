@@ -10827,3 +10827,19 @@ Control's. On the link the recordings were there and served (206, octet-stream).
 *"The daily challenge at the moment doesn't do the American map ... you will start using the map for the daily challenge on Saturday. So, Friday evening ... for the UK."* 26 and 27 November had
 fallen on Ashfield: Haldon (Escape) and Wexbury (Air Rescue) now. Saturday the 28th, from midnight UK, is Ashfield (Air Rescue; it had fallen on Wexbury), and after that as the numbers fall. Of 460 days round it
 only those three differ. All three load, with their route or their three landing places. The map is still on the menu.
+
+### No Apple mode, five brings the helicopter, far cars turn and stay on the road
+
+*"Remove Apple mode. I don't like it anymore. I'll just remove it completely."* Gone: double damage, the faster wanted level, Control's lines, typing APPLE, seven taps on the title, `?apple=1`, `tests/apple.js`.
+What is left of `core/platform.js` picks the wording of the full-screen hint on an iPhone.
+
+*"When I press the number 5, make it so it summons the helicopter as well, like a proper number 5."* 5, or FIVE, is five stars with the helicopter; 5 again brings it if 4 was pressed first and kept it
+down. The H after FIVE is gone with it. Pressed: 4 no helicopter, then 5, up within 2 s.
+
+*"Sometimes when civilian cars are far away, like when they turn, they suddenly snap turn."* A gliding car faced down its route's next piece, all at once at a corner. Now it faces where it will be 5 m on and comes round no quicker
+than 7 m radius (0.9 rad/s at the least). `tests/skycars.js`: 292,000 car-frames, the most in one 4.1 degrees, none over 8 (not measured before).
+
+*"I've seen some civilian cars still in the sky, certain positions when they're on the highway and I'm beneath."* A route is simplified to its corners (`simplify`, roadgraph.js), and everything after one is said to be on that one's road: 1,441 of 7,973
+route points were on a road they were not near, 439 m off at the worst, and gliding cars took their height from it. `Traffic._onItsRoads` puts each on the road it is on, at the height of the point before.
+`tests/skycars.js`, eight places under the raised roads, 20 s each: in the air (over 1.2 m) 352 of 6,502 car-looks on the decks, up to 8.9 m, to 0 of 6,723. `tests/deckTraffic.js` 60 s: 99% moving, none stuck, 1 sample of 2,835 under a
+deck. Police routes have the same labels, not touched.

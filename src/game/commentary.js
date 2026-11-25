@@ -69,9 +69,6 @@ export class Commentary {
     this.seenFor = 0;
     this.searchTimer = 0;
     this.runTimer = 6;
-    // Early, so the first jibe lands while you are still working out why
-    // there are suddenly so many police cars.
-    this.appleTimer = 5;
     this.pinnedFor = 0;
     this.pinStage = 0;
     this.offRoadFor = 0;
@@ -204,39 +201,6 @@ export class Commentary {
     }
 
     this._arrest(dt, heat, d, p);
-    this._apple(dt);
-  }
-
-  /**
-   * The control room, on the subject of your telephone.
-   *
-   * Nothing announces that the game plays differently on an Apple device --
-   * no banner, no setting -- so this is the only thing that tells you, and it
-   * is meant to be the tell. A chase where dispatch will not stop going on
-   * about your phone is obviously a joke; the same chase in silence is just a
-   * game that feels unfairly hard.
-   *
-   * It was sent as a routine line, and routine lines never got said. Three
-   * gates have to open at once for one: two seconds of dead air on the net,
-   * a twelve-second gap shared with every other routine line whoever wants
-   * one, and this one's own cooldown -- and a pursuit at three stars has a
-   * running commentary on it, so the air is never quiet for two seconds
-   * together. The bug on top was that a refused line still reset the timer,
-   * so each failure cost another half minute: attempt, refused, wait thirty
-   * seconds, attempt, refused. Played to three stars, the joke said nothing
-   * at all.
-   *
-   * So it is not a routine line any more -- it is the only thing telling you
-   * why the game has gone strange, which makes it worth the airtime -- and a
-   * refusal is retried in a couple of seconds rather than in a minute.
-   */
-  _apple(dt) {
-    if (!this.game.appleHarder) return;
-    this.appleTimer = (this.appleTimer || 0) - dt;
-    if (this.appleTimer > 0) return;
-    const said = this.game.say('apple', APPLE_LINES, {}, false, { every: 18 });
-    if (said) this.game.hud.centreLine(said);
-    this.appleTimer = said ? 22 + Math.random() * 12 : 2.5;
   }
 
   // --------------------------------------------------------------- the lines
@@ -263,18 +227,7 @@ export class Commentary {
           'Control, critical incident. Every car to assist.',
         ],
       };
-      // On an Apple device the reason given for each escalation is the
-      // device. This is the one moment the joke has something to hang on --
-      // the response genuinely is stepping up, and saying why lands better
-      // than the same gag arriving at a random moment with nothing happening.
-      const apple = this.game.appleHarder && APPLE_ESCALATION[tier];
-      const use = apple || lines[tier];
-      if (use) {
-        const said = this._say(`tier${tier}`, use, {}, { hot: true, force: true, cooldown: 60 });
-        // On screen as well, but only the ones about the phone: the ordinary
-        // escalation already has the stars flashing to announce it.
-        if (said && apple) this.game.hud.centreLine(this.game.lastLine || '');
-      }
+      if (lines[tier]) this._say(`tier${tier}`, lines[tier], {}, { hot: true, force: true, cooldown: 60 });
     }
     this.lastTier = tier;
   }
@@ -653,57 +606,3 @@ export class Commentary {
     g.radio(text, true, { final: true });
   }
 }
-
-/**
- * What the control room says about your telephone.
- *
- * The first set of these were standalone jokes -- dongles, headphone jacks,
- * green bubbles -- and they did not work, because a police radio is not a
- * comedy club: a line only reads if it sounds like something a control room
- * would actually say about a suspect it is chasing. "They don't really make
- * sense, a lot of them."
- *
- * So these are all the same joke told as radio traffic, and the joke is that
- * the force's official advice is to buy an Android. Ribbing about a brand and
- * nothing else -- nothing invented and put about as fact.
- */
-const APPLE_LINES = [
-  'Control, suspect is still on iOS. Advise them the switch to Android is free.',
-  'Control, the subject has been offered an Android and declined.',
-  'Control, be advised, suspect would be away by now on an Android.',
-  "Control, the subject's handset cannot keep up with this pursuit.",
-  'Control, suspect may surrender, or upgrade to Android. Either is acceptable.',
-  'Control, advise the suspect an Android would have found a route by now.',
-  'Control, subject is on eleven per cent battery. We can wait them out.',
-  'Control, all units, the suspect paid flagship money for that. No sympathy.',
-  'Control, suspect has been told to upgrade. They are not listening.',
-  "Control, the subject's phone is thermal throttling. Close in.",
-  'Control, suspect is running the pursuit at fifteen frames a second.',
-  'Control, all units, the subject brought an iPhone to a car chase.',
-];
-
-/**
- * The reason each escalation is being authorised, on an Apple device.
- *
- * Keyed by the tier being arrived at, and used in place of the ordinary line
- * -- so the moment the response steps up, the radio says what stepped it up.
- */
-const APPLE_ESCALATION = {
-  2: [
-    'Control, pursuit authorised. Subject is an Apple user.',
-    'Control, all units, pursuit authorised. Suspect is on an iPhone.',
-  ],
-  3: [
-    'Control, tactical contact authorised. The subject is an Apple user.',
-    'Control, contact authorised on the grounds that they use an iPhone.',
-  ],
-  4: [
-    'Control, interceptors deploying. Subject has declined to switch to Android.',
-    'Control, you may box. The suspect was warned about that phone.',
-  ],
-  5: [
-    'Control, critical incident. Suspect still refuses to move to Android.',
-    'Control, all units, critical incident. The subject will not be told.',
-  ],
-};
-

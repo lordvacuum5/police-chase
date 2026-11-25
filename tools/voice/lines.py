@@ -23,7 +23,7 @@ WHATS = ['failed to stop after a collision with a police vehicle', 'failed to st
 SPEEDS = [str(n) for n in range(10, 210, 10)]
 UNITS = ['unit %d' % n for n in range(1, 41)]
 
-START = re.compile(r"(?:\.say|\._say|phrases\.pick|\.radio)\(|const (?:APPLE_LINES|APPLE_ESCALATION|lines) = |\blines = (?=\[)")
+START = re.compile(r"(?:\.say|\._say|phrases\.pick|\.radio)\(|const lines = |\blines = (?=\[)")
 TEXT = re.compile(r"`((?:[^`\\]|\\.)*)`" + r"|'((?:[^'\\\n]|\\.)*)'" + r'|"((?:[^"\\\n]|\\.)*)"')
 ROAD_ALL = "${x.road ? ' ' + x.road : ' in your area'}"
 ROAD_LAST = "${x.road ? ' ' + x.road.replace(/^on /, '') : ' the last location'}"

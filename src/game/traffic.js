@@ -86,6 +86,8 @@ const TOP_SPEED = 20;
 
 /** A gliding car re-routes rather than heading for a route point further off than this, m. */
 const GLIDE_GAP = 30;
+/** A gliding car faces where it will be this far on, m; turning no quicker than round this radius, m, or this, rad/s, if that is more. */
+const GLIDE_AHEAD = 5, GLIDE_RADIUS = 7, GLIDE_TURN = 0.9;
 /** How high a settled hatchback rides, m, body origin above the ground. */
 const RIDE = 0.46;
 const _e = new THREE.Euler();
@@ -295,6 +297,20 @@ export class Traffic {
     // Gives way to blue lights while gliding too: it simply waits.
     // But not on the motorway, where what is coming through has two more lanes.
     c.cruise = !onBig(at) && this._sirenNear(v) ? 0 : this._pace(c, at);
+    // Round a corner, not snapped round it: "sometimes when civilian cars are far away, like when they turn, they suddenly snap turn."
+    // Facing where it will be GLIDE_AHEAD on, and no quicker than a car of its speed could come round.
+    {
+      let ax = x, az = z, left = GLIDE_AHEAD, k = i;
+      while (left > 0 && k < pts.length - 1) {
+        const q = pts[k + 1], l = Math.hypot(q.x - ax, q.z - az);
+        if (l < 1e-3) { k++; continue; }
+        if (l <= left) { ax = q.x; az = q.z; left -= l; k++; } else { ax += (q.x - ax) / l * left; az += (q.z - az) / l * left; left = 0; }
+      }
+      const want = Math.hypot(ax - x, az - z) > 0.5 ? Math.atan2(ax - x, az - z) : Math.atan2(hx, hz), now = Math.atan2(v.forward.x, v.forward.z);
+      const most = Math.max(GLIDE_TURN, c.cruise / GLIDE_RADIUS) * dt;
+      const turn = Math.max(-most, Math.min(most, Math.atan2(Math.sin(want - now), Math.cos(want - now))));
+      hx = Math.sin(now + turn); hz = Math.cos(now + turn);
+    }
     // On the ground and with it: at the height a settled car of this kind
     // rides, tilted to the slope. "A car came down the hill ... almost
     // floating a few metres above the ground, level instead of going down":
@@ -437,7 +453,44 @@ export class Traffic {
       if (p.length >= 2 && !turnsBack(p, v.forward)) { pts = p; break; }
       if (!pts && p.length >= 2) pts = p;
     }
-    if (pts) c.driver.setPath(this._inLane(c, pts));
+    if (pts) c.driver.setPath(this._inLane(c, this._onItsRoads(pts, v.position.y - 0.9)));
+  }
+
+  /**
+   * Every point of a route told which road it is on. Simplified, a route keeps only its corners, and everything after one is
+   * said to be on that one's road: 18% of Ashfield's points were on a road they were nowhere near, 439 m off at the worst, and a
+   * car gliding along the motorway took its height from there, up to 9 m over the deck. "I've seen some civilian cars still
+   * in the sky, certain positions when they're on the highway and I'm beneath."
+   */
+  _onItsRoads(pts, y) {
+    const gr = this.game.graph, off = (e, p) => {
+      let best = Infinity;
+      for (const s of e.segs) {
+        const dx = s.b.x - s.a.x, dz = s.b.z - s.a.z, l2 = dx * dx + dz * dz;
+        let t = l2 > 1e-9 ? ((p.x - s.a.x) * dx + (p.z - s.a.z) * dz) / l2 : 0;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        best = Math.min(best, Math.hypot(s.a.x + dx * t - p.x, s.a.z + dz * t - p.z));
+      }
+      return best;
+    };
+    const level = (e, p) => (e.deck ? gr.levelOn(e, p.x, p.z) : gr.levelGround(p.x, p.z));
+    let was = y;
+    for (const p of pts) {
+      if (!p.edge) continue;
+      if (off(p.edge, p) > p.edge.width * 0.5 + 4) {
+        // The road it is on: near it, and at the height of the point before, not the street under it.
+        let best = null, bs = Infinity;
+        for (const e of gr.edgesNear(p.x, p.z, 30)) {
+          const d = off(e, p);
+          if (d > e.width * 0.5 + 4) continue;
+          const at = level(e, p), score = d + 3 * Math.abs(at - was) + (e.kind === p.edge.kind ? 0 : 3);
+          if (score < bs) { bs = score; best = e; }
+        }
+        if (best) { p.edge = best; p.speed = best.speed; }
+      }
+      was = level(p.edge, p);
+    }
+    return pts;
   }
 
   /**

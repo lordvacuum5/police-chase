@@ -558,7 +558,6 @@ export class FlyingHelicopter {
     // missing one of these is not a quiet degradation, it is an exception
     // inside the frame loop, every frame.
     this.gear = 1;
-    this.damageScale = 1;
     this.flippedFor = 0;
     this.lampPhase = 0;
     this.lastImpact = 0;
