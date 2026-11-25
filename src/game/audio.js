@@ -220,7 +220,7 @@ function sampleRecorded(who) {
  */
 export function speakSample(who, voice) {
   const speech = typeof window !== 'undefined' && window.speechSynthesis;
-  if (!voiceChoices()[who] && sampleRecorded(who)) { if (speech) speech.cancel(); return; }
+  if (sampleRecorded(who)) { if (speech) speech.cancel(); return; }
   if (!speech || !voice) return;
   const style = SPEAKERS[who];
   speech.cancel();
@@ -1048,9 +1048,10 @@ export class GameAudio {
       voice = this.voices && this.voices[kind];
     }
 
-    // Said already, and through the radio: unless the player has picked a voice of the browser's on the menu.
+    // Said already, and through the radio. With the pack on it is the pack: a voice of the browser's picked on the menu long before
+    // used to win over it, silently -- "I still can't hear the voices ... they sound the same".
     const words = speakable(msg.text);
-    const said = this.recorded && !voiceChoices()[kind] ? this.recorded.plan(words, kind) : null;
+    const said = this.recorded ? this.recorded.plan(words, kind) : null;
     if (said) {
       this.callDuck = RECORDED_DUCK;
       const line = this.recorded.play(ctx, this.radioIn, said, t, RECORDED_GAIN[kind], unitPitch(kind, words));

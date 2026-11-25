@@ -10817,3 +10817,7 @@ bed at 70 km/h and has been seen to come out of the far side at 95%, which doubl
 *"In the Hidden Valley map, like hedges are solid."* Since police go through the traffic (5db30cc) every car but the civilian ones is in FORCE as well as VEHICLE, and a hedge let
 only VEHICLE by. Both now. Haldon: 5,943 hedges, and of every collider on the three maps (14,464, 3,680, 14,833) none lets one by and not the other.
 `tests/hedgejump.js`: through at 60 km/h to 23 and dragged, as it was; a patrol car, SUV, van and hatchback sent at one at 60 come out 10-14 m the other side, undamaged.
+
+*"I still can't hear the voices ... they sound the same."* A voice of the browser's picked on the menu, however long before, won over the voice pack. With the pack on it is the pack,
+and the pickers are put away until it is off. Checked with Hazel and George picked and the pack on: a whole chase, nine calls, all nine recorded, in both men's voices and
+Control's. On the link the recordings were there and served (206, octet-stream). And the helicopter's flick (*"I did tell you that, didn't I?"*) is gone, as of 76fd9a2: nothing of it is left in the source.

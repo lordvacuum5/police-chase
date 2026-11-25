@@ -810,10 +810,7 @@ function buildVoicePack(changed) {
       changed();
     });
     for (const b of box.querySelectorAll('[data-who]')) b.addEventListener('click', () => {
-      // The pack's own, whatever voice is picked above.
-      setVoiceChoice(b.dataset.who, '');
       speakSample(b.dataset.who, null);
-      changed();
     });
   };
   show();
@@ -836,7 +833,8 @@ function buildVoicePicker() {
   const render = () => {
     const all = speech.getVoices();
     const list = englishVoices(all);
-    const shown = list.length > 0;
+    // The browser's voices to pick from: not while the voice pack is on, which is what is heard.
+    const shown = list.length > 0 && !voicePack();
     holder.hidden = sub.hidden = hint.hidden = !shown;
     if (!shown) return;
 
@@ -850,7 +848,7 @@ function buildVoicePicker() {
         + `<div class="row"><select id="${id}"></select>`
         + `<button type="button" title="Hear it">&#9654;</button></div>`;
       const select = card.querySelector('select');
-      select.add(new Option(voicePack() ? 'Voice pack' : `Auto: ${short(auto[who])}`, ''));
+      select.add(new Option(`Auto: ${short(auto[who])}`, ''));
       for (const v of list) select.add(new Option(short(v), v.name, false, chosen[who] === v.name));
       const current = () => (pickVoices(speech.getVoices()) || {})[who];
       select.addEventListener('change', () => {
