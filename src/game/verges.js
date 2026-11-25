@@ -16,6 +16,7 @@
 import * as THREE from 'three';
 import { nearBuilding } from '../physics/world.js';
 import { onDrive } from '../world/drives.js';
+import { block } from './still.js';
 
 const VERGE_CELL = 100;
 /**
@@ -259,6 +260,7 @@ export function addVerges(game, blocks = null) {
     lod.addLevel(new THREE.Object3D(), VERGE_FAR);
     root.add(lod);
   }
+  block(root, VERGE_FAR);
   game.scene.add(root);
   root.userData.count = spots.length;
   return root;

@@ -274,7 +274,7 @@ export class Traffic {
   /** A dormant car, moved along its route at its cruising speed, no physics. */
   _glide(c, dt) {
     const g = this.game, v = c.v, d = c.driver;
-    if (!d.hasPath || d.remaining() < 40) this._route(c);
+    if (!d.hasPath || d.remaining(40) < 40) this._route(c);
     const pts = d.path;
     if (!pts || pts.length < 2) return;
     let x = v.position.x, z = v.position.z, i = d.pathIndex, step = c.cruise * dt;
@@ -523,7 +523,7 @@ export class Traffic {
   _drive(c, dt) {
     const g = this.game, v = c.v, d = c.driver;
     if (v.disabled) { v.setControls({ throttle: 0, brake: 0, steer: 0, handbrake: 1 }); return; }
-    if (c.pullFor <= 0 && (!d.hasPath || d.remaining() < 40)) this._route(c);
+    if (c.pullFor <= 0 && (!d.hasPath || d.remaining(40) < 40)) this._route(c);
 
     const was = c.pullFor > 0;
     // Once it starts, it finishes: a few seconds at least, so a car that
@@ -635,7 +635,7 @@ export class Traffic {
     if (i >= 0) this.cars.splice(i, 1);
     c.v.isTraffic = false;
     // Drawn like any car again (Game._cullTraffic).
-    if (c.v.view) { c.v.view.visible = true; c.v.view.traverse((o) => { if (o.isMesh && c.v._shadowOn === false) o.castShadow = this.game.renderer.shadowMap.enabled; }); }
+    if (c.v.view) { c.v.view.visible = true; if (c.v._shadowOn === false) c.v.view.traverse((o) => { if (o.isMesh) o.castShadow = this.game.renderer.shadowMap.enabled; }); }
     c.v._shadowOn = undefined;
     c.v._far = false;
   }

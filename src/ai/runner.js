@@ -448,7 +448,7 @@ export class Runner {
     // Re-plan on the clock, when the path has run out, or when the junction it
     // was heading for has stopped being the safe one -- which is what happens
     // the moment a unit gets in front of it.
-    if (this.repathTimer <= 0 || !this.driver.hasPath || this.driver.remaining() < 30) {
+    if (this.repathTimer <= 0 || !this.driver.hasPath || this.driver.remaining(30) < 30) {
       if (this._plan()) this.repathTimer = REPATH;
       else this.repathTimer = 0.4;
     }
@@ -517,7 +517,7 @@ export class Runner {
     // good deal shorter: "put a full police routing system, so they don't follow the road."
     // Off it, or on a line already, it goes on planning.
     const onRoad = d._onCarriageway();
-    if (onRoad && (this._line ? d.remaining() < LINE_END : g.mapDef && g.mapDef.id === 'city')) return dropLine();
+    if (onRoad && (this._line ? d.remaining(LINE_END) < LINE_END : g.mapDef && g.mapDef.id === 'city')) return dropLine();
     this._lineFor = (this._lineFor || 0) - dt;
     if (onRoad && !this._line) {
       if (this._lineFor > 0) return null;

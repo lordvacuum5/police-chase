@@ -1,83 +1,142 @@
-// Traffic far off, as a simple shape of a car.
+// Cars far off -- the traffic's and the parked -- in fewer triangles, and the shadows of every car near.
 //
-// "The lights are good in the dark, but not good in the day ... maybe just like almost just an outline of the car." Past
-// FROM the real body (5,600 triangles) is swapped for this: a body, a cabin, dark glass and dark sills in the car's own
-// paint, 92 triangles, all of them in one draw. A few pixels of a dark car on dark tarmac is what could not be seen, so the
-// paint is lifted a little, and the shape drawn a little larger, the further off it is.
+// "It's very obvious to the human eye that it's suddenly becoming really detailed. The good thing about the lights was ... it
+// faded so well." From FADE0 to FADE1 the car's own model in cells of a few centimetres (game/carlod.js) comes up over the
+// real one a pixel at a time, and past FADE1 it is all there is; coarser again further off, always a cell to a pixel or so.
+// Past GROW_FROM it is drawn a little larger and lighter the further off, from nothing at GROW_FROM: a few pixels of a dark
+// car on dark tarmac could not be seen ("it's hard to see the civilian cars until the last moment").
+//
+// Shadows: every car near the player cast one from its whole model, 48,000 triangles for the Runner's. Cast from the same
+// model in coarser cells instead, one draw a kind, and drawn for nothing but the shadow map.
 import * as THREE from 'three';
+import { simplifyCar, carLodMaterial } from './carlod.js';
 
-/** The real car inside the first of these, m; this outside the second; as it was between, so it does not flicker at the line. */
-export const FROM = 112, BACK = 104;
-/** Larger by this much at GROWN m, and lifted towards white by this share of the way. */
-const GROW = 0.35, GROWN = 600, LIFT = 0.3;
-const MAX = 320;
+/** The real car alone nearer than the first, m; its stand-in alone past the second. */
+export const FADE0 = 60, FADE1 = 84;
+/** Each stand-in's cells, m, and how far off it is used to. */
+const LEVELS = [[0.11, 125], [0.19, 230], [0.34, Infinity]];
+const GROW_FROM = 150, GROWN = 600, GROW = 0.35, LIFT = 0.3;
+/** Cells of what a car's shadow is cast from, m: a traffic model's, and the others'. */
+const CAST = 0.2, CAST_FINE = 0.14;
+const CAST_WITHIN = 150;
 
-/** A car 1 wide, 1 high and 1 long, standing on y = 0, nose along +z: paint white (the instance's own), glass and sills dark. */
-function carGeometry() {
-  const pos = [], col = [];
-  const quad = (a, b, c, d, k) => { for (const q of [a, b, c, a, c, d]) { pos.push(...q); col.push(k, k, k); } };
-  // A prism along z: its outline [z, y] anticlockwise from the side, half width at the bottom and the top of it.
-  const slab = (z0, z1, zt0, zt1, y0, y1, w0, w1, sideK, topK, endK) => {
-    const P = (x, y, z) => [x, y, z];
-    for (const s of [1, -1]) {
-      const a = P(s * w0, y0, z0), b = P(s * w0, y0, z1), c = P(s * w1, y1, zt1), d = P(s * w1, y1, zt0);
-      if (s > 0) quad(a, d, c, b, sideK); else quad(a, b, c, d, sideK);
-    }
-    quad(P(-w1, y1, zt0), P(-w1, y1, zt1), P(w1, y1, zt1), P(w1, y1, zt0), topK);
-    quad(P(-w0, y0, z1), P(w0, y0, z1), P(w1, y1, zt1), P(-w1, y1, zt1), endK);
-    quad(P(w0, y0, z0), P(-w0, y0, z0), P(-w1, y1, zt0), P(w1, y1, zt0), endK);
-  };
-  // The wheels and sills, the body, its shoulder, the glass, the roof.
-  for (const z of [-0.31, 0.31]) slab(z - 0.075, z + 0.075, z - 0.075, z + 0.075, 0, 0.3, 0.48, 0.48, 0.06, 0.06, 0.06);
-  slab(-0.47, 0.47, -0.48, 0.48, 0.14, 0.26, 0.45, 0.46, 0.1, 0.1, 0.1);
-  slab(-0.48, 0.48, -0.5, 0.5, 0.26, 0.5, 0.48, 0.5, 1, 1, 0.92);
-  slab(-0.5, 0.5, -0.47, 0.46, 0.5, 0.64, 0.5, 0.46, 1, 1, 0.8);
-  slab(-0.42, 0.24, -0.3, 0.1, 0.64, 0.94, 0.45, 0.38, 0.16, 1, 0.2);
-  slab(-0.3, 0.1, -0.28, 0.08, 0.94, 1, 0.38, 0.35, 1, 1, 1);
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  g.computeVertexNormals();
-  return g;
-}
+const _s = new THREE.Vector3(), _c = new THREE.Color(), _white = new THREE.Color(0xdfe6ee), _m = new THREE.Matrix4(), _p = new THREE.Vector3();
 
-const _m = new THREE.Matrix4(), _s = new THREE.Vector3(), _p = new THREE.Vector3(), _c = new THREE.Color(), _white = new THREE.Color(0xdfe6ee);
-
-export class FarCars {
-  constructor(scene) {
-    const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
-    this.mesh = new THREE.InstancedMesh(carGeometry(), mat, MAX);
-    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.mesh.setColorAt(0, _c.set(0xffffff));
-    this.mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
-    this.mesh.name = 'far-cars';
-    this.mesh.frustumCulled = false;
-    this.mesh.count = 0;
-    scene.add(this.mesh);
+class Batch {
+  constructor(scene, geo, mat, name, shadow) {
+    this.scene = scene; this.geo = geo; this.mat = mat; this.name = name; this.shadow = shadow;
+    this.n = 0;
+    this._make(32);
   }
 
-  /** Every frame: the cars `{ v, paint }` marked far (Game._cullTraffic, `v._far`), where they are drawn, from `camera`. */
-  update(cars, camera, night) {
-    let n = 0;
-    for (const { v, paint } of cars) {
-      if (n >= MAX) break;
-      if (!v._far || !v.view) continue;
-      const p = v.view.position, d = p.distanceTo(camera.position), u = Math.min(1, Math.max(0, (d - FROM) / (GROWN - FROM)));
-      const k = 1 + GROW * u, s = v.spec.dims;
-      // Its wheels on the road: the body's middle is this far over them.
-      _p.copy(v.wheels[0].pos);
-      const low = _p.y - (v.spec.suspension.rest - v.wheels[0].compression) - v.spec.wheelRadius;
-      _p.set(0, low, 0).applyQuaternion(v.view.quaternion).add(p);
-      _s.set(s.w * k, (s.h + 0.22) * k, s.l * k);
-      _m.compose(_p, v.view.quaternion, _s);
-      this.mesh.setMatrixAt(n, _m);
-      _c.setHex(paint === undefined ? 0x8d939a : paint);
-      if (!night) _c.lerp(_white, LIFT * (0.35 + 0.65 * u));
-      this.mesh.setColorAt(n, _c);
-      n++;
+  _make(cap) {
+    const old = this.mesh;
+    const g = this.geo.clone();
+    this.cap = cap;
+    this.fade = new THREE.InstancedBufferAttribute(new Float32Array(cap).fill(1), 1).setUsage(THREE.DynamicDrawUsage);
+    if (!this.shadow) g.setAttribute('lodFade', this.fade);
+    const m = this.mesh = new THREE.InstancedMesh(g, this.mat, cap);
+    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    if (!this.shadow) { m.setColorAt(0, _c.set(0xffffff)); m.instanceColor.setUsage(THREE.DynamicDrawUsage); }
+    m.name = this.name;
+    m.frustumCulled = false;
+    m.castShadow = !!this.shadow;
+    m.count = 0;
+    // For the shadow map only: nothing of it in the picture.
+    if (this.shadow) { m.onBeforeShadow = () => { m.count = this.n; }; m.onBeforeRender = () => { m.count = 0; }; m.onAfterShadow = () => {}; }
+    if (old) {
+      m.instanceMatrix.array.set(old.instanceMatrix.array);
+      if (!this.shadow) m.instanceColor.array.set(old.instanceColor.array);
+      this.scene.remove(old);
+      old.geometry.dispose();
+      old.dispose();
     }
-    this.mesh.count = n;
-    this.mesh.instanceMatrix.needsUpdate = true;
-    this.mesh.instanceColor.needsUpdate = true;
+    this.scene.add(m);
+  }
+
+  add(matrix, colour, fade) {
+    if (this.n >= this.cap) {
+      const was = this.fade.array;
+      this._make(this.cap * 2);
+      this.fade.array.set(was);
+    }
+    this.mesh.setMatrixAt(this.n, matrix);
+    if (!this.shadow) { this.mesh.setColorAt(this.n, colour); this.fade.array[this.n] = fade; }
+    this.n++;
+  }
+
+  /** What has been added since `begin` is what is drawn. */
+  end() {
+    const m = this.mesh;
+    m.count = this.n;
+    m.visible = this.n > 0;
+    if (!this.n) return;
+    // Only as much of the buffers as is used.
+    const send = (a, size) => { a.clearUpdateRanges(); a.addUpdateRange(0, this.n * size); a.needsUpdate = true; };
+    send(m.instanceMatrix, 16);
+    if (!this.shadow) { send(m.instanceColor, 3); send(this.fade, 1); }
+  }
+}
+
+export class FarCars {
+  /** Stand-ins for `models` (Game.carModels) of `kinds`, and shadow casters for all of them; `specs` theirs, `wheels` the wheel's geometry. */
+  constructor(scene, models, specs, wheels, kinds) {
+    this.scene = scene;
+    this.kinds = {};
+    this.casters = {};
+    const mat = carLodMaterial(), dark = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+    for (const k of Object.keys(models || {})) {
+      if (!models[k] || !specs[k]) continue;
+      const light = kinds.includes(k);
+      if (light) {
+        const root = models[k].scene;
+        this.kinds[k] = LEVELS.map(([cell], i) => new Batch(scene, simplifyCar(root, specs[k], wheels, cell), mat, 'far-cars', false, i));
+      }
+      const cast = simplifyCar(models[k].scene, specs[k], null, light ? CAST : CAST_FINE);
+      for (const a of ['color', 'surf']) cast.deleteAttribute(a);
+      this.casters[k] = new Batch(scene, cast, dark, 'car-shadows', true);
+    }
+    this.night = false;
+  }
+
+  /** Whether a car of this kind has a stand-in, and whether its shadow is cast here. */
+  has(kind) { return !!this.kinds[kind]; }
+  casts(kind) { return !!this.casters[kind]; }
+
+  /** Start of a frame's drawing: `camera`'s view, `night`, and whether there are shadows, round `sun` (the player). */
+  begin(camera, night, sun) {
+    this.camera = camera;
+    this.night = night;
+    this.sun = sun;
+    for (const l of Object.values(this.kinds)) for (const b of l) b.n = 0;
+    for (const b of Object.values(this.casters)) b.n = 0;
+  }
+
+  /** A car of `kind` at `pos`, `quat`, its paint `hex`, `d` metres from the camera, `share` of it; nothing nearer than FADE0. */
+  add(kind, pos, quat, hex, d, share = 1) {
+    const levels = this.kinds[kind];
+    if (!levels || d <= FADE0) return;
+    const u = Math.min(1, Math.max(0, (d - GROW_FROM) / (GROWN - GROW_FROM))), k = 1 + GROW * u;
+    // Larger about the road under it, not its middle, which would sink it.
+    _p.copy(pos);
+    if (u) _p.y += GROW * u * 0.55;
+    _m.compose(_p, quat, _s.set(k, k, k));
+    _c.setHex(hex === undefined ? 0x8d939a : hex);
+    if (u && !this.night) _c.lerp(_white, LIFT * u);
+    let i = 0;
+    while (d > LEVELS[i][1]) i++;
+    levels[i].add(_m, _c, Math.min(1, (d - FADE0) / (FADE1 - FADE0)) * share);
+  }
+
+  /** A car's shadow, if it is near enough the player to be in the map. */
+  cast(kind, pos, quat) {
+    const b = this.casters[kind];
+    if (!b || !this.sun || Math.abs(pos.x - this.sun.x) > CAST_WITHIN || Math.abs(pos.z - this.sun.z) > CAST_WITHIN) return;
+    b.add(_m.compose(pos, quat, _s.set(1, 1, 1)));
+  }
+
+  end() {
+    for (const l of Object.values(this.kinds)) for (const b of l) b.end();
+    for (const b of Object.values(this.casters)) b.end();
   }
 }

@@ -233,9 +233,20 @@ export function buildCity(sim, scene, seed = 20260822) {
     const y0 = bankY(p0.x, p0.z), y1 = bankY(p1.x, p1.z);
     b.ha = lerp(y0, y1, b.t0); b.hb = lerp(y0, y1, b.t1);
   }
+  // By 32 m cells: all of the bridges' pieces were asked of every height on the map, 9.3 us a time, and a car's suspension asks
+  // some hundreds a frame -- 15 of the 32 ms a frame of a five-star chase took on the laptop (README).
+  const DC = 32, DN = Math.ceil((WORLD_HALF * 2) / DC), deckCells = new Array(DN * DN).fill(null);
+  for (const b of ctx.bridges) {
+    const i0 = Math.max(0, Math.floor((b.minX + WORLD_HALF) / DC)), i1 = Math.min(DN - 1, Math.floor((b.maxX + WORLD_HALF) / DC));
+    const j0 = Math.max(0, Math.floor((b.minZ + WORLD_HALF) / DC)), j1 = Math.min(DN - 1, Math.floor((b.maxZ + WORLD_HALF) / DC));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) (deckCells[j * DN + i] = deckCells[j * DN + i] || []).push(b);
+  }
   const deckAt = (x, z) => {
     let best = -Infinity;
-    for (const b of ctx.bridges) {
+    const ci = Math.floor((x + WORLD_HALF) / DC), cj = Math.floor((z + WORLD_HALF) / DC);
+    const list = ci < 0 || cj < 0 || ci >= DN || cj >= DN ? null : deckCells[cj * DN + ci];
+    if (!list) return best;
+    for (const b of list) {
       if (x < b.minX || x > b.maxX || z < b.minZ || z > b.maxZ) continue;
       const dx = x - b.ax, dz = z - b.az;
       const t = (dx * b.ux + dz * b.uz) / b.len;

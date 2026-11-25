@@ -10708,3 +10708,46 @@ first there at a median 855, 866 and 828 m. Checked: by day 43 shapes and no lig
 *"If you move the cursor really quickly, it thinks you're a mouse ... just remove that bit because I'm never gonna fly on a mouse."* The
 flick (1500 px/s, then still for 70 ms: the stick put where the aircraft had got to) is gone: `Input.settleCyclic`,
 `FlyingHelicopter.settle`. Checked by ten 170 px moves in a burst and 200 ms still: the stick stays at 0.5.
+
+### Lag on the laptop, and far cars that fade into the real ones
+
+*"It's very obvious to the human eye that it's suddenly becoming really detailed. The good thing about the lights was ... it faded so
+well"* and *"it is still laggy. Like on my laptop."* (Intel N355, its own graphics.)
+
+**The blend.** The one made-up shape for every far car is gone. Each traffic model is simplified from itself at load
+(`game/carlod.js`): its points gathered into cells of 11, 19 and 34 cm, used to 125 m, 230 m and beyond, a cell to about a pixel, its
+colours, gloss and metal baked in (2,350-2,700, 1,350-1,550 and 730-750 triangles). From 60 to 84 m it comes up over the real car a pixel
+at a time; past that it is all there is. Larger and lighter far off, as before, but from nothing at 150 m. `tests/carblend.js`,
+real against stand-in, 0-255 a channel over the pixels of the car: 2.8-5.0 at 61 m, 2.7-4.6 at 84, 3.5-5.4 at 126. Getting
+0.3 m nearer is 0.2-1.8 at 84 m and further. At 231 m 10-16, which is the enlarging (5 per cent) and not a step.
+
+**What the lag was.** Ashfield, 1280x720, `tests/drawcost.js` and `tests/simcost.js` (new), medians:
+
+| | before | after |
+|---|---|---|
+| height of the ground, one question | 9.3 us | 0.24 us |
+| one car's springs and tyres, a substep | 220 us | 67 us |
+| `scene.updateMatrixWorld` | 3.5-4.4 ms | 0.09 ms |
+| the render call, main thread | 20-29 ms | 10-14 ms |
+| graphics chip | 8-18 ms | 6-11 ms |
+| shadows, graphics chip / triangles | 5-8 ms / 191-289k | 2.4-3.8 ms / 50-112k |
+| simulation, motorway / street | 11.5 / 13.3 ms | 7.4 / 7.8 ms |
+| simulation, five stars, half rate off and on in turn, 22 units | 33.4 ms | 25.6 ms |
+
+The render figures before and after are from different page sessions. Each question about the ground checked every piece of every bridge
+in the city (`deckAt`, now a grid of 32 m cells; 60,000 random points and every bridge the same as before, hash -336370297). Grass and parked
+cars' cells were 6,200 objects walked over every frame that never move (`game/still.js`); 0 of 2,892 on Wexbury and 0 of 4,214 on
+Haldon were out of place after 10-15 s of play. Every car's shadow came from its whole model, the Runner's 48,000 triangles: now from
+simplified ones, one draw a kind, for the shadow map alone. Parked cars were whole models and shadows in 120 m cells, 126-256k triangles; now as
+traffic is, and faded out 250-320 m instead of gone at 230. Kerbs past 300 m are not drawn (210,000 triangles from 120 m up).
+`Driver.remaining` added up a 200-point route to ask if 40 m were left, 13.7 of the 23.8 us a gliding car cost: stops at what is asked.
+The computer's cars past 45 m from any person and the camera have their wheels worked out every other substep (`Game._pickHalf`), and police
+past 100 m from you, the suspect and the camera think every other frame. `tests/citychase.js` 120 s: one traffic car stuck, none of the police;
+with both off (`__noHalf`) three and two, so the same or better.
+
+The picture's resolution now steps down to 0.86 and 0.74 under 50 frames a second, and is put back if that did not buy 4 per cent
+more frames, or after 20 s over 57 (`_trackResolution`); it was 0.75 for good at under 28. Not tried on a real screen: the window the rigs
+run in is hidden. `tests/fpslive.js`, frame after frame: motorway median 16.9 ms, street 16.3. Its p95 was 37 and 34, and it had one frame of 1.5 s on the motorway.
+
+Not worth it: fog at 560 m saved 0.3-0.6 ms on the ground, 2.8 from 120 m up, and would take away the far traffic. Gliding cars' height every fourth frame:
+0.2 ms, taken out again. One frame of 27 s in a wrapped run was the whole page stopped, not the function it fell in.

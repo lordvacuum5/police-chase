@@ -548,10 +548,10 @@ export class Driver {
 
   get hasPath() { return this.path.length > 1; }
 
-  /** Distance remaining along the current path, in metres. */
-  remaining() {
+  /** Distance remaining along the current path, in metres; no further than past `enough`, where that is all that is asked. */
+  remaining(enough = Infinity) {
     let d = 0;
-    for (let i = this.pathIndex; i < this.path.length - 1; i++) {
+    for (let i = this.pathIndex; i < this.path.length - 1 && d <= enough; i++) {
       d += dist2(this.path[i].x, this.path[i].z, this.path[i + 1].x, this.path[i + 1].z);
     }
     return d;

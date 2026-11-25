@@ -22,7 +22,8 @@ import {
 import { Driver, SKILL } from './ai/driver.js';
 import { Traffic, trafficPaint } from './game/traffic.js';
 import { RunningLights } from './game/runninglights.js';
-import { FarCars, FROM as FAR_FROM, BACK as FAR_BACK } from './game/farcars.js';
+import { FarCars, FADE0 as FAR_FADE0, FADE1 as FAR_FADE1 } from './game/farcars.js';
+import { stillScene, cullBlocks } from './game/still.js';
 import { Suspects, suspectSight, SUSPECT_TRACK } from './game/suspects.js';
 import { Runner, pickRunnerCar } from './ai/runner.js';
 import { warmLocalPlanner, pumpPlanner, boxesNear } from './ai/localplan.js';
@@ -112,6 +113,13 @@ const MAX_SUBSTEPS = 5;
 const MAX_VEHICLES = 40;
 /** A traffic car farther off than this casts no shadow, m: past the shadow map's reach. */
 const SHADOW_TRAFFIC = 120;
+/** Past this far from any person's car and the camera, m, a car's wheels are worked out at half the rate (_pickHalf). */
+const HALF_FROM = 45;
+/** The picture's resolutions, as shares of the window's; a step down below the first of these frames a second, up at the second. */
+const RESOLUTIONS = [1, 0.86, 0.74];
+const RES_DOWN = 50, RES_UP = 57;
+/** Kerbs further off than this are not drawn, m. */
+const KERB_FAR = 300;
 const _ball = new THREE.Sphere();
 /** Game._checkWater: this much of a car under before it floods; damage a second just under that and right under; a wreck shown, s. */
 const FLOOD_FROM = 0.6;
@@ -465,6 +473,8 @@ class Game {
     // Any imported bodies, before the first car is built. Missing files are
     // the normal case and cost one HEAD request each.
     this.carModels = await loadCarModels(this);
+    // What stands in for them far off, and what casts their shadows: before the first car is made, which asks.
+    this.farCars = new FarCars(this.scene, this.carModels, SPECS, this.wheelMesh.geometry, ['hatchback', 'estate', 'civsuv']);
     // Cars on the drives, now there are models to draw them with (game/parked.js).
     this.parkedCars = addParkedCars(this, this.world.__map && this.world.__map.parked);
     for (const [kind, m] of Object.entries(this.carModels)) {
@@ -483,7 +493,6 @@ class Game {
     this.roadblocks = new RoadblockManager(this);
     this.traffic = new Traffic(this);
     this.runningLights = new RunningLights(this.scene);
-    this.farCars = new FarCars(this.scene);
     // Traffic that gets itself chased: game/suspects.js.
     this.suspects = new Suspects(this);
     this.score = new Score(this);
@@ -497,9 +506,10 @@ class Game {
     // Two on a map that asks (Ashfield City, 3 km across), at opposite ends.
     this.garage = new Garages(this, this.mapDef.garages || 1);
     // Long grass and flowers along the verges (game/verges.js): after the garage, whose forecourt they keep off.
-    addVerges(this, this._mapBlocks);
+    this.verges = addVerges(this, this._mapBlocks);
     this._gatherFogCull();
     this._warmGpu();
+    stillScene(this.scene);
     this._mapBlocks = null;
     // The car the police know, and what they do when they see it again (game/known.js).
     this.known = new KnownCar(this);
@@ -1092,6 +1102,8 @@ class Game {
       mesh.castShadow = true;
     }
     mesh.frustumCulled = false;
+    // Its shadow from fewer triangles (game/farcars.js).
+    if (model && this.farCars && this.farCars.casts(specKey)) mesh.traverse((o) => { if (o.isMesh) o.castShadow = false; });
     this.scene.add(mesh);
     v.view = mesh;
 
@@ -2877,6 +2889,22 @@ class Game {
   }
 
   /**
+   * Which cars' springs and tyres are worked out every other substep: the computer's, nowhere near a person's car or the
+   * camera. At five stars two dozen cars' were 8 of the 24 ms a frame (tests/simcost.js), and nobody can tell one sixtieth of a
+   * second from a hundred-and-twentieth at HALF_FROM. Not one that has just been hit, or is off its wheels.
+   */
+  _pickHalf() {
+    const c = this.camera.position, off = window.__noHalf;
+    const people = this.vehicles.filter((v) => v === this.player || v.remote || v.humanDriven);
+    for (const v of this.vehicles) {
+      const p = v.position;
+      v._half = !off && v !== this.player && !v.remote && !v.humanDriven && !v.dormant && v.grounded === 4 && !(v._knocked > 0)
+        && Math.hypot(p.x - c.x, p.y - c.y, p.z - c.z) > HALF_FROM
+        && people.every((o) => Math.hypot(p.x - o.position.x, p.z - o.position.z) > HALF_FROM);
+    }
+  }
+
+  /**
    * Run the simulation without waiting on the render loop. Used by the
    * handling tests; `controls` is applied to the player for the whole run.
    */
@@ -3534,18 +3562,21 @@ class Game {
     const map = this.world.__map;
     if (!map || !map.fogCull || window.__noFogCull) return;
     const skip = new Set(['sky', 'river', 'terrain', 'terrain-edge']);
+    let near = 0;
     const walk = (o) => {
       if (skip.has(o.name) || o.isLOD || (o.userData && o.userData.setNight) || o.isPoints || o.isSprite) return;
       if (o.isMesh && o.geometry) {
         if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
         o.updateWorldMatrix(true, false);
         const s = o.geometry.boundingSphere.clone().applyMatrix4(o.matrixWorld);
-        if (s.radius < 900) this._fogMeshes.push({ o, x: s.center.x, z: s.center.z, r: s.radius });
+        if (s.radius < 900) this._fogMeshes.push({ o, x: s.center.x, z: s.center.z, r: s.radius, far: near });
         return;
       }
       for (const c of o.children) walk(c);
     };
     for (const name of map.fogCull) {
+      // A kerb 12 cm high is a quarter of a pixel at this distance; from 120 m up over Ashfield they were 210,000 triangles.
+      near = name === 'kerbs' ? KERB_FAR : 0;
       for (const o of this.scene.children) if (o.name === name) walk(o);
     }
     this._fogTick = 0;
@@ -3598,6 +3629,8 @@ class Game {
           const ob = l.object, v = ob.visible;
           undo.push(() => { ob.visible = v; });
           ob.visible = true;
+          const up = o.parent;
+          if (up && up.name === 'block' && !up.visible) { undo.push(() => { up.visible = false; }); up.visible = true; }
           ob.traverse((c) => { if (c.isMesh) { const fc = c.frustumCulled; undo.push(() => { c.frustumCulled = fc; }); c.frustumCulled = false; } });
         }
       } else {
@@ -3611,10 +3644,12 @@ class Game {
   }
 
   _fogCull() {
+    this._vergeTick = (this._vergeTick || 0) + 1;
+    if (this.verges && this._vergeTick % 8 === 1) cullBlocks(this.verges, this.camera.position);
     if (!this._fogMeshes || !this._fogMeshes.length || !this.scene.fog) return;
     if ((this._fogTick = (this._fogTick || 0) + 1) % 15) return;
     const c = this.camera.position, far = this.scene.fog.far + 30;
-    for (const m of this._fogMeshes) m.o.visible = Math.hypot(m.x - c.x, m.z - c.z) - m.r < far;
+    for (const m of this._fogMeshes) m.o.visible = Math.hypot(m.x - c.x, m.z - c.z) - m.r < (m.far ? Math.min(m.far, far) : far);
   }
 
   /** Towed back to the nearest road, facing along it, stopped. */
@@ -3957,6 +3992,7 @@ class Game {
     if (session.active && !session.isHost) this._netTrain(dt);
 
     // ---- physics ----
+    this._pickHalf();
     this.accumulator += dt;
     let steps = 0;
     this.world.timestep = FIXED;
@@ -3970,7 +4006,14 @@ class Game {
       }
       // Not a dormant car (far-off traffic, game/traffic.js): its body is out
       // of the simulation and the traffic moves it along its route itself.
-      for (const v of this.vehicles) { if (!v.remote && !v.dormant) v.prepare(FIXED); else if (v.remote) v.remoteHill(); }
+      this._stepNo = (this._stepNo || 0) + 1;
+      for (const v of this.vehicles) {
+        if (v.remote) v.remoteHill();
+        else if (v.dormant) continue;
+        else if (!v._half) v.prepare(FIXED);
+        // Far off: its wheels every other substep, for two, the forces held between.
+        else if ((this._stepNo + v.id) & 1) v.prepare(FIXED * 2);
+      }
       // Anything the map moves itself: Haldon Vale's train (world/countryextras.js).
       if (this.world.__map && this.world.__map.step) this.world.__map.step(FIXED);
       this.world.step();
@@ -4316,7 +4359,7 @@ class Game {
       // over the wheels. "Sometimes when I go on my side, my wheels fade through
       // the floor." Drawn up by however far its lowest wheel or corner is under.
       if (_up.y < TIPPED_FROM) v.view.position.y += this._tippedLift(v, _up);
-      else if (!v.dormant && (v.view.visible || !v.isTraffic)) v.view.position.y += this._landedLift(v, _wheelQ);
+      else if (!v.dormant && (v.view.visible || v._far || !v.isTraffic)) v.view.position.y += this._landedLift(v, _wheelQ);
 
       // Every wheel is one instance of the same 0.34 m by 0.26 m tyre, scaled
       // to whatever this car actually runs on -- wider still at the rear if
@@ -4368,7 +4411,7 @@ class Game {
     this.lights.end();
     this.hazards.end();
     const night = !!(this.weather && this.weather.night);
-    this.farCars.update(replaying ? [] : this.traffic.cars, this.camera, night);
+    this._drawFarCars(replaying, night);
     // Lights in the dark only: "the lights are good in the dark, but not good in the day".
     this.runningLights.update(replaying || !night ? [] : this.traffic.cars, this.camera);
 
@@ -4403,16 +4446,35 @@ class Game {
       const v = car.v, d = v.position.distanceTo(c.position);
       _ball.center.copy(v.position);
       _ball.radius = 8;
-      const show = d < 45 || (d < far && _frustum.intersectsSphere(_ball));
-      const shadow = this.renderer.shadowMap.enabled && d < SHADOW_TRAFFIC;
-      // Far off, a simple shape of it instead (game/farcars.js).
-      v._far = show && d > (v._far ? FAR_BACK : FAR_FROM);
-      v.view.visible = show && !v._far;
-      if (v._shadowOn !== shadow) {
-        v._shadowOn = shadow;
-        v.view.traverse((o) => { if (o.isMesh) o.castShadow = shadow; });
+      const show = d < 45 || (d < far && _frustum.intersectsSphere(_ball)), stand = this.farCars.has(v.specKey);
+      // Far off, its stand-in, faded in over it (game/farcars.js).
+      v._far = show && stand && d > FAR_FADE0;
+      v.view.visible = show && !(stand && d > FAR_FADE1);
+      if (!this.farCars.casts(v.specKey)) {
+        const shadow = this.renderer.shadowMap.enabled && d < SHADOW_TRAFFIC;
+        if (v._shadowOn !== shadow) {
+          v._shadowOn = shadow;
+          v.view.traverse((o) => { if (o.isMesh) o.castShadow = shadow; });
+        }
       }
     }
+  }
+
+  /** The stand-ins of cars far off, the parked cars, and the cars' shadows (game/farcars.js, game/parked.js). */
+  _drawFarCars(replaying, night) {
+    const f = this.farCars, c = this.camera;
+    f.begin(c, night, this.renderer.shadowMap.enabled ? this.player.position : null);
+    if (!replaying) {
+      for (const { v, paint } of this.traffic.cars) if (v._far) f.add(v.specKey, v.view.position, v.view.quaternion, paint, v.view.position.distanceTo(c.position));
+    }
+    for (const v of this.vehicles) if (v.view && v.view.parent && (v.view.visible || v.isTraffic)) f.cast(v.specKey, v.view.position, v.view.quaternion);
+    if (this.parkedCars) {
+      c.updateMatrixWorld();
+      _m.multiplyMatrices(c.projectionMatrix, c.matrixWorldInverse);
+      _frustum.setFromProjectionMatrix(_m);
+      this.parkedCars.draw(f, c, _frustum);
+    }
+    f.end();
   }
 
   _resize() {
@@ -4430,6 +4492,7 @@ class Game {
       this.frames = 0;
       this.fpsAccum = 0;
       this.fpsTimer += 0.5;
+      this._trackResolution();
 
       if (this.fpsTimer > 3) {
         if (this.fps < 40 && this.quality === 2) {
@@ -4440,8 +4503,7 @@ class Game {
           this.fpsTimer = 0;
         } else if (this.fps < 28 && this.quality === 1) {
           this.quality = 0;
-          this.renderer.setPixelRatio(0.75);
-          this._resize();
+          this._setResolution(RESOLUTIONS.length - 1);
           this.radio('[graphics] reduced resolution to hold frame rate');
           this.fpsTimer = 0;
         } else if (this.fps < 26 && this.quality === 0 && this.vehicleLimit > 22) {
@@ -4465,6 +4527,42 @@ class Game {
         }
       }
     }
+  }
+
+  /**
+   * The picture's resolution, a step down when frames are late and back up when they are not. Only kept down if that is what
+   * made them late: a step that does not buy a twenty-fifth more frames is put back, and not tried again for two minutes
+   * (the graphics chip was waiting on the rest of the game, and a softer picture buys nothing).
+   */
+  _trackResolution() {
+    const r = this._res || (this._res = { step: 0, for: 0, trial: 0, hold: 8, up: 20, good: 0 });
+    r.for += 0.5;
+    r.hold -= 0.5;
+    if (r.trial) {
+      // The first second is the buffers being made again.
+      if (r.for < 4) return;
+      if (this.fps < r.trial * 1.04 && this.fps < RES_UP) { this._setResolution(r.step - 1); r.hold = 120; }
+      r.trial = 0;
+      r.for = 0;
+      return;
+    }
+    r.good = this.fps >= RES_UP ? r.good + 0.5 : 0;
+    if (this.fps < RES_DOWN && r.hold <= 0 && r.for >= 2 && r.step < RESOLUTIONS.length - 1) {
+      r.trial = this.fps;
+      if (r.raised) { r.up = Math.min(300, r.up * 2); r.raised = false; }
+      this._setResolution(r.step + 1);
+    } else if (r.step > 0 && r.good > r.up) {
+      r.raised = true;
+      this._setResolution(r.step - 1);
+    }
+  }
+
+  _setResolution(step) {
+    const r = this._res || (this._res = { step: 0, for: 0, trial: 0, hold: 8, up: 20, good: 0 });
+    r.step = Math.max(0, Math.min(RESOLUTIONS.length - 1, step));
+    r.for = r.good = 0;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1) * RESOLUTIONS[r.step]);
+    this._resize();
   }
 
   _drawDebug() {

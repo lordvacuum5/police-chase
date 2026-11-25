@@ -958,7 +958,7 @@ export class Officer {
 
   _patrol(dt) {
     const g = this.game.graph;
-    if (!this.driver.hasPath || this.driver.remaining() < 40) {
+    if (!this.driver.hasPath || this.driver.remaining(40) < 40) {
       // Patrol the player's part of town rather than the whole map. Three cars
       // wandering four square kilometres at random means you can drive for a
       // minute and a half without meeting one, and the game never starts.
@@ -1150,7 +1150,7 @@ export class Officer {
     if (!spot) {
       // Nowhere suitable at all: the old wander round the roads.
       const g = this.game.graph;
-      if (!this.driver.hasPath || this.driver.remaining() < 30) {
+      if (!this.driver.hasPath || this.driver.remaining(30) < 30) {
         const a = this.game.rng() * Math.PI * 2;
         const r = 60 + this.game.rng() * 180;
         const to = g.nearestNode(centre.x + Math.cos(a) * r, centre.z + Math.sin(a) * r);
@@ -1221,7 +1221,7 @@ export class Officer {
     if (!this.driver.hasPath || this.goalNode !== goal) {
       if (!this._routeTo(goal, 2.4)) return this._goTo(dt, spot.entry, 0.5);
     }
-    if (this.driver.remaining() < 8) {
+    if (this.driver.remaining(8) < 8) {
       if (!spot.along) {
         // At the near end: now along it.
         spot.along = true;
@@ -1457,11 +1457,11 @@ export class Officer {
     }
 
     // The end of the road, and the river between: stop there.
-    if (this.driver.remaining() < 22 && this._waterTo(dt, point)) {
-      return this.driver.remaining() > 4 ? this.driver.followPath(dt, 9)
+    if (this.driver.remaining(22) < 22 && this._waterTo(dt, point)) {
+      return this.driver.remaining(4) > 4 ? this.driver.followPath(dt, 9)
         : this.driver.driveTo(point, 0, dt, { holdStill: true });
     }
-    if (this.driver.remaining() < 22) {
+    if (this.driver.remaining(22) < 22) {
       // Close enough to drive at it directly -- no faster than the caller
       // asked for the rest of the way.
       return this.driver.driveTo(point, this._chaseSpeed() * Math.min(0.8, speedFactor), dt);
@@ -2421,7 +2421,7 @@ export class Officer {
     if (dr._onCarriageway() && g.sim.surfaceAt(t.x, t.z) !== 0 && !this._shortcutThere(dt, target, d)) return drop();
     this._fastFor = (this._fastFor || 0) - dt;
     const off = this._fast && dr.hasPath && Math.abs(dr.crossTrack || 0) > FAST_OFF;
-    const short = this._fast && dr.remaining() < FAST_SHORT;
+    const short = this._fast && dr.remaining(FAST_SHORT) < FAST_SHORT;
     if ((this._fastFor <= 0 || off || short) && !(g.clock - (g._fastAt ?? -1) < FAST_GAP)) {
       g._fastAt = g.clock;
       this._fastFor = FAST_EVERY;
@@ -2669,7 +2669,7 @@ export class Officer {
       this.repathTimer = this.distanceTo(g.nodes[node] || this.position) > 150 ? 4.5 : 1.6;
     }
 
-    const arrived = this.driver.remaining() < 26;
+    const arrived = this.driver.remaining(26) < 26;
     if (arrived && target) {
       // Sitting on the junction now: turn to face the incoming target and hold
       // position so the target arrives into a car, not an empty box.

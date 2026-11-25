@@ -137,6 +137,9 @@ const TIER = [
  */
 const CONTACT_GAP = 9;
 
+/** Further than this from the suspect, the player and the camera, m, units think every other frame, if a frame is shorter than this, s. */
+const THINK_FAR = 100, THINK_DT = 0.034;
+
 export class Dispatcher {
   /** Seconds between any two things that come at the player: shorter in the daily challenge. */
   get contactGap() { return this.game.daily ? DAILY_CONTACT_GAP : CONTACT_GAP; }
@@ -294,7 +297,20 @@ export class Dispatcher {
     }
     this._updateBox(dt, target);
 
-    for (const u of this.units) u.update(dt, target);
+    // A long way from whoever they are after, they think every other frame, the controls held between: two dozen of them were
+    // 6 ms of a frame at five stars. Not at a frame rate where that would be seldom.
+    this._thinkNo = (this._thinkNo || 0) + 1;
+    const p = this.game.player.position, c = this.game.camera.position;
+    for (const u of this.units) {
+      const q = u.position;
+      if (dt < THINK_DT && !window.__noHalf && !u.human && Math.hypot(q.x - p.x, q.z - p.z) > THINK_FAR && Math.hypot(q.x - c.x, q.z - c.z) > THINK_FAR
+        && (!target || Math.hypot(q.x - target.position.x, q.z - target.position.z) > THINK_FAR)) {
+        u._owed = (u._owed || 0) + dt;
+        if ((this._thinkNo + u.vehicle.id) & 1) continue;
+        u.update(u._owed, target);
+      } else u.update(dt + (u._owed || 0), target);
+      u._owed = 0;
+    }
   }
 
   // ------------------------------------------------------------- perception
@@ -507,7 +523,7 @@ export class Dispatcher {
       const d = this.game.watcherDistance(u.vehicle.position);
       const far = d > 900;
 
-      if (u.vehicle.speed < 1.0 && !(u.role === ROLE.INTERCEPT && u.driver.remaining() < 30)) {
+      if (u.vehicle.speed < 1.0 && !(u.role === ROLE.INTERCEPT && u.driver.remaining(30) < 30)) {
         u.strandedFor = (u.strandedFor || 0) + dt;
       } else {
         u.strandedFor = 0;
