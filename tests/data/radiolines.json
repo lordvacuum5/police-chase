@@ -781,18 +781,6 @@
 ],
 [
 "city",
-"Control, advise the suspect an Android would have found a route by now."
-],
-[
-"wexbury",
-"Control, advise the suspect an Android would have found a route by now."
-],
-[
-"haldon",
-"Control, advise the suspect an Android would have found a route by now."
-],
-[
-"city",
 "Control, all units, critical incident."
 ],
 [
@@ -802,18 +790,6 @@
 [
 "haldon",
 "Control, all units, critical incident."
-],
-[
-"city",
-"Control, all units, critical incident. The subject will not be told."
-],
-[
-"wexbury",
-"Control, all units, critical incident. The subject will not be told."
-],
-[
-"haldon",
-"Control, all units, critical incident. The subject will not be told."
 ],
 [
 "city",
@@ -841,18 +817,6 @@
 ],
 [
 "city",
-"Control, all units, pursuit authorised. Suspect is on an iPhone."
-],
-[
-"wexbury",
-"Control, all units, pursuit authorised. Suspect is on an iPhone."
-],
-[
-"haldon",
-"Control, all units, pursuit authorised. Suspect is on an iPhone."
-],
-[
-"city",
 "Control, all units, search around Meridian Avenue / Garfield Road."
 ],
 [
@@ -877,30 +841,6 @@
 ],
 [
 "city",
-"Control, all units, the subject brought an iPhone to a car chase."
-],
-[
-"wexbury",
-"Control, all units, the subject brought an iPhone to a car chase."
-],
-[
-"haldon",
-"Control, all units, the subject brought an iPhone to a car chase."
-],
-[
-"city",
-"Control, all units, the suspect paid flagship money for that. No sympathy."
-],
-[
-"wexbury",
-"Control, all units, the suspect paid flagship money for that. No sympathy."
-],
-[
-"haldon",
-"Control, all units, the suspect paid flagship money for that. No sympathy."
-],
-[
-"city",
 "Control, any units, anything on that vehicle?"
 ],
 [
@@ -913,18 +853,6 @@
 ],
 [
 "city",
-"Control, be advised, suspect would be away by now on an Android."
-],
-[
-"wexbury",
-"Control, be advised, suspect would be away by now on an Android."
-],
-[
-"haldon",
-"Control, be advised, suspect would be away by now on an Android."
-],
-[
-"city",
 "Control, check car parks and alleys."
 ],
 [
@@ -934,18 +862,6 @@
 [
 "haldon",
 "Control, check car parks and alleys."
-],
-[
-"city",
-"Control, contact authorised on the grounds that they use an iPhone."
-],
-[
-"wexbury",
-"Control, contact authorised on the grounds that they use an iPhone."
-],
-[
-"haldon",
-"Control, contact authorised on the grounds that they use an iPhone."
 ],
 [
 "city",
@@ -973,18 +889,6 @@
 ],
 [
 "city",
-"Control, critical incident. Suspect still refuses to move to Android."
-],
-[
-"wexbury",
-"Control, critical incident. Suspect still refuses to move to Android."
-],
-[
-"haldon",
-"Control, critical incident. Suspect still refuses to move to Android."
-],
-[
-"city",
 "Control, interceptors deploying. Box if you can."
 ],
 [
@@ -994,18 +898,6 @@
 [
 "haldon",
 "Control, interceptors deploying. Box if you can."
-],
-[
-"city",
-"Control, interceptors deploying. Subject has declined to switch to Android."
-],
-[
-"wexbury",
-"Control, interceptors deploying. Subject has declined to switch to Android."
-],
-[
-"haldon",
-"Control, interceptors deploying. Subject has declined to switch to Android."
 ],
 [
 "city",
@@ -1045,78 +937,6 @@
 ],
 [
 "city",
-"Control, pursuit authorised. Subject is an Apple user."
-],
-[
-"wexbury",
-"Control, pursuit authorised. Subject is an Apple user."
-],
-[
-"haldon",
-"Control, pursuit authorised. Subject is an Apple user."
-],
-[
-"city",
-"Control, subject is on eleven per cent battery. We can wait them out."
-],
-[
-"wexbury",
-"Control, subject is on eleven per cent battery. We can wait them out."
-],
-[
-"haldon",
-"Control, subject is on eleven per cent battery. We can wait them out."
-],
-[
-"city",
-"Control, suspect has been told to upgrade. They are not listening."
-],
-[
-"wexbury",
-"Control, suspect has been told to upgrade. They are not listening."
-],
-[
-"haldon",
-"Control, suspect has been told to upgrade. They are not listening."
-],
-[
-"city",
-"Control, suspect is running the pursuit at fifteen frames a second."
-],
-[
-"wexbury",
-"Control, suspect is running the pursuit at fifteen frames a second."
-],
-[
-"haldon",
-"Control, suspect is running the pursuit at fifteen frames a second."
-],
-[
-"city",
-"Control, suspect is still on iOS. Advise them the switch to Android is free."
-],
-[
-"wexbury",
-"Control, suspect is still on iOS. Advise them the switch to Android is free."
-],
-[
-"haldon",
-"Control, suspect is still on iOS. Advise them the switch to Android is free."
-],
-[
-"city",
-"Control, suspect may surrender, or upgrade to Android. Either is acceptable."
-],
-[
-"wexbury",
-"Control, suspect may surrender, or upgrade to Android. Either is acceptable."
-],
-[
-"haldon",
-"Control, suspect may surrender, or upgrade to Android. Either is acceptable."
-],
-[
-"city",
 "Control, tactical contact authorised."
 ],
 [
@@ -1126,54 +946,6 @@
 [
 "haldon",
 "Control, tactical contact authorised."
-],
-[
-"city",
-"Control, tactical contact authorised. The subject is an Apple user."
-],
-[
-"wexbury",
-"Control, tactical contact authorised. The subject is an Apple user."
-],
-[
-"haldon",
-"Control, tactical contact authorised. The subject is an Apple user."
-],
-[
-"city",
-"Control, the subject has been offered an Android and declined."
-],
-[
-"wexbury",
-"Control, the subject has been offered an Android and declined."
-],
-[
-"haldon",
-"Control, the subject has been offered an Android and declined."
-],
-[
-"city",
-"Control, the subject's handset cannot keep up with this pursuit."
-],
-[
-"wexbury",
-"Control, the subject's handset cannot keep up with this pursuit."
-],
-[
-"haldon",
-"Control, the subject's handset cannot keep up with this pursuit."
-],
-[
-"city",
-"Control, the subject's phone is thermal throttling. Close in."
-],
-[
-"wexbury",
-"Control, the subject's phone is thermal throttling. Close in."
-],
-[
-"haldon",
-"Control, the subject's phone is thermal throttling. Close in."
 ],
 [
 "city",
@@ -1210,18 +982,6 @@
 [
 "haldon",
 "Control, you may box. Interceptors joining."
-],
-[
-"city",
-"Control, you may box. The suspect was warned about that phone."
-],
-[
-"wexbury",
-"Control, you may box. The suspect was warned about that phone."
-],
-[
-"haldon",
-"Control, you may box. The suspect was warned about that phone."
 ],
 [
 "city",

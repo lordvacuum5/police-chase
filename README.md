@@ -10843,3 +10843,9 @@ than 7 m radius (0.9 rad/s at the least). `tests/skycars.js`: 292,000 car-frames
 route points were on a road they were not near, 439 m off at the worst, and gliding cars took their height from it. `Traffic._onItsRoads` puts each on the road it is on, at the height of the point before.
 `tests/skycars.js`, eight places under the raised roads, 20 s each: in the air (over 1.2 m) 352 of 6,502 car-looks on the decks, up to 8.9 m, to 0 of 6,723. `tests/deckTraffic.js` 60 s: 99% moving, none stuck, 1 sample of 2,835 under a
 deck. Police routes have the same labels, not touched.
+
+### The player's own voices
+
+*"I don't really like the voices. Is there a way ... so I can pick them?"* A page of the 28 English voices Kokoro has (`C:/Code/kokoro-voice/pick.html`), one question at a time (the first, all on one screen, was *"super complicated"*), and the picks:
+Control `af_sarah`, police `am_liam` and `bm_daniel`, helicopter `af_sky`. American voices are given American sounds (`tts.py`). Recorded again, 2,100 pieces, 40 minutes at low priority; 7.0 MB with Ashfield's names (7.9), the Apple lines not among them.
+`tests/radiovoice.js`: 660 of 660 lines said, 2.2 pieces each, -15.3 to -16.7 dB out of the radio (the police had come out 2.5 dB over Control and the helicopter 1 under). The packs are fetched by version (`?v=2`): the server lets a browser keep one a week.

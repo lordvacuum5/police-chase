@@ -38,7 +38,7 @@ export async function radioVoice(opts = {}) {
         a.master = ctx.createGain();
         a.master.connect(ctx.destination);
         a._buildRadio();
-        const line = v.play(ctx, a.radioIn, plan, 0.1, { control: 0.32, unit: 0.45, air: 0.34 }[kind]);
+        const line = v.play(ctx, a.radioIn, plan, 0.1, { control: 0.32, unit: 0.33, air: 0.37 }[kind]);
         const d = (await ctx.startRendering()).getChannelData(0).subarray(4800, Math.floor(line.end * 48000));
         let sum = 0, pk = 0;
         for (const x of d) { sum += x * x; pk = Math.max(pk, Math.abs(x)); }

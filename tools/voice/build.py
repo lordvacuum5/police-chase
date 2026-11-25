@@ -27,17 +27,17 @@ import lines                  # noqa: E402
 OUT = os.path.join(HERE, '..', '..', 'resources', 'voice')
 CACHE = os.path.join(KOKORO, 'cache')
 RATE = 8000
-# Who is heard as which of Kokoro's voices, and how fast. Two for the units, by callsign.
+# Who is heard as which of Kokoro's voices, and how fast. Two for the units, by callsign. The player's picks, from pick.html there.
 VOICES = {
-    'control': ('control', 'bf_emma', 1.12),
-    'unitA': ('unit', 'bm_george', 1.18),
-    'unitB': ('unit', 'bm_fable', 1.14),
-    'air': ('air', 'bf_isabella', 1.12),
+    'control': ('control', 'af_sarah', 1.14),
+    'unitA': ('unit', 'am_liam', 1.14),
+    'unitB': ('unit', 'bm_daniel', 1.14),
+    'air': ('air', 'af_sky', 1.14),
 }
 DIGITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine']
 
 
-def spoken(t):
+def spoken(t, us=False):
     """How it is written down for the voice."""
     def road(m):
         n = m.group(2)
@@ -45,12 +45,12 @@ def spoken(t):
     t = re.sub(r'\b([ABM])(\d+)\b', road, t)
     t = re.sub(r'\bIndia 99\b', 'India nine nine', t, flags=re.I)
     t = re.sub(r'\bSt Mary\b', 'Saint Mary', t)
-    t = t.replace('coupe', 'coo-pay').replace('iOS', 'eye oh ess')
+    t = t.replace('coupe', 'coop' if us else 'coo-pay').replace('iOS', 'eye oh ess')
     return t
 
 
 def say(tts, text, cls, voice, speed):
-    s = spoken(text)
+    s = spoken(text, voice[0] == 'a')
     s = s if s[-1:] in '!?' else s + ('.' if cls == 'f' else ',')
     key = hashlib.sha1(('%s|%s|%s' % (s, voice, speed)).encode()).hexdigest()
     p = os.path.join(CACHE, key + '.npy')

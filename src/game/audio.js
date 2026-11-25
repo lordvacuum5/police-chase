@@ -275,8 +275,8 @@ const ENGINE_ORDER = 4;
 // kind of horrible ... just make it much quieter. I'd rather hear sirens than engine."
 const ENGINE_VOLUME = 0.2;
 
-/** How loud the recorded voices go into the radio channel (it takes more off the men's), and how far the mix drops under them. */
-const RECORDED_GAIN = { control: 0.32, unit: 0.45, air: 0.34 }, RECORDED_DUCK = 0.5;
+/** How loud the recorded voices go into the radio channel (it takes less off some voices than others), and how far the mix drops under them. */
+const RECORDED_GAIN = { control: 0.32, unit: 0.33, air: 0.37 }, RECORDED_DUCK = 0.5;
 
 /** Two voices between all the units: each a shade higher or lower by its callsign, the same one every time. */
 function unitPitch(kind, words) {

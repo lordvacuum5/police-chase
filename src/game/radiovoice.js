@@ -8,6 +8,8 @@
 // A line with a piece missing is null, and the browser's voice says it as before.
 
 const FILES = 'resources/voice/';
+/** Counted up whenever the packs change: the server lets a browser keep one for a week. */
+const VERSION = 2;
 
 /** Gaps after a piece, s: run straight on (the pieces have a little silence of their own), after a comma, after a sentence. */
 const RUN_ON = -0.045, COMMA = 0.02, STOP = 0.13;
@@ -54,7 +56,7 @@ export class RadioVoice {
   load(name) {
     if (!this.packs.has(name)) {
       this.packs.set(name, null);
-      const p = fetch(`${FILES}${name}.bin`).then((r) => (r.ok ? r.arrayBuffer() : null)).then((buf) => {
+      const p = fetch(`${FILES}${name}.bin?v=${VERSION}`).then((r) => (r.ok ? r.arrayBuffer() : null)).then((buf) => {
         if (!buf) return false;
         const b = new Uint8Array(buf);
         if (String.fromCharCode(b[0], b[1], b[2], b[3]) !== 'PCV1') return false;
