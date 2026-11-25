@@ -1103,7 +1103,7 @@ function buildHedges(ctx, fields) {
     // Not a sensor: rays ignore sensors, and the police would have seen
     // straight through every hedge on the map.
     const body = addStaticBox(W, mx, ctx.at(mx, mz) + HEDGE_SOLID * 0.5, mz, len * 0.5, HEDGE_SOLID * 0.5, 0.7,
-      hedgeWall() ? GROUP.BUILDING | GROUP.HEDGE : GROUP.HEDGE, rot, 0xFFFF & ~GROUP.VEHICLE);
+      hedgeWall() ? GROUP.BUILDING | GROUP.HEDGE : GROUP.HEDGE, rot, 0xFFFF & ~(GROUP.VEHICLE | GROUP.FORCE));
     ctx.sim.hedges.set(body.collider(0).handle, ctx.at(mx, mz) + h);
     return true;
   };

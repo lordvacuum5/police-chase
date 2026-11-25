@@ -10811,3 +10811,9 @@ police players; "Engine flooded" in the daily challenge, which would have said w
 `tests/drown.js`: every car 3.3-3.6 s, damage 0 (was all of it); the Runner at 90% damage 3.3 s, the same as at none; half flooded and out, dry in 4.2 s; 130 places on
 the bridges, no bar and no flooding. Played through: the bar hidden on the bank, shown at the first wheel, 100% at the ending. At full throttle the Runner drives on across the
 bed at 70 km/h and has been seen to come out of the far side at 95%, which double the time allows.
+
+### Hedges let cars through again
+
+*"In the Hidden Valley map, like hedges are solid."* Since police go through the traffic (5db30cc) every car but the civilian ones is in FORCE as well as VEHICLE, and a hedge let
+only VEHICLE by. Both now. Haldon: 5,943 hedges, and of every collider on the three maps (14,464, 3,680, 14,833) none lets one by and not the other.
+`tests/hedgejump.js`: through at 60 km/h to 23 and dragged, as it was; a patrol car, SUV, van and hatchback sent at one at 60 come out 10-14 m the other side, undamaged.
