@@ -5,6 +5,7 @@
 //   hits     police cars newly touching the player, a minute; hard: of them, those that changed its speed 2.5 m/s in a tenth of a second
 //   kmh      the chasing units' mean speed, and near: the share of the time one is within 40 m; behind: how far back the nearest is, m
 //   level    alongside: the share of the time one is level with it (within 2.5 m along, 4.5 m across)
+//   topMph   the fastest any went, mph; overFrames: unit-frames over `over` mph
 //   hurt     damage a minute; units: how many are out; orders: pit and swipe ordered, and what came of them
 const breathe = () => new Promise((r) => { const c = new MessageChannel(); c.port1.onmessage = () => { c.port1.close(); r(); }; c.port2.postMessage(0); });
 
@@ -36,7 +37,7 @@ export async function stars(opts = {}) {
     let put = 0;
     const fin = g.dispatcher.onPitFinished, touching = new Set(), speeds = [];
     g.dispatcher.onPitFinished = function (u, res) { const k = `${u.pitState && u.pitState.kind || res.kind || 'pit'} ${res.reason}`; r.ended[k] = (r.ended[k] || 0) + 1; return fin.call(this, u, res); };
-    let n = 0, un = 0, bn = 0, was = null;
+    let n = 0, un = 0, bn = 0, was = null, top = 0, over = 0;
     const warm = 15 * 60, total = warm + (opts.secs || 60) * 60;
     for (let t = 0; t < total; t++) {
       if (!drv || !drv.hasPath || drv.remaining(20) < 20) route();
@@ -89,6 +90,8 @@ export async function stars(opts = {}) {
         const dx = v.position.x - p.position.x, dz = v.position.z - p.position.z, d = Math.hypot(dx, dz);
         un++;
         if (d < 150) { r.kmh += v.speed * 3.6; bn++; }
+        // Not while it is still going at the speed it was put down at.
+        if (put > 240) { top = Math.max(top, v.speed * 2.237); if (v.speed * 2.237 > (opts.over || 1e9)) over++; }
         best = Math.min(best, d);
         const along = dx * p.forward.x + dz * p.forward.z, lat = dx * p.left.x + dz * p.left.z;
         if (Math.abs(along) < 2.5 && Math.abs(lat) < 4.5 && p.speed > 8) level = true;
@@ -105,7 +108,7 @@ export async function stars(opts = {}) {
     }
     g.dispatcher.onPitFinished = fin;
     const mins = n / 3600;
-    out.rows.push({ star, mine: Math.round(r.mine / n), hits: +(r.hits / mins).toFixed(1), hard: +(r.hard / mins).toFixed(1), kmh: Math.round(r.kmh / Math.max(1, bn)), near: +(r.near / n).toFixed(2), behind: Math.round(r.behind / n), level: +(r.level / n).toFixed(3), hurt: +(r.hurt / mins).toFixed(2), units: +(un / n).toFixed(1), ended: r.ended, carried: r.carried, put: r.put });
+    out.rows.push({ star, mine: Math.round(r.mine / n), hits: +(r.hits / mins).toFixed(1), hard: +(r.hard / mins).toFixed(1), kmh: Math.round(r.kmh / Math.max(1, bn)), near: +(r.near / n).toFixed(2), behind: Math.round(r.behind / n), level: +(r.level / n).toFixed(3), hurt: +(r.hurt / mins).toFixed(2), units: +(un / n).toFixed(1), ended: r.ended, carried: r.carried, put: r.put, topMph: Math.round(top), overFrames: over });
   }
   out.done = true;
   return out;

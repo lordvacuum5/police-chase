@@ -256,6 +256,8 @@ const PERSON_PACE = [0.58, 0.58, 0.7, 0.9, 0.98, 1.0];
 const PERSON_LIMIT = [1.2, 1.2, 1.5, 2.6, 3.0, 3.0];
 const PERSON_GRIP = [0.6, 0.6, 0.75, 0.95, 1, 1];
 const PERSON_RAM = [0, 0, 0, 0.12, 0.5, 0.9];
+/** The fastest they go at one and two stars, m/s: 70 and 90 mph. */
+const PERSON_TOP = [Infinity, 31.3, 40.2];
 /** Below this wanted level nobody means to touch you. */
 const CONTACT_FROM = 3;
 
@@ -876,6 +878,8 @@ export class Officer {
         : typeof window !== 'undefined' && window.__oldPace ? 3.0
         : tierAt(this.afterPerson ? PERSON_LIMIT : TIER_LIMIT, this.suspectTier === undefined ? this.game.heat.value : this.suspectTier);
     this.driver.easyGrip = this.afterPerson && this.role !== ROLE.PATROL ? tierAt(PERSON_GRIP, this.game.heat.value) : 1;
+    // And a top speed: "the max speed they should be able to go is like 70 at wanted level one, and then ... at wanted level two, 90."
+    this.driver.topCap = this.afterPerson && this.role !== ROLE.PATROL && this.game.heat.tier >= 1 && this.game.heat.tier <= 2 ? PERSON_TOP[this.game.heat.tier] : Infinity;
 
     // Anything that is not pottering about on its beat may cut a corner, put
     // two wheels on the verge, or take a line straight across open ground. A

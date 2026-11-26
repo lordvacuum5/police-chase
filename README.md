@@ -10895,3 +10895,7 @@ here where it moved more than 5 cm off its line, of 1,080:
 | 90 ms, give or take 70 | 484 | 43 | 515 | 489 |
 
 Not tried between two machines. Older pages (no `ts`) are timed as before.
+
+*"They seem to be able to go like 110 miles an hour ... the max speed they should be able to go is like 70 at wanted level one, and then maybe at wanted level two, 90."* A top speed through everything they drive by
+(`Driver.topCap`): 31.3 and 40.2 m/s. `tests/stars.js` on the motorway, the car at up to 200 km/h, 45 s: the fastest any went, 69 and 89 mph (120 for both before, though that was the rig putting them down at your speed);
+at three stars 129.

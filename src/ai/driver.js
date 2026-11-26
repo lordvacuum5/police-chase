@@ -480,6 +480,8 @@ export class Driver {
     // patrol car obeying the signs; a unit in pursuit sets this high and is
     // then bounded only by grip and by what its car will do.
     this.limitScale = 1;
+    // The most it may go, m/s, whatever else says it may (Officer: one and two stars).
+    this.topCap = Infinity;
     // How much of the band's extra grip the driver counts on -- see _mu().
     this.bandBelief = BAND_BELIEF;
     // Set by the rigs to put the aim-probe clamp back -- see safeSpeed.
@@ -2134,6 +2136,7 @@ export class Driver {
    * Returns the control object to hand to the vehicle.
    */
   driveTo(aim, speed, dt, opts = {}) {
+    if (speed > this.topCap) speed = this.topCap;
     const v = this.v;
     const out = this.out;
     const skill = this.skill;
@@ -2540,7 +2543,7 @@ export class Driver {
     const jumping = here && here.edge && here.edge.jump;
     const roadCap = jumping ? here.edge.speed * 1.1 : (here && here.speed ? here.speed : 20)
       * this.limitScale * lerp(1.0, 1.3, this.skill.aggression - 0.7);
-    const planned = Math.min(this.planSpeed(roadCap), speedCap, this.holdCap ?? Infinity);
+    const planned = Math.min(this.planSpeed(roadCap), speedCap, this.holdCap ?? Infinity, this.topCap);
 
     // Aim from the speed we are *about* to be doing, not the speed we are doing
     // now. Otherwise a car braking hard for a junction still aims 30 m past it
