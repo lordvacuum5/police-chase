@@ -25,11 +25,11 @@ export const MAPS = [
   {
     id: 'wexbury',
     name: 'Wexbury',
-    tag: 'Market town · Canal · Railway',
+    tag: 'Market town · River · Railway',
     blurb: 'An English market town on hills: crooked streets and back alleys round '
-         + 'a market square, a canal with humpback bridges and locks, a railway '
-         + 'with level crossings, mini roundabouts and the Magic Roundabout, a '
-         + 'bypass, a ford, and a road up the Beacon. Fall in the canal and you are busted.',
+         + 'a market square, a river with stone bridges, a lake out in the fields, a '
+         + 'railway with level crossings, mini roundabouts and the Magic Roundabout, a '
+         + 'bypass, a ford, and a road up the Beacon. Fall in the river and you are busted.',
     // As big as Ashfield City: "You can make it as big as the American map if you want."
     half: 1500,
     garages: 2,

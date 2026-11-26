@@ -262,6 +262,8 @@ const PERSON_RAM = [0, 0, 0, 0.12, 0.5, 0.9];
 const PERSON_TOP = [Infinity, 31.3, 40.2];
 /** Below this wanted level nobody means to touch you. */
 const CONTACT_FROM = 3;
+/** Below this speed of the car being chased, m/s, no dropping back for a run-up after a hit (Officer._pursue). */
+const RESET_MIN = 9;
 
 /** TIER_PACE / TIER_LIMIT at a wanted level that need not be whole. */
 function tierAt(table, h) {
@@ -2455,7 +2457,10 @@ export class Officer {
     }
 
     const runUp = lerp(7.5, 17, ram);
-    if (this._ramBackOff(dt, target, d, runUp)) {
+    // Not when the car is going slowly, threading between houses: dropping back from a car doing 20 km/h is stopping dead, and in a
+    // tight space backing out. "If I'm just going through a few buildings, they ... stop a lot and then have to back out their
+    // situation and then go again." tests/gapchase.js, 22 km/h between houses at three stars: a quarter of the time in this.
+    if (target.speed > RESET_MIN && this._ramBackOff(dt, target, d, runUp)) {
       // Just hit them: drop back for a run-up before the next one. Braked
       // for firmly, and eased off near the gap it wants so it does not fall
       // twenty metres behind. Aimed at the car itself, not through it, so the

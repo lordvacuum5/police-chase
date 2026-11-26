@@ -11001,3 +11001,21 @@ made-up shops. Garden fences gone, *"just get rid of them"*; the lawns too, whic
 
 The ledge along one side of the canal: *"on one of the sides ... there's almost a drop off"*. The towpath was painted as road in the grip grid, and the ground drawn within 5 m of road is let down 0.45 m
 (0.8 in the far tiles), so beyond the canal's bank sheet on the towpath's side the ground stood a step lower the whole length of it. The towpath is no longer road; the gravel is still drawn. Garden sheds gone too.
+
+### Wexbury: a river with proper bridges instead of the canal, a lake, police that stay on you between houses
+
+*"Just remove canals ... Can you put a lake or a river in? ... put a river where the canal was, going all the way along ... with a nice bridge, a nice textured proper bridge going over it, and same with the
+train line ... with no mistakes."* The canal is out. Along its line, the whole way across the map, a river: a 52 m valley (cosine banks, 4.5 m deep, the water 1.5 m down and about 32 m across), its level the
+ground's averaged over 160 m either side and falling all the way at no more than 0.4%, no locks. At that width the 4 m height grid draws it smoothly; nothing is laid over it. As Ashfield's bridges: no road
+or railway claims the ground over the valley (`skipClaim`, and `skipLine` new in terrain.js for the railway), and each crosses on a deck from bank to bank, arched to clear the water by 4.2 m (the railway
+3.2), whose height is the ground's there (`riverDecks`). Drawn: stone deck and parapets with piers in the water for roads; steel girders for the railway (`buildBridges`), textured; parapets solid.
+Seed 51807: 4 road bridges and the railway's. Driven over each by the game's driver at 55-70 km/h: on the deck all the way, never wet, no damage; the lane's arches 7 m. The far terrain tiles (12 m a step)
+stood up through the water in green patches: let down 1.5 m wherever the ground is under water.
+
+A lake: *"in the countryside, but like kind of not near any houses"*. At least 220 m out from the town's edge, nothing but country lanes within 200 m, in the lowest ground there is, away from the railway,
+the river and the hills; 135 m across give or take, its shore in and out with the angle; any road it would meet is taken out.
+
+Police between houses: *"they do seem to ... stop a lot and then have to back out their situation and then go again"*. `tests/gapchase.js`, the car carried at 22 km/h across the blocks through gaps
+between houses, three stars: a quarter of the chasing units' time was `reset` -- dropping back for a run-up after a hit, which from a car doing 20 km/h is stopping dead and backing out. No drop-back now
+under 9 m/s (`RESET_MIN`): reset 25% to 0, stopped 6.3% to 4.6%, reversing 9.1% to 7.7% (most of what is left is bouncing off the rig's car, which is held to its speed and cannot be pushed).
+`tests/citychase.js` 180 s: nothing stuck, nothing fell. `tests/mapcost.js`: sim 2.5 ms, drawing 5.1-6.8 ms. Air Rescue's places all fine for 30 days; the escape routes 604-734 m.

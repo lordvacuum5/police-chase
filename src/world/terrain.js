@@ -73,7 +73,7 @@ export function baseRelief(rng, opts = {}) {
  * it is pulled to that. `crests` are added to the road long sections after the
  * smoothing, so they survive it.
  */
-export function buildHeightGrid(base, { half = 1000, graph = null, flatten = [], crests = [], roadFade = 16, pins = [], lines = [], skipClaim = null } = {}) {
+export function buildHeightGrid(base, { half = 1000, graph = null, flatten = [], crests = [], roadFade = 16, pins = [], lines = [], skipClaim = null, skipLine = null } = {}) {
   const n = Math.round((half * 2) / H_STEP) + 1;
   const H = new Float32Array(n * n);
   const W = new Float32Array(n * n);      // how strongly a place has claimed the cell
@@ -282,6 +282,8 @@ export function buildHeightGrid(base, { half = 1000, graph = null, flatten = [],
       const len = S[k + 1].s - S[k].s, steps = Math.max(1, Math.ceil(len / 1.5));
       for (let m = 0; m < steps; m++) {
         const t = m / steps;
+        // Not over a river it crosses on a bridge (Wexbury: world/wexbury.js riverDecks).
+        if (skipLine && skipLine(lerp(S[k].x, S[k + 1].x, t), lerp(S[k].z, S[k + 1].z, t))) continue;
         claim(lerp(S[k].x, S[k + 1].x, t), lerp(S[k].z, S[k + 1].z, t), lerp(prof[k], prof[k + 1], t),
           ln.width * 0.5 + 2, ln.width * 0.5 + 2 + roadFade, false, true);
       }
