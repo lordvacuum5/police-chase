@@ -91,7 +91,7 @@ export class RoadblockManager {
       }
     }
 
-    if (!this.canPlace || this.blocks.length >= MAX_BLOCKS || this.timer > 0) return;
+    if (!this.canPlace || this.blocks.filter((b) => !b.thrown).length >= MAX_BLOCKS || this.timer > 0) return;
     if (this.lastSite && dist2(this.lastSite.x, this.lastSite.z,
       target.position.x, target.position.z) < MIN_TRAVEL) return;
 
@@ -319,6 +319,29 @@ export class RoadblockManager {
     block.spikes = { x: sx, y: gy(sx, sz), z: sz, tx, tz, halfLen: len * 0.5, halfDepth: 0.45 };
 
     return block;
+  }
+
+  /**
+   * A stinger thrown out across the road behind a police car (Dispatcher, from four stars): kerb to kerb at its back bumper, nothing else.
+   * One that is not on a road, or with one already down near, is not thrown. Gone with the rest (update: far behind you, or under three stars).
+   */
+  throwStinger(v) {
+    const game = this.game, g = game.graph;
+    const snap = g.nearestEdgeTo(v.position, 12);
+    if (!snap || snap.edge.cut || this.blocks.some((b) => b.spikes && dist2(b.x, b.z, v.position.x, v.position.z) < 60)) return false;
+    const e = snap.edge, dir = g.edgeDirection(e, snap.along, { x: 0, z: 1 }), same = dir.x * v.forward.x + dir.z * v.forward.z >= 0 ? 1 : -1;
+    const tx = dir.x * same, tz = dir.z * same, back = v.spec.dims.l * 0.5 + 2.5;
+    const sx = v.position.x - v.forward.x * back, sz = v.position.z - v.forward.z * back;
+    const y = e.deck ? g.levelOn(e, sx, sz) : game.sim.heightAt ? game.sim.heightAt(sx, sz) : game.groundAt(sx, sz);
+    const len = e.width - 0.4;
+    const mesh = new THREE.Mesh(spikeStripGeometry(len), game.stingerMaterial || (game.stingerMaterial = vertexColorMaterial()));
+    mesh.position.set(sx, 0.012 + y, sz);
+    mesh.rotation.y = Math.atan2(tx, tz);
+    mesh.receiveShadow = true;
+    game.scene.add(mesh);
+    this.blocks.push({ x: sx, z: sz, meshes: [mesh], units: [], cones: [], thrown: true,
+      spikes: { x: sx, y, z: sz, tx, tz, halfLen: len * 0.5, halfDepth: 0.45 } });
+    return true;
   }
 
   /**

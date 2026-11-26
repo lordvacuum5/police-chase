@@ -153,6 +153,14 @@ const SWIPE_ABOVE = 16;
 /** The short daily challenge (game/daily.js SHORT_FROM): five cars, nothing put across the road, something at you every this many s. */
 const SHORT_DAILY = { units: 5, pursue: 4, intercept: 1, pit: true, box: false };
 const SHORT_CONTACT_GAP = 7;
+/**
+ * After a person, from three stars: a car out of a side road ahead every CUT_EVERY s (by star), and from four a stinger thrown out behind a
+ * unit that is ahead of you, every STINGER_EVERY s. "1, 2, 8": cut off from side roads, the radio saying where, and stingers from cars.
+ */
+const CUT_EVERY = [0, 0, 0, 16, 11, 8];
+const STINGER_EVERY = 18;
+/** How long a car cutting them off is left to it, s. */
+const CUT_HOLD = 14;
 
 /**
  * Seconds between any two things that come at the player -- a PIT, a rolling
@@ -323,9 +331,12 @@ export class Dispatcher {
     this.offRoadFor = offRoad ? (this.offRoadFor || 0) + dt : Math.max(0, (this.offRoadFor || 0) - dt * 2);
 
     this.roleTimer -= dt;
+    this._dtSince = (this._dtSince || 0) + dt;
     this.interceptTimer -= dt;
     if (this.roleTimer <= 0) {
       this.roleTimer = 0.25;
+      this._dtNow = this._dtSince;
+      this._dtSince = 0;
       this._assignRoles(target);
     }
     this._updateBox(dt, target);
@@ -848,6 +859,9 @@ export class Dispatcher {
       && !u.vehicle.disabled && available.includes(u));
     for (const u of this.blockMates) assigned.add(u);
 
+    // A car cutting them off, until it has done it: at the junction with them within 70 m (Officer._intercept), or CUT_HOLD s.
+    for (const u of available) if (u.orders && u.orders.cut && u.role === ROLE.INTERCEPT && (u._cutFor = (u._cutFor || 0) + 0.25) < CUT_HOLD) assigned.add(u);
+
     // ---- 3. direct pursuit ----
     //
     // A box needs three cars in the same place, and the pursuit budget alone
@@ -1015,6 +1029,57 @@ export class Dispatcher {
           (v) => `${v.cs}, in front of them.`,
         ], { cs: u.callsign }, true, { every: 30 });
       }
+    }
+
+    // ---- 5b2. cut off from a side road ----
+    this.cutCooldown = (this.cutCooldown ?? 6) - (this._dtNow || 0);
+    if (this.person && this.tier >= 3 && k.seen && this.cutCooldown <= 0 && Math.abs(target.forwardSpeed) > 8) {
+      this.cutCooldown = CUT_EVERY[this.tier];
+      const cut = this.game.spawnCutOff(target, this.tier);
+      if (!cut) this.cutCooldown = 3;
+      else {
+        this.units.push(cut.unit);
+        available.push(cut.unit);
+        assigned.add(cut.unit);
+        cut.unit.setRole(ROLE.INTERCEPT, { node: cut.node.id, cut: true });
+        // Said, and true: where it is going is where it goes.
+        this.game.say('cutoff', [
+          (v) => `Control, ${v.cs} to cut them off at ${v.node}.`,
+          (v) => `Control, ${v.cs}, block them at ${v.node}.`,
+          (v) => `${v.cs}, coming out at ${v.node}, I'll cut them off.`,
+        ], { cs: cut.unit.callsign, node: this.game.nodeName(cut.node.id) }, true, { every: 6 });
+      }
+    }
+
+    // ---- 5b3. a stinger out of the back of a unit ahead ----
+    this.stingerCooldown = (this.stingerCooldown ?? 8) - (this._dtNow || 0);
+    if (this.person && this.tier >= 4 && k.seen && this.stingerCooldown <= 0 && Math.abs(target.forwardSpeed) > 12) {
+      const ahead = this.units.find((u) => {
+        if (u.human || u.vehicle.disabled) return false;
+        const r = relativeTo(target, u.vehicle);
+        // In front, near enough the way they are heading (a road bends), and going the same way.
+        return r.long > 20 && r.long < 120 && Math.abs(r.lat) < 4 + r.long * 0.35 && u.vehicle.forward.dot(target.forward) > 0.5 && u.vehicle.speed > 4;
+      });
+      if (ahead && this.game.roadblocks.throwStinger(ahead.vehicle)) {
+        this.stingerCooldown = STINGER_EVERY;
+        this.game.say('stinger-thrown', [
+          (v) => `${v.cs}, stinger out behind me.`,
+          (v) => `${v.cs}, deploying stinger.`,
+          (v) => `${v.cs}, spikes down, they're coming at it.`,
+        ], { cs: ahead.callsign }, true, { every: 10 });
+      } else if (!ahead && !this.blockUnit && !this.blockMates.length && this.contactCooldown <= 0) {
+        // Nobody ahead to throw one: one put on the road in front, as a rolling block is, to throw it when they come up behind.
+        const u = this.game.spawnPoliceAhead(target, this.tier);
+        if (u) {
+          this.units.push(u);
+          available.push(u);
+          assigned.add(u);
+          u.setRole(ROLE.BLOCK);
+          this.blockUnit = u;
+          this.contactCooldown = this.contactGap;
+        }
+        this.stingerCooldown = u ? 3 : 2;
+      } else this.stingerCooldown = 1.5;
     }
 
     // ---- 5c. the head-on van ----

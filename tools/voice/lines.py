@@ -190,6 +190,9 @@ def clips():
             put(m, 'unit', 'and ' + r, 'f')
             put(m, 'control', 'on ' + r, 'f')
             put(m, 'control', r, 'f')
+            # A junction, said by Control: "Fifth Street and Ninth Street".
+            put(m, 'control', r, 'm')
+            put(m, 'control', 'and ' + r, 'f')
             put(m, 'air', 'on ' + r, 'm')
     return packs, bad
 

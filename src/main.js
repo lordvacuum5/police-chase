@@ -111,6 +111,8 @@ const HALF_FROM = 45;
 /** The picture's resolutions, as shares of the window's; a step down below the first of these frames a second, up at the second. */
 const RESOLUTIONS = [1, 0.86, 0.74];
 const RES_DOWN = 50, RES_UP = 57;
+/** Game.spawnCutOff: the junction this far up the road at the nearest, m, and at the furthest; the car this far down the side road, m. */
+const CUT_NEAR = 55, CUT_FAR = 170, CUT_BACKS = [22, 34, 48];
 /** Kerbs further off than this are not drawn, m. */
 const KERB_FAR = 300;
 const _ball = new THREE.Sphere();
@@ -1843,6 +1845,65 @@ class Game {
    * round to the front takes longer than a chase lasts, and the point of a
    * rolling block is that it is there when you arrive.
    */
+  /**
+   * A car out of a side road just ahead of the target, into its way. "Cutting me off ... a car comes out of a side road just ahead of you
+   * and blocks your lane." A junction CUT_NEAR to CUT_FAR up the road it is on, a side road off it (not the one it is likely to take),
+   * and the car CUT_BACKS down that, facing the junction, out of everybody's sight. Returned with the junction, for the role that drives
+   * it there (ROLE.INTERCEPT: to the junction, then stood facing them) and the radio.
+   */
+  spawnCutOff(target, tier) {
+    if (this.carCount() >= this.vehicleLimit || this.daily) return null;
+    const g = this.graph;
+    let dx = target.linvel.x, dz = target.linvel.z;
+    if (Math.hypot(dx, dz) < 4) { dx = target.forward.x; dz = target.forward.z; }
+    const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+    const reach = g.reachable(target.position.x, target.position.z, dx, dz, 12, 0.9, target.position.y);
+    // Far enough to get there, at the speed it is going: about three seconds' worth, never nearer than CUT_NEAR.
+    const near = Math.max(CUT_NEAR, target.speed * 2.6), far = Math.max(CUT_FAR, near + 60);
+    const sites = [];
+    for (const [id, rec] of reach) {
+      const n = g.nodes[id];
+      if (n.edges.length < 3) continue;
+      const d = dist2(n.x, n.z, target.position.x, target.position.z);
+      if (d < near || d > far || ((n.x - target.position.x) * dx + (n.z - target.position.z) * dz) < d * 0.8) continue;
+      if (this.roadblocks.blocks.some((b) => dist2(n.x, n.z, b.x, b.z) < 80)) continue;
+      sites.push({ n, via: rec.viaNode, d });
+    }
+    sites.sort((a, b) => a.d - b.d);
+    const why = this._cutWhy || (this._cutWhy = {});
+    why.tries = (why.tries || 0) + 1;
+    if (!sites.length) why.noJunction = (why.noJunction || 0) + 1;
+    for (const { n, via } of sites.slice(0, 8)) {
+      const inId = via >= 0 ? g.edgeBetween(via, n.id) : null;
+      // Its way out of the junction, as near straight on as there is: the side roads are the others.
+      const ways = n.edges.map((eid) => g.edges[eid]).filter((e) => !e.cut && e !== inId && e.length > CUT_BACKS[0] + 8 && !e.deck);
+      const out = (e) => { const p = g.pointAt(e, e.a === n.id ? 8 : e.length - 8); return ((p.x - n.x) * dx + (p.z - n.z) * dz) / Math.max(1, Math.hypot(p.x - n.x, p.z - n.z)); };
+      ways.sort((a, b) => out(b) - out(a));
+      for (const e of ways.slice(1)) {
+        if (Math.abs(out(e)) > 0.8) { why.straight = (why.straight || 0) + 1; continue; }
+        // Down the side road out of sight: as near as will do, further if it must.
+        for (const back of CUT_BACKS) {
+        if (back > e.length - 8) break;
+        const fromN = e.a === n.id, p = g.pointAt(e, fromN ? back : e.length - back);
+        // Facing the junction, on its own side of the side road.
+        const sgn = fromN ? -1 : 1, heading = Math.atan2(p.tx * sgn, p.tz * sgn), lane = Math.min(2.5, e.width * 0.25);
+        const pos = { x: p.x - p.tz * sgn * lane * DRIVE_SIDE, y: 0.95, z: p.z + p.tx * sgn * lane * DRIVE_SIDE };
+        pos.y += this.roadY(pos.x, pos.z, e);
+        if (this.sim.surfaceAt(pos.x, pos.z) !== 1) { why.offRoad = (why.offRoad || 0) + 1; continue; }
+        if (this.seenByAnyone(pos)) { why.seen = (why.seen || 0) + 1; continue; }
+        if (this.vehicles.some((v) => dist2(v.position.x, v.position.z, pos.x, pos.z) < 8)) continue;
+        const kind = tier >= 4 ? 'interceptor' : 'patrol';
+        const v = this.createVehicle(kind, kind, pos, heading, { police: true, spawn: true });
+        if (!v) continue;
+        v.lampPhase = this.rng();
+        v.setVelocity({ x: Math.sin(heading) * 8, y: 0, z: Math.cos(heading) * 8 });
+        return { unit: new Officer(this, v, { skill: SKILL.advanced, kind }), node: n };
+        }
+      }
+    }
+    return null;
+  }
+
   spawnPoliceAhead(target, tier) {
     if (this.carCount() >= this.vehicleLimit) return null;
     // The daily challenge's police are all preset (DailyChallenge, the spawn plan): none of the force's own.

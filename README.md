@@ -10919,3 +10919,13 @@ than three are within 220 m of you and fewer than five out, one on the route 70 
 
 *"I can't even see the car symbol"* (the police knowing your car, from two stars). It is an `<svg>`, which has no `hidden` property: setting one did nothing, and the attribute it started with kept it hidden for good. By the
 attribute now. Checked: hidden at no stars; at two stars on file and shown, 34 by 20 px at the top right of the stars panel.
+
+### Cut off from side roads, the radio saying where, stingers thrown from cars
+
+*"1 2 8"*: a car out of a side road ahead into your way; the radio saying where they are cutting you off, and that being where they go; and a stinger thrown out behind a police car ahead. After a person, from three stars:
+- `Game.spawnCutOff`: a junction 55-170 m up the road (about three seconds' worth at least), a side road off it that is not the way on, the car 22, 34 or 48 m down that, facing the junction, out of everyone's sight. It drives
+  to the junction and stands facing you (ROLE.INTERCEPT), left to it for 14 s. Every 16, 11, 8 s at three, four, five stars. Control or the unit says it: "Control, U22 to cut them off at Victoria Street / Albion Road."
+- `RoadblockManager.throwStinger`, from four stars, every 18 s: kerb to kerb behind a unit 20-120 m ahead going your way; with nobody ahead, one put on the road in front as a rolling block is, to throw it. "U15, stinger out behind me."
+
+`tests/cutoffs.js`, Wexbury, the car carried along the streets at 70 km/h: at five stars 90 s, 7 cut-offs (5 at the junction before you, 3 within 4-7 m of you as you passed); at four, 40 s, 2 stingers thrown and called. 14 of 25 tries found no place, 11 of
+them because every spot was in sight. The new lines recorded (common, and each map's names for Control); `tests/radiovoice.js` 690 of 690.
