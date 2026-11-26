@@ -425,12 +425,6 @@ export class Hud {
     // By the attribute: it is an <svg>, which has no `hidden` property, so setting one did nothing and it was never shown -- "I can't even
     // see the car symbol".
     if (this.knownEl && this.knownEl.hasAttribute('hidden') === known) this.knownEl.toggleAttribute('hidden', !known);
-    if (known) {
-      const c = SPRAY_COLOURS[player.paint || 0];
-      const fill = c && c.hex !== null ? `#${c.hex.toString(16).padStart(6, '0')}` : '#ffffff';
-      const path = this.knownEl.querySelector('path');
-      if (path.getAttribute('fill') !== fill) path.setAttribute('fill', fill);
-    }
   }
 
   // ---------------------------------------------------------------- speedo

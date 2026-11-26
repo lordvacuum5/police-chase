@@ -254,7 +254,9 @@ const TIER_LIMIT = [1.7, 1.7, 2.2, 3.0, 3.0, 3.0];
  */
 const PERSON_PACE = [0.58, 0.58, 0.7, 0.9, 0.98, 1.0];
 const PERSON_LIMIT = [1.2, 1.2, 1.5, 2.6, 3.0, 3.0];
-const PERSON_GRIP = [0.6, 0.6, 0.75, 0.95, 1, 1];
+// "Can you make the police cars a little bit better at cornering? Just like at ... level 1": with the 70 and 90 mph tops (PERSON_TOP)
+// holding them down on the straights, the corners need not as well.
+const PERSON_GRIP = [0.85, 0.85, 0.9, 0.95, 1, 1];
 const PERSON_RAM = [0, 0, 0, 0.12, 0.5, 0.9];
 /** The fastest they go at one and two stars, m/s: 70 and 90 mph. */
 const PERSON_TOP = [Infinity, 31.3, 40.2];
@@ -449,6 +451,8 @@ const BLOCK_WARNINGS = 2;
 const BLOCK_PURSUE_AFTER = 3;
 /** What a search spot has to be clear of, tested straight down at its middle and a car's length round it. */
 /** Officer._ghosting: how fast the car being chased goes, m/s; how often it is looked at again, s; this near another person, m, or in clear sight of one, never; as far from a civilian car, m, to be solid again. */
+/** Officer._rampFoot: how long the ramp a car went up is the way after it, s. */
+const RAMP_FOOT_FOR = 25;
 const GHOST_SPEED = 15, GHOST_LOOK = 0.1, GHOST_HUMAN = 60, GHOST_CLEAR = 5.4;
 const SPOT_SOLID = groups(0xFFFF, GROUP.BUILDING | GROUP.PROP);
 const SPOT_PROBES = [[0, 0], [3, 0], [-3, 0], [0, 3], [0, -3]];
@@ -1482,7 +1486,8 @@ export class Officer {
       return this.driver.remaining(4) > 4 ? this.driver.followPath(dt, 9)
         : this.driver.driveTo(point, 0, dt, { holdStill: true });
     }
-    if (this.driver.remaining(22) < 22) {
+    // Not up at it from under it, nor down at it from over it: the road it is on goes there.
+    if (this.driver.remaining(22) < 22 && !(point.y !== undefined && this._otherLevel(point))) {
       // Close enough to drive at it directly -- no faster than the caller
       // asked for the rest of the way.
       return this.driver.driveTo(point, this._chaseSpeed() * Math.min(0.8, speedFactor), dt);
@@ -1688,6 +1693,9 @@ export class Officer {
   _driveDirect(dt, point, speed) {
     const v = this.vehicle;
     const d = this.driver;
+    // Not straight at somewhere up on the motorway from the street under it, nor down at the street from up there: they stood
+    // under the deck at a standstill, the planner looking for a way up a pillar (tests/rampchase.js, side). By the roads.
+    if (point.y !== undefined && this._otherLevel(point)) return this._goTo(dt, point, 1.0);
 
     if (this._roadFallback > 0) {
       this._roadFallback -= dt;
@@ -2065,6 +2073,31 @@ export class Officer {
     return cornerSpeedLimit(Math.max(10, t / Math.tan(turn / 2) + TURN_ROOM), this.driver._mu());
   }
 
+  /**
+   * The foot of the ramp the target went up, while this unit is down on the ground and nearer that than the target, and it is fresh
+   * (RAMP_FOOT_FOR s): null otherwise, and once the unit is at the foot, where the way on up is the ramp anyway.
+   */
+  _rampFoot(target) {
+    const g = this.game.graph, v = this.vehicle.position, at = this.game.sim.terrainAt, now = this.game.clock || 0;
+    if (!g || !g.levelGround || !at) return null;
+    // Seen on a ramp: which end of it is on the ground.
+    this._climbLook = (this._climbLook || 0) - 1;
+    if (this._climbLook <= 0) {
+      this._climbLook = 15;
+      const snap = g.nearestEdgeTo(target.position, 10);
+      const e = snap && snap.edge;
+      if (e && e.kind === 'ramp') {
+        const a = g.nodes[e.a], b = g.nodes[e.b], foot = a.elevated && !b.elevated ? b : !a.elevated && b.elevated ? a : null;
+        if (foot) this._climb = { target, when: now, x: foot.x, y: at(foot.x, foot.z) + 0.5, z: foot.z };
+      }
+    }
+    const c = this._climb && this._climb.target === target && now - this._climb.when < RAMP_FOOT_FOR ? this._climb : null;
+    if (!c || v.y - at(v.x, v.z) > 3) return null;
+    const toFoot = Math.hypot(c.x - v.x, c.z - v.z);
+    if (toFoot < 18 || toFoot > this.distanceTo(target.position) + 60 || toFoot > 400) return null;
+    return c;
+  }
+
   /** Is `p` up on a raised road and this unit not, or the other way about, or on one above or below this one's? */
   _otherLevel(p) {
     const g = this.game.graph, v = this.vehicle.position, at = this.game.sim.terrainAt;
@@ -2169,6 +2202,12 @@ export class Officer {
     if (this._otherLevel(target.position)) {
       this._mode = 'level';
       this._hasLos = false;
+      // Up the ramp they went up, when that is on the way. "I was on a on ramp to the motorway, and they didn't seem to understand
+      // about going to. They were underneath me." Sent for the deck nearest the car, a unit beside the ramp went on along the
+      // streets for the next one, under the motorway, and with two units put beside a ramp as the car started up it, they were up
+      // there in 2 of 5 runs (tests/rampchase.js, side).
+      const foot = this._rampFoot(target);
+      if (foot) return this._goTo(dt, foot, 1.0);
       return this._goTo(dt, target.position, 1.0);
     }
     // Across the river: by a bridge.
@@ -2524,12 +2563,13 @@ export class Officer {
    * love the high density of traffic ... if they're chasing me and I'm going pretty fast and I'm not looking behind me ... the
    * police cars can literally just go straight through civilian cars. Don't let me see." A unit after a person's car going
    * GHOST_SPEED or more, out of everyone's sight, does not meet civilian cars nor steer round them. Solid again as soon as it
-   * might be seen or the chase slows, but never inside one: the two would be thrown apart.
+   * might be seen or the chase slows, but never inside one: the two would be thrown apart. From one star too: "the ... level one police
+   * ... don't seem to be able to go through traffic ... They seem to be getting stuck by traffic quite a lot."
    */
   _ghosting(dt, target) {
     const v = this.vehicle, g = this.game, r = this.role;
     const after = !window.__noGhost && target && (target === g.player || target.remote || target.humanDriven) && !v.disabled
-      && r !== ROLE.PATROL && r !== ROLE.HOLD && g.heat.tier > 1 && target.speed > (v.ghost ? GHOST_SPEED - 4 : GHOST_SPEED);
+      && r !== ROLE.PATROL && r !== ROLE.HOLD && g.heat.tier >= 1 && target.speed > (v.ghost ? GHOST_SPEED - 4 : GHOST_SPEED);
     this._ghostLook = (this._ghostLook || 0) - dt;
     if (after && this._ghostLook <= 0) {
       this._ghostLook = GHOST_LOOK;

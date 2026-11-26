@@ -40,6 +40,8 @@ export const TRAFFIC_MAPS = ['haldon', 'wexbury', 'city'];
 // under two within 150 m of a driving player. Still only ever out of sight.
 const TRAFFIC_COUNT = 17;
 const TRAFFIC_NEAR = 70;
+/** As near on a map with traffic out to the fog (Ashfield City), m. */
+const CITY_NEAR = 130;
 const TRAFFIC_FAR = 260;
 const TRAFFIC_GONE = 360;
 /** On a raised road (Ashfield's motorway): spawned as far out as this, and past DECK_HAZE even in view, m. */
@@ -151,6 +153,26 @@ export function trafficPaint(id) {
   for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
   return PAINTS[(h >>> 0) % PAINTS.length];
 }
+
+/**
+ * What a ramp costs a civilian's route, as a share more than its length. "The civilian cars seem to spawn a lot on the on ramps, and
+ * there's so many that they were almost on top. Some of them were on top of each other." Ramps were 4% of Ashfield's road and had 21%
+ * of its traffic, ten times as thick as the streets: every route across town went up on to the motorway and down again, and cars were
+ * made on them too. Now they are only taken where the motorway saves a good deal, and no car is made on one (tests/crowds.js).
+ */
+const RAMP_COST = 2.5;
+const rampDear = (e) => (e.kind === 'ramp' ? RAMP_COST : 1);
+/** A car up on the motorway goes somewhere else up there this often (Traffic._route). */
+const STAY_UP = 0.8;
+/** A gliding car this near another going its way, m, takes that one's pace; this near, stops (Traffic._queue). */
+const QUEUE_GAP = 14, QUEUE_STOP = 7;
+
+/**
+ * Giving way at a junction with no lights (Traffic._giveWay): the box, m from the middle of it, that one car at a time is in; looked for
+ * this far up the route, m. "Loads of civilian cars coming from all directions. It almost feels intentional ... it needs to be a bit
+ * more natural." Three junctions in four have no lights, and there they drove into the middle together.
+ */
+const JUNCTION_BOX = 9, JUNCTION_LOOK = 32;
 
 /** Is this point of a route on a big raised road? */
 const onBig = (at) => !!(at && at.edge && at.edge.elevated && LANES[at.edge.kind]);
@@ -296,7 +318,7 @@ export class Traffic {
     const at = pts[Math.min(i, pts.length - 1)];
     // Gives way to blue lights while gliding too: it simply waits.
     // But not on the motorway, where what is coming through has two more lanes.
-    c.cruise = !onBig(at) && this._sirenNear(v) ? 0 : this._pace(c, at);
+    c.cruise = !onBig(at) && this._sirenNear(v) ? 0 : this._queue(c, this._pace(c, at));
     // Round a corner, not snapped round it: "sometimes when civilian cars are far away, like when they turn, they suddenly snap turn."
     // Facing where it will be GLIDE_AHEAD on, and no quicker than a car of its speed could come round.
     {
@@ -351,11 +373,14 @@ export class Traffic {
     // Going anywhere, three in four of them ahead.
     const me = g.player && g.player.speed > 12 && dist2(g.player.position.x, g.player.position.z, w.x, w.z) < 5 ? g.player.linvel : null;
     const ahead = me && g.rng() < 0.75;
+    // Not just round the next corner, on the map that has them out to the fog: there they came out of the junctions ahead as you got
+    // to them, "from all directions. It almost feels intentional."
+    const near = map.trafficFar ? CITY_NEAR : TRAFFIC_NEAR;
     for (const n of gr.nodes) {
       if (!n.edges.length || spur.has(n.id)) continue;
       const d = dist2(n.x, n.z, w.x, w.z);
       const far = n.elevated ? deckFar : ground;
-      if (d < TRAFFIC_NEAR || d > far) continue;
+      if (d < near || d > far) continue;
       // Up there, the streets under it are not what is seen coming.
       if (up && !n.elevated && d > 160) continue;
       // On the streets, that far only up the one they are on: all round, it thinned those near by to four in 150 m.
@@ -366,11 +391,12 @@ export class Traffic {
     for (let i = 0; i < (map.trafficFar ? 20 : 12) && cands.length; i++) {
       const n = cands[Math.floor(g.rng() * cands.length)];
       const d = dist2(n.x, n.z, w.x, w.z);
-      if (nearest(n) < TRAFFIC_NEAR) continue;
+      if (nearest(n) < near) continue;
       // Out along any of its roads, not the first: on the motorway that was all one way.
-      const outs = n.edges.map((id) => gr.edges[id]).filter((e) => !e.cut && through(e));
+      // Never on to a ramp: they were heaped there already (rampDear).
+      const outs = n.edges.map((id) => gr.edges[id]).filter((e) => !e.cut && e.kind !== 'ramp' && through(e));
       const pickE = outs.length ? outs[Math.floor(g.rng() * outs.length)] : null;
-      const place = g._placeOnRoad(n, pickE ? (e) => e === pickE : through);
+      const place = g._placeOnRoad(n, pickE ? (e) => e === pickE : (e) => through(e) && e.kind !== 'ramp');
       if (!place) continue;
       const lanes = pickE && pickE.elevated && LANES[pickE.kind];
       const lane = lanes ? Math.floor(g.rng() * lanes.length) : 0;
@@ -442,13 +468,16 @@ export class Traffic {
     const spur = spurNodes(gr);
     const deadEnd = (n) => spur.has(n.id) || gr.roadDegree(n) < 2 || n.edges.some((id) => gr.edges[id].turningHead);
     let pts = null;
+    // Up on the motorway, mostly on along it: going off it to anywhere in town, they came down the ramps in a stream.
+    if (!this._deck) this._deck = gr.nodes.filter((n) => n.elevated && n.edges.some((id) => gr.edges[id].kind !== 'ramp' && gr.edges[id].elevated));
+    const stayUp = this._deck.length && v.position.y - g.groundAt(v.position.x, v.position.z) > 3 && g.rng() < STAY_UP;
     for (let i = 0; i < 12; i++) {
-      const n = gr.randomNode(g.rng);
+      const n = stayUp && i < 8 ? this._deck[Math.floor(g.rng() * this._deck.length)] : gr.randomNode(g.rng);
       const d = dist2(n.x, n.z, v.position.x, v.position.z);
       if (d < 150 || d > 800 || deadEnd(n)) continue;
       const p = gr.pathFromPosition(
         v.position.x, v.position.z, v.forward.x, v.forward.z, n.id, LANE,
-        Infinity, v.speed, 9, { cuts: false, noUTurn: true },
+        Infinity, v.speed, 9, { cuts: false, noUTurn: true, weight: rampDear },
       );
       if (p.length >= 2 && !turnsBack(p, v.forward)) { pts = p; break; }
       if (!pts && p.length >= 2) pts = p;
@@ -521,6 +550,66 @@ export class Traffic {
       i = j + 1;
     }
     return pts;
+  }
+
+  /**
+   * Behind another car, as fast as it, or stopped. A gliding car had nothing in front of it, so on a road everyone took they ran
+   * through each other, and woke up near you in heaps.
+   */
+  _queue(c, pace) {
+    const v = c.v, p = v.position, f = v.forward;
+    for (const o of this.cars) {
+      if (o === c) continue;
+      const q = o.v.position, dx = q.x - p.x, dz = q.z - p.z;
+      if (dx > QUEUE_GAP || dx < -QUEUE_GAP || dz > QUEUE_GAP || dz < -QUEUE_GAP || Math.abs(q.y - p.y) > 2.5) continue;
+      const ahead = dx * f.x + dz * f.z;
+      if (ahead <= 0 || ahead > QUEUE_GAP || Math.abs(dx * f.z - dz * f.x) > 2.2 || o.v.forward.x * f.x + o.v.forward.z * f.z < 0.5) continue;
+      // Where two roads meet each can be just ahead of the other, and both stood there for good: the older one goes.
+      const of = o.v.forward, back = -dx * of.x - dz * of.z;
+      if (back > 0 && Math.abs(dx * of.z - dz * of.x) < 2.2 && +c.id.slice(1) < +o.id.slice(1)) continue;
+      pace = ahead < QUEUE_STOP ? 0 : Math.min(pace, o.v.speed * (ahead - QUEUE_STOP) / (QUEUE_GAP - QUEUE_STOP) + 2);
+    }
+    return pace;
+  }
+
+  /**
+   * As fast as it may go and still stop short of the next junction, if another car crossing its way is in the middle of it or is nearer
+   * to it; otherwise Infinity. One already in the box goes on. Two as near as each other: the older one goes.
+   */
+  _giveWay(c) {
+    const v = c.v, d = c.driver, pts = d.path, gr = this.game.graph;
+    if (!pts || window.__giveWay === false) return Infinity;
+    let node = null, along = 0, x = v.position.x, z = v.position.z;
+    for (let i = d.pathIndex; i < pts.length - 1 && along < JUNCTION_LOOK; i++) {
+      const a = pts[i], b = pts[i + 1];
+      along += Math.hypot(b.x - x, b.z - z); x = b.x; z = b.z;
+      const e1 = a.edge, e2 = b.edge;
+      if (!e1 || !e2 || e1 === e2) continue;
+      const id = e1.a === e2.a || e1.a === e2.b ? e1.a : e1.b, n = gr.nodes[id];
+      if (n && n.edges.length >= 3) { node = n; break; }
+    }
+    if (!node) return Infinity;
+    const p = v.position, f = v.forward, mine = Math.hypot(node.x - p.x, node.z - p.z);
+    if (mine < JUNCTION_BOX) return Infinity;
+    const at = pts[d.pathIndex], offRamp = !!(at && at.edge && at.edge.kind === 'ramp');
+    for (const o of this.game.vehicles) {
+      if (o === v || o.dormant || o.removed) continue;
+      const q = o.position, theirs = Math.hypot(node.x - q.x, node.z - q.z);
+      if (theirs > JUNCTION_LOOK || Math.abs(q.y - p.y) > 3 || Math.abs(o.forward.x * f.x + o.forward.z * f.z) > 0.7) continue;
+      const inBox = theirs < JUNCTION_BOX;
+      // Coming to it, not leaving it.
+      const coming = (node.x - q.x) * o.linvel.x + (node.z - q.z) * o.linvel.z > 0 && o.speed > 1.5;
+      if (!inBox && !coming) continue;
+      // Off a ramp it has the way, or they queued back up it: only one in the middle is waited for.
+      if (!inBox && offRamp) continue;
+      if (!inBox) {
+        if (theirs > mine) continue;
+        const rc = o.isTraffic && this.recordOf(o);
+        if (theirs > mine - 1 && rc && +c.id.slice(1) < +rc.id.slice(1)) continue;
+      }
+      return Math.sqrt(2 * 3.4 * Math.max(0, mine - JUNCTION_BOX - 1.5));
+    }
+    return Infinity;
   }
 
   /** The pace it keeps at a point of its route, m/s. */
@@ -608,6 +697,8 @@ export class Traffic {
         c.redCall = undefined;
       }
     }
+
+    cap = Math.min(cap, this._giveWay(c));
 
     // Queueing behind what is in front, and nothing else: Driver.avoid sweeps
     // for scenery and other cars to dodge, which a car keeping to its lane at

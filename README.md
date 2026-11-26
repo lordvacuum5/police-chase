@@ -10929,3 +10929,20 @@ attribute now. Checked: hidden at no stars; at two stars on file and shown, 34 b
 
 `tests/cutoffs.js`, Wexbury, the car carried along the streets at 70 km/h: at five stars 90 s, 7 cut-offs (5 at the junction before you, 3 within 4-7 m of you as you passed); at four, 40 s, 2 stingers thrown and called. 14 of 25 tries found no place, 11 of
 them because every spot was in sight. The new lines recorded (common, and each map's names for Control); `tests/radiovoice.js` 690 of 690.
+
+### Civilians off the ramps and taking turns at junctions; 1-star police through traffic; the known-car symbol head on
+
+*"The civilian cars seem to spawn a lot on the on ramps ... Some of them were on top of each other ... suddenly there's like loads of civilian cars coming from all directions. It almost feels intentional."* `tests/crowds.js`, Ashfield, the car carried
+along the streets and up the ramps at 60 km/h for 90 s, traffic held at full count. Ramps were 4% of the road and had 21% of the cars, ten times as thick as the streets.
+- Routes count a ramp 2.5 times its length; no car is made on a ramp; a car up on the motorway goes somewhere else up there four times in five. Gliding cars (far off, no physics) queue behind the one ahead instead of running through it,
+  the older one going first where two meet. At junctions with no lights (three in four), a car waits for one crossing that is in the middle or nearer to it. On Ashfield, new cars only 130 m or more from you, not 70.
+- Before / after: overlapping cars 140 / 21 a minute; most on one ramp 4.8 / 2.5 on average, 14 / 8 at worst; cars crossing into each other in a junction 49 / 3 samples; new cars appearing within 120 m of you 21 / 0; cars within 60 m of you
+  5.1 / 5.1 (as busy); stopped cars near you 1.8 / 1.4.
+
+*"They were underneath me"*, on a ramp: a unit on the street goes to the foot of the ramp you went up (seen up to 25 s), not on along the streets to the deck nearest you, and never drives straight at you from under the deck.
+`tests/rampchase.js`: units put on your trail follow you up (5 of 6 up within 2.5 s); put beside the ramp, under you 1-8% of the time before, 0% in two runs after. Getting them up there is still hit and miss when they had not seen you.
+
+*"The ... level one police ... seem to be getting stuck by traffic quite a lot"*: they go through traffic out of sight from one star now, not two. *"A little bit better at cornering ... at level 1"*: the grip they plan corners on at one and two stars
+0.6 / 0.75 to 0.85 / 0.9. `tests/lowstars.js` (one star, carried at 100 km/h): 30 to 31 m back, corners 65 to 67 km/h -- next to no change; the corners are held by following you, not by grip.
+
+The known-car symbol: *"It should be a front. It shouldn't be side on ... a little red symbol"*. A red car seen head on, 24 by 20 px.
