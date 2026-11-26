@@ -123,7 +123,7 @@ function markDisc(ctx, x, z, r, bit) {
   }
 }
 
-function markLine(ctx, pts, r, bit) {
+export function markLine(ctx, pts, r, bit) {
   for (let k = 0; k < pts.length - 1; k++) {
     const a = pts[k], b = pts[k + 1];
     const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / (r * 0.5)));

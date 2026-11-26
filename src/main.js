@@ -122,6 +122,11 @@ const FLOOD_SLOW = 0.054;
 const FLOOD_FAST = 0.315;
 const FLOOD_DRY = 0.12;
 const SUNK_SHOWN = 4;
+/**
+ * Wading (Wexbury's ford, the shallows of any water): the water holds a car back, by this share of its speed a second, scaled by how
+ * much of it is under. Through the ford at 60 km/h a car comes out at about 40.
+ */
+const WADE_DRAG = 2.0;
 /** The most a car that has come down hard is drawn up, m (Game._landedLift). */
 const LANDED_MAX = 1.2;
 const _wheelQ = new THREE.Quaternion(), _wheelUp = new THREE.Vector3();
@@ -3517,6 +3522,14 @@ class Game {
       v.flooded = under;
       // Any of it in the water at all, wheels and all.
       v.wet = level !== null && v.position.y - v.spec.dims.h * 0.5 < level;
+      // Held back as it wades: "a ford ... It slows you down and splashes".
+      if (v.wet && !v.disabled) {
+        const depth = Math.min(1, (level - (v.position.y - v.spec.dims.h * 0.5)) / 0.6), k = 1 - Math.exp(-WADE_DRAG * depth * dt);
+        // As a push back on the body, not by setting its speed: that set the wheels turning at it too, and a car wading in slowly
+        // could never get the grip to climb out (tests: 37 km/h in, stopped at the bottom).
+        const m = v.body.mass();
+        v.body.applyImpulse({ x: -v.linvel.x * k * m, y: 0, z: -v.linvel.z * k * m }, true);
+      }
       if (under < FLOOD_FROM) {
         if (v._wetFor) v._wetFor = 0;
         if (v.flood > 0 && !v.disabled) v.drown(-FLOOD_DRY * dt);

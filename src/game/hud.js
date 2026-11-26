@@ -283,7 +283,8 @@ export class Hud {
     // ---- the engine flooding ----
     // "If you go into the water at any point, a little bar ... just below the damage [bar] ... but obviously don't make that
     // appear until you actually go into any water, so it doesn't get in people's way." Gone once it is out and dry.
-    const in_ = !player.isAircraft && (player.wet || player.flood > 0.004) ? Math.round((player.flood || 0) * 100) : null;
+    // Not for wading through a ford: only once the water is up the car's sides.
+    const in_ = !player.isAircraft && ((player.wet && player.flooded > 0.25) || player.flood > 0.004) ? Math.round((player.flood || 0) * 100) : null;
     if (in_ !== this._flood && this.floodEl) {
       this._flood = in_;
       this.floodEl.classList.toggle('on', in_ !== null);

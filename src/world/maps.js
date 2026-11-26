@@ -4,7 +4,7 @@
 // that -- physics, AI, spawning, HUD -- is map-agnostic.
 
 import { buildCity } from './citygen.js';
-import { buildTown } from './towngen.js';
+import { buildWexbury } from './wexbury.js';
 import { buildCountry } from './countrygen.js';
 
 export const MAPS = [
@@ -25,12 +25,15 @@ export const MAPS = [
   {
     id: 'wexbury',
     name: 'Wexbury',
-    tag: 'Organic · Market town',
-    blurb: 'An English market town that grew rather than being planned: crooked '
-         + 'lanes round a market square, ring roads at odd radii, estates of '
-         + 'crescents and dead ends, and a dual carriageway bypass joined by '
-         + 'roundabouts. Nothing meets at a right angle.',
-    build: buildTown,
+    tag: 'Market town · Canal · Railway',
+    blurb: 'An English market town on hills: crooked streets and back alleys round '
+         + 'a market square, a canal with humpback bridges and locks, a railway '
+         + 'with level crossings, mini roundabouts and the Magic Roundabout, a '
+         + 'bypass, a ford, and a road up the Beacon. Fall in the canal and you are busted.',
+    // As big as Ashfield City: "You can make it as big as the American map if you want."
+    half: 1500,
+    garages: 2,
+    build: buildWexbury,
   },
   {
     id: 'haldon',

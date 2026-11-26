@@ -2327,7 +2327,7 @@ function buildPavements(ctx) {
 // =====================================================================
 
 /** A canvas of ripples, as a normal map: the water's surface. */
-function rippleNormals() {
+export function rippleNormals() {
   const S = 256;
   const c = document.createElement('canvas');
   c.width = c.height = S;

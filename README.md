@@ -10952,3 +10952,22 @@ The known-car symbol: *"It should be a front. It shouldn't be side on ... a litt
 A bug hunt, `tests/citychase.js` 180 s on each map at three stars. A unit is taken off out of sight when it has been stuck 14 s more than 200 m from anyone; stuck was under 1 m/s, so one rocking to and fro against a wall (3 km/h
 each way, Wexbury, 461 m off) never counted. Now by how far it has got: under 6 m in 14 s. Found and not fixed: on Ashfield, units crawling at 0-2 km/h on the local planner in tight spots, 150-250 m from you (4 in 180 s);
 on Haldon one looping round a field by a stopped civilian car. No traffic stuck on Wexbury or Ashfield, one on Haldon; nothing fell through the ground on any map.
+
+### Wexbury rebuilt: 3 km, hills, a canal, a railway with level crossings, roundabouts, a ford, the Beacon
+
+*"Almost a full remake, just like the American map of the UK map ... maybe put water in it, maybe train ... make it a bit hilly. Just make it really good ... Try to make sure it doesn't lag."* `world/wexbury.js`, in place of `towngen.js`.
+- As big as Ashfield (half 1500, two garages). Haldon's ground (terrain.js), damped to half in the town; four named hills.
+- The old plan grown out: six ring streets, seven A-roads, the bypass with roundabouts and laybys, estates of loops and closes, lanes, two villages. The High Street stops at the market square from either side.
+- The railway and the canal are laid over the town's bones and every road they meet at a slant, near a junction or alongside is taken out, then anything cut off. Kept out of the old core (ring 2): laid
+  through it, the middle of town was left half built. Seed 51807: 6 level crossings (Haldon's Railway: barriers, lights, the train), 6 canal bridges, 6 locks.
+- Canal: pounds of about 420 m at the ground's mean, towpath beside it, cut into the ground after it is made; busted in it as in Ashfield's river; the police route round by the bridges. Bridges are humps on
+  the small roads (measured 2.7-5.7 m over 30 m) and lifted over the water where the canal is on an embankment (it spilled out beside them at first). Water drawn both sides: one way round it faced down and was never seen.
+- Ford: a lane dips 1.4 m through a stream (asked 3.6, the road's ground is averaged across its width: 1.5 came out 0.3). Wading pushes back on the body (`WADE_DRAG`, main.js): 65 km/h in, about 37 out;
+  37 in, 23. Set as a speed it also set the wheels and a slow car stopped dead at the bottom. No flooding bar for a ford.
+- Market square with the market cross and the church; stalls on Wednesdays and Saturdays. 28 back alleys behind the terraces (kind `alley`, routed by the police). The Magic Roundabout (a ring with a mini at each way in),
+  7 minis and a double. 92 speed bumps (in the wheels' height, drawn), 8 width restrictions (a 7.4 m gap), bus lanes on the town's A-roads. Beacon Hill climbs in zigzags to a car park, toposcope and benches.
+- One-way streets were not done: the road graph has no direction.
+- `tests/mapcost.js`, 1280x720, three stars, against Ashfield: sim 4.0 / 4.3 / 4.1 ms (town, suburb, 140 m up) against 5.7 / 4.9 / 4.4; drawing 5.2 / 7.2 / 5.4 against 5.1 / 6.7 / 5.1; 0.47-0.59 M triangles against 0.51-0.69 M.
+- `tests/citychase.js` 180 s: one unit circling 450 m off, one far traffic car, nothing fell. All maps, today's daily, 27 November's (Air Rescue: every place reachable for 30 days) and an escape day on it ran.
+
+27 November's daily is on Haldon whatever it fell on: *"It can't appear on either the two new maps. The only map it can appear on is the countryside map tomorrow."* It had fallen on Wexbury.

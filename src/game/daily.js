@@ -110,6 +110,8 @@ function hash(s) {
 
 /** The first day the daily may be on Ashfield: Saturday, so from midnight at the end of Friday evening in the UK. */
 const CITY_FROM = '2026-11-28';
+/** One day on Haldon Vale whatever it fell on (dailyPlan). */
+const HALDON_ON = '2026-11-27';
 
 /** The parts of a day that are chosen before a map is built: which map, and which car. */
 export function dailyPlan(day = dayKey()) {
@@ -124,6 +126,9 @@ export function dailyPlan(day = dayKey()) {
   }
   // And it starts with it: "you will start using the map for the daily challenge on Saturday" (that day fell on Wexbury).
   if (day === CITY_FROM) map = maps.find((m) => m.id === 'city') || map;
+  // Haldon Vale on 27 November, the day after Wexbury was rebuilt: "this map doesn't appear on tomorrow's daily challenge ... Same with
+  // the America map ... The only map it can appear on is the countryside map tomorrow. Only for tomorrow, though." (It fell on Wexbury.)
+  if (day === HALDON_ON) map = maps.find((m) => m.id === 'haldon') || map;
   let car = DAILY_CARS[Math.floor(rng() * DAILY_CARS.length) % DAILY_CARS.length];
   // What kind of challenge, from its own numbers so the map and car above are what they always were.
   // "Loads more different daily challenges ... where you're the police and you have to stop a criminal but
