@@ -10998,3 +10998,6 @@ through the dip, so the canal's comes first now. Locks: gates across the whole d
 
 Shopfronts: *"it's just like a black strip ... put like the actual ... Mr. Buffy's chicken"*. Glazing in a painted frame, a door, a stall riser, and a fascia with the shop's name from a canvas of 16
 made-up shops. Garden fences gone, *"just get rid of them"*; the lawns too, which were stripes of colour across each block. The sheds and trees in them stay.
+
+The ledge along one side of the canal: *"on one of the sides ... there's almost a drop off"*. The towpath was painted as road in the grip grid, and the ground drawn within 5 m of road is let down 0.45 m
+(0.8 in the far tiles), so beyond the canal's bank sheet on the towpath's side the ground stood a step lower the whole length of it. The towpath is no longer road; the gravel is still drawn. Garden sheds gone too.

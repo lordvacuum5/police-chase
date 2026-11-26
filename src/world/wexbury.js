@@ -157,7 +157,8 @@ export function buildWexbury(sim, scene, seed = 51807) {
   if (canal) markLine(ctx, canal.points, BANK_OUT + 2, CLEAR_CANAL);
   paintSurfaces(ctx);
   rasteriseRoads(graph, surface);
-  if (canal) for (const p of canal.tow) paintDisc(surface, p.x, p.z, 2.2, SURF_ROAD);
+  // The towpath is not marked as road: the ground drawn beside a road is let down, and beyond the canal's bank on the towpath's side
+  // that left a ledge the length of the canal. "On one of the sides ... there's almost a drop off."
   ctx.laybys = buildLaybyPlan(ctx);
   for (const l of ctx.laybys) for (const p of l) paintDisc(surface, p.x, p.z, 2.4, SURF_ROAD);
   if (ctx.summit) paintDisc(surface, ctx.summit.x, ctx.summit.z, 26, SURF_ROAD);
@@ -1703,14 +1704,6 @@ function buildFrontages(ctx) {
             if (placed.free(gx, gz, gr * 0.6) && !graph.overlapsRoad(gx, gz, gw, gd, Math.atan2(dx, dz), 2) && clearSpot(ctx, gx, gz, gr)) {
               gardens.push({ x: gx, z: gz, w: gw, d: gd, rot, ox, oz });
               placed.add(gx, gz, gr * 0.6);
-              if (rng() < 0.35) {
-                const c = Math.cos(rot), sn = Math.sin(rot), lx = gw * 0.3 * (rng() < 0.5 ? 1 : -1), lz = gd * 0.5 - 2;
-                const sx = gx + lx * c + lz * sn, sz = gz - lx * sn + lz * c, st2 = b.vertexCount;
-                b.addTaperedBox(2.4, 2.0, 1.8, sx, 1.0, sz, 0x5b4632, 1, 1, rot);
-                b.addTaperedBox(2.6, 0.4, 2.0, sx, 2.2, sz, 0x2d2a26, 0.5, 1, rot);
-                pieces[q].push([st2, b.vertexCount, sx, sz]);
-                addStaticBox(sim.world, sx, at(sx, sz) + 1, sz, 1.2, 1, 0.9, GROUP.BUILDING, rot);
-              }
             }
           }
           along += w + gap;
