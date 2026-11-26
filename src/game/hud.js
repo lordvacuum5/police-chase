@@ -201,7 +201,7 @@ export class Hud {
     // chase you are on -- the hottest suspect's own level, as a police player
     // in a multiplayer game sees the escapee's. "In single player, when ... a
     // normal car hits you, there's no wanted levels."
-    const shown = this.game.openWorld ? this.game.suspects.wanted() : heat;
+    const shown = this.game.openWorld ? this.game.suspects.wanted() : this.game.netWanted || heat;
     const tier = shown.tier;
     let stars = '';
     for (let i = 0; i < 5; i++) stars += i < tier ? '<b>★</b>' : '☆';

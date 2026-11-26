@@ -362,6 +362,8 @@ export class Suspects {
     // for it? ... it never really escapes." Now as for the player: where it is while seen and
     // for SUSPECT_TRACK after, then where it was last seen, then the roads round there.
     const known = s.seen || s.unseenFor < SUSPECT_TRACK;
+    // For the other machines' maps: whether anybody knows where it is.
+    s.v.suspectKnown = known;
     const level = Math.max(1, Math.min(MAX_HEAT, Math.floor(s.heat)));
     const SIGHT = suspectSight(level);
     // Its level, on the car: for the map's ring here and, sent with the car, on everybody else's.

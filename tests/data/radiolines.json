@@ -889,15 +889,27 @@
 ],
 [
 "city",
-"Control, interceptors deploying. Box if you can."
+"Control, interceptors deploying. Force them to stop."
 ],
 [
 "wexbury",
-"Control, interceptors deploying. Box if you can."
+"Control, interceptors deploying. Force them to stop."
 ],
 [
 "haldon",
-"Control, interceptors deploying. Box if you can."
+"Control, interceptors deploying. Force them to stop."
+],
+[
+"city",
+"Control, interceptors joining. Take them off the road."
+],
+[
+"wexbury",
+"Control, interceptors joining. Take them off the road."
+],
+[
+"haldon",
+"Control, interceptors joining. Take them off the road."
 ],
 [
 "city",
@@ -970,18 +982,6 @@
 [
 "haldon",
 "Control, widen the search."
-],
-[
-"city",
-"Control, you may box. Interceptors joining."
-],
-[
-"wexbury",
-"Control, you may box. Interceptors joining."
-],
-[
-"haldon",
-"Control, you may box. Interceptors joining."
 ],
 [
 "city",
@@ -1081,71 +1081,83 @@
 ],
 [
 "city",
-"U25, I've got them in the city."
+"U25, I'm level, forcing them over."
 ],
 [
 "wexbury",
-"U21, I've got them on Saxon Close."
+"U15, I'm level, forcing them over."
 ],
 [
 "haldon",
-"U8, I've got them on Puddle Lane."
+"U3, I'm level, forcing them over."
 ],
 [
 "city",
-"U2, PIT authorised."
+"U21, I've got them on the Twenty-Third Bridge."
 ],
 [
 "wexbury",
+"U8, I've got them on Kingsmead."
+],
+[
+"haldon",
+"U2, I've got them in the city."
+],
+[
+"city",
 "U11, PIT authorised."
 ],
 [
-"haldon",
-"U6, PIT authorised."
-],
-[
-"city",
-"U11, PIT successful!"
-],
-[
 "wexbury",
-"U26, PIT successful!"
+"U26, PIT authorised."
 ],
 [
 "haldon",
-"U28, PIT successful!"
+"U28, PIT authorised."
 ],
 [
 "city",
-"U19, PIT when ready."
+"U19, PIT successful!"
 ],
 [
 "wexbury",
-"U29, PIT when ready."
+"U29, PIT successful!"
 ],
 [
 "haldon",
-"U30, PIT when ready."
+"U30, PIT successful!"
 ],
 [
 "city",
-"U10, back on patrol."
+"U10, PIT when ready."
 ],
 [
 "wexbury",
-"U8, back on patrol."
+"U8, PIT when ready."
 ],
 [
 "haldon",
-"U11, back on patrol."
+"U11, PIT when ready."
 ],
 [
 "city",
-"U4, clear to PIT."
+"U4, back on patrol."
 ],
 [
 "wexbury",
-"U18, clear to PIT."
+"U18, back on patrol."
+],
+[
+"haldon",
+"U20, back on patrol."
+],
+[
+"city",
+"U19, clear to PIT."
+],
+[
+"wexbury",
+"U26, clear to PIT."
 ],
 [
 "haldon",
@@ -1153,163 +1165,187 @@
 ],
 [
 "city",
-"U19, coming the other way in the city. Stand clear."
+"U3, coming alongside."
 ],
 [
 "wexbury",
-"U8, coming the other way in the city. Stand clear."
+"U8, coming alongside."
 ],
 [
 "haldon",
-"U26, coming the other way on Fore Street, Haldon St Mary. Stand clear."
+"U8, coming alongside."
 ],
 [
 "city",
-"U3, contact! Straight through them."
+"U1, coming the other way on Mill Track. Stand clear."
 ],
 [
 "wexbury",
-"U9, contact! Straight through them."
+"U3, coming the other way in the city. Stand clear."
 ],
 [
 "haldon",
-"U18, contact! Straight through them."
+"U24, coming the other way in the city. Stand clear."
 ],
 [
 "city",
-"U28, contact, they've spun!"
+"U21, contact! Straight through them."
 ],
 [
 "wexbury",
-"U3, contact, they've spun!"
+"U1, contact! Straight through them."
 ],
 [
 "haldon",
-"U24, contact, they've spun!"
+"U10, contact! Straight through them."
 ],
 [
 "city",
-"U3, cutting them off at Bellamy Road / Barrow Lane."
+"U25, contact, they've spun!"
 ],
 [
 "wexbury",
-"U10, cutting them off at Friar Lane / Northgate."
+"U26, contact, they've spun!"
 ],
 [
 "haldon",
-"U16, cutting them off at Church Street, Haldon St Mary / Chapel Lane, Haldon St Mary."
+"U12, contact, they've spun!"
 ],
 [
 "city",
-"U17, en route."
+"U16, cutting them off at the Downtown Expressway / Fulton Street."
 ],
 [
 "wexbury",
+"U4, cutting them off at Orchard Rise / Fosse Way."
+],
+[
+"haldon",
+"U3, cutting them off at Town End, Ashwell / the quarry track."
+],
+[
+"city",
+"U6, en route."
+],
+[
+"wexbury",
+"U6, en route."
+],
+[
+"haldon",
 "U25, en route."
 ],
 [
-"haldon",
-"U26, en route."
-],
-[
 "city",
-"U11, getting in front."
+"U5, getting in front."
 ],
 [
 "wexbury",
-"U3, getting in front."
+"U5, getting in front."
 ],
 [
 "haldon",
-"U17, getting in front."
+"U27, getting in front."
 ],
 [
 "city",
-"U22, go for the PIT."
+"U28, go for the PIT."
 ],
 [
 "wexbury",
-"U6, go for the PIT."
+"U11, go for the PIT."
 ],
 [
 "haldon",
-"U6, go for the PIT."
+"U10, go for the PIT."
 ],
 [
 "city",
-"U25, going round to Fulton Street / Fourth Street."
+"U4, going alongside, pushing them off."
 ],
 [
 "wexbury",
-"U27, going round to Fosse Way / Fairfield Road."
+"U23, going alongside, pushing them off."
 ],
 [
 "haldon",
-"U4, going round to Town End, Ashwell / the A3072."
+"U17, going alongside, pushing them off."
 ],
 [
 "city",
-"U10, got them, they've gone round!"
+"U27, going round to Riverside Avenue / First Street."
 ],
 [
 "wexbury",
-"U5, got them, they've gone round!"
+"U29, going round to Church Lane / Beech Avenue."
 ],
 [
 "haldon",
+"U18, going round to Back Lane, Haldon St Mary / Holloway."
+],
+[
+"city",
+"U27, got them, they've gone round!"
+],
+[
+"wexbury",
 "U29, got them, they've gone round!"
 ],
 [
+"haldon",
+"U20, got them, they've gone round!"
+],
+[
 "city",
-"U7, hard contact, head-on."
+"U26, hard contact, head-on."
 ],
 [
 "wexbury",
-"U5, hard contact, head-on."
+"U22, hard contact, head-on."
 ],
 [
 "haldon",
-"U18, hard contact, head-on."
+"U30, hard contact, head-on."
 ],
 [
 "city",
-"U30, heading for Broadway / Seventh Street."
+"U18, heading for Linden Way / Harbor Street."
 ],
 [
 "wexbury",
-"U27, heading for Station Road / Victoria Street."
+"U10, heading for Market Place / Queens Road."
 ],
 [
 "haldon",
-"U30, heading for Well Lane, Ashwell / Five Ashes Lane."
+"U6, heading for Back Lane, Little Combe / the quarry track."
 ],
 [
 "city",
-"U6, in front of them."
+"U8, in front of them."
 ],
 [
 "wexbury",
-"U10, in front of them."
+"U9, in front of them."
 ],
 [
 "haldon",
-"U14, in front of them."
+"U25, in front of them."
 ],
 [
 "city",
-"U18, making my way, southbound."
+"U3, making my way, westbound."
 ],
 [
 "wexbury",
-"U2, making my way, southbound."
+"U26, making my way, westbound."
 ],
 [
 "haldon",
-"U9, making my way, northbound."
+"U18, making my way, eastbound."
 ],
 [
 "city",
-"U22, missed them, turning round."
+"U18, missed them, turning round."
 ],
 [
 "wexbury",
@@ -1317,107 +1353,119 @@
 ],
 [
 "haldon",
-"U26, missed them, turning round."
+"U28, missed them, turning round."
 ],
 [
 "city",
-"U14, no contact, they went by."
-],
-[
-"wexbury",
 "U18, no contact, they went by."
 ],
 [
+"wexbury",
+"U15, no contact, they went by."
+],
+[
 "haldon",
-"U9, no contact, they went by."
+"U1, no contact, they went by."
 ],
 [
 "city",
-"U18, on duty, available."
+"U13, on duty, available."
 ],
 [
 "wexbury",
-"U15, on duty, available."
+"U27, on duty, available."
 ],
 [
 "haldon",
-"U28, on duty, available."
+"U11, on duty, available."
 ],
 [
 "city",
-"U18, on my way."
+"U6, on my way."
 ],
 [
 "wexbury",
-"U15, on my way."
+"U9, on my way."
 ],
 [
 "haldon",
-"U1, on my way."
+"U16, on my way."
 ],
 [
 "city",
-"U13, on patrol."
+"U1, on patrol."
 ],
 [
 "wexbury",
-"U27, on patrol."
+"U26, on patrol."
 ],
 [
 "haldon",
-"U11, on patrol."
+"U21, on patrol."
 ],
 [
 "city",
-"U6, responding."
+"U30, pulling level."
 ],
 [
 "wexbury",
-"U9, responding."
+"U14, pulling level."
 ],
 [
 "haldon",
-"U16, responding."
+"U19, pulling level."
 ],
 [
 "city",
-"U1, show me attending."
+"U1, responding."
 ],
 [
 "wexbury",
-"U26, show me attending."
+"U2, responding."
 ],
 [
 "haldon",
-"U21, show me attending."
+"U23, responding."
 ],
 [
 "city",
-"U30, show me on duty."
+"U12, show me attending."
 ],
 [
 "wexbury",
-"U14, show me on duty."
+"U19, show me attending."
 ],
 [
 "haldon",
+"U5, show me attending."
+],
+[
+"city",
 "U19, show me on duty."
 ],
 [
-"city",
-"U1, starting patrol."
-],
-[
 "wexbury",
-"U2, starting patrol."
+"U5, show me on duty."
 ],
 [
 "haldon",
-"U23, starting patrol."
+"U5, show me on duty."
 ],
 [
 "city",
-"U12, target's spun out."
+"U9, starting patrol."
+],
+[
+"wexbury",
+"U27, starting patrol."
+],
+[
+"haldon",
+"U9, starting patrol."
+],
+[
+"city",
+"U13, target's spun out."
 ],
 [
 "wexbury",
@@ -1425,79 +1473,79 @@
 ],
 [
 "haldon",
-"U5, target's spun out."
+"U13, target's spun out."
 ],
 [
 "city",
-"U19, they're past me. Coming about."
+"U6, they're past me. Coming about."
 ],
 [
 "wexbury",
-"U5, they're past me. Coming about."
+"U20, they're past me. Coming about."
 ],
 [
 "haldon",
-"U5, they're past me. Coming about."
+"U3, they're past me. Coming about."
 ],
 [
 "city",
-"U9, up front, bringing them down."
+"U8, up front, bringing them down."
 ],
 [
 "wexbury",
-"U27, up front, bringing them down."
+"U16, up front, bringing them down."
 ],
 [
 "haldon",
-"U9, up front, bringing them down."
+"U1, up front, bringing them down."
 ],
 [
 "city",
-"U13, van's coming at them on the Twenty-First Bridge. Brace."
+"U6, van's coming at them on the Seventeenth Bridge. Brace."
 ],
 [
 "wexbury",
-"U6, van's coming at them in the city. Brace."
+"U17, van's coming at them on The Crescent. Brace."
 ],
 [
 "haldon",
-"U8, van's coming at them in the city. Brace."
+"U30, van's coming at them in the city. Brace."
 ],
 [
 "city",
-"U6, visual on the Seventeenth Bridge."
+"U8, visual on Seventh Street."
 ],
 [
 "wexbury",
-"U17, visual on The Crescent."
+"U22, visual in the city."
 ],
 [
 "haldon",
-"U30, visual in the city."
+"U23, visual on Rectory Lane, Little Combe."
 ],
 [
 "city",
-"U8, visual on the vehicle."
+"U18, visual on the vehicle."
 ],
 [
 "wexbury",
-"U11, visual on the vehicle."
+"U20, visual on the vehicle."
 ],
 [
 "haldon",
-"U16, visual on the vehicle."
+"U30, visual on the vehicle."
 ],
 [
 "city",
-"U22, visual, joining."
+"U24, visual, joining."
 ],
 [
 "wexbury",
-"U16, visual, joining."
+"U30, visual, joining."
 ],
 [
 "haldon",
-"U8, visual, joining."
+"U21, visual, joining."
 ],
 [
 "city",
@@ -1573,27 +1621,27 @@
 ],
 [
 "city",
-"All units, van the wrong way on Twenty-Fourth Street. Stand clear."
-],
-[
-"wexbury",
-"All units, van the wrong way on Sackville Street. Stand clear."
-],
-[
-"haldon",
 "All units, van the wrong way in the city. Stand clear."
 ],
 [
-"city",
-"Control, U2 going head-on. All units, hold back."
-],
-[
 "wexbury",
-"Control, U30 going head-on. All units, hold back."
+"All units, van the wrong way in the city. Stand clear."
 ],
 [
 "haldon",
-"Control, U3 going head-on. All units, hold back."
+"All units, van the wrong way on Town End, Ashwell. Stand clear."
+],
+[
+"city",
+"Control, U6 going head-on. All units, hold back."
+],
+[
+"wexbury",
+"Control, U17 going head-on. All units, hold back."
+],
+[
+"haldon",
+"Control, U25 going head-on. All units, hold back."
 ],
 [
 "city",
@@ -1741,41 +1789,41 @@
 ],
 [
 "city",
-"Control, all units, report of a vehicle driving dangerously."
-],
-[
-"wexbury",
-"Control, all units, report of a vehicle matching an earlier suspect."
-],
-[
-"haldon",
 "Control, all units, report of a vehicle a request from the control room."
 ],
 [
+"wexbury",
+"Control, all units, report of a vehicle running a red light."
+],
+[
+"haldon",
+"Control, all units, report of a vehicle running a red light."
+],
+[
 "city",
 "Control, all units, vehicle running a red light. Respond."
 ],
 [
 "wexbury",
-"Control, all units, vehicle running a red light. Respond."
+"Control, all units, vehicle driving dangerously. Respond."
 ],
 [
 "haldon",
-"Control, all units, vehicle running a red light. Respond."
+"Control, all units, vehicle matching an earlier suspect. Respond."
 ],
 [
 "city",
-"Control, any units, a vehicle driving dangerously."
-],
-[
-"wexbury",
-"Control, any units, a vehicle matching an earlier suspect."
-],
-[
-"haldon",
 "Control, any units, a vehicle the daily challenge."
 ],
 [
+"wexbury",
+"Control, any units, a vehicle failing to stop."
+],
+[
+"haldon",
+"Control, any units, a vehicle failing to stop."
+],
+[
 "city",
 "Air support is up."
 ],
@@ -1921,79 +1969,79 @@
 ],
 [
 "city",
+"Control, U29. Confirmed, it's the vehicle from earlier. All units."
+],
+[
+"wexbury",
 "Control, U20. Confirmed, it's the vehicle from earlier. All units."
 ],
 [
-"wexbury",
-"Control, U3. Confirmed, it's the vehicle from earlier. All units."
-],
-[
 "haldon",
-"Control, U28. Confirmed, it's the vehicle from earlier. All units."
+"Control, U17. Confirmed, it's the vehicle from earlier. All units."
 ],
 [
 "city",
-"Control, U4. Positive match on the earlier vehicle. Requesting backup."
+"Control, U19. Positive match on the earlier vehicle. Requesting backup."
 ],
 [
 "wexbury",
-"Control, U29. Positive match on the earlier vehicle. Requesting backup."
+"Control, U13. Positive match on the earlier vehicle. Requesting backup."
 ],
 [
 "haldon",
-"Control, U20. Positive match on the earlier vehicle. Requesting backup."
+"Control, U6. Positive match on the earlier vehicle. Requesting backup."
 ],
 [
 "city",
-"Control, U17. Same make and colour as earlier's suspect. Checking it out."
+"Control, U5. Same make and colour as earlier's suspect. Checking it out."
 ],
 [
 "wexbury",
-"Control, U19. Same make and colour as earlier's suspect. Checking it out."
+"Control, U9. Same make and colour as earlier's suspect. Checking it out."
 ],
 [
 "haldon",
-"Control, U13. Same make and colour as earlier's suspect. Checking it out."
+"Control, U14. Same make and colour as earlier's suspect. Checking it out."
 ],
 [
 "city",
-"Control, U6. That's our suspect from before. Same car."
+"Control, U7. That's our suspect from before. Same car."
 ],
 [
 "wexbury",
-"Control, U5. That's our suspect from before. Same car."
+"Control, U19. That's our suspect from before. Same car."
 ],
 [
 "haldon",
-"Control, U9. That's our suspect from before. Same car."
+"Control, U24. That's our suspect from before. Same car."
 ],
 [
 "city",
-"Control, U14. Think I've got the car from before. Pulling it over."
+"Control, U25. Think I've got the car from before. Pulling it over."
 ],
 [
 "wexbury",
-"Control, U7. Think I've got the car from before. Pulling it over."
+"Control, U26. Think I've got the car from before. Pulling it over."
 ],
 [
 "haldon",
-"Control, U19. Think I've got the car from before. Pulling it over."
+"Control, U2. Think I've got the car from before. Pulling it over."
 ],
 [
 "city",
-"Control, U24. Vehicle that matches one from earlier. Going to have a look."
+"Control, U16. Vehicle that matches one from earlier. Going to have a look."
 ],
 [
 "wexbury",
-"Control, U25. Vehicle that matches one from earlier. Going to have a look."
+"Control, U22. Vehicle that matches one from earlier. Going to have a look."
 ],
 [
 "haldon",
-"Control, U26. Vehicle that matches one from earlier. Going to have a look."
+"Control, U13. Vehicle that matches one from earlier. Going to have a look."
 ],
 [
 "city",
-"Control, in pursuit of a vehicle northbound, not stopping. May be our suspect from before."
+"Control, in pursuit of a vehicle eastbound, not stopping. May be our suspect from before."
 ],
 [
 "wexbury",
@@ -2001,7 +2049,7 @@
 ],
 [
 "haldon",
-"Control, in pursuit of a vehicle westbound, not stopping. May be our suspect from before."
+"Control, in pursuit of a vehicle southbound, not stopping. May be our suspect from before."
 ],
 [
 "city",
@@ -2029,17 +2077,17 @@
 ],
 [
 "city",
+"Control, vehicle failed to stop, heading northbound. Could be the suspect from earlier."
+],
+[
+"wexbury",
+"Control, vehicle failed to stop, heading northbound. Could be the suspect from earlier."
+],
+[
+"haldon",
 "Control, vehicle failed to stop, heading eastbound. Could be the suspect from earlier."
 ],
 [
-"wexbury",
-"Control, vehicle failed to stop, heading westbound. Could be the suspect from earlier."
-],
-[
-"haldon",
-"Control, vehicle failed to stop, heading southbound. Could be the suspect from earlier."
-],
-[
 "city",
 "Control, all quiet. Routine patrol."
 ],
@@ -2185,59 +2233,59 @@
 ],
 [
 "city",
-"U18, car stopped dead in front of me in the city. Moving them on."
+"U21, car stopped dead in front of me on Faraday Road. Moving them on."
 ],
 [
 "wexbury",
-"U26, car stopped dead in front of me in the city. Moving them on."
+"U24, car stopped dead in front of me in the city. Moving them on."
 ],
 [
 "haldon",
-"U9, car stopped dead in front of me in the city. Moving them on."
+"U25, car stopped dead in front of me in the city. Moving them on."
 ],
 [
 "city",
-"U25, driver's ignoring me on Eighth Street. Last warning."
+"U15, driver's ignoring me on Meridian Avenue. Last warning."
 ],
 [
 "wexbury",
-"U28, driver's ignoring me on Copse End. Last warning."
+"U26, driver's ignoring me on Market Place. Last warning."
 ],
 [
 "haldon",
-"U26, driver's ignoring me on Sheepwash Lane. Last warning."
+"U6, driver's ignoring me on Holloway. Last warning."
 ],
 [
 "city",
-"U6, driver's refusing to move on Sixteenth Street. Initiating a stop."
+"U5, driver's refusing to move in the city. Initiating a stop."
 ],
 [
 "wexbury",
-"U5, driver's refusing to move on Station Road. Initiating a stop."
+"U4, driver's refusing to move on Market Place. Initiating a stop."
 ],
 [
 "haldon",
-"U7, driver's refusing to move on Chapel Lane, Little Combe. Initiating a stop."
+"U30, driver's refusing to move on Chapel Lane, Little Combe. Initiating a stop."
 ],
 [
 "city",
-"U20, got a motorist sat in the carriageway on the Seventh Bridge. Letting them know I'm here."
+"U9, got a motorist sat in the carriageway on Mill Track. Letting them know I'm here."
 ],
 [
 "wexbury",
-"U30, got a motorist sat in the carriageway on Albion Road. Letting them know I'm here."
+"U24, got a motorist sat in the carriageway in the city. Letting them know I'm here."
 ],
 [
 "haldon",
-"U9, got a motorist sat in the carriageway on Fore Street, Haldon St Mary. Letting them know I'm here."
+"U7, got a motorist sat in the carriageway on Town End, Haldon St Mary. Letting them know I'm here."
 ],
 [
 "city",
-"U24, not budging. Final warning."
+"U19, not budging. Final warning."
 ],
 [
 "wexbury",
-"U18, not budging. Final warning."
+"U1, not budging. Final warning."
 ],
 [
 "haldon",
@@ -2245,103 +2293,103 @@
 ],
 [
 "city",
-"U7, obstruction on the Seventeenth Bridge. Stationary vehicle, won't shift. Quick blast on the twos."
+"U21, obstruction on Mill Track. Stationary vehicle, won't shift. Quick blast on the twos."
 ],
 [
 "wexbury",
-"U19, obstruction in the city. Stationary vehicle, won't shift. Quick blast on the twos."
+"U7, obstruction on Butcher Row. Stationary vehicle, won't shift. Quick blast on the twos."
 ],
 [
 "haldon",
-"U21, obstruction in the city. Stationary vehicle, won't shift. Quick blast on the twos."
+"U5, obstruction in the city. Stationary vehicle, won't shift. Quick blast on the twos."
 ],
 [
 "city",
-"U27, road user parked across my lane in the city. Just a warning for now."
+"U9, road user parked across my lane on Seventeenth Street. Just a warning for now."
 ],
 [
 "wexbury",
-"U6, road user parked across my lane in the city. Just a warning for now."
+"U27, road user parked across my lane on Victoria Street. Just a warning for now."
 ],
 [
 "haldon",
-"U18, road user parked across my lane on Drovers Lane. Just a warning for now."
+"U26, road user parked across my lane on Church Street, Little Combe. Just a warning for now."
 ],
 [
 "city",
-"U10, road's clear, carrying on."
+"U16, road's clear, carrying on."
 ],
 [
 "wexbury",
-"U19, road's clear, carrying on."
+"U14, road's clear, carrying on."
 ],
 [
 "haldon",
-"U25, road's clear, carrying on."
+"U28, road's clear, carrying on."
 ],
 [
 "city",
-"U9, still blocking the road. Last chance, then I'm stopping them."
+"U4, still blocking the road. Last chance, then I'm stopping them."
 ],
 [
 "wexbury",
-"U27, still blocking the road. Last chance, then I'm stopping them."
+"U25, still blocking the road. Last chance, then I'm stopping them."
 ],
 [
 "haldon",
-"U22, still blocking the road. Last chance, then I'm stopping them."
+"U7, still blocking the road. Last chance, then I'm stopping them."
 ],
 [
 "city",
-"U15, that's got them moving."
+"U19, that's got them moving."
 ],
 [
 "wexbury",
-"U26, that's got them moving."
+"U29, that's got them moving."
 ],
 [
 "haldon",
-"U28, that's got them moving."
+"U13, that's got them moving."
 ],
 [
 "city",
+"U7, they're still not moving. If they don't shift, I'll have to pull them over."
+],
+[
+"wexbury",
+"U10, they're still not moving. If they don't shift, I'll have to pull them over."
+],
+[
+"haldon",
 "U26, they're still not moving. If they don't shift, I'll have to pull them over."
 ],
 [
-"wexbury",
-"U28, they're still not moving. If they don't shift, I'll have to pull them over."
-],
-[
-"haldon",
-"U6, they're still not moving. If they don't shift, I'll have to pull them over."
-],
-[
 "city",
-"U18, they've been told twice. Pulling them over on Tenth Street."
+"U4, they've been told twice. Pulling them over in the city."
 ],
 [
 "wexbury",
-"U14, they've been told twice. Pulling them over in the city."
-],
-[
-"haldon",
 "U19, they've been told twice. Pulling them over in the city."
 ],
 [
+"haldon",
+"U18, they've been told twice. Pulling them over in the city."
+],
+[
 "city",
-"U10, they've moved. Resuming patrol."
+"U3, they've moved. Resuming patrol."
 ],
 [
 "wexbury",
-"U26, they've moved. Resuming patrol."
+"U17, they've moved. Resuming patrol."
 ],
 [
 "haldon",
-"U4, they've moved. Resuming patrol."
+"U12, they've moved. Resuming patrol."
 ],
 [
 "city",
-"U29, two warnings and they still won't move. Lights on, I'm stopping them."
+"U19, two warnings and they still won't move. Lights on, I'm stopping them."
 ],
 [
 "wexbury",
@@ -2349,127 +2397,127 @@
 ],
 [
 "haldon",
-"U1, two warnings and they still won't move. Lights on, I'm stopping them."
+"U10, two warnings and they still won't move. Lights on, I'm stopping them."
 ],
 [
 "city",
-"U4, vehicle still obstructing in the city. Control, may need to pull this one over."
+"U14, vehicle still obstructing on the Fourteenth Bridge. Control, may need to pull this one over."
 ],
 [
 "wexbury",
-"U18, vehicle still obstructing in the city. Control, may need to pull this one over."
+"U25, vehicle still obstructing on Priory Row. Control, may need to pull this one over."
 ],
 [
 "haldon",
-"U3, vehicle still obstructing on Town End, Ashwell. Control, may need to pull this one over."
+"U1, vehicle still obstructing on Chapel Lane, Little Combe. Control, may need to pull this one over."
 ],
 [
 "city",
-"U19, vehicle still obstructing after two warnings. Going for a stop."
+"U23, vehicle still obstructing after two warnings. Going for a stop."
 ],
 [
 "wexbury",
-"U26, vehicle still obstructing after two warnings. Going for a stop."
+"U15, vehicle still obstructing after two warnings. Going for a stop."
 ],
 [
 "haldon",
-"U10, vehicle still obstructing after two warnings. Going for a stop."
+"U12, vehicle still obstructing after two warnings. Going for a stop."
 ],
 [
 "city",
-"U14, vehicle stopped in the road on the Fourteenth Bridge, blocking me. Giving them a blip."
+"U10, vehicle stopped in the road on the Third Bridge, blocking me. Giving them a blip."
 ],
 [
 "wexbury",
-"U25, vehicle stopped in the road on Priory Row, blocking me. Giving them a blip."
+"U11, vehicle stopped in the road on the High Street, blocking me. Giving them a blip."
 ],
 [
 "haldon",
-"U1, vehicle stopped in the road on Chapel Lane, Little Combe, blocking me. Giving them a blip."
+"U4, vehicle stopped in the road on the quarry floor, blocking me. Giving them a blip."
 ],
 [
 "city",
-"U23, vehicle's moved on. Back on patrol."
+"U13, vehicle's moved on. Back on patrol."
 ],
 [
 "wexbury",
-"U15, vehicle's moved on. Back on patrol."
+"U7, vehicle's moved on. Back on patrol."
 ],
 [
 "haldon",
-"U12, vehicle's moved on. Back on patrol."
+"U18, vehicle's moved on. Back on patrol."
 ],
 [
 "city",
-"U10, block failed, they're past!"
+"U1, block failed, they're past!"
 ],
 [
 "wexbury",
-"U18, block failed, they're past!"
+"U9, block failed, they're past!"
 ],
 [
 "haldon",
-"U13, block failed, they're past!"
+"U21, block failed, they're past!"
 ],
 [
 "city",
-"U11, they're through the block!"
+"U20, they're through the block!"
 ],
 [
 "wexbury",
-"U26, they're through the block!"
-],
-[
-"haldon",
 "U24, they're through the block!"
 ],
 [
-"city",
-"U22, they've gone round the block!"
-],
-[
-"wexbury",
-"U19, they've gone round the block!"
-],
-[
 "haldon",
-"U16, they've gone round the block!"
+"U29, they're through the block!"
 ],
 [
 "city",
-"Control, block going in on Fifteenth Street, stinger out."
+"U24, they've gone round the block!"
 ],
 [
 "wexbury",
-"Control, block going in on The Crescent, stinger out."
+"U27, they've gone round the block!"
 ],
 [
 "haldon",
-"Control, block going in on Puddle Lane, stinger out."
+"U24, they've gone round the block!"
 ],
 [
 "city",
-"Control, road closed, Thistledown. Stinger deployed."
+"Control, block going in on the M1 ring, stinger out."
 ],
 [
 "wexbury",
-"Control, road closed, Church Lane. Stinger deployed."
+"Control, block going in on Chapel Street, stinger out."
 ],
 [
 "haldon",
-"Control, road closed, Well Lane, Ashwell. Stinger deployed."
+"Control, block going in on The Green, Ashwell, stinger out."
 ],
 [
 "city",
-"Control, roadblock and stinger going in on Ashcroft Road."
+"Control, road closed, the slip road. Stinger deployed."
 ],
 [
 "wexbury",
-"Control, roadblock and stinger going in on Cranleigh Way."
+"Control, road closed, Priory Row. Stinger deployed."
 ],
 [
 "haldon",
-"Control, roadblock and stinger going in on the Ridgeway."
+"Control, road closed, Rectory Lane, Little Combe. Stinger deployed."
+],
+[
+"city",
+"Control, roadblock and stinger going in on Seventeenth Street."
+],
+[
+"wexbury",
+"Control, roadblock and stinger going in on Westbourne Road."
+],
+[
+"haldon",
+"Control, roadblock and stinger going in on Church Street, Little Combe."
 ],
 [
 "city",
@@ -2509,83 +2557,83 @@
 ],
 [
 "city",
+"U15, I've got eyes on it, joining."
+],
+[
+"wexbury",
 "U20, I've got eyes on it, joining."
 ],
 [
-"wexbury",
-"U24, I've got eyes on it, joining."
-],
-[
 "haldon",
-"U29, I've got eyes on it, joining."
+"U22, I've got eyes on it, joining."
 ],
 [
 "city",
-"U24, I've got one obstructing a police vehicle, following."
+"U17, I've got one failed to stop after a collision, following."
 ],
 [
 "wexbury",
-"U7, I've got one making off at speed, following."
+"U12, I've got one obstructing a police vehicle, following."
 ],
 [
 "haldon",
-"U20, I've got one obstructing a police vehicle, following."
+"U1, I've got one making off at speed, following."
 ],
 [
 "city",
+"U19, driver detained, vehicle off the road."
+],
+[
+"wexbury",
 "U14, driver detained, vehicle off the road."
 ],
 [
-"wexbury",
-"U30, driver detained, vehicle off the road."
-],
-[
 "haldon",
-"U24, driver detained, vehicle off the road."
+"U13, driver detained, vehicle off the road."
 ],
 [
 "city",
-"U23, in pursuit of a civilian vehicle, through a red light."
+"U11, in pursuit of a civilian vehicle, obstructing a police vehicle."
 ],
 [
 "wexbury",
-"U23, in pursuit of a civilian vehicle, failed to stop after a collision."
+"U19, in pursuit of a civilian vehicle, failed to stop after a collision with a police vehicle."
 ],
 [
 "haldon",
-"U15, in pursuit of a civilian vehicle, obstructing a police vehicle."
+"U16, in pursuit of a civilian vehicle, failed to stop after a collision."
 ],
 [
 "city",
-"U22, it's just gone past me, joining the pursuit."
+"U21, it's just gone past me, joining the pursuit."
 ],
 [
 "wexbury",
-"U17, it's just gone past me, joining the pursuit."
+"U21, it's just gone past me, joining the pursuit."
 ],
 [
 "haldon",
-"U7, it's just gone past me, joining the pursuit."
+"U10, it's just gone past me, joining the pursuit."
 ],
 [
 "city",
-"U12, vehicle obstructing a police vehicle, attempting to stop it."
+"U21, vehicle failed to stop after a collision with a police vehicle, attempting to stop it."
 ],
 [
 "wexbury",
-"U1, vehicle making off at speed, attempting to stop it."
+"U14, vehicle failed to stop after a collision, attempting to stop it."
 ],
 [
 "haldon",
-"U19, vehicle making off at speed, attempting to stop it."
+"U21, vehicle making off at speed, attempting to stop it."
 ],
 [
 "city",
-"U13, vehicle stopped, one detained."
+"U26, vehicle stopped, one detained."
 ],
 [
 "wexbury",
-"U11, vehicle stopped, one detained."
+"U9, vehicle stopped, one detained."
 ],
 [
 "haldon",

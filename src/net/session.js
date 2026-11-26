@@ -127,7 +127,8 @@ export function packCar(id, v, extra = {}) {
     // A respray (Game.paintCar): its index in SPRAY_COLOURS, 0 for the car's own colour.
     v.paint || 0,
     // A fleeing civilian's wanted level (game/suspects.js), for its ring on everybody's map.
-    v.fleeing ? (v.suspectLevel || 1) : 0,
+    // Below nought when the force has lost it: what level, and that nobody can see it.
+    v.fleeing ? (v.suspectKnown === false ? -1 : 1) * (v.suspectLevel || 1) : 0,
   ];
 }
 

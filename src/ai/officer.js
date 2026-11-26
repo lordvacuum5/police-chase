@@ -9,7 +9,7 @@ import * as THREE from 'three';
 import { cornerSpeedLimit } from '../physics/tyre.js';
 import { Motorway } from './motorway.js';
 import { Driver, SKILL } from './driver.js';
-import { pitUpdate, relativeTo, boxAim, boxSpeed } from './tactics.js';
+import { pitUpdate, swipeUpdate, relativeTo, boxAim, boxSpeed } from './tactics.js';
 import { planFast } from './fastplan.js';
 import { hasLineOfSight, sweepBox, raycast, groups, GROUP, RAY_SOLID, RAY_WALL, RAY_GROUNDS } from '../physics/world.js';
 import { WORLD_HALF } from '../world/common.js';
@@ -247,6 +247,17 @@ const BAND_REACH = 130;
 /** How hard a chasing unit presses, as a share of its car, at one to five stars (Officer.pace); and the road limit it may exceed by. */
 const TIER_PACE = [0.8, 0.8, 0.86, 0.94, 0.98, 1.0];
 const TIER_LIMIT = [1.7, 1.7, 2.2, 3.0, 3.0, 3.0];
+/**
+ * After a person, the same: "you need to make them quite a lot slower ... just make them more tame ... once you get to wanted level 3,
+ * then kind of start ramming". Their top speed was the only thing turned down and they are seldom at it; so these bring the corners
+ * (PERSON_GRIP, of the grip they reckon on) down too. What each wants to hit you, at each star (Officer.ramAggression).
+ */
+const PERSON_PACE = [0.58, 0.58, 0.7, 0.9, 0.98, 1.0];
+const PERSON_LIMIT = [1.2, 1.2, 1.5, 2.6, 3.0, 3.0];
+const PERSON_GRIP = [0.6, 0.6, 0.75, 0.95, 1, 1];
+const PERSON_RAM = [0, 0, 0, 0.12, 0.5, 0.9];
+/** Below this wanted level nobody means to touch you. */
+const CONTACT_FROM = 3;
 
 /** TIER_PACE / TIER_LIMIT at a wanted level that need not be whole. */
 function tierAt(table, h) {
@@ -254,7 +265,7 @@ function tierAt(table, h) {
   const i = Math.floor(x), u = x - i;
   return i >= 5 ? table[5] : lerp(table[i], table[i + 1], u);
 }
-function paceAt(h) { return tierAt(TIER_PACE, h); }
+function paceAt(h, person) { return tierAt(person ? PERSON_PACE : TIER_PACE, h); }
 
 /**
  * How much extra grip a unit at full stretch of the rubber band gets, on top of
@@ -735,7 +746,7 @@ export class Officer {
       }
       this.driver.setPath([]);
       this.repathTimer = 0;
-      if (role !== ROLE.PIT) this.pitState = {};
+      this.pitState = role === ROLE.PIT && orders && orders.kind ? { kind: orders.kind } : {};
       this._ramBack = 0;
       this._searchSpot = null;
       this._wayIn = null;
@@ -807,7 +818,9 @@ export class Officer {
 
     // A unit driving at the player does not steer round the player: that is
     // the car it is trying to reach, or to hit.
-    const atTarget = this.role === ROLE.PURSUE || this.role === ROLE.RHINO;
+    this._person = !!target && !this.game.daily && this.suspectTier === undefined && !this.game.runner
+      && (target === this.game.player || !!target.remote || !!target.humanDriven);
+    const atTarget = (this.role === ROLE.PURSUE || this.role === ROLE.RHINO) && !this.tame;
     this._ghosting(dt, target);
     this.driver.avoid(this.game.vehicles, dt, atTarget && target ? target : null);
     // A car on its beat waits behind the player's car if it is in the way,
@@ -861,7 +874,8 @@ export class Officer {
     this.driver.limitScale = this.role === ROLE.PATROL ? 1.0
       : this.role === ROLE.SEARCH ? 1.5
         : typeof window !== 'undefined' && window.__oldPace ? 3.0
-        : tierAt(TIER_LIMIT, this.suspectTier === undefined ? this.game.heat.value : this.suspectTier);
+        : tierAt(this.afterPerson ? PERSON_LIMIT : TIER_LIMIT, this.suspectTier === undefined ? this.game.heat.value : this.suspectTier);
+    this.driver.easyGrip = this.afterPerson && this.role !== ROLE.PATROL ? tierAt(PERSON_GRIP, this.game.heat.value) : 1;
 
     // Anything that is not pottering about on its beat may cut a corner, put
     // two wheels on the verge, or take a line straight across open ground. A
@@ -1908,7 +1922,36 @@ export class Officer {
    * increase the closing speed and aggression as the wanted level increases."
    */
   get ramAggression() {
+    if (this.afterPerson) return PERSON_RAM[clamp(this.game.heat.tier, 0, 5)];
     return clamp01(0.3 + 0.7 * (this.chaseTier - 1) / 4);
+  }
+
+  /** After somebody playing, in an ordinary chase: not a civilian, not the computer's getaway car, not the daily (its tables were set on how it was). */
+  get afterPerson() { return !!this._person; }
+
+  /** Not to touch them: below three stars. "I don't want the police to do any ramming ... until wanted level 3." */
+  get tame() { return this.afterPerson && this.game.heat.tier < CONTACT_FROM; }
+
+  /**
+   * On your tail and off your bumper: one and two stars. A gap that grows with speed, closed gently and held, and never more speed
+   * than it could lose again before it got to you. Stopped, it stops short: near enough to arrest you (Heat._checkBust), not touching.
+   */
+  _follow(dt, target, d) {
+    const v = this.vehicle, two = this.game.heat.tier >= 2;
+    this._mode = 'follow';
+    const dx = (target.position.x - v.position.x) / (d || 1), dz = (target.position.z - v.position.z) / (d || 1);
+    // Their speed away from us: coming at us, nothing.
+    const away = Math.max(0, target.linvel.x * dx + target.linvel.z * dz);
+    const bumpers = (v.spec.dims.l + target.spec.dims.l) * 0.5;
+    const gap = bumpers + (away < 3 ? 1.6 : clamp(away * (two ? 0.3 : 0.5), two ? 3 : 5, two ? 12 : 20));
+    const room = Math.max(0, d - bumpers - 1.4);
+    const want = Math.min(away + clamp((d - gap) * 0.4, -10, two ? 8 : 5), Math.sqrt(away * away + 2 * 4 * room));
+    // Beside you, not behind: it drops in behind rather than leaning over.
+    const r = relativeTo(target, v);
+    if (Math.abs(r.lat) < 4 && r.long > -bumpers && r.long < bumpers && away > 3) _aim.copy(v.position).addScaledVector(target.forward, 20).addScaledVector(target.left, sign(r.lat) * 1.5);
+    return this.driver.driveTo(_aim, Math.min(
+      Math.max(0, r.long > -bumpers && Math.abs(r.lat) < 4 ? Math.min(want, away - 4) : want), this._chaseSpeed(), this._gapCap(target), this._turnCap(target, d),
+    ), dt, { courseRadius: this._courseRadius, goal: target.position });
   }
 
   /**
@@ -2290,6 +2333,8 @@ export class Officer {
     const lead = clamp(d / closing, 0, 1.15);
     this._leadAim(target, lead, _aim);
 
+    if (this.tame) return this._follow(dt, target, d);
+
     // Hang slightly off to one side once close, so a following unit is already
     // positioned for a PIT rather than square behind the boot -- but only the
     // calmest ones. From about two stars a unit lines its nose straight up at
@@ -2480,7 +2525,7 @@ export class Officer {
   _ghosting(dt, target) {
     const v = this.vehicle, g = this.game, r = this.role;
     const after = !window.__noGhost && target && (target === g.player || target.remote || target.humanDriven) && !v.disabled
-      && r !== ROLE.PATROL && r !== ROLE.HOLD && g.heat.tier > 0 && target.speed > (v.ghost ? GHOST_SPEED - 4 : GHOST_SPEED);
+      && r !== ROLE.PATROL && r !== ROLE.HOLD && g.heat.tier > 1 && target.speed > (v.ghost ? GHOST_SPEED - 4 : GHOST_SPEED);
     this._ghostLook = (this._ghostLook || 0) - dt;
     if (after && this._ghostLook <= 0) {
       this._ghostLook = GHOST_LOOK;
@@ -2714,7 +2759,9 @@ export class Officer {
 
   _pit(dt, target) {
     if (!target) return this._patrol(dt);
-    const res = pitUpdate(this.pitState, this.vehicle, target, dt);
+    const swipe = this.pitState.kind === 'swipe';
+    const res = swipe ? swipeUpdate(this.pitState, this.vehicle, target, dt, { room: this._roomBeside(target), again: this.game.heat.tier >= 4 ? 2 : 1 }) : pitUpdate(this.pitState, this.vehicle, target, dt);
+    res.kind = swipe ? 'swipe' : 'pit';
     if (res.done) {
       this.pitState = {};
       this.game.dispatcher.onPitFinished(this, res);
@@ -2736,7 +2783,22 @@ export class Officer {
       // clamp on anything solid straight ahead still applies, and the ray it
       // uses cannot see cars anyway.
       ignoreSurroundings: res.commit === true,
+      // Beside a car on the same road: the bend is theirs, not the chord to a point two lengths off.
+      ...(swipe ? { courseRadius: Math.abs(target.yawRate || 0) < 0.04 ? Infinity : Math.abs(target.speed / target.yawRate) } : {}),
     });
+  }
+
+  /** How much room there is beside a car, m, to its left (positive side) and right: walls and the like, out to 8 m. */
+  _roomBeside(target) {
+    const st = this.pitState;
+    st.roomFor = (st.roomFor || 0) - 1;
+    if (st.room && st.roomFor > 0) return st.room;
+    st.roomFor = 10;
+    const at = { x: target.position.x, y: target.position.y + 0.4, z: target.position.z }, look = (k) => {
+      const h = raycast(this.game.world, at, { x: target.left.x * k, y: 0, z: target.left.z * k }, 8, RAY_WALL, target.body);
+      return h ? h.toi : 8;
+    };
+    return (st.room = { left: look(1), right: look(-1) });
   }
 
   /**
@@ -3119,6 +3181,12 @@ export class Officer {
     // engine got weaker.
     a.boost = 1 + (0.25 + 1.25 * this.aggression) * (this.bandScale || 1) * far * engaged;
 
+    // Told to come alongside: it has what it takes to. Level with you at your own top speed, nothing it had would do it: "they can keep
+    // up with you, but then they don't actually come really close to you ever. They don't really come alongside".
+    if (this.role === ROLE.PIT && this.afterPerson) a.boost = Math.max(a.boost, 1.25 + 0.35 * this.aggression);
+    // And none of the help at one and two stars.
+    if (this.tame) a.boost = 1;
+
     // Grip and stability may not.
     //
     // Both of these used to be read straight off the distance, and the distance
@@ -3134,7 +3202,7 @@ export class Officer {
     // So they ease. A second or so of lag costs nothing -- a unit that has just
     // closed to 25 m keeping a little extra grip for a moment is not something
     // anyone can see -- and it means the help is never whipped away mid-corner.
-    const wantGrip = 1 + 0.35 * engaged
+    const wantGrip = this.tame ? 1 : 1 + 0.35 * Math.max(engaged, this.role === ROLE.PIT && this.afterPerson ? 0.7 : 0)
       + BAND_GRIP * this.aggression * (this.bandGrip === undefined ? 1 : this.bandGrip)
         * far * engaged;
     // And the stability assist stretches with the band too, because the thing
@@ -3205,7 +3273,7 @@ export class Officer {
     // through the level rather than stepping: TIER_PACE at each whole star, in between in between.
     if (typeof window !== 'undefined' && window.__oldPace) return lerp(0.96, 1.0, this.aggression);
     const h = this.suspectTier === undefined ? this.game.heat.value : this.suspectTier;
-    return paceAt(h);
+    return paceAt(h, this.afterPerson);
   }
 }
 

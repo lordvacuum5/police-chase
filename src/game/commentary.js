@@ -219,8 +219,8 @@ export class Commentary {
           'Control, contact authorised. Roadblocks going in.',
         ],
         4: [
-          'Control, you may box. Interceptors joining.',
-          'Control, interceptors deploying. Box if you can.',
+          'Control, interceptors joining. Take them off the road.',
+          'Control, interceptors deploying. Force them to stop.',
         ],
         5: [
           'Control, all units, critical incident.',

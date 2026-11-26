@@ -30,6 +30,8 @@ const LEDGE_CUT = 18;
 const BOX_GRACE = 20;
 const BOX_COUNT = 10;
 const BOX_STAY = 10;
+/** Back within this of the spot, m, and the count carries on; out of it, it runs back down at this many seconds a second. */
+const BOX_NEAR = 45, BOX_DRAIN = 0.2;
 const BOX_POLICE = 300;
 const BOX_SOLID = 4;
 const BOX_ACROSS = 2.3;
@@ -167,7 +169,10 @@ export class Heat {
       return;
     }
     const p = player.position;
-    if (!this._boxAt || Math.hypot(p.x - this._boxAt.x, p.z - this._boxAt.z) > BOX_STAY) {
+    // Out of the spot, and it runs back down slowly, not away: "I moved out that wall, and I moved back into it, and it reset the
+    // timer ... once you go back in, the timer will resume instead of just resetting." Somewhere else altogether is a new spot.
+    const gone = this._boxAt ? Math.hypot(p.x - this._boxAt.x, p.z - this._boxAt.z) : Infinity;
+    if (gone > BOX_STAY && !(this.boxTime > 0 && gone < BOX_NEAR)) {
       this._boxAt = { x: p.x, z: p.z };
       this.boxTime = 0;
       this._boxLook = 0;
@@ -177,9 +182,9 @@ export class Heat {
       this._boxLook = BOX_LOOK;
       this._boxed = this._boxedIn(player, dispatcher);
     }
-    this.boxTime = this._boxed ? (this.boxTime || 0) + dt : Math.max(0, (this.boxTime || 0) - dt);
+    this.boxTime = this._boxed ? (this.boxTime || 0) + dt : Math.max(0, (this.boxTime || 0) - dt * BOX_DRAIN);
     const t = this.boxTime;
-    if (t < BOX_GRACE) { this._boxSaid = null; return; }
+    if (t < BOX_GRACE || !this._boxed) { this._boxSaid = null; return; }
     const left = Math.ceil(BOX_GRACE + BOX_COUNT - t);
     if (left <= 0) { this.boxArrest = true; g.onBusted(); return; }
     if (g.hud && left !== this._boxSaid) {

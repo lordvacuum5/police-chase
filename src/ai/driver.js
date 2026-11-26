@@ -768,7 +768,7 @@ export class Driver {
     // for the gaps is to let units take the gaps, which is pickGap's business and
     // not this one.
     const believed = 1 + (assist.grip - 1) * this.bandBelief;
-    return v.surfaceMu * (v.spec.gripScale || 1) * this.skill.grip * this.muTrust
+    return v.surfaceMu * (v.spec.gripScale || 1) * this.skill.grip * this.muTrust * (this.easyGrip || 1)
       * believed * this.gripEstimate;
   }
 

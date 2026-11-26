@@ -9,7 +9,7 @@
 
 const FILES = 'resources/voice/';
 /** Counted up whenever the packs change: the server lets a browser keep one for a week. */
-const VERSION = 2;
+const VERSION = 3;
 
 /** Gaps after a piece, s: run straight on (the pieces have a little silence of their own), after a comma, after a sentence. */
 const RUN_ON = -0.045, COMMA = 0.02, STOP = 0.13;

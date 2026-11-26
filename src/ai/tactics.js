@@ -160,6 +160,78 @@ export function pitUpdate(state, unit, target, dt) {
   return { aim, speed: targetSpeed * 0.9, side, phase: 'recover', done: false };
 }
 
+// --------------------------------------------------------------- side swipe
+
+/**
+ * Alongside, and into your side. "It'd be nice if they kind of came alongside you and then like tried to ram you to the side, but not
+ * just pit maneuver." Up beside the car with a metre and more between, matched; a swing out; then over into it; and off again, or
+ * round again (`opts.again`). From the side with more room to come up, and not where there is none (`opts.room`).
+ */
+export function swipeUpdate(state, unit, target, dt, opts = {}) {
+  const r = relativeTo(target, unit), sp = Math.abs(target.forwardSpeed), aim = _aim;
+  const wide = (unit.spec.dims.w + target.spec.dims.w) * 0.5, room = opts.room || { left: 8, right: 8 };
+  const need = wide + unit.spec.dims.w * 0.5 + 0.6;
+  if (!state.side) {
+    const near = Math.abs(r.lat) > 0.7 ? sign(r.lat) : 0, l = room.left > need, rr = room.right > need;
+    if (!l && !rr) return { done: true, reason: 'no-room' };
+    state.side = l && rr ? near || (room.left > room.right ? 1 : -1) : l ? 1 : -1;
+    state.phase = 'setup';
+    state.timer = 0;
+    state.hits = 0;
+  }
+  state.timer += dt;
+  const side = state.side, beside = side > 0 ? room.left : room.right;
+  if (sp < 6) return { done: true, reason: 'slow' };
+  if (Math.abs(target.yawRate) > 1.7 || Math.abs(target.slipAngleBody) > 0.75) return { done: true, reason: 'spun', contact: true };
+
+  if (state.phase === 'setup') {
+    if (state.timer > 11) return { done: true, reason: 'setup-timeout' };
+    // Up beside: a long way back, still behind it until it is level enough to come past the bumper.
+    const out = r.long < -6 ? 1.6 : wide + 1.1;
+    const step = Math.max(9, unit.speed * 0.5);
+    aim.copy(target.position).addScaledVector(target.left, side * Math.min(out, Math.max(wide + 0.3, beside - unit.spec.dims.w * 0.5 - 0.3)))
+      .addScaledVector(target.forward, r.long + step);
+    const level = r.long > -1.6 && r.long < 1.8 && sign(r.lat) === side && Math.abs(r.lat) > wide - 0.2 && Math.abs(r.lat) < wide + 2.4;
+    if (level) { state.phase = 'swing'; state.timer = 0; }
+    const gap = Math.max(0, -r.long - 0.2);
+    return { aim, speed: sp + (r.long > 1.2 ? -3 : clamp(gap * 0.6, 1.2, 16)), side, phase: 'setup', done: false, allowHandbrake: false };
+  }
+
+  if (state.phase === 'swing') {
+    // A beat level with it, easing out: seen coming, and something to come over with.
+    aim.copy(target.position).addScaledVector(target.left, side * Math.min(wide + 2.0, Math.max(wide + 0.4, beside - unit.spec.dims.w * 0.5 - 0.3)))
+      .addScaledVector(target.forward, r.long + Math.max(9, unit.speed * 0.45));
+    if (state.timer > 0.55) { state.phase = 'strike'; state.timer = 0; }
+    if (Math.abs(r.long) > 4) { state.phase = 'setup'; state.timer = 4; }
+    return { aim, speed: sp + clamp(-r.long, -2, 2) + 0.5, side, phase: 'swing', done: false, allowHandbrake: false };
+  }
+
+  if (state.phase === 'strike') {
+    // Over, through its middle and out the other side of it.
+    aim.copy(target.position).addScaledVector(target.forward, r.long + Math.max(7, unit.speed * 0.32)).addScaledVector(target.left, -side * 1.6);
+    if (Math.abs(r.lat) < wide + 0.12) state.touch = (state.touch || 0) + dt;
+    if (state.timer > 1.3 || (state.touch || 0) > 0.55) {
+      state.hits += state.touch ? 1 : 0;
+      const last = state.hits >= (opts.again || 1) || !state.touch;
+      state.phase = last ? 'recover' : 'setup';
+      state.timer = last ? 0 : 5;
+      state.touch = 0;
+    }
+    return { aim, speed: sp + clamp(-r.long, -1, 3) + 1, side, phase: 'strike', done: false, allowHandbrake: false, commit: true };
+  }
+
+  aim.copy(target.position).addScaledVector(target.left, side * (wide + 1.6)).addScaledVector(target.forward, r.long + 14);
+  if (state.timer > 0.9) return { done: true, reason: state.hits ? 'hit' : 'missed', contact: state.hits > 0 };
+  return { aim, speed: sp * 0.94, side, phase: 'recover', done: false };
+}
+
+/** Is it in a place to come alongside from? */
+export function swipeViable(unit, target) {
+  if (unit.disabled || target.disabled || unit.grounded < 3 || target.grounded < 3) return false;
+  const sp = Math.abs(target.forwardSpeed), r = relativeTo(target, unit);
+  return sp > 9 && r.long < 2 && r.long > -40 && Math.abs(r.lat) < 9 && unit.speed > sp - 6;
+}
+
 // ----------------------------------------------------------------- box-in
 
 /**

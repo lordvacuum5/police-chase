@@ -1381,6 +1381,7 @@ class Game {
    */
   _netCivilians() {
     this.netStatus = null;
+    this.netWanted = null;
     if (!this.player || !this.player.isPolice) return;
     const me = this.player.position;
     const cars = [];
@@ -1396,22 +1397,40 @@ class Game {
       return;
     }
     this._netCivShown = true;
+    const marks = new Map(cars.map((v) => [v, this._civMark(v)])), known = cars.filter((v) => v.suspectKnown !== false);
     cars.sort((a, b) => dist2(me.x, me.z, a.position.x, a.position.z) - dist2(me.x, me.z, b.position.x, b.position.z));
     const chaseOn = this.heat.value > 0;
     this.hud.moreSuspects = [];
     for (let i = 0; i < cars.length; i++) {
       if (i === 0 && !chaseOn) {
-        this.hud.suspect = cars[0].position;
-        this.hud.suspectStale = false;
-        this.hud.suspectRange = suspectSight(cars[0].suspectLevel);
+        const m = marks.get(cars[0]);
+        this.hud.suspect = m ? m.p : null;
+        this.hud.suspectStale = !!m && m.stale;
+        this.hud.suspectRange = m && !m.stale ? m.range : 0;
       } else {
-        this.hud.moreSuspects.push({ p: cars[i].position, stale: false, range: suspectSight(cars[i].suspectLevel) });
+        const m = marks.get(cars[i]);
+        if (m) this.hud.moreSuspects.push(m);
       }
     }
     if (!chaseOn) {
-      const n = cars.length;
-      this.netStatus = { text: n > 1 ? `PURSUIT — ${n} VEHICLES FLEEING` : 'PURSUIT — VEHICLE FLEEING', cls: 'spotted' };
+      const n = known.length;
+      // And its stars, as on your own: "it had red but had no stars".
+      const tier = Math.max(...cars.map((v) => Math.min(5, Math.floor(v.suspectLevel || 1))));
+      this.netWanted = { tier, progress: 0 };
+      this.netStatus = !n ? { text: 'SEARCHING FOR THE VEHICLE', cls: 'searching' } : { text: n > 1 ? `PURSUIT — ${n} VEHICLES FLEEING` : 'PURSUIT — VEHICLE FLEEING', cls: 'spotted' };
     }
+  }
+
+  /**
+   * A fleeing civilian on a police player's map: where it is while the force knows, where it was last known while it does not,
+   * flashing. "I could see them on the map, even though there were no police cars near ... a live feed."
+   */
+  _civMark(v) {
+    if (v.suspectKnown !== false) {
+      (v.civLast = v.civLast || new THREE.Vector3()).copy(v.position);
+      return { p: v.position, stale: false, range: suspectSight(v.suspectLevel) };
+    }
+    return v.civLast ? { p: v.civLast, stale: true, range: 0 } : null;
   }
 
   /**
@@ -3173,7 +3192,8 @@ class Game {
       // Another player's respray, on their car here too.
       if ((car.paint || 0) !== (v.paint || 0) && !String(car.id).startsWith(AI_ID)) this.paintCar(v, car.paint);
       // A fleeing civilian's wanted level, for the size of its ring (Game._netCivilians).
-      v.suspectLevel = car.level || 0;
+      v.suspectLevel = Math.abs(car.level || 0);
+      v.suspectKnown = (car.level || 0) >= 0;
       if (!v.netVel) v.netVel = new THREE.Vector3();
       v.netVel.set(car.vx, car.vy, car.vz);
       v.damage = car.damage;
@@ -3283,7 +3303,7 @@ class Game {
     // Civilians on the run, the host's, on a police player's map and meter.
     if (session.role === 'police' && this.netCars) {
       const more = [];
-      for (const v of this.netCars.values()) if (v.fleeing) more.push({ p: v.position, stale: false });
+      for (const v of this.netCars.values()) if (v.fleeing) { const m = this._civMark(v); if (m) more.push(m); }
       this.hud.moreSuspects = more;
       this.heat.bustTimer = Math.max(this.heat.bustTimer, session.suspectBust || 0);
     }

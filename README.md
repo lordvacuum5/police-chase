@@ -10849,3 +10849,33 @@ deck. Police routes have the same labels, not touched.
 *"I don't really like the voices. Is there a way ... so I can pick them?"* A page of the 28 English voices Kokoro has (`C:/Code/kokoro-voice/pick.html`), one question at a time (the first, all on one screen, was *"super complicated"*), and the picks:
 Control `af_sarah`, police `am_liam` and `bm_daniel`, helicopter `af_sky`. American voices are given American sounds (`tts.py`). Recorded again, 2,100 pieces, 40 minutes at low priority; 7.0 MB with Ashfield's names (7.9), the Apple lines not among them.
 `tests/radiovoice.js`: 660 of 660 lines said, 2.2 pieces each, -15.3 to -16.7 dB out of the radio (the police had come out 2.5 dB over Control and the helicopter 1 under). The packs are fetched by version (`?v=2`): the server lets a browser keep one a week.
+
+### One and two stars keep off you; three and up come alongside; fewer of them, doing more
+
+*"I don't want the police to do any ramming ... until wanted level 3 ... make them quite a lot slower ... more tame"*, *"they don't really come alongside you. It'd be nice if they ...
+came alongside you and then like tried to ram you to the side, but not just pit maneuver"*, *"no point trying to make it into a box"* and *"feel more intentional instead of ... just chuck more
+units at them"*. After a person, in an ordinary chase (not the computer's getaway car, not the daily):
+- One and two stars: they follow (`Officer._follow`), a gap growing with speed, never more speed than they could lose before your bumper; stopped, they stop short, near enough to arrest you.
+  They steer round you, and get no rubber band. Pace 0.58 and 0.7 of the car (0.8, 0.86), the road limit 1.2 and 1.5 times (1.7, 2.2), corners on 60% and 75% of the grip they reckon on. No rolling blocks, no one
+  lying in wait, and no going through traffic at one star.
+- Three stars up: a swipe (`swipeUpdate`, tactics.js): up level with you on the side with room, a beat, then over into your side, and off; twice at four and five. A PIT as well, when slow. Wanting to hit
+  you 0.12, 0.5, 0.9 (0.65, 0.83, 1). Units 6, 10, 15 (7, 14, 22); something at you every 10, 6, 3.5 s (9). No box.
+
+`tests/stars.js`, Ashfield, the player driven at 100 km/h on the streets (130 on the motorway), units put back on its trail when lost, 60 s a level:
+
+| stars | police into you, a minute (hard) | their speed | within 40 m | one level with you |
+|---|---|---|---|---|
+| 1 | 5 (2) to 1 (0) | 53 to 46 km/h | 59% to 51% | 0 |
+| 2 | 19 (7) to 0 | 70 to 80 | 74% to 100% | 0.3% to 0 |
+| 3 | 12 (4) to 16-18 (4-6) | 70 to 48-62 | 97% to 76-98% | 0 to 3-13% |
+| 4 | 16 (5) to 15 (3) | 69 to 55 | 67% to 69% | 0.7% to 16% |
+| 5 | 31 (7) to 12 (2) | 47 to 57 | 42% to 53% | 1.6% to 0 |
+
+On the motorway at three and five stars, 8% of the time level with you; swipes hit, spun the car, or timed out. The rig's own driver crawls at three stars and up (38-63 km/h for 100 asked), so those rows are of
+a slow car; not tried in a real chase.
+
+*"I went in between this like really tight wall ... I moved out ... and I moved back into it, and it reset the timer."* Out of the spot it runs back down at a fifth of the speed, and back within 45 m it carries on.
+
+Multiplayer, a police player: *"I could see them on the map, even though there were no police cars near ... a live feed"* -- the host sends whether the force knows where a fleeing civilian is, and when it does not,
+the map shows where it was last known, flashing. *"It said like 0 vehicles in pursuit. But it had red and had no stars"*: their stars are shown, and IN PURSUIT for a count there is no way to know there.
+Not looked at: traffic laggy on the host's machine.

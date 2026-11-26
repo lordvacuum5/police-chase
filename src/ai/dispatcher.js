@@ -14,7 +14,7 @@
 
 import * as THREE from 'three';
 import { Officer, ROLE } from './officer.js';
-import { pitViable, assignBoxSlots, boxClosed, relativeTo } from './tactics.js';
+import { pitViable, swipeViable, assignBoxSlots, boxClosed, relativeTo } from './tactics.js';
 import { hasLineOfSight } from '../physics/world.js';
 import { clamp, clamp01, lerp, dist2, damp } from '../util/math.js';
 
@@ -132,6 +132,26 @@ const TIER = [
 ];
 
 /**
+ * The same after a person, in an ordinary chase. "I want to make the wanted levels higher up feel really hard and feel more intentional
+ * instead of ... just chuck more units at them": fewer of them at four and five, and more of what they do (CONTACT_GAPS). Nobody
+ * lying in wait at two, where nobody is to touch you; and no box ("there's no point trying to make it into a box because that's just way too hard").
+ * The computer's own getaway car and the daily challenge are as they were.
+ */
+const PERSON_TIER = [
+  { units: 3, pursue: 0, intercept: 0, pit: false, box: false },
+  { units: 2, pursue: 2, intercept: 0, pit: false, box: false },
+  { units: 4, pursue: 4, intercept: 0, pit: false, box: false },
+  { units: 6, pursue: 4, intercept: 2, pit: true, box: false },
+  { units: 10, pursue: 6, intercept: 3, pit: true, box: false },
+  { units: 15, pursue: 8, intercept: 6, pit: true, box: false },
+];
+/** Seconds between any two things that come at you, by star, after a person; and between one unit's go and the next's. */
+const CONTACT_GAPS = [9, 9, 9, 10, 6, 3.5];
+const PIT_GAPS = [3, 3, 3, 6, 3.5, 2];
+/** Above this, m/s, a swipe rather than a PIT as a rule. */
+const SWIPE_ABOVE = 16;
+
+/**
  * Seconds between any two things that come at the player -- a PIT, a rolling
  * block, the van. See Dispatcher.contactCooldown.
  */
@@ -142,7 +162,13 @@ const THINK_FAR = 100, THINK_DT = 0.034;
 
 export class Dispatcher {
   /** Seconds between any two things that come at the player: shorter in the daily challenge. */
-  get contactGap() { return this.game.daily ? DAILY_CONTACT_GAP : CONTACT_GAP; }
+  get contactGap() { return this.game.daily ? DAILY_CONTACT_GAP : this.person ? CONTACT_GAPS[this.tier] : CONTACT_GAP; }
+
+  /** After somebody playing, in an ordinary chase: see PERSON_TIER. */
+  get person() { return !this.game.daily && !this.game.runner; }
+
+  /** How many units of each role, at a wanted level. */
+  _rules(tier = this.tier) { return (this.person ? PERSON_TIER : TIER)[tier]; }
 
   constructor(game) {
     this.game = game;
@@ -267,7 +293,7 @@ export class Dispatcher {
   }
 
   get tier() { return this.game.heat.tier; }
-  get rules() { return TIER[clamp(this.tier, 0, 5)]; }
+  get rules() { return this._rules(clamp(this.tier, 0, 5)); }
 
   // =================================================================== update
 
@@ -861,6 +887,20 @@ export class Dispatcher {
     if (rules.pit && !this.activePit && !this.boxAssignment && this.pitCooldown <= 0
         && this.contactCooldown <= 0 && k.seen) {
       for (const u of pursuers) {
+        // Alongside and over into them, as a rule; a PIT when it is slow enough for one to do much, and now and then.
+        const swipe = this.person && (Math.abs(target.forwardSpeed) > SWIPE_ABOVE || this.game.rng() < 0.4) && swipeViable(u.vehicle, target);
+        if (swipe) {
+          this.activePit = u;
+          this.contactCooldown = this.contactGap;
+          u.setRole(ROLE.PIT, { kind: 'swipe' });
+          this.game.say('swipe', [
+            (v) => `${v.cs}, coming alongside.`,
+            (v) => `${v.cs}, pulling level.`,
+            (v) => `${v.cs}, going alongside, pushing them off.`,
+            (v) => `${v.cs}, I'm level, forcing them over.`,
+          ], { cs: u.callsign }, true, { every: 12 });
+          break;
+        }
         if (pitViable(u.vehicle, target)) {
           this.activePit = u;
           this.contactCooldown = this.contactGap;
@@ -916,12 +956,12 @@ export class Dispatcher {
     // of a car about to turn off, a block is a block on the wrong road.
     const committed = typeof window !== 'undefined' && window.__oldBlockSite
       ? true : this.straightFor > BLOCK_COMMIT || !!this.game.daily;
-    if (this.tier >= 2 && k.seen && !this.blockUnit && !this.blockMates.length
+    if (this.tier >= (this.person ? 3 : 2) && k.seen && !this.blockUnit && !this.blockMates.length
         && this.blockCooldown <= 0 && committed
         && this.contactCooldown <= 0 && Math.abs(target.forwardSpeed) > 12) {
       // The daily challenge's route is known, so there is no waiting to see which road it is on, and they
       // come "quite often" (game/daily.js).
-      this.blockCooldown = this.game.daily ? DAILY_BLOCK_EVERY : 14;
+      this.blockCooldown = this.game.daily ? DAILY_BLOCK_EVERY : this.person && this.tier >= 5 ? 9 : 14;
       this.blockStats.tried++;
       const u = this.game.spawnPoliceAhead(target, this.tier);
       if (u) this.blockStats.placed++;
@@ -982,7 +1022,7 @@ export class Dispatcher {
         && this.contactCooldown <= 0
         && (this.straightFor > 3.2 || !!this.game.daily) && Math.abs(target.forwardSpeed) > 22) {
       // In the daily challenge, "a fair amount of head-on vehicles", and on a road it is known to be on.
-      this.rhinoCooldown = this.game.daily ? DAILY_RHINO_EVERY : 30;
+      this.rhinoCooldown = this.game.daily ? DAILY_RHINO_EVERY : this.person && this.tier >= 5 ? 18 : 30;
       const u = this.game.spawnRhino(target, this.tier);
       // Nowhere to put it on this stretch: look again shortly rather than
       // waiting out the whole cooldown.
@@ -1485,7 +1525,9 @@ export class Dispatcher {
 
   onPitFinished(unit, result) {
     if (this.activePit === unit) this.activePit = null;
-    this.pitCooldown = result.reason === 'spun' ? 5.0 : 3.0;
+    this.pitCooldown = this.person ? (result.contact ? 1.6 : 1) * PIT_GAPS[this.tier] : result.reason === 'spun' ? 5.0 : 3.0;
+    // Never got there: somebody else's go, and soon.
+    if (this.person && !result.contact) this.contactCooldown = Math.min(this.contactCooldown, 1.5);
     // Out of the PIT role now, not at the next role tick. Left in it, the unit
     // started a fresh attempt on the very next frame, found the target still
     // spinning from the first one, and reported a second successful PIT a
@@ -1551,7 +1593,8 @@ export class Dispatcher {
     // says so rather than announcing a search that has not started.
     if (k.seen || k.timeSinceSeen < TRACK_SECONDS) {
       const n = this.units.filter((u) => !u.vehicle.disabled).length;
-      return { text: `PURSUED — ${n} UNIT${n === 1 ? '' : 'S'} ENGAGED`, cls: 'spotted' };
+      // None here: a police player's own machine, where nobody is driven.
+      return { text: n ? `PURSUED — ${n} UNIT${n === 1 ? '' : 'S'} ENGAGED` : 'IN PURSUIT', cls: 'spotted' };
     }
     if (k.timeSinceSeen < SEARCH_SECONDS) {
       return {
