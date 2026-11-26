@@ -33,6 +33,7 @@ export async function dailyShort(opts = {}) {
       const c = drv.followPath(1 / 60, 60);
       g.graph.queryY = null;
       g.stepHeadless(1 / 60, c);
+      if (k % 60 === 0) (out.near = out.near || []).push(g.dispatcher.units.filter((u) => !u.vehicle.disabled && u.distanceTo(p.position) < 220).length);
       most = Math.max(most, g.dispatcher.units.filter((u) => !u.vehicle.disabled).length);
       blocks = Math.max(blocks, g.roadblocks.blocks ? g.roadblocks.blocks.length : 0);
       if (k % 60 === 0) await breathe();

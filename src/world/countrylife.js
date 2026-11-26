@@ -32,6 +32,8 @@ import { MeshBuilder, vertexColorMaterial } from './common.js';
 import { HILL_SINK } from './terrain.js';
 import { GLTFLoader } from '../../vendor/addons/loaders/GLTFLoader.js';
 
+/** Tractors driving the lanes: none (see where they were chosen). */
+const TRACTORS_ON_LANES = false;
 /** How many tractors on the lanes, how fast, m/s. */
 const TRACTORS = 3;
 const TRACTOR_SPEED = 7;
@@ -575,8 +577,12 @@ export function buildLife(ctx, scene, { fields, quarry, rail, combineField, bale
     const pts = tractorLoop(graph, e, railEdges, quarry);
     if (!pts) continue;
     taken.push(mid);
+    // Not on the lanes any more: "remove tractors on the road, but you can keep them in the fields and the combine in the fields ...
+    // on every single mode". Chosen as they were and not put out, so everything drawn after them is where it was.
+    const offset = rand(rng, 0, 500);
+    if (!TRACTORS_ON_LANES) continue;
     movers.push(new Mover(ctx, scene, {
-      route: new Route(pts, true), speed: TRACTOR_SPEED, offset: rand(rng, 0, 500), name: 'tractor', turnR: TURN_TRACTOR, avoid,
+      route: new Route(pts, true), speed: TRACTOR_SPEED, offset, name: 'tractor', turnR: TURN_TRACTOR, avoid,
       geo: tractorGeometry(paints[taken.length - 1]), dims: { l: 4.2, w: 2.3 }, model: 'tractor', paint: paints[taken.length - 1],
       colliders: [{ hx: 1.1, hy: 1.3, hz: 2.0, y: 1.35 }],
     }));

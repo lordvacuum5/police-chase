@@ -73,6 +73,8 @@ const ROUTE_MIN = 1100, ROUTE_MAX = 1500;
  */
 export const SHORT_FROM = '2026-11-26';
 const SHORT_ROUTE = [600, 850];
+/** _behindDue: from this day; the first after this many s, then every this many; this far back, m; while fewer than this are near you. */
+const BEHIND_FROM = '2026-11-27', BEHIND_FIRST = 4, BEHIND_EVERY = 6, BEHIND_GAP = 70, BEHIND_WANT = 3;
 export const SHORT_UNITS = 5;
 /** pickRoute: the most a road's cost is multiplied by for a day (see there). */
 const ROUTE_JITTER = 5;
@@ -556,6 +558,27 @@ export class DailyChallenge {
     }
   }
 
+  /**
+   * From BEHIND_FROM, police come up behind you as well: "there seems to be only one police car who spawns in. So ... try and make the
+   * police car like spawn in behind me ... a little way behind me." Every BEHIND_EVERY s, while there are fewer than BEHIND_WANT after
+   * you and room under SHORT_UNITS, one on the route BEHIND_GAP m back, going your way at your speed. Where you are on the route says
+   * when, so the same drive meets the same cars.
+   */
+  _behindDue(dt) {
+    const g = this.game, p = g.player;
+    if (!this.short || this.day < BEHIND_FROM || this.type !== 'escape' || this.state !== 'running' || !p) return;
+    this._behindIn = (this._behindIn ?? BEHIND_FIRST) - dt;
+    if (this._behindIn > 0 || this.progress < BEHIND_GAP + 20) return;
+    this._behindIn = BEHIND_EVERY;
+    const live = g.dispatcher.units.filter((u) => !u.vehicle.disabled && !u.human);
+    if (live.length >= SHORT_UNITS || live.filter((u) => u.distanceTo(p.position) < 220).length >= BEHIND_WANT) return;
+    const q = this._siteAt(this.progress - BEHIND_GAP), y = 0.95 + (q.edge && q.edge.deck ? g.graph.levelOn(q.edge, q.x, q.z) : this._y(q.x, q.z));
+    const u = g.spawnUnitAt({ x: q.x, y, z: q.z }, Math.atan2(q.tx, q.tz), this.progress % 2 < 1 ? 'interceptor' : 'suv');
+    if (!u) return;
+    u.vehicle.setVelocity({ x: q.tx * p.speed * 0.9, y: 0, z: q.tz * p.speed * 0.9 });
+    g.dispatcher.adopt(u);
+  }
+
   /** The planned police whose distance along the route you have reached. */
   _spawnDue() {
     const g = this.game;
@@ -662,6 +685,7 @@ export class DailyChallenge {
       for (const t of this.trafficPlan || []) g.traffic.place({ x: t.x, y: 0.95 + this._y(t.x, t.z), z: t.z }, t.heading, t.kind);
     }
     this._spawnNext = 0;
+    this._behindIn = undefined;
     if (g.suspects && g.suspects.reset) g.suspects.reset();
     g.rng = makeRng(hash(`play:${this.day}`));
     this._line = [];
@@ -834,6 +858,7 @@ export class DailyChallenge {
     this._ghostTick(dt);
     this._track(p);
     this._spawnDue();
+    this._behindDue(dt);
     this._obstacles();
     this._throughGates(p);
     const next = this._nextGate();

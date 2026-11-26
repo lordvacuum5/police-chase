@@ -10907,3 +10907,12 @@ should only be 1 minute ... to make it more appealing to the wider public ... my
 (1,100-1,500), about 30-40 s at the pace the clock used to be set by (21-24 m/s); no clock to beat, the panel counting up, the table still the quickest; no roadblocks, the day's or the chase's, no rolling blocks
 and no head-on van; five police at most, two at the start and three along the route, and something at you every 7 s (3). Still five stars, with the helicopter. Today's table had runs on the long route before this went in.
 `tests/dailyshort.js`, Haldon: routes of 843, 835, 662, 836 m for the next days on it; today's, 710 m, no obstacles, at most 2 police at once, still running at 150 s without failing (the rig's driver stuck on the lanes, so no time for it).
+
+### No tractors on the lanes; police come up behind you in the daily
+
+*"Can you remove tractors that move on the road? ... on every single mode ... you can keep them in the fields and the combine in the fields."* Haldon's lane tractors are chosen as before and not put out
+(`TRACTORS_ON_LANES`), so everything placed after them is where it was. Left: the two dump trucks, the combine, and the tractor and trailer standing in the bale field. The lanes are the same roads: the daily's route is not moved.
+
+*"On the daily challenge, there seems to be only one police car who spawns in ... spawn in behind me ... a little way behind me ... the current spawn one is good for today."* From 27 November (`_behindDue`): every 6 s, while fewer
+than three are within 220 m of you and fewer than five out, one on the route 70 m behind you going your way at nine tenths of your speed. Where you are on the route says when, so the same drive meets the same cars.
+`tests/dailyshort.js`, 30 November's (Haldon, 835 m): police within 220 m by the second, 2 1 1 1 0 0 0 0 1 1 1 1 1 1 2 2 2 2 3 3 ... to 5; the rig's driver wrecked at 43 s, 140 m from the end.
