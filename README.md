@@ -10879,3 +10879,19 @@ a slow car; not tried in a real chase.
 Multiplayer, a police player: *"I could see them on the map, even though there were no police cars near ... a live feed"* -- the host sends whether the force knows where a fleeing civilian is, and when it does not,
 the map shows where it was last known, flashing. *"It said like 0 vehicles in pursuit. But it had red and had no stars"*: their stars are shown, and IN PURSUIT for a count there is no way to know there.
 Not looked at: traffic laggy on the host's machine.
+
+### Remote cars timed by when they were so, not when they arrived
+
+*"Fix the laggy civilian cars for the host."* On one machine, with a second player 500 m off as a guest is to the host (`tests/hostjudder.js`, 20 s at 60 km/h): no civilian car within 120 m
+jumped more than 15 cm in a frame (0 of 6,270 looks; median frame 6.1 ms against 4.9 alone), so it was not there. What a machine draws of another's cars was placed on its timeline by when each packet
+arrived (`Session.receive`), so whatever the network or the relay held one up by, and the sender's own uneven frames, were drawn as the car standing and then jumping. Now by the sender's clock
+(`ts` in every packet), against the least any of its last 120 packets took to come (`SenderClock`). `tests/netjitter.js`, a car at 20 m/s on a 60 m circle, the sender at 14-30 ms a frame, frames
+here where it moved more than 5 cm off its line, of 1,080:
+
+| connection | drawn 30 m off, by arrival | by the sender's clock | 4 m off (carried on), by arrival | sender's |
+|---|---|---|---|---|
+| 40 ms, give or take 4 | 108 | 0 | 410 | 48 |
+| 60 ms, give or take 35 | 448 | 21 | 557 | 64 |
+| 90 ms, give or take 70 | 484 | 43 | 515 | 489 |
+
+Not tried between two machines. Older pages (no `ts`) are timed as before.

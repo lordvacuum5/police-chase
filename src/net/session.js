@@ -157,7 +157,28 @@ export function unpackCar(a) {
  * better on a straight and terribly everywhere else -- a car that brakes hard
  * carries on into the junction and is then yanked back.
  */
-class Track {
+/**
+ * One sender's clock against ours. The time a packet took is the network's least plus what it was held up by; the least, over the
+ * last CLOCK_WINDOW packets, is the nearest to the truth, and moves with the two clocks' drift.
+ */
+const CLOCK_WINDOW = 120;
+export class SenderClock {
+  constructor() { this.gaps = []; this.least = Infinity; }
+
+  local(ts, now) {
+    const g = now - ts;
+    this.gaps.push(g);
+    if (this.gaps.length > CLOCK_WINDOW) {
+      const out = this.gaps.shift();
+      if (out <= this.least) this.least = Math.min(...this.gaps);
+    }
+    if (g < this.least) this.least = g;
+    // Never ahead of now: a packet cannot be drawn before it came.
+    return Math.min(now, ts + this.least);
+  }
+}
+
+export class Track {
   constructor(id) {
     this.id = id;
     this.snaps = [];
@@ -307,6 +328,7 @@ class Session {
 
   reset() {
     this.active = false;
+    this._clocks = new Map();
     this.local = false;         // BroadcastChannel rather than a server
     this.role = null;           // 'escapee' or 'police'
     this.room = '';
@@ -537,7 +559,7 @@ class Session {
         }
         break;
       case 'w': {          // the host's world: its car, and every AI car
-        const at = performance.now();
+        const at = this._when(msg);
         this.heat = msg.h || 0;
         this.seen = !!msg.s;
         this.bust = msg.b || 0;
@@ -562,7 +584,7 @@ class Session {
       case 'p': {          // one player's own car
         const car = unpackCar(msg.c);
         if (car.id === this.id) break;
-        this._track(car.id).push(car, performance.now());
+        this._track(car.id).push(car, this._when(msg));
         break;
       }
       case 'e':
@@ -577,6 +599,19 @@ class Session {
     let t = this.tracks.get(id);
     if (!t) { t = new Track(id); this.tracks.set(id, t); }
     return t;
+  }
+
+  /**
+   * When a packet was so, on this machine's clock: its sender's time, plus the least that has lately been added to that on the
+   * way here. It was when it arrived, and a packet held up and the next on its heels drew the car standing and then jumping:
+   * "lots of civilian cars are really, really laggy". A sender without a clock of its own (an older page) is when it arrived.
+   */
+  _when(msg) {
+    const now = performance.now();
+    if (typeof msg.ts !== 'number') return now;
+    let c = this._clocks.get(msg.from);
+    if (!c) this._clocks.set(msg.from, (c = new SenderClock()));
+    return c.local(msg.ts, now);
   }
 
   /** Everything this client does not own, interpolated to now. */
@@ -628,6 +663,8 @@ class Session {
     if (!this.active || !this.transport) return;
     this.transport.send({
       t: 'w', from: this.id, c: cars, h: heat, s: seen ? 1 : 0,
+      // When it was so, by the sender's clock: see SenderClock.
+      ts: Math.round(performance.now()),
       // How far through the arrest the escapee is, so every screen can show
       // the same five seconds running down.
       b: Math.round((bust || 0) * 100) / 100,
@@ -639,7 +676,7 @@ class Session {
 
   sendCar(car) {
     if (!this.active || !this.transport) return;
-    this.transport.send({ t: 'p', from: this.id, c: car });
+    this.transport.send({ t: 'p', from: this.id, c: car, ts: Math.round(performance.now()) });
   }
 
   sendEvent(event, data = {}) {
