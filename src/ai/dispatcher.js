@@ -153,6 +153,8 @@ const SWIPE_ABOVE = 16;
 /** The short daily challenge (game/daily.js SHORT_FROM): five cars, nothing put across the road, something at you every this many s. */
 const SHORT_DAILY = { units: 5, pursue: 4, intercept: 1, pit: true, box: false };
 const SHORT_CONTACT_GAP = 7;
+/** A unit that has got less than this far, m, for 14 s, more than 200 m from anyone, is taken off (Dispatcher.update). */
+const STRAND_MOVED = 6;
 /**
  * After a person, from three stars: a car out of a side road ahead every CUT_EVERY s (by star), and from four a stinger thrown out behind a
  * unit that is ahead of you, every STINGER_EVERY s. "1, 2, 8": cut off from side roads, the radio saying where, and stingers from cars.
@@ -567,11 +569,12 @@ export class Dispatcher {
       const d = this.game.watcherDistance(u.vehicle.position);
       const far = d > 900;
 
-      if (u.vehicle.speed < 1.0 && !(u.role === ROLE.INTERCEPT && u.driver.remaining(30) < 30)) {
-        u.strandedFor = (u.strandedFor || 0) + dt;
-      } else {
-        u.strandedFor = 0;
-      }
+      // Not by its speed: one rocking to and fro against a wall goes over 1 m/s each way and never counted (tests/citychase.js, Wexbury:
+      // one reversing at 3 km/h for minutes, 461 m off). By how far it has got: under STRAND_MOVED m since it was last measured.
+      const vp = u.vehicle.position, mark = u._strandMark;
+      if (u.role === ROLE.INTERCEPT && u.driver.remaining(30) < 30) { u.strandedFor = 0; u._strandMark = null; }
+      else if (!mark || Math.hypot(vp.x - mark.x, vp.z - mark.z) > STRAND_MOVED) { u.strandedFor = 0; u._strandMark = { x: vp.x, z: vp.z }; }
+      else u.strandedFor = (u.strandedFor || 0) + dt;
 
       // Damaged units are pulled off the board once they are far enough away
       // that you will not see them vanish.

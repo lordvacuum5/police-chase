@@ -10946,3 +10946,9 @@ along the streets and up the ramps at 60 km/h for 90 s, traffic held at full cou
 0.6 / 0.75 to 0.85 / 0.9. `tests/lowstars.js` (one star, carried at 100 km/h): 30 to 31 m back, corners 65 to 67 km/h -- next to no change; the corners are held by following you, not by grip.
 
 The known-car symbol: *"It should be a front. It shouldn't be side on ... a little red symbol"*. A red car seen head on, 24 by 20 px.
+
+### Police that rock against a wall are taken off
+
+A bug hunt, `tests/citychase.js` 180 s on each map at three stars. A unit is taken off out of sight when it has been stuck 14 s more than 200 m from anyone; stuck was under 1 m/s, so one rocking to and fro against a wall (3 km/h
+each way, Wexbury, 461 m off) never counted. Now by how far it has got: under 6 m in 14 s. Found and not fixed: on Ashfield, units crawling at 0-2 km/h on the local planner in tight spots, 150-250 m from you (4 in 180 s);
+on Haldon one looping round a field by a stopped civilian car. No traffic stuck on Wexbury or Ashfield, one on Haldon; nothing fell through the ground on any map.
