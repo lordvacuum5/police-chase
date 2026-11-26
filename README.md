@@ -11019,3 +11019,8 @@ Police between houses: *"they do seem to ... stop a lot and then have to back ou
 between houses, three stars: a quarter of the chasing units' time was `reset` -- dropping back for a run-up after a hit, which from a car doing 20 km/h is stopping dead and backing out. No drop-back now
 under 9 m/s (`RESET_MIN`): reset 25% to 0, stopped 6.3% to 4.6%, reversing 9.1% to 7.7% (most of what is left is bouncing off the rig's car, which is held to its speed and cannot be pushed).
 `tests/citychase.js` 180 s: nothing stuck, nothing fell. `tests/mapcost.js`: sim 2.5 ms, drawing 5.1-6.8 ms. Air Rescue's places all fine for 30 days; the escape routes 604-734 m.
+
+A walk round it in screenshots after: a house stood in the Magic Roundabout's middle (none now inside any roundabout); the Beacon's car park sat in a hollow 9 m under the hilltop round it, the road
+arriving lower than the top (the top within 70 m is now brought down to it, so the viewpoint is the top); and the ford's stream lay at the ford's level across fields lower than the lane, a sheet of water on
+the grass. Its water now follows the ground, coming to the ford's level only at the lane, in a channel of its own. The first try read the ground as it cut it and each point dug the last one's channel
+deeper, into a gorge 6 m deep. Through the ford: 69 km/h in, 34 out, never flooded.

@@ -154,6 +154,7 @@ export function buildWexbury(sim, scene, seed = 51807) {
   if (canal) carveCanal(ctx, canal, hgrid, water);
   if (ctx.lake) carveLake(ctx.lake, hgrid, water);
   if (ctx.ford) carveFord(ctx, ctx.ford, hgrid, water);
+  if (ctx.summit) levelSummit(ctx.summit, hgrid);
   addHeightfield(sim.world, hgrid);
   // The bridges' decks: where there is one, the height of anything is the deck's (as Ashfield's: citygen.js deckAt).
   const deckAt = canal ? riverDecks(ctx, canal, rail, hgrid) : () => -Infinity;
@@ -925,28 +926,55 @@ function carveCanal(ctx, canal, hgrid, water) {
   }
 }
 
+/**
+ * The Beacon's top brought down to its car park: the road up arrives lower than the hill's own top, and the car park, at the
+ * road's level, sat in a hollow 9 m under the ground round it. Everything within 70 m held to the car park's level plus a gentle
+ * slope out, so it is the top.
+ */
+function levelSummit(sm, hgrid) {
+  const { n, half, step, H } = hgrid, y = hgrid.at(sm.x, sm.z), R = 70;
+  const i0 = Math.max(0, Math.floor((sm.x - R + half) / step)), i1 = Math.min(n - 1, Math.ceil((sm.x + R + half) / step));
+  const j0 = Math.max(0, Math.floor((sm.z - R + half) / step)), j1 = Math.min(n - 1, Math.ceil((sm.z + R + half) / step));
+  for (let j = j0; j <= j1; j++) {
+    for (let i = i0; i <= i1; i++) {
+      const d = Math.hypot(i * step - half - sm.x, j * step - half - sm.z);
+      if (d > R) continue;
+      const cap = y + Math.max(0, d - 26) * 0.12, k = j * n + i;
+      // Blended back into the hill over the last 15 m.
+      const w = d < R - 15 ? 1 : (R - d) / 15;
+      if (H[k] > cap) H[k] = lerp(H[k], cap, w);
+    }
+  }
+}
+
 /** A lane that dips through a stream: the dip is a crest the other way (pickFord); here, the stream either side, and its water. */
 function carveFord(ctx, f, hgrid, water) {
   const { n, half, step, H } = hgrid;
   const bottom = hgrid.at(f.x, f.z);
   const level = bottom + FORD_DEEP;
   f.level = level;
-  // Across the lane (its normal), out 70 m each way.
+  // Across the lane (its normal), out 45 m each way, in a channel of its own: its water a little under the ground beside it,
+  // and the ford's level where it crosses the lane. Laid flat at the ford's level the whole way, it stood on the fields as a
+  // sheet of water where they were lower than the lane.
   const nx = -f.tz, nz = f.tx;
   f.stream = [];
-  for (let o = -70; o <= 70; o += 2) {
-    const x = f.x + nx * o, z = f.z + nz * o;
-    f.stream.push({ x, z });
+  // The ground along it read first: read as it was cut, each point found the last one's channel and went deeper, into a gorge.
+  const g0 = new Map();
+  for (let o = -45; o <= 45; o += 2) g0.set(o, hgrid.at(f.x + nx * o, f.z + nz * o));
+  for (let o = -45; o <= 45; o += 2) {
+    const x = f.x + nx * o, z = f.z + nz * o, road = Math.abs(o) < f.edge.width * 0.5 + 1.5;
+    // Following the ground, and coming to the ford's level at the lane.
+    const y = road ? level : lerp(level, g0.get(o) - 0.35, smoothstep(f.edge.width * 0.5 + 1.5, f.edge.width * 0.5 + 12, Math.abs(o)));
+    f.stream.push({ x, z, y });
     for (let dj = -2; dj <= 2; dj++) for (let di = -2; di <= 2; di++) {
       const i = Math.round((x + half) / step) + di, j = Math.round((z + half) / step) + dj;
       if (i < 0 || j < 0 || i >= n || j >= n) continue;
       const px = i * step - half, pz = j * step - half;
       const across = Math.abs((px - f.x) * f.tx + (pz - f.z) * f.tz);
-      if (across > 4.5) continue;
+      if (across > (road ? 4.5 : 2.5)) continue;
       const k = j * n + i;
-      const road = Math.abs(o) < f.edge.width * 0.5 + 1.5;
-      if (!road) H[k] = Math.min(H[k], level - 0.55);
-      water.lv[k] = level;
+      if (!road) H[k] = Math.min(H[k], y - 0.5);
+      water.lv[k] = y;
       water.ford[k] = 1;
     }
   }
@@ -1726,7 +1754,8 @@ function buildFrontages(ctx) {
             roofDark = 0x33302b;
           }
           const bx = px + nx * side * (setback + d * 0.5), bz = pz + nz * side * (setback + d * 0.5), radius = Math.hypot(w, d) * 0.5;
-          const why = Math.hypot(bx, bz) < SQUARE_R + radius + 4 || Math.abs(bx) > WORLD_HALF - 30 || Math.abs(bz) > WORLD_HALF - 30 ? 'edge'
+          const why = (ctx.roundabouts || []).concat((ctx.bypass && ctx.bypass.junctions) || []).some((c) => Math.hypot(bx - c.x, bz - c.z) < c.r + radius + 3)
+            || Math.hypot(bx, bz) < SQUARE_R + radius + 4 || Math.abs(bx) > WORLD_HALF - 30 || Math.abs(bz) > WORLD_HALF - 30 ? 'edge'
             : !placed.free(bx, bz, Math.min(w, d) * 0.46) ? 'placed' : graph.overlapsRoad(bx, bz, w, d, Math.atan2(dx, dz), 3.5) ? 'road' : !clearSpot(ctx, bx, bz, radius) ? 'lines' : null;
           if (why) {
             if (r < 470) ctx.whyNot[why] = (ctx.whyNot[why] || 0) + 1;
@@ -1926,7 +1955,7 @@ function buildWater(ctx, canal) {
   }
   const f = ctx.ford;
   if (f) {
-    const rows = f.stream.filter((_, k) => k % 2 === 0).map((p) => ({ x: p.x, z: p.z, ax: f.tx, az: f.tz, w: 4.5, y: f.level }));
+    const rows = f.stream.map((p) => ({ x: p.x, z: p.z, ax: f.tx, az: f.tz, w: Math.abs((p.x - f.x) * -f.tz + (p.z - f.z) * f.tx) < f.edge.width * 0.5 + 1.5 ? 4.5 : 2.6, y: p.y }));
     strip(rows);
   }
   const g = new THREE.BufferGeometry();
