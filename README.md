@@ -10987,3 +10987,14 @@ on Haldon one looping round a field by a stopped civilian car. No traffic stuck 
   stopped by the ground 0, thrown back 2 (the police car at 150 before: 0 and 8 of 40).
 - Judder: `tests/shake.js`, the game's driver at 60 km/h, vertical acceleration rms: Wexbury's streets 1.01 m/s2 with the speed bumps, 0.46 without; Ashfield's 0.06, Haldon's lanes 0.79. A 3x3 smoothing of the
   ground changed nothing (0.46) and is not in. The bumps lower and longer (0.08 m over 4 m) and 39 not 92.
+
+### The canal a clean dip, bridges over it, real shopfronts, no garden fences
+
+*"The canal is awful ... you don't even need the edges of the canal. All you need is a very clean dip ... no ridges ... with a train line, just make a bridge ... make sure the roads go high"* (with a screenshot of
+the railway over it). The walls, coping and stone banks are gone. The canal is a cosine dip, 20 m across and 2.6 m deep, the water 1 m down (about 11 m wide), the banks level out to the towpath, all one smooth
+grass-grained sheet (`buildCanalBanks`) laid over the ground, which is let down 12 m out of sight under it. That sheet runs on under every road and the railway. Each has a stone face down each side to its
+deck, over a dark underside, and the water goes under it. The ground the cars ride is the road's or the railway's there. Beside a bridge the road's own 0.45 m let-down was asked first and its fill stood up
+through the dip, so the canal's comes first now. Locks: gates across the whole dip.
+
+Shopfronts: *"it's just like a black strip ... put like the actual ... Mr. Buffy's chicken"*. Glazing in a painted frame, a door, a stall riser, and a fascia with the shop's name from a canvas of 16
+made-up shops. Garden fences gone, *"just get rid of them"*; the lawns too, which were stripes of colour across each block. The sheds and trees in them stay.

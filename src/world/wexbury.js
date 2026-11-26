@@ -44,9 +44,18 @@ const SQUARE_R = 50;
 /** The canal: water half-width, m; the towpath's middle out from the canal's; the water under the towpath; a pound's length. */
 /** Half a lock's length, gate to gate, m. */
 const LOCK_HALF = 9;
-const CANAL_HALF = 5.2, TOW_OFF = 8.5, WATER_DOWN = 0.9, POUND = 420, CANAL_DEEP = 1.7;
+/**
+ * The canal is a dip: "you don't even need the edges of the canal. All you need is a very clean dip ... dip down, dip up. No ridges".
+ * CANAL_W either side of its line, CANAL_D at the middle under the towpath's level, the water WATER_DOWN under that; a cosine,
+ * so it leaves the bank with no edge at all. CANAL_HALF is how far out the water reaches.
+ */
+const CANAL_W = 10, CANAL_D = 2.6, WATER_DOWN = 1.0, POUND = 420;
+const CANAL_HALF = CANAL_W * Math.acos(2 * WATER_DOWN / CANAL_D - 1) / Math.PI;
+const TOW_OFF = CANAL_W + 3.5;
+/** How far down the dip is under the bank at `d` m from the line. */
+const dipAt = (d) => (d >= CANAL_W ? 0 : CANAL_D * 0.5 * (1 + Math.cos(Math.PI * d / CANAL_W)));
 /** The banks drawn level either side, out this far from the canal's middle, m. */
-const BANK_OUT = CANAL_HALF + TOW_OFF + 3;
+const BANK_OUT = TOW_OFF + 4;
 /** A humpback bridge over the canal: how high, and half its length, m. */
 const HUMP_H = 1.5, HUMP_LEN = 11;
 /** The ford: how far the lane dips, and the water over its lowest point, m. */
@@ -145,7 +154,7 @@ export function buildWexbury(sim, scene, seed = 51807) {
   // ---------------------------------------------------------------- surfaces
   makeClearMask(ctx);
   if (rail) markLine(ctx, rail.points, 15, CLEAR_RAIL);
-  if (canal) markLine(ctx, canal.points, CANAL_HALF + TOW_OFF + 4, CLEAR_CANAL);
+  if (canal) markLine(ctx, canal.points, BANK_OUT + 2, CLEAR_CANAL);
   paintSurfaces(ctx);
   rasteriseRoads(graph, surface);
   if (canal) for (const p of canal.tow) paintDisc(surface, p.x, p.z, 2.2, SURF_ROAD);
@@ -172,7 +181,7 @@ export function buildWexbury(sim, scene, seed = 51807) {
   }
   meshes.push(buildPavements(ctx));
   meshes.push(buildExtrasFlat(ctx, canal));
-  if (canal) meshes.push(buildCanalStone(ctx, canal));
+  if (canal) meshes.push(buildCanalBanks(ctx, canal));
   const placed = new Placed();
   ctx.placed = placed;
   meshes.push(...buildLandmarks(ctx));
@@ -213,7 +222,7 @@ export function buildWexbury(sim, scene, seed = 51807) {
       buildings: ctx.buildingCount, railCrossings: rail ? rail.cross.length : 0, bridges: canal ? canal.bridges.map((q) => [Math.round(q.x), Math.round(q.z)]) : [], lockAt: canal ? canal.locks.map((l) => { const q = canal.line.at(l); return [Math.round(q.x), Math.round(q.z)]; }) : [],
       roundaboutAt: ctx.roundabouts.filter((r) => r.magic || r.double).map((r) => [Math.round(r.x), Math.round(r.z)]), locks: canal ? canal.locks.length : 0,
       ford: ctx.ford ? { x: Math.round(ctx.ford.x), z: Math.round(ctx.ford.z) } : null, roundabouts: ctx.roundabouts.map((r) => (r.magic ? 'magic' : r.inMagic ? 'magic-mini' : r.double ? 'double' : 'mini')),
-      whyNot: ctx.whyNot, alleys: ctx.alleys, bumps: ctx.bumps.length, pinches: ctx.pinches, laybys: ctx.laybys.length, marketDay: ctx.marketDay, summit: ctx.summit && { x: Math.round(ctx.summit.x), z: Math.round(ctx.summit.z) },
+      whyNot: ctx.whyNot, alleys: ctx.alleys, shops: (ctx.signs || []).slice(0, 3).map((g) => [Math.round(g.x), Math.round(g.z), +g.fx.toFixed(2), +g.fz.toFixed(2)]), bumps: ctx.bumps.length, pinches: ctx.pinches, laybys: ctx.laybys.length, marketDay: ctx.marketDay, summit: ctx.summit && { x: Math.round(ctx.summit.x), z: Math.round(ctx.summit.z) },
     },
     // More cars than the old town's 17, on half again as much road each way.
     trafficCount: 44,
@@ -486,7 +495,7 @@ function badForLines(ctx, pts, width, allow) {
 
 /** Near either line, for a turning head or a building. */
 function nearLines(ctx, x, z, r) {
-  return (ctx.rail && ctx.rail.near(x, z, r + 8).d < r) || (ctx.canal && ctx.canal.near(x, z, r + 8).d < r + CANAL_HALF);
+  return (ctx.rail && ctx.rail.near(x, z, r + 8).d < r) || (ctx.canal && ctx.canal.near(x, z, r + 8).d < r + CANAL_W);
 }
 
 /**
@@ -665,7 +674,7 @@ function finishCanal(ctx) {
   const side = DRIVE_SIDE;
   for (let s = s0; s <= s1; s += 5) {
     const p = L.at(s);
-    discs.push({ x: p.x, z: p.z, r: CANAL_HALF + TOW_OFF + 2.5, fade: 16, h: towAt(s) });
+    discs.push({ x: p.x, z: p.z, r: BANK_OUT + 1, fade: 16, h: towAt(s) });
   }
   for (let s = s0; s <= s1; s += 3) {
     const p = L.at(s);
@@ -683,7 +692,7 @@ function finishCanal(ctx) {
         const small = e.kind === 'street' || e.kind === 'lane' || e.kind === 'country' || e.kind === 'alley';
         // Over the water, wherever the canal is: on an embankment it stood higher than the road through it, and spilled out
         // beside the bridge. The road's own level there is about the ground's before anything was laid.
-        const over = Math.max(0, towAt(c.s) - ctx.base(c.x, c.z) + 0.6);
+        const over = Math.max(0, towAt(c.s) - ctx.base(c.x, c.z) + 1.4);
         humps.push({ edge: e.id, s: along, len: small ? HUMP_LEN + over * 3 : 18 + over * 3, h: (small ? HUMP_H : 0.6) + over });
         const sx = sg.b.x - sg.a.x, sz = sg.b.z - sg.a.z, sl = Math.hypot(sx, sz) || 1;
         bridges.push({ x: c.x, z: c.z, dx: sx / sl, dz: sz / sl, width: e.width, edge: e, s: c.s, sin: Math.sqrt(Math.max(0.1, 1 - c.cos * c.cos)) });
@@ -702,72 +711,86 @@ function onBridge(canal, x, z) {
   return false;
 }
 
-/** The canal's exact height at (x, z): its bed inside the walls, the towpath's level on the banks; null off it and on its bridges. */
+/** On the railway's bed, where it goes over the canal on its bridge. */
+const onRail = (ctx, x, z) => !!(ctx.rail && ctx.rail.near(x, z, 12).d < 4.5);
+
+/** The canal's exact height at (x, z): the dip, then the banks level at the towpath's height; null off it and on its bridges. */
 function canalHeight(ctx, canal) {
   const L = canal.line;
   return (x, z) => {
     if (ctx.clearAt && !ctx.clearAt(x, z, CLEAR_CANAL)) return null;
     const nr = L.near(x, z, BANK_OUT + 6);
-    if (nr.d > BANK_OUT || nr.s < canal.s0 || nr.s > canal.s1 || onBridge(canal, x, z)) return null;
-    return nr.d < CANAL_HALF ? canal.waterAtS(nr.s) - CANAL_DEEP : canal.towAt(nr.s);
+    if (nr.d > BANK_OUT || nr.s < canal.s0 || nr.s > canal.s1 || onBridge(canal, x, z) || onRail(ctx, x, z)) return null;
+    return canal.towAt(nr.s) - dipAt(nr.d);
   };
 }
 
 /**
- * The canal drawn to its exact shape: a stone wall down each side to the bed, the coping along the top, the banks level out to
- * BANK_OUT; and at each bridge a stone face either side of the road with the dark of the arch, so the water goes under it.
+ * The canal drawn: one smooth sheet across the dip and out over the banks, grass with the ground's grain, darker low down; carried
+ * on under every bridge (the ground drawn there is let down, buildTerrain). Each bridge, the railway's too: a face each side from
+ * its deck down to the dip, open over the water, with the arch's underside dark between them. "Just make a bridge ... so the
+ * train goes over ... make sure the roads go high".
  */
-function buildCanalStone(ctx, canal) {
+function buildCanalBanks(ctx, canal) {
   const L = canal.line, pos = [], col = [], c = new THREE.Color();
-  const quad = (a, b, cc, d, colour) => {
-    c.set(colour);
-    for (const v of [a, b, cc, a, cc, d]) { pos.push(v[0], v[1], v[2]); col.push(c.r, c.g, c.b); }
+  const quad = (a, b, cc, d, ca, cb = ca, cc2 = cb, cd = ca) => {
+    const cs = [ca, cb, cc2, ca, cc2, cd];
+    [a, b, cc, a, cc, d].forEach((v, k) => { pos.push(v[0], v[1], v[2]); c.set(cs[k]); col.push(c.r, c.g, c.b); });
   };
-  const runs = [];
-  let run = [];
+  const across = [];
+  for (let o = -BANK_OUT; o <= BANK_OUT + 0.01; o += 1.25) across.push(o);
+  const shade = (o) => { const d = Math.abs(o); return d < CANAL_HALF + 0.5 ? 0x4a4a33 : d < CANAL_W ? 0x4d6233 : 0x557038; };
+  const bridged = (x, z) => onBridge(canal, x, z) || onRail(ctx, x, z);
+  let prev = null;
   for (let s = canal.s0; s <= canal.s1; s += 3) {
-    const p = L.at(s);
-    if (onBridge(canal, p.x, p.z) || ctx.at(p.x, p.z) === null) { if (run.length > 1) runs.push(run); run = []; continue; }
-    run.push({ x: p.x, z: p.z, nx: -p.dz, nz: p.dx, tow: canal.towAt(s), bed: canal.waterAtS(s) - CANAL_DEEP });
-  }
-  if (run.length > 1) runs.push(run);
-  const off = (p, o, y) => [p.x + p.nx * o, y, p.z + p.nz * o];
-  for (const r of runs) {
-    for (let k = 0; k < r.length - 1; k++) {
-      const p = r[k], q = r[k + 1];
-      for (const side of [1, -1]) {
-        const w = CANAL_HALF * side;
-        // The wall, from the coping down to the bed.
-        quad(off(p, w, p.tow), off(q, w, q.tow), off(q, w, q.bed), off(p, w, p.bed), 0x6f685d);
-        // The coping, then the bank out to where the ground takes over.
-        const w2 = (CANAL_HALF + 0.7) * side, w3 = BANK_OUT * side;
-        quad(off(p, w, p.tow + 0.06), off(q, w, q.tow + 0.06), off(q, w2, q.tow + 0.06), off(p, w2, p.tow + 0.06), 0x9b9486);
-        quad(off(p, w2, p.tow + 0.03), off(q, w2, q.tow + 0.03), off(q, w3, q.tow + 0.03), off(p, w3, p.tow + 0.03), 0x4f6a35);
+    const p = L.at(s), tow = canal.towAt(s), nx = -p.dz, nz = p.dx;
+    const row = across.map((o) => {
+      const x = p.x + nx * o, z = p.z + nz * o, d = Math.abs(o);
+      // Under a bridge only the dip itself is drawn; the banks there are the road's.
+      return { v: [x, tow - dipAt(d) + 0.03, z], skip: d > CANAL_W + 6 && bridged(x, z), o };
+    });
+    if (prev) {
+      for (let k = 0; k < across.length - 1; k++) {
+        const a = prev[k], b = prev[k + 1], cc = row[k + 1], d = row[k];
+        if (a.skip || b.skip || cc.skip || d.skip) continue;
+        quad(a.v, b.v, cc.v, d.v, shade(a.o), shade(b.o), shade(cc.o), shade(d.o));
       }
     }
+    prev = row;
   }
-  // The bridges' faces: stone from the bed to the road, the arch dark over the water.
-  for (const b of canal.bridges) {
-    const s = L.near(b.x, b.z, 30).s, lv = canal.waterAtS(s), bed = lv - CANAL_DEEP, cp = L.at(s);
-    const nx = -cp.dz, nz = cp.dx;
-    for (const side of [1, -1]) {
-      // Where the road's edge crosses the canal's line.
-      const e = (b.width * 0.5 + 0.6) / b.sin * side, cx = b.x + b.dx * e, cz = b.z + b.dz * e;
-      const top = ctx.at(cx + b.dx * 0.5 * side, cz + b.dz * 0.5 * side) + 0.9;
-      const half = CANAL_HALF + 0.7;
-      const P = (o, y) => [cx + nx * o, y, cz + nz * o];
-      quad(P(-half, top), P(half, top), P(half, bed), P(-half, bed), 0x847b6c);
-      // The arch: dark, standing a hand's breadth proud of the face.
-      const ax = b.dx * 0.08 * side, az = b.dz * 0.08 * side, aw = CANAL_HALF - 0.8;
-      const A = (o, y) => [cx + nx * o + ax, y, cz + nz * o + az];
-      quad(A(-aw, lv + 2.2), A(aw, lv + 2.2), A(aw, lv - 0.3), A(-aw, lv - 0.3), 0x15130f);
+  // The bridges, the roads' and the railway's.
+  const spans = canal.bridges.map((b) => ({ x: b.x, z: b.z, dx: b.dx, dz: b.dz, half: b.width * 0.5 + 0.8, s: b.s }));
+  if (ctx.rail) {
+    for (const c2 of ctx.rail.crossings(canal.points)) {
+      const r = ctx.rail.at(c2.s);
+      spans.push({ x: c2.x, z: c2.z, dx: r.dx, dz: r.dz, half: 4.2, s: L.near(c2.x, c2.z, 20).s, rail: true });
     }
+  }
+  canal.spans = spans;
+  for (const b of spans) {
+    const lv = canal.waterAtS(b.s), cp = L.at(b.s), nx = -cp.dz, nz = cp.dx, tow = canal.towAt(b.s);
+    const deck = ctx.at(b.x, b.z), arch = Math.min(lv + 2.3, deck - 0.6);
+    // The road (or railway) crosses at an angle: its edges meet the canal's line `half / sn` either side of the crossing, and run
+    // across the canal along the road's own direction.
+    const sn = Math.abs(b.dx * nx + b.dz * nz) || 1;
+    const E = (side, o, y) => [b.x + cp.dx * (b.half / sn) * side + b.dx * (o / sn) * Math.sign(b.dx * nx + b.dz * nz || 1),
+      y, b.z + cp.dz * (b.half / sn) * side + b.dz * (o / sn) * Math.sign(b.dx * nx + b.dz * nz || 1)];
+    for (const side of [1, -1]) {
+      for (let o = -CANAL_W - 2.5; o < CANAL_W + 2.5; o += 0.5) {
+        const y0 = Math.max(tow - dipAt(Math.abs(o)), arch), y1 = Math.max(tow - dipAt(Math.abs(o + 0.5)), arch);
+        quad(E(side, o, deck + 0.9), E(side, o + 0.5, deck + 0.9), E(side, o + 0.5, Math.min(y1, deck)), E(side, o, Math.min(y0, deck)), 0x8a8173);
+      }
+    }
+    // The arch's underside, dark, from face to face over the water.
+    const w = CANAL_HALF + 1;
+    quad(E(-1, -w, arch), E(-1, w, arch), E(1, w, arch), E(1, -w, arch), 0x1d1a16);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   g.computeVertexNormals();
   const mesh = new THREE.Mesh(g, vertexColorMaterial({ side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }));
+  groundDetail(mesh, 'grass');
   mesh.name = 'canal';
   mesh.receiveShadow = true;
   return mesh;
@@ -796,13 +819,13 @@ function onARoad(graph, x, z, pad) {
 }
 
 /**
- * The channel, cut into the ground after it is made: the water CANAL_HALF either side of the line, its bed under it,
- * but not under a road (which is the bridge) nor the railway's bed.
+ * The dip cut into the ground after it is made, a little under the sheet drawn over it (buildCanalBanks), and its water marked.
+ * Not under a bridge's road or the railway: there the ground is theirs, and the dip is only drawn.
  */
 function carveCanal(ctx, canal, hgrid, water) {
   const { n, half, step, H } = hgrid;
-  const L = canal.line;
-  const i0 = (x) => Math.max(0, Math.floor((x - CANAL_HALF - 6 + half) / step)), i1 = (x) => Math.min(n - 1, Math.ceil((x + CANAL_HALF + 6 + half) / step));
+  const L = canal.line, R = CANAL_W + 2;
+  const i0 = (x) => Math.max(0, Math.floor((x - R - 4 + half) / step)), i1 = (x) => Math.min(n - 1, Math.ceil((x + R + 4 + half) / step));
   const done = new Uint8Array(n * n);
   for (let s = canal.s0; s <= canal.s1; s += 2) {
     const p = L.at(s);
@@ -811,20 +834,12 @@ function carveCanal(ctx, canal, hgrid, water) {
         const k = j * n + i;
         if (done[k]) continue;
         const x = i * step - half, z = j * step - half;
-        const nr = L.near(x, z, 20);
-        if (nr.d > CANAL_HALF + 2.5) continue;
-        if (ctx.rail && ctx.rail.near(x, z, 20).d < 9) continue;
-        if (onARoad(ctx.graph, x, z, 3)) continue;
+        const nr = L.near(x, z, 24);
+        if (nr.d > R) continue;
         done[k] = 1;
-        const level = canal.waterAtS(nr.s);
-        if (nr.d <= CANAL_HALF) {
-          H[k] = level - CANAL_DEEP;
-          water.lv[k] = level;
-        } else {
-          // The bank, at the towpath's level.
-          H[k] = level + WATER_DOWN;
-          water.lv[k] = level;
-        }
+        if (nr.d < CANAL_HALF + 1.5) water.lv[k] = canal.waterAtS(nr.s);
+        if (onRail(ctx, x, z) || onARoad(ctx.graph, x, z, 3)) continue;
+        H[k] = canal.towAt(nr.s) - dipAt(nr.d) - 0.4;
       }
     }
   }
@@ -1249,12 +1264,17 @@ function buildTerrain(ctx, hgrid) {
   // Under the pavements too: "on a hill bit with the houses ... the occasional bit where like a bit of green ground poked through
   // instead of the pavement". The footway is drawn from the road's points, 6 m apart, straight between them over the 4 m ground.
   const nearRoad = (x, z) => {
+    // The canal's first: beside a bridge the road's 0.45 was found first, and its fill stood up through the dip.
+    const c = canalDrop(x, z);
+    if (c) return c;
     for (const [ox, oz] of [[0, 0], [5, 0], [-5, 0], [0, 5], [0, -5], [4, 4], [-4, 4], [4, -4], [-4, -4]]) {
       const v = sf(x + ox, z + oz);
       if (v === SURF_ROAD || v === SURF_PAVED) return 0.45;
     }
     return 0;
   };
+  // Well down under the canal's own sheet (buildCanalBanks), which is drawn on under the bridges, where the ground is the road's.
+  const canalDrop = (x, z) => (ctx.canal && ctx.clearAt(x, z, CLEAR_CANAL) && ctx.canal.near(x, z, CANAL_W + 8).d < CANAL_W + 2.5 ? 12 : 0);
   const colour = (x, z, y, c) => {
     const w = water.levelAt(x, z);
     if (w !== null && y < w + 0.6) { c.setHSL(0.10, 0.25, 0.16); return; }
@@ -1392,6 +1412,52 @@ function runsOf(e) {
   }
   if (a) out.push({ a, b, len: Math.hypot(b.x - a.x, b.z - a.z) });
   return out;
+}
+
+/** Shopfronts' paint, and the shops on the fascias: made up, none of them real. */
+const SHOP_TONES = [0x2f4f3a, 0x5a1f22, 0x1f3550, 0x3b3b3b, 0x6a4a1c, 0x24443f, 0x4b2a4f, 0x7a6b52];
+const SHOP_NAMES = [
+  ["Mr Buffy's Chicken", '#c8281e', '#ffd23f'], ['Wexbury Fish Bar', '#1d4e89', '#ffffff'], ['Golden Dragon', '#8b0000', '#ffcc33'],
+  ['Pizza Palace', '#1e6b30', '#ffffff'], ["Patel's News", '#1b1b1b', '#f5f5f5'], ['The Crusty Loaf', '#7a4a21', '#fff2d6'],
+  ['Kut & Kurl', '#e0398a', '#ffffff'], ['Bargain Barn', '#f2c21b', '#1b1b1b'], ['Wexbury Pharmacy', '#0a7d5a', '#ffffff'],
+  ['Phone Fix', '#2b2b6e', '#7ee0ff'], ['The Coffee Pot', '#3b2a1e', '#f0d9b5'], ['Spin City Laundrette', '#5ab4e6', '#10324a'],
+  ['Hope Charity Shop', '#6a2c8c', '#ffffff'], ['Bet Bros', '#0b6b2a', '#ffe14d'], ['Kebab King', '#d4471b', '#ffffff'],
+  ['Market Butchers', '#8c1c1c', '#f7f0e0'],
+];
+
+/** The fascias' names, one canvas of them, and a board each in front of its shop, reading left to right from the street. */
+function shopSigns(signs) {
+  if (!signs.length || typeof document === 'undefined') return null;
+  const TW = 512, TH = 96, COLS = 2, ROWS = Math.ceil(SHOP_NAMES.length / COLS);
+  const cv = document.createElement('canvas');
+  cv.width = TW * COLS; cv.height = TH * ROWS;
+  const g = cv.getContext('2d');
+  SHOP_NAMES.forEach(([name, bg, fg], k) => {
+    const x = (k % COLS) * TW, y = Math.floor(k / COLS) * TH;
+    g.fillStyle = bg; g.fillRect(x, y, TW, TH);
+    g.strokeStyle = 'rgba(255,255,255,0.35)'; g.lineWidth = 4; g.strokeRect(x + 6, y + 6, TW - 12, TH - 12);
+    g.fillStyle = fg; g.textAlign = 'center'; g.textBaseline = 'middle';
+    let size = 58;
+    do { g.font = `bold ${size}px Georgia, serif`; size -= 2; } while (g.measureText(name).width > TW - 40 && size > 20);
+    g.fillText(name, x + TW / 2, y + TH / 2 + 2);
+  });
+  const tex = new THREE.CanvasTexture(cv);
+  tex.anisotropy = 4;
+  const pos = [], uv = [];
+  for (const sg of signs) {
+    const rx = sg.fz, rz = -sg.fx, hw = sg.w * 0.5, y0 = sg.lo + 2.88, y1 = sg.lo + 3.52;
+    const k = sg.tile, u0 = (k % COLS) / COLS, u1 = u0 + 1 / COLS, v1 = 1 - Math.floor(k / COLS) / ROWS, v0 = v1 - 1 / ROWS;
+    const L = [sg.x - rx * hw, sg.z - rz * hw], R = [sg.x + rx * hw, sg.z + rz * hw];
+    pos.push(L[0], y0, L[1], R[0], y0, R[1], R[0], y1, R[1], L[0], y0, L[1], R[0], y1, R[1], L[0], y1, L[1]);
+    uv.push(u0, v0, u1, v0, u1, v1, u0, v0, u1, v1, u0, v1);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7, side: THREE.DoubleSide }));
+  mesh.name = 'town';
+  return mesh;
 }
 
 class Placed {
@@ -1540,7 +1606,7 @@ function buildFrontages(ctx) {
   const builders = [new MeshBuilder(), new MeshBuilder(), new MeshBuilder(), new MeshBuilder()];
   const pieces = [[], [], [], []];
   const lit = new MeshBuilder(), litPieces = [];
-  const drives = [], placed = ctx.placed, gardens = [];
+  const drives = [], placed = ctx.placed, gardens = [], signs = [];
   ctx.gardens = gardens;
   ctx.whyNot = {};
   const out0 = [];
@@ -1602,7 +1668,22 @@ function buildFrontages(ctx) {
           addWindows(b, lit, bx, bz, w, h, d, rot, fx, fz, kind === 'shop' ? 'shop' : 'house');
           if (kind === 'house') planDrive(drives, bx, bz, w, d, rot, fx, fz);
           if (kind === 'shop') {
-            b.addBox(w * 0.86, h * 0.30, 0.12, bx + fx * face, h * 0.28, bz + fz * face, 0x121a20, rot);
+            // A shopfront: "it's just like a black strip ... put like the actual ... Mr. Buffy's chicken or something". Glass in a
+            // painted frame, a door at one end, a stall riser under it, and the fascia with the shop's name (shopSigns).
+            const tone = SHOP_TONES[Math.floor(hash(bx, bz, 7) * SHOP_TONES.length)];
+            const ox = Math.cos(rot), oz = -Math.sin(rot), fw = w * 0.9, door = Math.min(1.2, w * 0.16), dside = hash(bx, bz, 8) < 0.5 ? -1 : 1;
+            const at2 = (along, out) => [bx + fx * (face + out) + ox * along, bz + fz * (face + out) + oz * along];
+            let [qx, qz] = at2(0, 0.02);
+            b.addBox(fw, 3.0, 0.1, qx, 1.5, qz, tone, rot);
+            [qx, qz] = at2(-dside * door * 0.55, 0.08);
+            b.addBox(fw - door - 0.5, 1.9, 0.06, qx, 1.55, qz, 0x6f8c99, rot);
+            [qx, qz] = at2(-dside * door * 0.55, 0.07);
+            b.addBox(fw - door - 0.4, 0.45, 0.1, qx, 0.3, qz, tone, rot);
+            [qx, qz] = at2(dside * (fw * 0.5 - door * 0.6), 0.08);
+            b.addBox(door, 2.3, 0.06, qx, 1.15, qz, 0x3a4248, rot);
+            [qx, qz] = at2(0, 0.1);
+            b.addBox(fw + 0.2, 0.75, 0.22, qx, 3.2, qz, 0x1f1f22, rot);
+            signs.push({ x: bx + fx * (face + 0.22), z: bz + fz * (face + 0.22), fx, fz, w: fw, lo, tile: Math.floor(hash(bx, bz, 9) * SHOP_NAMES.length) });
           } else {
             const doorW = Math.min(1.15, w * 0.18), doorH = Math.min(2.15, h * 0.34);
             b.addBox(doorW, doorH, 0.12, bx + fx * face, doorH * 0.5, bz + fz * face, kind === 'barn' ? 0x3a2a1a : 0x2e2018, rot);
@@ -1638,37 +1719,17 @@ function buildFrontages(ctx) {
     }
   }
   ctx.buildingCount = count;
-  // The gardens drawn: a lawn and a fence round three sides, following the ground. The fences are solid, low, as a hedge is.
-  const gb = new MeshBuilder();
-  for (const g of gardens) {
-    const c = Math.cos(g.rot), sn = Math.sin(g.rot);
-    const P = (lx, lz) => ({ x: g.x + lx * c + lz * sn, z: g.z - lx * sn + lz * c });
-    const hw = g.w * 0.5 - 0.1, hd = g.d * 0.5;
-    const p0 = P(-hw, -hd), p1 = P(hw, -hd), p2 = P(hw, hd), p3 = P(-hw, hd);
-    const lawn = new THREE.Color().setHSL(0.25 + hash(g.x, g.z, 1) * 0.05, 0.42, 0.30 + hash(g.x, g.z, 2) * 0.06);
-    gb.addQuadY(p0.x, p0.z, p1.x, p1.z, p2.x, p2.z, p3.x, p3.z, 0.05, lawn);
-    // Fences: the far end and both sides (the house is the near one). In world terms: local +z is away from the street.
-    const far = g.d * 0.5;
-    for (const [ax, az, bx2, bz2] of [[-hw, -hd, -hw, far], [hw, -hd, hw, far], [-hw, far, hw, far]]) {
-      const a = P(ax, az), bpt = P(bx2, bz2);
-      gb.addWall([a, bpt], 0, 1.3, 0x6a4f35);
-      const mx = (a.x + bpt.x) / 2, mz = (a.z + bpt.z) / 2, L = Math.hypot(bpt.x - a.x, bpt.z - a.z);
-      addStaticBox(sim.world, mx, at(mx, mz) + 0.6, mz, 0.06, 0.6, L / 2, GROUP.PROP, Math.atan2(bpt.x - a.x, bpt.z - a.z));
-    }
-  }
-  if (gb.vertexCount) {
-    const gm = new THREE.Mesh(gb.build(), vertexColorMaterial({ side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }));
-    liftMesh(gm, at, 0);
-    gm.name = 'gardens';
-    gm.receiveShadow = true;
-    out0.push(chunkMesh(gm, 250));
-  }
+  // The gardens are not drawn: no fences ("the backyard fences ... I think just get rid of them"), and the lawns, a shade off the
+  // ground's, were strips of colour across every block. What is in them (sheds, trees) is.
   const laid = layDrives(sim, graph, drives, paveOf, at);
   ctx.parked = laid.parked;
   ctx.driveStrips = laid.strips;
   const out = out0;
   if (laid.mesh) out.push(laid.mesh);
   liftBuilder(lit, litPieces, at);
+  ctx.signs = signs;
+  const signMesh = shopSigns(signs);
+  if (signMesh) out.push(signMesh);
   const litMesh = litWindows(lit);
   if (litMesh) out.push(litMesh);
   for (let q = 0; q < 4; q++) {
@@ -1732,16 +1793,13 @@ function buildFurniture(ctx, canal) {
   }
   ctx.pinches = pinches;
   if (canal) {
-    // Parapets each side of every bridge, stone, following the road over the hump.
+    // The bridges' parapets, solid: drawn as the top of each bridge's face (buildCanalBanks).
     for (const br of canal.bridges) {
-      const half = (CANAL_HALF + 3.5) / br.sin, edge = br.width * 0.5 + 0.5;
+      const half = (CANAL_W + 2.5) / br.sin, edge = br.width * 0.5 + 0.8;
       for (const side of [1, -1]) {
         for (let o = -half; o < half; o += 2) {
           const x = br.x + br.dx * (o + 1) - br.dz * edge * side, z = br.z + br.dz * (o + 1) + br.dx * edge * side;
-          const y = at(x, z), st = b.vertexCount, rot = Math.atan2(br.dx, br.dz);
-          b.addBox(0.5, 1.0, 2.05, x, 0.5, z, 0x8a8172, rot);
-          pieces.push([st, b.vertexCount, x, z, y]);
-          addStaticBox(W, x, y + 0.5, z, 0.25, 0.5, 1.02, GROUP.BUILDING, rot);
+          addStaticBox(W, x, at(x, z) + 0.45, z, 0.25, 0.45, 1.02, GROUP.BUILDING, Math.atan2(br.dx, br.dz));
         }
       }
     }
@@ -1750,17 +1808,17 @@ function buildFurniture(ctx, canal) {
     // chamber, white with black ends.
     for (const l of canal.locks) {
       const p = canal.line.at(l), rot = Math.atan2(p.dx, p.dz);
-      const bed = canal.waterAtS(l) - CANAL_DEEP;
+      const bed = Math.min(canal.towAt(l - LOCK_HALF), canal.towAt(l + LOCK_HALF)) - CANAL_D;
       for (const o of [-LOCK_HALF, LOCK_HALF]) {
         const x = p.x + p.dx * o, z = p.z + p.dz * o, top = canal.towAt(l + o) + 0.45, hgt = top - bed, st = b.vertexCount;
-        b.addBox(CANAL_HALF * 2, hgt, 0.7, x, hgt * 0.5, z, 0x3b2d20, rot);
-        b.addBox(CANAL_HALF * 2 + 0.1, 0.12, 0.8, x, hgt + 0.06, z, 0x6b5a45, rot);
+        b.addBox(CANAL_W * 2, hgt, 0.7, x, hgt * 0.5, z, 0x3b2d20, rot);
+        b.addBox(CANAL_W * 2 + 0.1, 0.12, 0.8, x, hgt + 0.06, z, 0x6b5a45, rot);
         b.addBox(0.08, hgt * 0.8, 0.74, x, hgt * 0.55, z, 0x1c150f, rot);
         pieces.push([st, b.vertexCount, x, z, bed]);
-        addStaticBox(W, x, bed + hgt * 0.5, z, CANAL_HALF, hgt * 0.5, 0.35, GROUP.BUILDING, rot);
+        addStaticBox(W, x, bed + hgt * 0.5, z, CANAL_W, hgt * 0.5, 0.35, GROUP.BUILDING, rot);
         const away = Math.sign(o);
         for (const side of [1, -1]) {
-          const bx = x - p.dz * (CANAL_HALF + 1.1) * side + p.dx * away * 2.4, bz = z + p.dx * (CANAL_HALF + 1.1) * side + p.dz * away * 2.4;
+          const bx = x - p.dz * (CANAL_W + 1.1) * side + p.dx * away * 2.4, bz = z + p.dx * (CANAL_W + 1.1) * side + p.dz * away * 2.4;
           const y = canal.towAt(l + o), sb = b.vertexCount;
           b.addBox(0.32, 0.32, 4.8, bx, 1.0, bz, 0xe9e9e4, rot);
           b.addBox(0.34, 0.34, 0.6, bx + p.dx * away * 2.1, 1.0, bz + p.dz * away * 2.1, 0x1b1b1b, rot);
@@ -1814,12 +1872,11 @@ function buildWater(ctx, canal) {
   if (canal) {
     // A strip per pound, so the water steps at the locks.
     for (const p of canal.pounds) {
-      // In runs, broken under each bridge: the water stops at the road, which goes over on its own fill.
+      // On under the bridges, which are drawn over it (buildCanalBanks); out a little past where it meets the banks.
       let rows2 = [];
       for (let s = p.wa; s <= p.wb; s += 4) {
         const q = canal.line.at(s);
-        if (onBridge(canal, q.x, q.z)) { if (rows2.length > 1) strip(rows2); rows2 = []; continue; }
-        rows2.push({ x: q.x, z: q.z, ax: -q.dz, az: q.dx, w: CANAL_HALF + 0.2, y: p.tow - WATER_DOWN });
+        rows2.push({ x: q.x, z: q.z, ax: -q.dz, az: q.dx, w: CANAL_HALF + 0.8, y: p.tow - WATER_DOWN });
       }
       if (rows2.length > 1) strip(rows2);
     }
@@ -1920,7 +1977,7 @@ function buildTrees(ctx) {
     const L = ctx.canal;
     for (let s = 0; s < L.length; s += 26) {
       if (rng() < 0.4) continue;
-      const p = L.at(s), off = CANAL_HALF + 5 + rand(rng, 0, 6);
+      const p = L.at(s), off = CANAL_W + 5 + rand(rng, 0, 6);
       addTreeT(ctx, b, pieces, p.x + p.dz * off * DRIVE_SIDE, p.z - p.dx * off * DRIVE_SIDE, rand(rng, 0.8, 1.1));
     }
   }
