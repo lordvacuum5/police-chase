@@ -10916,3 +10916,6 @@ and no head-on van; five police at most, two at the start and three along the ro
 *"On the daily challenge, there seems to be only one police car who spawns in ... spawn in behind me ... a little way behind me ... the current spawn one is good for today."* From 27 November (`_behindDue`): every 6 s, while fewer
 than three are within 220 m of you and fewer than five out, one on the route 70 m behind you going your way at nine tenths of your speed. Where you are on the route says when, so the same drive meets the same cars.
 `tests/dailyshort.js`, 30 November's (Haldon, 835 m): police within 220 m by the second, 2 1 1 1 0 0 0 0 1 1 1 1 1 1 2 2 2 2 3 3 ... to 5; the rig's driver wrecked at 43 s, 140 m from the end.
+
+*"I can't even see the car symbol"* (the police knowing your car, from two stars). It is an `<svg>`, which has no `hidden` property: setting one did nothing, and the attribute it started with kept it hidden for good. By the
+attribute now. Checked: hidden at no stars; at two stars on file and shown, 34 by 20 px at the top right of the stars panel.
