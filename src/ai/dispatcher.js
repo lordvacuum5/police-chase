@@ -150,6 +150,9 @@ const CONTACT_GAPS = [9, 9, 9, 10, 6, 3.5];
 const PIT_GAPS = [3, 3, 3, 6, 3.5, 2];
 /** Above this, m/s, a swipe rather than a PIT as a rule. */
 const SWIPE_ABOVE = 16;
+/** The short daily challenge (game/daily.js SHORT_FROM): five cars, nothing put across the road, something at you every this many s. */
+const SHORT_DAILY = { units: 5, pursue: 4, intercept: 1, pit: true, box: false };
+const SHORT_CONTACT_GAP = 7;
 
 /**
  * Seconds between any two things that come at the player -- a PIT, a rolling
@@ -162,13 +165,17 @@ const THINK_FAR = 100, THINK_DT = 0.034;
 
 export class Dispatcher {
   /** Seconds between any two things that come at the player: shorter in the daily challenge. */
-  get contactGap() { return this.game.daily ? DAILY_CONTACT_GAP : this.person ? CONTACT_GAPS[this.tier] : CONTACT_GAP; }
+  get contactGap() { return this.game.daily ? (this.game.daily.short ? SHORT_CONTACT_GAP : DAILY_CONTACT_GAP) : this.person ? CONTACT_GAPS[this.tier] : CONTACT_GAP; }
 
   /** After somebody playing, in an ordinary chase: see PERSON_TIER. */
   get person() { return !this.game.daily && !this.game.runner; }
 
   /** How many units of each role, at a wanted level. */
-  _rules(tier = this.tier) { return (this.person ? PERSON_TIER : TIER)[tier]; }
+  _rules(tier = this.tier) {
+    // The short daily: SHORT_UNITS police at most, after you and none waiting (game/daily.js).
+    if (this.game.daily && this.game.daily.short && tier > 0) return SHORT_DAILY;
+    return (this.person ? PERSON_TIER : TIER)[tier];
+  }
 
   constructor(game) {
     this.game = game;
@@ -600,7 +607,7 @@ export class Dispatcher {
     // instead of keeping thirty cars on a two-car call. Five stars reaches
     // PACK_CAP; nothing below it does -- tier four's ceiling is 17.
     const room = Math.max(want, this.game.vehicleLimit - 6);
-    const ceiling = this.tier > 0 ? Math.min(want + 3, PACK_CAP, room) : want;
+    const ceiling = this.tier > 0 && !(this.game.daily && this.game.daily.short) ? Math.min(want + 3, PACK_CAP, room) : want;
     const over = live.length - ceiling;
     if (over > 0 && this.trimTimer <= 0) {
       let pick = null, pickD = 0;
@@ -956,7 +963,7 @@ export class Dispatcher {
     // of a car about to turn off, a block is a block on the wrong road.
     const committed = typeof window !== 'undefined' && window.__oldBlockSite
       ? true : this.straightFor > BLOCK_COMMIT || !!this.game.daily;
-    if (this.tier >= (this.person ? 3 : 2) && k.seen && !this.blockUnit && !this.blockMates.length
+    if (this.tier >= (this.person ? 3 : 2) && k.seen && !this.blockUnit && !this.blockMates.length && !(this.game.daily && this.game.daily.short)
         && this.blockCooldown <= 0 && committed
         && this.contactCooldown <= 0 && Math.abs(target.forwardSpeed) > 12) {
       // The daily challenge's route is known, so there is no waiting to see which road it is on, and they
@@ -1018,7 +1025,7 @@ export class Dispatcher {
     // down a street somebody is about to turn out of -- so it wants a straight
     // run and speed, and it is the top of the force's response: four stars up,
     // one at a time, with a long cooldown between attempts.
-    if (this.tier >= 4 && k.seen && !this.rhinoUnit && this.rhinoCooldown <= 0
+    if (this.tier >= 4 && k.seen && !this.rhinoUnit && this.rhinoCooldown <= 0 && !(this.game.daily && this.game.daily.short)
         && this.contactCooldown <= 0
         && (this.straightFor > 3.2 || !!this.game.daily) && Math.abs(target.forwardSpeed) > 22) {
       // In the daily challenge, "a fair amount of head-on vehicles", and on a road it is known to be on.

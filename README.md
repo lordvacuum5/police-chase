@@ -10899,3 +10899,11 @@ Not tried between two machines. Older pages (no `ts`) are timed as before.
 *"They seem to be able to go like 110 miles an hour ... the max speed they should be able to go is like 70 at wanted level one, and then maybe at wanted level two, 90."* A top speed through everything they drive by
 (`Driver.topCap`): 31.3 and 40.2 m/s. `tests/stars.js` on the motorway, the car at up to 200 km/h, 45 s: the fastest any went, 69 and 89 mph (120 for both before, though that was the rig putting them down at your speed);
 at three stars 129.
+
+### The daily challenge, short: about half a minute, no clock, five police
+
+*"Can we make the daily challenge much shorter? ... remove the time limit because you're basically racing against the clock. I want no police roadblocks ... max 5 police cars ... every single daily challenge
+should only be 1 minute ... to make it more appealing to the wider public ... my dad had a go and he was like, 'Whoa, that's way too hard.'"* From 26 November (`SHORT_FROM`, daily.js): a route of 600-850 m
+(1,100-1,500), about 30-40 s at the pace the clock used to be set by (21-24 m/s); no clock to beat, the panel counting up, the table still the quickest; no roadblocks, the day's or the chase's, no rolling blocks
+and no head-on van; five police at most, two at the start and three along the route, and something at you every 7 s (3). Still five stars, with the helicopter. Today's table had runs on the long route before this went in.
+`tests/dailyshort.js`, Haldon: routes of 843, 835, 662, 836 m for the next days on it; today's, 710 m, no obstacles, at most 2 police at once, still running at 150 s without failing (the rig's driver stuck on the lanes, so no time for it).

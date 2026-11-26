@@ -65,6 +65,15 @@ const GATE_MISSED = 35;
 const OFF_ROUTE = 55;
 /** How long a route, m: about a minute of driving. */
 const ROUTE_MIN = 1100, ROUTE_MAX = 1500;
+/**
+ * From SHORT_FROM: "make the daily challenge much shorter ... remove the time limit ... no police roadblocks ... max 5 police cars to be
+ * chasing me ... it should only, every single daily challenge should only be 1 minute ... to make it more appealing to the wider public
+ * ... my dad had a go and he was like, 'Whoa, that's way too hard.'" A route of SHORT_ROUTE m, no clock, nothing put across the road,
+ * SHORT_UNITS police at most.
+ */
+export const SHORT_FROM = '2026-11-26';
+const SHORT_ROUTE = [600, 850];
+export const SHORT_UNITS = 5;
 /** pickRoute: the most a road's cost is multiplied by for a day (see there). */
 const ROUTE_JITTER = 5;
 /** The first obstacle this far along, then one every OBSTACLE_EVERY, none in the last OBSTACLE_END. */
@@ -147,13 +156,14 @@ export function pickRoute(game, day, mapId, mode = 'new') {
   const weight = day > '2026-11-20' && mode !== 'old'
     ? (e) => 1 + (ROUTE_JITTER - 1) * (hash(`${day}:${e.id}`) % 1000) / 1000 : null;
   const rng = makeRng(hash(`route:${day}:${mapId}`));
+  const [lo, hi] = day >= SHORT_FROM && mode !== 'old' ? SHORT_ROUTE : [ROUTE_MIN, ROUTE_MAX];
   const ok = (n) => n.edges.length > 0 && !n.quarry && n.edges.some((id) => !g.edges[id].cut && g.edges[id].width >= 7);
   const nodes = g.nodes.filter(ok);
   for (let tries = 0; tries < 400; tries++) {
     const a = nodes[Math.floor(rng() * nodes.length) % nodes.length];
     const b = nodes[Math.floor(rng() * nodes.length) % nodes.length];
     const straight = Math.hypot(b.x - a.x, b.z - a.z);
-    if (straight < ROUTE_MIN * 0.6 || straight > ROUTE_MAX) continue;
+    if (straight < lo * 0.6 || straight > hi) continue;
     const path = g.route(a.id, b.id, Infinity, weight && { weight });
     if (!path || path.length < 3) continue;
     let len = 0;
@@ -162,7 +172,7 @@ export function pickRoute(game, day, mapId, mode = 'new') {
       if (!e || e.cut || e.width < 7) { len = -1; break; }
       len += e.length;
     }
-    if (len < ROUTE_MIN || len > ROUTE_MAX) continue;
+    if (len < lo || len > hi) continue;
     const pts = g.pathToPoints(path, 0, true);
     if (pts.length < 4) continue;
     // Every point needs a road under it to place a car at the start.
@@ -324,6 +334,8 @@ export class DailyChallenge {
     this.game = game;
     this.plan = dailyPlan(day);
     this.day = day;
+    /** The short daily: see SHORT_FROM. */
+    this.short = day >= SHORT_FROM;
     this.route = null;
     this.state = 'ready';           // ready | running | won | failed
     this.time = 0;
@@ -372,6 +384,7 @@ export class DailyChallenge {
       this.obstacles.push({ s: at, kind: 'full', side: 1, block: null, done: false });
     }
     this.type = this.plan.type || 'escape';
+    if (this.short) this.obstacles = [];
     if (this.type === 'rescue') {
       this.obstacles = [];
       this.gates = [];
@@ -517,11 +530,13 @@ export class DailyChallenge {
     };
     this.spawnPlan = [];
     const st = this.route.start.position;
-    for (let i = 0; i < SPAWN_START; i++) {
+    // Short: SHORT_UNITS in all, two at the start and the rest spread along.
+    const atStart = this.short ? 2 : SPAWN_START, every = this.short ? Math.max(SPAWN_EVERY, (this.route.length - 80) / (SHORT_UNITS - 1)) : SPAWN_EVERY;
+    for (let i = 0; i < atStart; i++) {
       const u = unitAt(near(st.x, st.z, 90, 220));
       if (u) this.spawnPlan.push(Object.assign({ s: 0 }, u));
     }
-    for (let s = SPAWN_EVERY; s < this.route.length - 80; s += SPAWN_EVERY) {
+    for (let s = every; s < this.route.length - 80 && this.spawnPlan.length < (this.short ? SHORT_UNITS : Infinity); s += every) {
       const q = this._siteAt(Math.min(this.route.length - 20, s + SPAWN_AHEAD));
       const u = unitAt(near(q.x, q.z, SPAWN_OFF * 0.5, SPAWN_OFF * 1.5));
       if (u) this.spawnPlan.push(Object.assign({ s }, u));
@@ -832,7 +847,7 @@ export class DailyChallenge {
     if (g.drowned) { this._fail('flooded'); return; }
     if ((p.damage || 0) >= 0.999 || p.disabled) { this._fail('wrecked'); return; }
     if (g.outcome === 'busted') { this._fail('busted'); return; }
-    if (this.state === 'running' && this.time > this.limit) { this._fail('time'); return; }
+    if (this.state === 'running' && !this.short && this.time > this.limit) { this._fail('time'); return; }
     const end = this.route.pts[this.route.pts.length - 1];
     // Driven there: running, and for longer than the route could be driven at 100 m/s.
     // And every gate driven through: "otherwise it won't allow you to [finish]."
@@ -861,7 +876,7 @@ export class DailyChallenge {
       if (r && p.canSee && p.canSee(r.vehicle)) this.watched += dt;
       if (this.watched >= AIR_NEED) { this._win(); return; }
     }
-    if (this.time > this.limit) { this._fail('time'); return; }
+    if (!this.short && this.time > this.limit) { this._fail('time'); return; }
     this._paint();
   }
 
@@ -876,7 +891,7 @@ export class DailyChallenge {
       if (g.hud) g.hud.toast('AIRCRAFT DOWN: FROM THE TOP');
       return;
     }
-    if (this.time > this.limit) { this._fail('time'); return; }
+    if (!this.short && this.time > this.limit) { this._fail('time'); return; }
     this._paint();
   }
 
@@ -1085,9 +1100,10 @@ export class DailyChallenge {
   _paint() {
     if (!this.el || !this.route) return;
     this.el.hidden = false;
-    const left = Math.max(0, this.limit - this.time);
+    // With no clock to beat, the time it is taking: the table is the quickest.
+    const left = this.short ? this.time : Math.max(0, this.limit - this.time);
     const togo = Math.max(0, this.route.length - this.progress);
-    const warn = left < 10 && this.state === 'running';
+    const warn = !this.short && left < 10 && this.state === 'running';
     const what = this.rescue ? this.rescue.say : this.type === 'stop' ? 'arrest the getaway car'
       : this.type === 'air' ? `in sight ${Math.min(AIR_NEED, this.watched || 0).toFixed(1)} of ${AIR_NEED}s`
         : `${(togo / 1000).toFixed(2)} km to go`;

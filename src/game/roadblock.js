@@ -52,7 +52,7 @@ export class RoadblockManager {
   }
 
   /** Minimum heat for roadblocks to be part of the response at all. */
-  get allowed() { return this.game.heat.tier >= 3; }
+  get allowed() { return this.game.heat.tier >= 3 && !(this.game.daily && this.game.daily.short); }
 
   /**
    * Whether a *new* block may go in. They have to know where you are: siting
