@@ -20,6 +20,7 @@ import { GROUP, groups, addStaticBox, RAPIER, raycast } from '../physics/world.j
 import { rand, randInt, clamp, lerp, TAU } from '../util/math.js';
 import { WORLD_HALF, GRID_N, CELL, MeshBuilder, vertexColorMaterial } from './common.js';
 import { HILL_SINK } from './terrain.js';
+import { groundDetail } from './groundtex.js';
 import { spline, segX, pointOn, roadDistance, inVillage } from './countrygen.js';
 
 /** Bits in the clear mask. */
@@ -1169,6 +1170,9 @@ export function railGround(rail) {
 /** The track, drawn: ballast, sleepers and rails, and at the crossings the rails let into the road. */
 export function buildRailTrack(ctx, rail) {
   const b = new MeshBuilder();
+  // The verges either side in a mesh of their own, with the grass's grain: "the bit of green either side ... hasn't been textured
+  // at all. So it still looks really old and horrible." One flat colour, beside the grained fields.
+  const vb = new MeshBuilder();
   const cross = rail.cross;
   // Every 3 m along the line, with its distance from the start.
   const L = rail.sAt[rail.sAt.length - 1];
@@ -1186,7 +1190,7 @@ export function buildRailTrack(ctx, rail) {
       // and stood over it on the other -- "lots of different levels and I
       // keep on going through the floor".
       for (let o = -BED_HALF + 1; o < BED_HALF; o += 2) {
-        b.addRibbon(run, 2.02, 0, Math.abs(o) < 2.5 ? 0x6f685e : verge, o);
+        (Math.abs(o) < 2.5 ? b : vb).addRibbon(run, 2.02, 0, Math.abs(o) < 2.5 ? 0x6f685e : verge, o);
       }
       // Rails and sleepers barely proud of it, where the wheels are: the
       // ballast stood 0.3 m up on walls, a step the cars drove through.
@@ -1221,14 +1225,21 @@ export function buildRailTrack(ctx, rail) {
     b.addRibbon(pts, 3.0, 0.08, 0x2b2b2b);
     for (const side of [-1, 1]) b.addRibbon(pts, 0.09, 0.1, 0xa4a6a8, side * GAUGE * 0.5);
   }
-  const mesh = new THREE.Mesh(b.build(), vertexColorMaterial({ polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6 }));
-  const p = mesh.geometry.attributes.position;
-  for (let k = 0; k < p.count; k++) p.setY(k, p.getY(k) + ctx.at(p.getX(k), p.getZ(k)) + 0.04);
-  p.needsUpdate = true;
-  mesh.geometry.computeBoundingSphere();
-  mesh.receiveShadow = true;
-  mesh.name = 'railway';
-  return mesh;
+  const group = new THREE.Group();
+  group.name = 'railway';
+  for (const [bld, grain] of [[vb, 'grass'], [b, null]]) {
+    if (!bld.vertexCount) continue;
+    const mesh = new THREE.Mesh(bld.build(), vertexColorMaterial({ polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6 }));
+    const p = mesh.geometry.attributes.position;
+    for (let k = 0; k < p.count; k++) p.setY(k, p.getY(k) + ctx.at(p.getX(k), p.getZ(k)) + 0.04);
+    p.needsUpdate = true;
+    mesh.geometry.computeBoundingSphere();
+    mesh.receiveShadow = true;
+    mesh.name = 'railway';
+    if (grain) groundDetail(mesh, grain);
+    group.add(mesh);
+  }
+  return group;
 }
 
 /** A point `s` along the line with its heading -- carried on straight past either end. */

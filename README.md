@@ -10971,3 +10971,19 @@ on Haldon one looping round a field by a stopped civilian car. No traffic stuck 
 - `tests/citychase.js` 180 s: one unit circling 450 m off, one far traffic car, nothing fell. All maps, today's daily, 27 November's (Air Rescue: every place reachable for 30 days) and an escape day on it ran.
 
 27 November's daily is on Haldon whatever it fell on: *"It can't appear on either the two new maps. The only map it can appear on is the countryside map tomorrow."* It had fallen on Wexbury.
+
+### Wexbury after a first drive: the canal level, solid locks, knock-over bollards and benches, fuller streets
+
+- Canal: *"the towpath's really bumpy, and the actual canal's also really uneven ... if it's over a road, I think it would look very weird"*. Cut into the 4 m grid it had zigzag edges a cell wide and a towpath half on
+  the bank's lip. Now an exact shape over the grid (`canalHeight`): bed, stone walls, coping and banks level to the centimetre, drawn as such (`buildCanalStone`); at each bridge a stone face with the dark of the arch.
+- Locks: *"the actual locks themselves need to be solid"*. Gates wall to wall and bed to over the coping, solid, balance beams on the banks; the water steps at the upper gate (the chamber is the lower pound's), not half way along.
+- Bollards at the width restrictions, and benches (a new street prop: slats, back, iron ends) round the market cross, on the square and on the Beacon, all knock over (game/streetprops.js, `map.props`). The square:
+  36 benches, 18 bins, 16 lamps, 16 trees. *"the square in the centre needs like loads of benches and bins"*.
+- Fuller streets: 1,480 buildings to 1,926. Three causes, each counted (`stats.whyNot`): houses laid along each road piece, and the bends are pieces of 2-5 m (now along straight runs, `runsOf`); each house kept the
+  next in a terrace out, by its diagonal (now by its width); the back alleys ran through the backs of the terraces at 34 m (now half way between the rings). Back gardens behind the houses, fenced, a shed in a third.
+- Grass through the pavement on the hills: the ground drawn is let down under pavements as under roads.
+- The railway's verges, on Haldon too, have the grass's grain: *"the bit of green either side ... hasn't been textured at all"*.
+- The Beacon: *"some very weird movement ... I did hit an invisible wall ... going down"*. Sides 36% (r 270, h 46, relief x1.15); now r 330, h 40, relief x1.0. `tests/hillcharge.js`, the player's car at 110 km/h, 37 slopes:
+  stopped by the ground 0, thrown back 2 (the police car at 150 before: 0 and 8 of 40).
+- Judder: `tests/shake.js`, the game's driver at 60 km/h, vertical acceleration rms: Wexbury's streets 1.01 m/s2 with the speed bumps, 0.46 without; Ashfield's 0.06, Haldon's lanes 0.79. A 3x3 smoothing of the
+  ground changed nothing (0.46) and is not in. The bumps lower and longer (0.08 m over 4 m) and 39 not 92.

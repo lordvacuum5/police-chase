@@ -42,7 +42,15 @@ const KINDS = {
     mass: 18, radius: 0.11, height: 2.3, bite: 0.2,
     spacing: 55, chance: 0.7, out: 1.9,
   },
+  // Only where a map puts one (`map.props`): "make them look like benches ... make sure you can like push them around".
+  // Long and shallow: `hx` and `hz` are its half length and half depth, `radius` what the car's sweep is given.
+  bench: {
+    mass: 55, radius: 0.95, hx: 0.95, hz: 0.33, height: 0.85, bite: 0.12,
+    spacing: 0, chance: 0, out: 0,
+  },
 };
+const halfX = (def) => def.hx || def.radius;
+const halfZ = (def) => def.hz || def.radius;
 
 /** Roads that get a kerb worth furnishing. */
 const FURNISHED = new Set(['street', 'avenue', 'dual', 'lane']);
@@ -94,6 +102,7 @@ export class StreetProps {
       if (to - from < 12) continue;
 
       for (const [key, def] of Object.entries(KINDS)) {
+        if (!def.spacing) continue;
         let side = rng() < 0.5 ? 1 : -1;
         for (let s = from + rand(rng, 0, def.spacing); s < to; s += def.spacing) {
           if (rng() > def.chance) continue;
@@ -109,17 +118,21 @@ export class StreetProps {
         }
       }
     }
+    // And what the map put down itself: Wexbury's bollards at its width restrictions (in the road, so not refused for it), the
+    // benches on the Beacon and the market square.
+    const map = this.game.world && this.game.world.__map;
+    for (const q of (map && map.props) || []) if (KINDS[q.kind]) this._add(q.kind, KINDS[q.kind], q.x, q.z, q.rot, true);
   }
 
-  _add(kind, def, x, z, rot) {
+  _add(kind, def, x, z, rot, placed = false) {
     // Never in the carriageway, and never inside something solid.
-    if (this.game.graph.overlapsRoad(x, z, def.radius * 2, def.radius * 2, 0, 0.4)) return;
+    if (!placed && this.game.graph.overlapsRoad(x, z, def.radius * 2, def.radius * 2, 0, 0.4)) return;
     // Nor across the way into the garage.
     if (this.game.garage && this.game.garage.covers(x, z, 1.5)) return;
     // Nor where the map keeps clear: Ashfield's river ("I saw a street light in the water", beside a bridge
     // where the footway's line ran out over the channel), Haldon's railway and quarry.
     const map = this.game.world && this.game.world.__map;
-    if (map && map.clearAt && map.clearAt(x, z)) return;
+    if (!placed && map && map.clearAt && map.clearAt(x, z)) return;
 
     // Street furniture stands on the footway, which is a kerb height above the
     // road. Planting it at zero buries a bollard to its knees.
@@ -133,7 +146,7 @@ export class StreetProps {
     };
     p.collider = addStaticBox(
       this.game.world, x, base + def.height * 0.5, z,
-      def.radius, def.height * 0.5, def.radius, GROUP.STREET, rot,
+      halfX(def), def.height * 0.5, halfZ(def), GROUP.STREET, rot,
     );
     this.props.push(p);
 
@@ -322,8 +335,8 @@ export class StreetProps {
         .setAngularDamping(0.7)
         .setCcdEnabled(true),
     );
-    const vol = def.radius * 2 * def.height * def.radius * 2;
-    const col = RAPIER.ColliderDesc.cuboid(def.radius, def.height * 0.5, def.radius)
+    const vol = halfX(def) * 2 * def.height * halfZ(def) * 2;
+    const col = RAPIER.ColliderDesc.cuboid(halfX(def), def.height * 0.5, halfZ(def))
       .setDensity(Math.max(4, def.mass / Math.max(0.02, vol)))
       .setFriction(0.7)
       .setRestitution(0.05)
@@ -405,7 +418,7 @@ export class StreetProps {
       if (p.onUp) p.onUp(p);
       p.collider = addStaticBox(
         this.game.world, p.x, (p.base || 0) + p.def.height * 0.5, p.z,
-        p.def.radius, p.def.height * 0.5, p.def.radius, GROUP.STREET, p.rot,
+        halfX(p.def), p.def.height * 0.5, halfZ(p.def), GROUP.STREET, p.rot,
       );
       const entry = this.byKind.get(p.kind);
       if (entry) {
@@ -440,6 +453,15 @@ function geometryFor(kind, def) {
     b.addTaperedBox(0.26, def.height * 0.90, 0.26, 0, def.height * 0.45, 0, 0x2c3138, 0.82, 0.82);
     b.addBox(0.23, 0.07, 0.23, 0, def.height * 0.94, 0, 0xc9ccd1);
     b.addBox(0.24, 0.05, 0.05, 0, def.height * 0.62, 0.11, 0xd6d9dd);
+  } else if (kind === 'bench') {
+    // Facing +z: slatted seat, a back behind it, cast-iron ends.
+    for (const z of [-0.18, -0.02, 0.14]) b.addBox(1.85, 0.05, 0.13, 0, 0.45, z, 0x7a5532);
+    for (const y of [0.62, 0.78]) b.addBox(1.85, 0.11, 0.04, 0, y, -0.27, 0x7a5532);
+    for (const x of [-0.85, 0.85]) {
+      b.addBox(0.07, 0.45, 0.06, x, 0.225, 0.16, 0x23272b);
+      b.addBox(0.07, 0.85, 0.06, x, 0.425, -0.26, 0x23272b);
+      b.addBox(0.07, 0.06, 0.48, x, 0.43, -0.04, 0x23272b);
+    }
   } else if (kind === 'bin') {
     b.addTaperedBox(0.52, def.height * 0.86, 0.44, 0, def.height * 0.43, 0, 0x2f3a33, 1.06, 1.06);
     b.addBox(0.58, 0.07, 0.50, 0, def.height * 0.89, 0, 0x22282a);
