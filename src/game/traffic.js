@@ -46,6 +46,8 @@ const TRAFFIC_COUNT = 17;
  * traffic", "maybe just have quite a lot less traffic on multiplayer".
  */
 const CROWD_R = 70, CROWD_MAX = 5, MP_SHARE = 0.5;
+/** A traffic car waits this long, s, behind a car stopped against its nose before trying its own way round (Traffic._drive). */
+const WAIT_BLOCKED = 8;
 const TRAFFIC_NEAR = 70;
 /** As near on a map with traffic out to the fog (Ashfield City), m. */
 const CITY_NEAR = 130;
@@ -715,13 +717,34 @@ export class Traffic {
     // for scenery and other cars to dodge, which a car keeping to its lane at
     // the limit does not need, and it was the dearest thing a traffic car did.
     d.holdBehind(d.carInWay(g.vehicles, 45, g.world.__map && g.world.__map.movers), dt);
-    v.setControls(d.followPath(dt, cap));
+    // Nose to nose with a car stopped across it (one that hit it, a police car parked askew): wait, on the handbrake, rather
+    // than the driver's unstick -- which reversed, came forward, reversed: "a police car just hit a traffic vehicle ... and
+    // then it kept on backing up." After WAIT_BLOCKED it may find its own way round as before.
+    const blocker = v.speed < 1.5 && this._blockedBy(v);
+    c.waitFor = blocker ? (c.waitFor || 0) + dt : 0;
+    if (blocker && c.waitFor < WAIT_BLOCKED) {
+      d.stuckTimer = 0;
+      d.reverseTimer = 0;
+      v.setControls({ throttle: 0, brake: 0, steer: 0, handbrake: 1 });
+    } else v.setControls(d.followPath(dt, cap));
 
     c.stuckFor = v.speed < 0.5 && c.pullFor <= 0 && !d.heldBy ? c.stuckFor + dt : 0;
     if (v.grounded >= 4 && v.up.y > 0.9) {
       const up = v.position.y - g.sim.heightAt(v.position.x, v.position.z);
       if (Math.abs(up - c.rideY) < 0.3) c.rideY += (up - c.rideY) * 0.05;
     }
+  }
+
+  /** A car within a couple of metres of this one's nose, ahead of it: what it is waiting on, or null. */
+  _blockedBy(v) {
+    for (const o of this.game.vehicles) {
+      if (o === v || o.isAircraft || o.removed) continue;
+      const dx = o.position.x - v.position.x, dz = o.position.z - v.position.z, d = Math.hypot(dx, dz);
+      const reach = (v.spec.dims.l + Math.max(o.spec.dims.l, o.spec.dims.w)) * 0.5 + 2.2;
+      if (d > reach || d < 1e-3) continue;
+      if ((dx * v.forward.x + dz * v.forward.z) / d > 0.45) return o;
+    }
+    return null;
   }
 
   /**
