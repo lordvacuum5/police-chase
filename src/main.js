@@ -411,7 +411,10 @@ class Game {
     await frame();
     // The world's size first: everything the map builds is sized from it (world/common.js).
     setWorldSize(this.mapDef.half || 1000);
+    const tBuild = performance.now();
     const built = this.mapDef.build(this.sim, this.scene, this.mapDef.seed || 20260822);
+    // How long the load took, by part, for the rigs: "the American map is much worse".
+    this.loadTimes = { build: Math.round(performance.now() - tBuild) };
     this.graph = built.graph;
     this.sim.surfaceAt = built.surfaceAt;
     // Raised decks' colliders (Ashfield City): a wheel on one is on road (Vehicle).
@@ -429,7 +432,7 @@ class Game {
     this.world.__blocks = null;
     // The local planner's list of every building and tree box, made now rather
     // than the first time a unit needs it, which is in the middle of a chase.
-    warmLocalPlanner(this);
+    { const t = performance.now(); warmLocalPlanner(this); this.loadTimes.planner = Math.round(performance.now() - t); }
     // The same for the long-range planner: its first plan cost 33 ms against 2.4 ms
     // after, a dropped frame on whichever moment first had a unit off the road.
     {

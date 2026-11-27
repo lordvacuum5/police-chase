@@ -337,17 +337,18 @@ export function buildHeightGrid(base, { half = 1000, graph = null, flatten = [],
   let bank = BANK_GRADE;
   try { const r = sessionStorage.getItem('pc.bankGrade'); if (r !== null) bank = +r; } catch (e) { /* none */ }
   const d1 = bank * H_STEP, d2 = bank * H_STEP * Math.SQRT2;
-  const NB = [[-1, 0, d1], [0, -1, d1], [-1, -1, d2], [1, -1, d2]];
+  // The four neighbours already swept, unrolled: as a list unpacked for every cell it was 13 million unpackings on Ashfield, a good
+  // part of the map's build ("the American map is much worse", loading). The same order, the same result.
   const hold = (i, j, sgn) => {
-    const k = idx(i, j);
+    const k = j * n + i;
     if (pinned[k]) return;
-    let h = H[k];
-    for (const [di, dj, d] of NB) {
-      const ii = i + di * sgn, jj = j + dj * sgn;
-      if (ii < 0 || jj < 0 || ii >= n || jj >= n) continue;
-      const o = H[idx(ii, jj)];
-      if (h > o + d) h = o + d;
-      else if (h < o - d) h = o - d;
+    let h = H[k], o;
+    const i1 = i - sgn, j1 = j - sgn, i2 = i + sgn;
+    if (i1 >= 0 && i1 < n) { o = H[j * n + i1]; if (h > o + d1) h = o + d1; else if (h < o - d1) h = o - d1; }
+    if (j1 >= 0 && j1 < n) {
+      o = H[j1 * n + i]; if (h > o + d1) h = o + d1; else if (h < o - d1) h = o - d1;
+      if (i1 >= 0 && i1 < n) { o = H[j1 * n + i1]; if (h > o + d2) h = o + d2; else if (h < o - d2) h = o - d2; }
+      if (i2 >= 0 && i2 < n) { o = H[j1 * n + i2]; if (h > o + d2) h = o + d2; else if (h < o - d2) h = o - d2; }
     }
     H[k] = h;
   };

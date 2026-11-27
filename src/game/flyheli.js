@@ -294,8 +294,9 @@ const CRASH_SPEED = 14;
  * SLIDE_MAX across the ground, it is down. Flat and over SLIDE_FROM, "I want it almost to
  * slide along the ground", slowing at SLIDE_DRAG m/s^2, and anything it meets ends it.
  */
-const LAND_TILT = Math.cos(25 * Math.PI / 180);
-const LAND_CRAWL = 3;
+// 32 degrees and 4.5 m/s, from 25 and 3: "in general for the helicopter. It needs to be a little bit stronger when I'm touching down."
+const LAND_TILT = Math.cos(32 * Math.PI / 180);
+const LAND_CRAWL = 4.5;
 const SLIDE_MAX = 33;
 const SLIDE_FROM = 4;
 const SLIDE_DRAG = 8;

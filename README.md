@@ -11037,3 +11037,13 @@ deeper, into a gorge 6 m deep. Through the ford: 69 km/h in, 34 out, never flood
 - *"If I resprayed it back to the original colour, they still didn't recognise me, and the car symbol didn't come back."* A respray took the car off file. The file is kept now; it is known only while
   the colour matches, so back to the colour on file it is known again (checked: on file at 3, a respray not known, back to the original known at 3).
 - Found, not changed: Wexbury takes 16 s to build in the test pane (ground drawn 4 s, houses 6 s, trees 3 s).
+
+### Gentler helicopter landings; the map builds timed, and the height grid faster
+
+*"It says you touched down too hard, but it didn't break my landers. It needs to be a bit more lenient ... in general for the helicopter. It needs to be a little bit stronger when I'm touching down."*
+Air Rescue's hardest touch that counts 3 to 5 m/s (`GENTLE`); the aircraft comes down whole tilted up to 32 degrees, not 25, and at a crawl up to 4.5 m/s, not 3 (`LAND_TILT`, `LAND_CRAWL`).
+
+Loading: *"the American map is much worse"*. The build is timed now (`game.loadTimes`, the map's `marks`). Ashfield in the test pane, 21 s: roads 1.1, height grid 3.2, surfaces 1.5, terrain 1.2, road meshes 1.4,
+lifting them 1.5, cutting them into cells 1.2, raised decks 2.8, buildings 4.8, trees 1.1. Wexbury 16 s. The grid's bank sweep unpacked a list of neighbours for every cell, six times over (13 million): unrolled,
+3.4 s to 2.2 s, the ground identical (sum of 5,700 heights the same to 3 places). The decks' cover test with segment boxes: 2.8 to 2.6. The rest of the decks' 2.8 s is not in the parts timed (collider 0.04,
+cover 0.15, lift 0.45): to find next.

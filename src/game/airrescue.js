@@ -13,7 +13,8 @@ import { SKID, ENDURANCE } from './flyheli.js';
 export const BOX = 18;
 const BOX_H = 9;
 const HOLD = 3;
-export const GENTLE = 3;
+// 5, not 3: "it says you touched down too hard, but it didn't break my landers. It needs to be a bit more lenient".
+export const GENTLE = 5;
 /** The clock: m/s over the ground it allows, and s for each landing and for the start. */
 const PACE = 27;
 const PER_LANDING = 22;

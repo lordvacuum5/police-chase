@@ -157,6 +157,7 @@ function cityRelief(half) {
 // ---------------------------------------------------------------- the build
 
 export function buildCity(sim, scene, seed = 20260822) {
+  const T0 = performance.now(), TM = {};
   const rng = makeRng(seed);
   const graph = new RoadGraph(48);
   graph.exactCells = true;
@@ -165,6 +166,7 @@ export function buildCity(sim, scene, seed = 20260822) {
   // The ground before the roads shape it: what the raised roads' clearances are checked against while laid.
   ctx.base = cityRelief(WORLD_HALF);
 
+  TM.roads = performance.now();
   // --- roads ---------------------------------------------------------
   const grid = buildStreets(ctx);
   buildDiagonals(ctx, grid);
@@ -212,6 +214,7 @@ export function buildCity(sim, scene, seed = 20260822) {
   markBridges(ctx);
   nameRoads(graph);
 
+  TM.ground = performance.now();
   // --- ground --------------------------------------------------------
   const base = ctx.base;
   // Downtown is level already (cityRelief): a flatten disc round it filled the river in where they met.
@@ -223,6 +226,7 @@ export function buildCity(sim, scene, seed = 20260822) {
   }
   // Nor the ground under a raised road: it is the ground, and the road is up on its deck.
   const skipClaim = (e, x, z) => e.elevated || (e.bridge && inChannel(x, z, 6));
+  TM.grid = performance.now();
   const hgrid = buildHeightGrid(base, { half: WORLD_HALF, graph, flatten, skipClaim });
   ctx.grid = hgrid;
   // The bridges' decks, level from bank to bank; the height of anything is the deck where there is one.
@@ -262,10 +266,12 @@ export function buildCity(sim, scene, seed = 20260822) {
   addHeightfield(sim.world, hgrid);
   // The raised roads' decks, now the ground is known; and every junction's height, so a car asking for its
   // road is told the one at its own level (RoadGraph.levelOn, nearestNode).
+  TM.decks = performance.now();
   computeDecks(ctx, hgrid);
   graph.levelGround = at;
   for (const n of graph.nodes) if (n.y === undefined) n.y = at(n.x, n.z);
 
+  TM.surfaces = performance.now();
   // --- surfaces ------------------------------------------------------
   paintPavements(ctx);
   rasteriseRoads(graph, surface);
@@ -299,12 +305,16 @@ export function buildCity(sim, scene, seed = 20260822) {
   // --- visuals -------------------------------------------------------
   const meshes = [];
   buildGround(ctx);          // the plate under it all and the wall at the edge, not the flat mesh
+  TM.terrain = performance.now();
   meshes.push(...buildTerrain(ctx, hgrid));
+  TM.roadMeshes = performance.now();
   const [tarmac, markings, kerbs, wear] = buildRoadMeshes(ctx);
+  TM.lift = performance.now();
   const lifted = liftRoads(ctx, [tarmac, markings, kerbs]);
   // The kerbs in cells: one mesh of them was 77,000 triangles drawn wherever you looked.
   // All in cells: one mesh each, the roads were 58,000 triangles drawn wherever you looked.
   meshes.push(trueDepth(chunkMesh(lifted[0], 300), DRAW_ORDER.tarmac), chunkMesh(lifted[1], 300), trueDepth(chunkMesh(lifted[2], 300), DRAW_ORDER.tarmac + 0.3));
+  TM.chunkDone = performance.now();
   if (wear) {
     liftMesh(wear, at, LIFT);
     // Over the tarmac's true depth (trueDepth), not its pulled one: more, and it was drawn over tyres.
@@ -312,16 +322,25 @@ export function buildCity(sim, scene, seed = 20260822) {
     wear.material.polygonOffsetUnits = -2;
     meshes.push(wear.geometry.index ? wear : chunkMesh(wear, 300));
   }
+  TM.pavements = performance.now();
   meshes.push(buildPavements(ctx));
+  TM.bridges = performance.now();
   meshes.push(...buildBridges(ctx));
+  TM.decksMesh = performance.now();
   meshes.push(...buildDecks(ctx));
+  TM.carpark = performance.now();
   meshes.push(...buildCarPark(ctx));
+  TM.clutter = performance.now();
   meshes.push(...buildAlleyClutter(ctx));
   const water = buildWater();
   meshes.push(water);
+  TM.docks = performance.now();
   meshes.push(...buildDocks(ctx));
+  TM.buildings = performance.now();
   meshes.push(...buildBuildings(ctx, roundabout));
+  TM.trees = performance.now();
   meshes.push(buildTrees(ctx));
+  TM.end = performance.now();
   for (const m of meshes) if (m) scene.add(m);
 
   return {
@@ -333,6 +352,8 @@ export function buildCity(sim, scene, seed = 20260822) {
     relief: hgrid.max + 4,
     meshes,
     roundabout,
+    // Where the build's time goes (tests/loadtime.js).
+    marks: Object.fromEntries(Object.entries(TM).map(([k, v]) => [k, Math.round(v - T0)])), deckT: ctx.deckT,
     bounds: WORLD_HALF,
     parked: ctx.parked || [],
     driveStrips: ctx.driveStrips || [],
@@ -1411,10 +1432,13 @@ function buildDecks(ctx) {
   const norm = (x, z) => { const l = Math.hypot(x, z) || 1; return { x: x / l, z: z / l }; };
   const deckRGB = new THREE.Color(DECK).toArray(), slabRGB = new THREE.Color(SLAB).toArray();
   const lift = (b, from, fn) => {
+    const t0 = performance.now();
     for (let k = from; k < b.pos.length / 3; k++) b.pos[k * 3 + 1] += fn(b.pos[k * 3], b.pos[k * 3 + 2]);
+    ctx.deckT.lift += performance.now() - t0;
   };
   ctx.decks = new Set();
-  const colliderFrom = (b, from, group) => {
+  const DT = ctx.deckT = { collider: 0, free: 0, lift: 0 };
+  const colliderFrom0 = (b, from, group) => {
     const n = b.pos.length / 3 - from;
     if (n < 3) return null;
     const v = new Float32Array(b.pos.slice(from * 3));
@@ -1431,6 +1455,7 @@ function buildDecks(ctx) {
     else desc.setFriction(0.9);
     return W.createCollider(desc);
   };
+  const colliderFrom = (b, from, group) => { const t = performance.now(); const r = colliderFrom0(b, from, group); DT.collider += performance.now() - t; return r; };
   // Is (x, z), on the edge of `e`, out on another raised road's deck at the same height? The wall follows the outside
   // of all the decks together, so the edge of one lying on another has none. Asked of every other raised road: the
   // wall was pieced together from what each knew of the roads at its own ends, and where a slip road joins it was
@@ -1451,15 +1476,25 @@ function buildDecks(ctx) {
     }
     for (const { o, x0, x1, z0, z1 } of list) {
       if (x < x0 || x > x1 || z < z0 || z > z1) continue;
+      // Each segment's own box first: every point a metre apart along every deck, against every segment of every deck near it, was
+      // most of 2.8 s of the map's build ("the American map is much worse", loading).
+      const r = o.width * 0.5 + 0.28;
+      if (!o._segBox) o._segBox = o.segs.map((sg) => [Math.min(sg.a.x, sg.b.x) - r, Math.max(sg.a.x, sg.b.x) + r, Math.min(sg.a.z, sg.b.z) - r, Math.max(sg.a.z, sg.b.z) + r]);
       let d = Infinity;
-      for (const sg of o.segs) d = Math.min(d, closestOnSegment(x, z, sg.a.x, sg.a.z, sg.b.x, sg.b.z).dist);
-      if (d > o.width * 0.5 + 0.28) continue;
+      for (let k = 0; k < o.segs.length; k++) {
+        const bb = o._segBox[k];
+        if (x < bb[0] || x > bb[1] || z < bb[2] || z > bb[3]) continue;
+        const sg = o.segs[k];
+        d = Math.min(d, closestOnSegment(x, z, sg.a.x, sg.a.z, sg.b.x, sg.b.z).dist);
+      }
+      if (d > r) continue;
       if (Math.abs(graph.levelOn(o, x, z) - graph.levelOn(e, x, z)) < 1.5) return true;
     }
     return false;
   };
   // Where along `e`, in metres, its edge on side `sg` is an outside edge: [[d0, d1], ...], to 5 cm.
-  const freeRuns = (e, sg, from, to) => {
+  const freeRuns = (e, sg, from, to) => { const t = performance.now(); const r = freeRuns0(e, sg, from, to); DT.free += performance.now() - t; return r; };
+  const freeRuns0 = (e, sg, from, to) => {
     const off = e.width * 0.5 + 0.3;
     const cov = (d) => { const q = pointAlong(e, d); return covered(e, q.x - q.tz * sg * off, q.z + q.tx * sg * off); };
     const out = [];
