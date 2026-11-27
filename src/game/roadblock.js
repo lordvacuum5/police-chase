@@ -23,6 +23,8 @@ import { SPECS } from './vehicles.js';
 import { dist2, clamp } from '../util/math.js';
 
 const MAX_BLOCKS = 2;
+/** A stinger thrown from a police car: its width past the car's, m; how long it takes to unroll, s; how much of it is out at first; from how high. */
+const THROWN_SPARE = 0.35, THROWN_ROLL_S = 0.45, THROWN_ROLL_FROM = 0.12, THROWN_DROP = 0.45;
 /** A daily challenge's stinger covers this much of the road, from one kerb (buildDaily). */
 const DAILY_SPIKE_SHARE = 0.6;
 /** Closest and furthest a site may be, in metres; the window itself scales with speed (see _findSite). */
@@ -333,13 +335,17 @@ export class RoadblockManager {
     const tx = dir.x * same, tz = dir.z * same, back = v.spec.dims.l * 0.5 + 2.5;
     const sx = v.position.x - v.forward.x * back, sz = v.position.z - v.forward.z * back;
     const y = e.deck ? g.levelOn(e, sx, sz) : game.sim.heightAt ? game.sim.heightAt(sx, sz) : game.groundAt(sx, sz);
-    const len = e.width - 0.4;
+    // "Make the spike strip quite a lot smaller ... just a tiny bit wider than the actual car that it's dropped out of."
+    // It was kerb to kerb. It rolls out sideways from under the back bumper (syncVisuals), down from bumper height.
+    const len = v.spec.dims.w + THROWN_SPARE;
     const mesh = new THREE.Mesh(spikeStripGeometry(len), game.stingerMaterial || (game.stingerMaterial = vertexColorMaterial()));
-    mesh.position.set(sx, 0.012 + y, sz);
+    mesh.position.set(sx, 0.012 + y + THROWN_DROP, sz);
     mesh.rotation.y = Math.atan2(tx, tz);
+    mesh.scale.x = THROWN_ROLL_FROM;
     mesh.receiveShadow = true;
     game.scene.add(mesh);
     this.blocks.push({ x: sx, z: sz, meshes: [mesh], units: [], cones: [], thrown: true,
+      roll: { mesh, y: 0.012 + y, at: game.clock },
       spikes: { x: sx, y, z: sz, tx, tz, halfLen: len * 0.5, halfDepth: 0.45 } });
     return true;
   }
@@ -411,6 +417,13 @@ export class RoadblockManager {
    */
   syncVisuals() {
     for (const b of this.blocks) {
+      // A thrown stinger unrolling: out from the middle to its full width, dropping to the road as it goes.
+      if (b.roll) {
+        const u = Math.min(1, Math.max(0, (this.game.clock - b.roll.at) / THROWN_ROLL_S)), e = 1 - (1 - u) * (1 - u);
+        b.roll.mesh.scale.x = THROWN_ROLL_FROM + (1 - THROWN_ROLL_FROM) * e;
+        b.roll.mesh.position.y = b.roll.y + THROWN_DROP * (1 - e) * (1 - e);
+        if (u >= 1) b.roll = null;
+      }
       for (const c of b.cones) {
         const t = c.body.translation();
         const r = c.body.rotation();
