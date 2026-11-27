@@ -26,6 +26,8 @@ const LOT_L = 34;
 const LOT_D = 24;
 /** Footway between the carriageway and the lot. */
 const GAP = 3;
+/** On the hills, the most a site may fall across the lot and the road in front of it, m (Garage._siteSearch). */
+const MAX_FALL = 1.5;
 
 /** The bay, in the lot's own frame: u along the road, v away from it. */
 const BAY = { u0: 7.7, u1: 12.3, v0: 1.0, v1: 10.0 };
@@ -78,7 +80,8 @@ export class Garage {
     // Within 700 m of the start if it can be, further if not: Ashfield City's start is downtown, with no lot's
     // worth of clear ground for 700 m round it, and the city had no garage at all -- "I can't see the repair
     // station".
-    this.site = far ? this._findSite() : this._findSite(700) || this._findSite(1400) || this._findSite(Infinity);
+    this.site = far ? this._findSite()
+      : this._siteSearch(700, false) || this._siteSearch(1400, false) || this._siteSearch(Infinity, false) || this._siteSearch(Infinity, true);
     this.stillFor = 0;
     this.repairing = false;
     this.state = 'away';        // away | damaged-wait | repairing | done | clean
@@ -112,7 +115,14 @@ export class Garage {
       && v >= -(LOT_D * 0.5 + GAP + 2) - margin && v <= LOT_D * 0.5 + margin;
   }
 
+  /** The best site within maxD: a level one if there is one (MAX_FALL), any otherwise. */
   _findSite(maxD = 700) {
+    // A second station (`far`): level and as far off as there is, or level and at least half the map's width away (Wexbury has
+    // no level site past 0.8 of it), before a sloping one.
+    return this._siteSearch(maxD, false) || (this.far && this._siteSearch(maxD, false, 0.5)) || this._siteSearch(maxD, true);
+  }
+
+  _siteSearch(maxD, anyFall, farMin = 0.8) {
     const game = this.game;
     const g = game.graph;
     const start = game.startPlace ? game.startPlace.position : { x: 0, z: 0 };
@@ -207,7 +217,7 @@ export class Garage {
             const lim = WORLD_HALF * 0.7;
             if (Math.abs(cx) > lim || Math.abs(cz) > lim) continue;
             const df = Math.hypot(cx - this.far.cx, cz - this.far.cz);
-            if (df < WORLD_HALF * 0.8) continue;
+            if (df < WORLD_HALF * farMin) continue;
             score = -df + (e.kind === 'lane' || e.kind === 'country' ? 60 : 0);
           } else {
             if (d < 110 || d > maxD) continue;
@@ -216,13 +226,18 @@ export class Garage {
           // On the hills (Haldon Vale), level ground: the lot is one flat slab
           // and the ground under the first site it took varied by three
           // metres, so the forecourt was half buried and half in the air.
+          // And level with its own road: Wexbury's second, out on the A4019, stood on 8.9 m of fall, a ramp of
+          // forecourt up a hillside from the road (a photo: the canopy up the slope, the road down below). Its
+          // distance from the first outweighed the slope; now past MAX_FALL a site is not taken at all, unless
+          // nowhere is better (`anyFall`, the second pass).
           if (game.sim.terrainAt) {
             let lo = Infinity, hi = -Infinity;
-            for (const [u, v] of [[0, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+            for (const [u, v] of [[0, 0], [1, 1], [1, -1], [-1, 1], [-1, -1], [0, -1.6], [0.8, -1.6], [-0.8, -1.6]]) {
               const y = game.sim.terrainAt(cx + ax * u * LOT_L * 0.5 + nx * v * LOT_D * 0.5,
                 cz + az * u * LOT_L * 0.5 + nz * v * LOT_D * 0.5);
               lo = Math.min(lo, y); hi = Math.max(hi, y);
             }
+            if (hi - lo > MAX_FALL && !anyFall) continue;
             score += (hi - lo) * 120;
           }
           if (best && score >= best.score) continue;
