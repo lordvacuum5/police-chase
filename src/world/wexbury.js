@@ -191,6 +191,13 @@ export function buildWexbury(sim, scene, seed = 51807) {
   const kerbAt = makeHeightAt(surface, PAVE_OVER, ROAD_OVER);
   const bumpAt = bumpField(ctx.bumps);
   const heightAt = (x, z) => at(x, z) + kerbAt(x, z) + bumpAt(x, z);
+  // The same, for something at height `y`: well under a bridge's deck, the ground under it. "I basically just tried to do it in the
+  // water ... underneath the bridge. And for some reason, I just got this invisible kind of force kind of pushing me upwards and bobbing
+  // me": the wheels were told the deck over them was the ground.
+  const heightAtY = (x, z, y) => {
+    const dk = deckAt(x, z);
+    return (dk > -Infinity && y < dk - UNDER_DECK ? hgrid.at(x, z) : at(x, z)) + kerbAt(x, z) + bumpAt(x, z);
+  };
 
   // ---------------------------------------------------------------- visuals
   buildGround(ctx);          // the plate and the wall round the edge; the hills are drawn below
@@ -236,6 +243,7 @@ export function buildWexbury(sim, scene, seed = 51807) {
     surface,
     surfaceAt: makeSurfaceAt(surface),
     heightAt,
+    heightAtY,
     terrainAt: at,
     relief: hgrid.max - Math.min(0, hgrid.min) + 4,
     meshes,
@@ -886,6 +894,8 @@ function finishCanal(ctx) {
 // runs DECK_RUN past the valley onto the banks each side and rises as a sine squared, level where it leaves the road: about 7% at
 // the steepest.
 const DECK_CLEAR = 3.4, RAIL_CLEAR = 3.0, DECK_RUN = 16;
+/** A car whose middle is this far under a deck, m, is under the bridge, not on it (heightAtY). */
+const UNDER_DECK = 1.4;
 /** A road bridge's room past the road's edge to the parapet's inner face, m (it was 0.75: 1.2 less the parapet). */
 const BRIDGE_SPARE = 2.2;
 function riverDecks(ctx, canal, rail, hgrid) {

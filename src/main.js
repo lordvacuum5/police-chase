@@ -421,6 +421,8 @@ class Game {
     // Raised decks' colliders (Ashfield City): a wheel on one is on road (Vehicle).
     this.sim.decks = built.decks || null;
     this.sim.heightAt = built.heightAt;
+    // At a height, where a map has roads over others with nothing solid under them (Wexbury's bridges).
+    this.sim.heightAtY = built.heightAtY || null;
     // Hills (world/terrain.js): the ground under the kerbs, and how high it
     // gets, for the suspension rays. Flat maps have neither.
     this.sim.terrainAt = built.terrainAt || null;

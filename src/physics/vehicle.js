@@ -1455,7 +1455,9 @@ export class Vehicle {
         // four lookups a wheel -- and, because it comes back through the
         // suspension ray, a wheel that climbs one gets the bump, the weight
         // transfer and the tyre's answer to both for free.
-        const H = this.sim.heightAt;
+        // At this car's height where the map can say (Wexbury's bridges: under a deck is the ground under it).
+        const HY = this.sim.heightAtY, cy = this.position.y;
+        const H = HY ? (x, z) => HY(x, z, cy) : this.sim.heightAt;
         let onPlate = !hit.collider || ((hit.collider.collisionGroups() >>> 16) & GROUP.TERRAIN);
         // On the hills, a hit on something standing on the ground -- a jump,
         // the top of the quarry's rock face, a straw stack -- is where it
