@@ -254,7 +254,10 @@ function lerpCar(a, b, t) {
   // car the long way round between two packets.
   let d = a.qx * b.qx + a.qy * b.qy + a.qz * b.qz + a.qw * b.qw;
   const s = d < 0 ? -1 : 1;
-  return {
+  // Everything else as the newer packet has it: the respray and a civilian's wanted level were left out, so a car drawn
+  // between two packets had no paint, and one carried on past the last had it -- "I resprayed my car a few different
+  // times. Apparently, it was glitching on his screen and like multicoloured."
+  return Object.assign({}, b, {
     id: a.id, kind: b.kind,
     x: l(a.x, b.x), y: l(a.y, b.y), z: l(a.z, b.z),
     qx: l(a.qx, s * b.qx), qy: l(a.qy, s * b.qy), qz: l(a.qz, s * b.qz), qw: l(a.qw, s * b.qw),
@@ -263,7 +266,7 @@ function lerpCar(a, b, t) {
     speed: l(a.speed, b.speed),
     damage: b.damage,
     flags: b.flags,
-  };
+  });
 }
 
 // ------------------------------------------------------------- transports

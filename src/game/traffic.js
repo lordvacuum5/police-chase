@@ -39,6 +39,13 @@ export const TRAFFIC_MAPS = ['haldon', 'wexbury', 'city'];
 // Wexbury's streets nobody sees 160 m, and seventeen cars spread to 640 m left
 // under two within 150 m of a driving player. Still only ever out of sight.
 const TRAFFIC_COUNT = 17;
+/**
+ * No new car where CROWD_MAX are already within CROWD_R m: "you need to like limit the amount of traffic in one place.
+ * Sometimes there's just so much traffic that spawns." And in a game with more than one person a share of the map's
+ * count (MP_SHARE): the host drives every car and sends them all thirty times a second -- "constant lag ... with the
+ * traffic", "maybe just have quite a lot less traffic on multiplayer".
+ */
+const CROWD_R = 70, CROWD_MAX = 5, MP_SHARE = 0.5;
 const TRAFFIC_NEAR = 70;
 /** As near on a map with traffic out to the fog (Ashfield City), m. */
 const CITY_NEAR = 130;
@@ -241,7 +248,8 @@ export class Traffic {
     // A map can ask for more (Ashfield City, 3 km across: "ideally add in more cars, because it just seems so
     // empty"). Most are gliding, out of anyone's sight, which costs next to nothing.
     const count = window.__trafficCount || map.trafficCount || TRAFFIC_COUNT;
-    const want = g.vehicleLimit < 30 ? Math.round(count / 2) : count;
+    const mp = g.humanPositions && g.humanPositions().length > 0;
+    const want = Math.round((g.vehicleLimit < 30 || g.trafficCut ? count / 2 : count) * (mp ? MP_SHARE : 1));
     if (!this.preset && this.cars.length < want && this._spawnIn <= 0 && watchers.length) {
       // Oftener the faster they are going through it, on the map that has it out to the fog.
       this._spawnIn = map.trafficFar ? Math.max(0.1, 0.35 - (g.player ? g.player.speed : 0) * 0.005) : 0.35;
@@ -398,6 +406,9 @@ export class Traffic {
       const pickE = outs.length ? outs[Math.floor(g.rng() * outs.length)] : null;
       const place = g._placeOnRoad(n, pickE ? (e) => e === pickE : (e) => through(e) && e.kind !== 'ramp');
       if (!place) continue;
+      let crowd = 0;
+      for (const c of this.cars) if (dist2(c.v.position.x, c.v.position.z, place.position.x, place.position.z) < CROWD_R) crowd++;
+      if (crowd >= CROWD_MAX) continue;
       const lanes = pickE && pickE.elevated && LANES[pickE.kind];
       const lane = lanes ? Math.floor(g.rng() * lanes.length) : 0;
       if (lanes) {

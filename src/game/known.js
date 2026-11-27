@@ -17,7 +17,7 @@
 //  - Wanted, a unit's good look at you puts the level up to the old one if it is lower. Never down.
 // A respray to another colour and they do not know it; back to the colour on file and they do again. Arrested, the run ends, and R
 // starts it clean.
-// Single player only: in a multiplayer game the heat is one machine's and the other players' cars are not.
+// In a multiplayer game, on the escapee's machine: the heat and the police are there (Game._update's host branch).
 
 import { ROLE } from '../ai/officer.js';
 import { dist2 } from '../util/math.js';

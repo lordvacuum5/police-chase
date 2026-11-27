@@ -886,6 +886,8 @@ function finishCanal(ctx) {
 // runs DECK_RUN past the valley onto the banks each side and rises as a sine squared, level where it leaves the road: about 7% at
 // the steepest.
 const DECK_CLEAR = 3.4, RAIL_CLEAR = 3.0, DECK_RUN = 16;
+/** A road bridge's room past the road's edge to the parapet's inner face, m (it was 0.75: 1.2 less the parapet). */
+const BRIDGE_SPARE = 2.2;
 function riverDecks(ctx, canal, rail, hgrid) {
   const L = canal.line, spans = [];
   const span = (x, z, dx, dz, hw, rail2) => {
@@ -897,7 +899,24 @@ function riverDecks(ctx, canal, rail, hgrid) {
     spans.push({ x, z, dx, dz, hw, Lh, ha, hb, rise, lv, rail: rail2, s: nr.s, sin, nx: -cp.dz, nz: cp.dx,
       minX: Math.min(ax, bx) - hw - 2, maxX: Math.max(ax, bx) + hw + 2, minZ: Math.min(az, bz) - hw - 2, maxZ: Math.max(az, bz) + hw + 2 });
   };
-  for (const b of canal.bridges) span(b.x, b.z, b.dx, b.dz, b.width * 0.5 + 1.2, false);
+  // Each road's deck as wide as the road wanders across it, and a margin: a deck is straight and 84 m or more long, and a road
+  // that bends at all on it ran into the parapet -- "a lot of the police cars just ended up hitting the sides and just instant
+  // stopping". How far its own line strays from the deck's, either way, within the deck's length.
+  for (const b of canal.bridges) {
+    const nr = L.near(b.x, b.z, 30), cp = L.at(nr.s), sin = Math.max(0.35, Math.abs(b.dx * -cp.dz + b.dz * cp.dx));
+    const Lh = (CANAL_W + DECK_RUN) / sin;
+    let stray = 0;
+    const pts = b.edge.points;
+    for (let k = 0; k < pts.length - 1; k++) {
+      const n = Math.max(1, Math.ceil(Math.hypot(pts[k + 1].x - pts[k].x, pts[k + 1].z - pts[k].z) / 2));
+      for (let m = 0; m <= n; m++) {
+        const px = lerp(pts[k].x, pts[k + 1].x, m / n) - b.x, pz = lerp(pts[k].z, pts[k + 1].z, m / n) - b.z;
+        if (Math.abs(px * b.dx + pz * b.dz) > Lh) continue;
+        stray = Math.max(stray, Math.abs(px * b.dz - pz * b.dx));
+      }
+    }
+    span(b.x, b.z, b.dx, b.dz, b.width * 0.5 + BRIDGE_SPARE + stray, false);
+  }
   if (rail) for (const c of rail.line.crossings(canal.points)) { const r = rail.line.at(c.s); span(c.x, c.z, r.dx, r.dz, 3.6, true); }
   canal.spans = spans;
   const deck = (b, t) => lerp(b.ha, b.hb, t) + b.rise * Math.sin(Math.PI * t) ** 2;

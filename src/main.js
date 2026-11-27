@@ -4004,7 +4004,9 @@ class Game {
         this.heat.update(dt, hunted, this.dispatcher);
         this._checkProvocation(dt);
         this._checkRedLight();
-        if (!session.active) this.known.update(dt);
+        // In a multiplayer game too: this branch is the escapee's machine, where the heat and the police are -- "the little car
+        // symbol needs to appear ... and that all needs to work in multiplayer".
+        this.known.update(dt);
       }
       this.commentary.update(dt);
       // After the heat, so an arrest is seen the frame it happens and the stars are put back to five.
@@ -4545,6 +4547,13 @@ class Game {
           this.quality = 0;
           this._setResolution(RESOLUTIONS.length - 1);
           this.radio('[graphics] reduced resolution to hold frame rate');
+          this.fpsTimer = 0;
+        } else if (this.fps < 26 && this.quality === 0 && !this.trafficCut) {
+          // Before any police: less traffic. In a two-player game on Wexbury, "constant lag ... with the traffic" and "hardly
+          // any police cars ... one to level 5", two patrol cars: the rungs below took the police away while every traffic car
+          // stayed. Half the traffic first (game/traffic.js).
+          this.trafficCut = true;
+          this.radio('[graphics] less traffic to hold frame rate');
           this.fpsTimer = 0;
         } else if (this.fps < 26 && this.quality === 0 && this.vehicleLimit > 22) {
           // Last resort, and the only one that touches the game rather than
