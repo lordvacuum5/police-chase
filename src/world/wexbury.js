@@ -54,6 +54,8 @@ const LOCK_HALF = 9;
 const CANAL_W = 26, CANAL_D = 4.5, WATER_DOWN = 1.5, POUND = 420;
 const CANAL_HALF = CANAL_W * Math.acos(2 * WATER_DOWN / CANAL_D - 1) / Math.PI;
 const TOW_OFF = CANAL_W + 3.5;
+/** Out from the river's middle to where a bridge's abutments begin, past the towpath, m. */
+const ABUT = TOW_OFF + 2.6;
 /** How far down the valley is under the bank at `d` m from the line. */
 const dipAt = (d) => (d >= CANAL_W ? 0 : CANAL_D * 0.5 * (1 + Math.cos(Math.PI * d / CANAL_W)));
 /** The river's fall at the most, m a metre, and how far either side its level is averaged over, m. */
@@ -187,6 +189,7 @@ export function buildWexbury(sim, scene, seed = 51807) {
   // The bridges' decks: where there is one, the height of anything is the deck's (as Ashfield's: citygen.js deckAt).
   const deckAt = canal ? riverDecks(ctx, canal, rail, hgrid) : () => -Infinity;
   ctx.deckAt = deckAt;
+  if (canal) embankDecks(canal, hgrid);
   if (canal) dipTowUnder(ctx, canal, hgrid, deckAt);
   addHeightfield(sim.world, hgrid);
   const at = (x, z) => Math.max(hgrid.at(x, z), deckAt(x, z));
@@ -944,6 +947,8 @@ const DECK_CLEAR = 3.4, RAIL_CLEAR = 3.4, DECK_RUN = 16;
  * the towpath was, and the towpath, laid on whatever was highest, ran up into it. Its underside DECK_UNDER (road) and RAIL_UNDER
  * under its top: 2.4 m of headroom on the towpath under a road bridge, 2.0 under the railway's.
  */
+/** The railway deck's half width past its line, m: the train is 1.4 each side. */
+const RAIL_HW = 3.8;
 const DECK_FLAT = 32, DECK_RAMP = 24, RAMP_MAX = 75, RAMP_GRADE = 0.09, TOW_UNDER = 0.2, DECK_UNDER = 0.8, RAIL_UNDER = 1.2;
 /** A mask bit: under a bridge's deck (riverDecks looks for one only here). */
 const CLEAR_DECK = 4;
@@ -978,6 +983,32 @@ function dipTowUnder(ctx, canal, hgrid, deckAt) {
   }
 }
 
+/**
+ * Earth banks up to each deck past the towpath: the ground under its ramps brought up to just under it, and out each side at 1 in
+ * 1.5 down to the field. "Massive chasms going up to it": a ramp stood on walls with the field beside it at its old level.
+ */
+const EMBANK = 1.5;
+function embankDecks(canal, hgrid) {
+  const { n, half, step, H } = hgrid;
+  for (const sp of canal.spans) {
+    const reach = sp.hw + 9 * EMBANK;
+    const i0 = Math.max(0, Math.floor((sp.minX - reach + half) / step)), i1 = Math.min(n - 1, Math.ceil((sp.maxX + reach + half) / step));
+    const j0 = Math.max(0, Math.floor((sp.minZ - reach + half) / step)), j1 = Math.min(n - 1, Math.ceil((sp.maxZ + reach + half) / step));
+    for (let j = j0; j <= j1; j++) {
+      for (let i = i0; i <= i1; i++) {
+        const px = i * step - half - sp.x, pz = j * step - half - sp.z;
+        const along = px * sp.dx + pz * sp.dz, lat = Math.abs(px * sp.dz - pz * sp.dx);
+        if (along < -sp.La || along > sp.Lb || lat > reach) continue;
+        if (Math.abs(along) * sp.sin <= ABUT + 1) continue;
+        const top = canal.deck(sp, sp.tOf(along)) - 0.35;
+        const h = lat <= sp.hw ? top : top - (lat - sp.hw) / EMBANK;
+        const k = j * n + i;
+        if (h > H[k]) H[k] = h;
+      }
+    }
+  }
+}
+
 function riverDecks(ctx, canal, rail, hgrid) {
   const L = canal.line, spans = [];
   const span = (x, z, dx, dz, hw, rail2) => {
@@ -1007,22 +1038,30 @@ function riverDecks(ctx, canal, rail, hgrid) {
   // Each road's deck as wide as the road wanders across it, and a margin: a deck is straight and 84 m or more long, and a road
   // that bends at all on it ran into the parapet -- "a lot of the police cars just ended up hitting the sides and just instant
   // stopping". How far its own line strays from the deck's, either way, within the deck's length.
-  for (const b of canal.bridges) {
-    const nr = L.near(b.x, b.z, 30), cp = L.at(nr.s), sin = Math.max(0.35, Math.abs(b.dx * -cp.dz + b.dz * cp.dx));
+  // How far a line (`pts`) strays from the straight one through (x, z) along (dx, dz), within the longest a deck can be.
+  const strayOf = (pts, x, z, dx, dz) => {
+    const nr = L.near(x, z, 30), cp = L.at(nr.s), sin = Math.max(0.35, Math.abs(dx * -cp.dz + dz * cp.dx));
     const Lh = (DECK_FLAT + RAMP_MAX) / sin;
     let stray = 0;
-    const pts = b.edge.points;
     for (let k = 0; k < pts.length - 1; k++) {
       const n = Math.max(1, Math.ceil(Math.hypot(pts[k + 1].x - pts[k].x, pts[k + 1].z - pts[k].z) / 2));
       for (let m = 0; m <= n; m++) {
-        const px = lerp(pts[k].x, pts[k + 1].x, m / n) - b.x, pz = lerp(pts[k].z, pts[k + 1].z, m / n) - b.z;
-        if (Math.abs(px * b.dx + pz * b.dz) > Lh) continue;
-        stray = Math.max(stray, Math.abs(px * b.dz - pz * b.dx));
+        const px = lerp(pts[k].x, pts[k + 1].x, m / n) - x, pz = lerp(pts[k].z, pts[k + 1].z, m / n) - z;
+        if (Math.abs(px * dx + pz * dz) > Lh) continue;
+        stray = Math.max(stray, Math.abs(px * dz - pz * dx));
       }
     }
-    span(b.x, b.z, b.dx, b.dz, b.width * 0.5 + BRIDGE_SPARE + stray, false);
+    return stray;
+  };
+  for (const b of canal.bridges) span(b.x, b.z, b.dx, b.dz, b.width * 0.5 + BRIDGE_SPARE + strayOf(b.edge.points, b.x, b.z, b.dx, b.dz), false);
+  // The railway's as wide as its line wanders on it too: it curves on the approaches, and on a straight deck 3.6 m each side the
+  // track ran into the side walls and off the edge -- "the sides ... kind of go into the train track itself".
+  if (rail) {
+    for (const c of rail.line.crossings(canal.points)) {
+      const r = rail.line.at(c.s);
+      span(c.x, c.z, r.dx, r.dz, RAIL_HW + strayOf(rail.points, c.x, c.z, r.dx, r.dz), true);
+    }
   }
-  if (rail) for (const c of rail.line.crossings(canal.points)) { const r = rail.line.at(c.s); span(c.x, c.z, r.dx, r.dz, 3.6, true); }
   canal.spans = spans;
   // Out from the river's middle, square to it: level to DECK_FLAT, down over DECK_RAMP.
   const deck = (b, t) => {
@@ -1073,8 +1112,7 @@ function buildBridges(ctx, canal) {
     // Out from the river's middle, square to it, at t; and the ground (not the deck) under a point.
     const perp = (t) => Math.abs(sp.aOf(t)) * sp.sin;
     const G = (q) => ctx.grid.at(q[0], q[2]);
-    // The abutments start past the towpath: open under the deck over the water and the towpath, solid stone beyond.
-    const ABUT = TOW_OFF + 2.6;
+    // The abutments start past the towpath (ABUT): open under the deck over the water and the towpath, solid stone beyond.
     for (let k = 0; k < N; k++) {
       const t0 = k / N, t1 = (k + 1) / N;
       // The deck's sides and underside.
