@@ -62,10 +62,16 @@ export async function copTurns(opts = {}) {
       if (v.forwardSpeed < -0.5) { out.reversing++; out.revModes[mode] = (out.revModes[mode] || 0) + 1; }
       let h = heads.get(u);
       if (!h) heads.set(u, (h = { list: [], cool: 0 }));
-      h.list.push([now, Math.atan2(v.forward.x, v.forward.z)]);
+      h.list.push([now, Math.atan2(v.forward.x, v.forward.z), mode]);
       while (h.list.length && h.list[0][0] < now - 4) h.list.shift();
       if (h.cool > now) continue;
-      if (v.speed > 3 && !youTurned && swung(h.list) > 2.6) { out.uturns++; out.turnModes[mode] = (out.turnModes[mode] || 0) + 1; h.cool = now + 6; }
+      if (v.speed > 3 && !youTurned && swung(h.list) > 2.6) {
+        out.uturns++;
+        // Every mode it was in over the swing, joined: what it was doing as it turned round.
+        const ms = [...new Set(h.list.map((q) => q[2]))].join('>');
+        out.turnModes[ms] = (out.turnModes[ms] || 0) + 1;
+        h.cool = now + 6;
+      }
     }
     out.unitMinutes = +(out.samples * 0.25 / 60).toFixed(1);
     if (t % 600 === 0) await new Promise((r) => setTimeout(r));

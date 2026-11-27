@@ -264,6 +264,8 @@ const PERSON_TOP = [Infinity, 31.3, 40.2];
 const CONTACT_FROM = 3;
 /** Below this speed of the car being chased, m/s, no dropping back for a run-up after a hit (Officer._pursue). */
 const RESET_MIN = 9;
+/** A unit gone by the roads for want of a line of sight keeps to them this long after, s (Officer._pursue). */
+const ROAD_DWELL = 2.5;
 
 /** TIER_PACE / TIER_LIMIT at a wanted level that need not be whole. */
 function tierAt(table, h) {
@@ -2358,12 +2360,24 @@ export class Officer {
       }
       // And in town too, with both cars on a road: by the roads. Straight at you through the gardens it spent a third of
       // Wexbury's chase stopped against something ("making good decisions without turning around and stuff"): tests/copturns.js.
-      if (!window.__noLosRoads && this.game.sim.surfaceAt(target.position.x, target.position.z) !== 0 && this.driver._onCarriageway()) {
+      // Not when you are ahead of it anyway: the road the router picks may start behind it, and it turned round for it.
+      const rr = relativeTo(v, target);
+      const ahead = rr.long > 0 && Math.abs(rr.lat) < rr.long * 0.7;
+      if (!window.__noLosRoads && !ahead && this.game.sim.surfaceAt(target.position.x, target.position.z) !== 0 && this.driver._onCarriageway()) {
         this._mode = 'noLosRoad';
+        this._roadDwell = ROAD_DWELL;
         return this._goTo(dt, this._laneAhead(target), 1.0);
       }
       this._mode = 'noLos';
       return this._driveDirect(dt, target.position, this._chaseSpeed());
+    }
+
+    // Gone by the roads, it keeps to them a little while it has you back in sight, rather than swinging round at once for the
+    // straight line: switching between the two was most of the U-turns left (tests/copturns.js).
+    this._roadDwell = (this._roadDwell || 0) - dt;
+    if (this._roadDwell > 0 && !window.__noLosRoads && this.driver._onCarriageway()) {
+      this._mode = 'noLosRoad';
+      return this._goTo(dt, this._laneAhead(target), 1.0);
     }
 
     // Where the target is going, for the cornering clamp -- see safeSpeed. Not the
