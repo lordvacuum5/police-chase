@@ -40,6 +40,7 @@ import { prefersTouch } from './touch.js';
 import { bestScores } from '../game/score.js';
 import { chosenConditions, setConditions } from '../game/weather.js';
 import { carCards } from '../game/cards.js';
+import { mapShots } from '../game/mapshots.js';
 import { TYPE_RULES, dailyPlan, dailyBest, setDaily, fetchBoard, boardHtml, fmtTime, savedName } from '../game/daily.js';
 import { makeRng, TAU } from '../util/math.js';
 import {
@@ -57,7 +58,10 @@ import {
  * so the cards read as a trade rather than a rating. Re-run the test and
  * update these if a spec changes.
  */
-// All five cards re-measured 2026-11-13 (tests/supercar.js, tests/policecars.js): see README, "Interceptor 5".
+// All five cards re-measured 2026-11-13 (tests/supercar.js, tests/policecars.js): see README, "Interceptor 5". 0-60 again
+// 2026-11-27, every car half a second to a second slower off the line than that (the same on Haldon's lane past the edge and on
+// Ashfield's, so not the lane), and the SUV 20 hits, not 22; top speed and grip as they were. Note tests/supercar.js's lane, x 1100,
+// is inside Ashfield now it is 3 km across: run it on Haldon Vale.
 export const CARS = [
   {
     id: 'runner',
@@ -67,7 +71,7 @@ export const CARS = [
     shape: 'saloon',
     stats: [
       ['Top speed', 125, 'mph'],
-      ['0-60', 6.4, 's', true],
+      ['0-60', 7.1, 's', true],
       ['Grip', 1.49, 'g'],
       ['Toughness', 11, 'hits'],
     ],
@@ -80,7 +84,7 @@ export const CARS = [
     shape: 'wedge',
     stats: [
       ['Top speed', 148, 'mph'],
-      ['0-60', 4.9, 's', true],
+      ['0-60', 5.6, 's', true],
       ['Grip', 1.59, 'g'],
       ['Toughness', 5, 'hits'],
     ],
@@ -94,7 +98,7 @@ export const CARS = [
     shape: 'boxy',
     stats: [
       ['Top speed', 88, 'mph'],
-      ['0-60', 9.1, 's', true],
+      ['0-60', 10.3, 's', true],
       ['Grip', 1.08, 'g'],
       ['Toughness', 18, 'hits'],
     ],
@@ -129,7 +133,7 @@ export const POLICE_CARS = [
     shape: 'saloon',
     stats: [
       ['Top speed', 162, 'mph'],
-      ['0-60', 4.5, 's', true],
+      ['0-60', 5.0, 's', true],
       ['Grip', 1.55, 'g'],
       ['Toughness', 14, 'hits'],
     ],
@@ -143,9 +147,9 @@ export const POLICE_CARS = [
     shape: 'suv',
     stats: [
       ['Top speed', 148, 'mph'],
-      ['0-60', 6.1, 's', true],
+      ['0-60', 7.1, 's', true],
       ['Grip', 1.53, 'g'],
-      ['Toughness', 22, 'hits'],
+      ['Toughness', 20, 'hits'],
     ],
   },
   {
@@ -335,7 +339,7 @@ function buildMaps() {
   if (!holder) return;
   holder.innerHTML = '';
   let current = chosenMap();
-  const cards = [];
+  const cards = [], shots = mapShots();
 
   const paint = () => {
     for (const c of cards) c.classList.toggle('chosen', c.dataset.id === current);
@@ -367,6 +371,11 @@ function buildMaps() {
     if (m.id === 'wexbury') drawTown(canvas);
     else if (m.id === 'haldon') drawCountry(canvas);
     else drawCity(canvas);
+    // The map's photograph: the one taken the last time it was loaded here (game/mapshots.js), or the one that comes with the
+    // game (resources/maps, taken the same way); the drawing only if neither will load.
+    const img = new Image();
+    img.onload = () => canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    img.src = shots[m.id] || `resources/maps/${m.id}.jpg`;
 
     const select = () => { current = m.id; remember(MAP_KEY, m.id); paint(); };
     card.addEventListener('click', select);

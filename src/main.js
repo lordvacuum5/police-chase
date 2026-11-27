@@ -65,6 +65,7 @@ import { TrafficLights, SIGNAL } from './game/trafficlights.js';
 import { StreetProps } from './game/streetprops.js';
 import { Garages } from './game/garage.js';
 import { KnownCar } from './game/known.js';
+import { takeMapShot } from './game/mapshots.js';
 import { addParkedCars } from './game/parked.js';
 import { addVerges } from './game/verges.js';
 import { SPRAY_COLOURS } from './game/garage.js';
@@ -577,6 +578,8 @@ class Game {
     // Photographs of the cars for the menu's cards, taken once and kept, while
     // the boot screen is still up and nothing is happening. See game/cards.js.
     takeCarCards(this);
+    // And the map's own, for its card (game/mapshots.js): every load, so it is never out of date.
+    takeMapShot(this);
     if (this.daily) this.daily.begin();
 
     boot.set(1, 'ready');

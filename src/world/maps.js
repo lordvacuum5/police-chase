@@ -11,11 +11,11 @@ export const MAPS = [
   {
     id: 'city',
     name: 'Ashfield City',
-    tag: 'Big city · River · Hills',
+    tag: 'Big city · Motorway · River',
     blurb: 'The biggest map: towers downtown, a river through the middle crossed by '
          + 'bridges, the hilly streets of Ashfield Heights, suburbs of cul-de-sacs, '
-         + 'docks, and a three-lane ring motorway round it all. Drive into the '
-         + 'river and you are busted.',
+         + 'docks, a raised motorway with slip roads and a downtown expressway, '
+         + 'and a three-lane ring round it all. Stay in the river too long and the engine floods.',
     // 3 km across: Wexbury and Haldon Vale are 2 km (world/common.js setWorldSize).
     half: 1500,
     // Two garages, at opposite ends: "it's pretty hard to repair such a big map" (game/garage.js Garages).
@@ -29,7 +29,7 @@ export const MAPS = [
     blurb: 'An English market town on hills: crooked streets and back alleys round '
          + 'a market square, a river with stone bridges, a lake out in the fields, a '
          + 'railway with level crossings, mini roundabouts and the Magic Roundabout, a '
-         + 'bypass, a ford, and a road up the Beacon. Fall in the river and you are busted.',
+         + 'bypass, a ford, and a road up the Beacon. Stay in the river too long and the engine floods.',
     // As big as Ashfield City: "You can make it as big as the American map if you want."
     half: 1500,
     garages: 2,
