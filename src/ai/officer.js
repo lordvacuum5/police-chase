@@ -2356,6 +2356,12 @@ export class Officer {
         this._mode = 'lanes';
         return this._goTo(dt, this._laneAhead(target), 1.0);
       }
+      // And in town too, with both cars on a road: by the roads. Straight at you through the gardens it spent a third of
+      // Wexbury's chase stopped against something ("making good decisions without turning around and stuff"): tests/copturns.js.
+      if (!window.__noLosRoads && this.game.sim.surfaceAt(target.position.x, target.position.z) !== 0 && this.driver._onCarriageway()) {
+        this._mode = 'noLosRoad';
+        return this._goTo(dt, this._laneAhead(target), 1.0);
+      }
       this._mode = 'noLos';
       return this._driveDirect(dt, target.position, this._chaseSpeed());
     }
