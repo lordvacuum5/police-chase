@@ -24,7 +24,7 @@ import { dist2, clamp } from '../util/math.js';
 
 const MAX_BLOCKS = 2;
 /** A stinger thrown from a police car: its width past the car's, m; how long it takes to unroll, s; how much of it is out at first; from how high. */
-const THROWN_SPARE = 0.35, THROWN_ROLL_S = 0.45, THROWN_ROLL_FROM = 0.12, THROWN_DROP = 0.45;
+const THROWN_SPARE = 0.35, THROWN_WIDER = 1.5, THROWN_ROLL_S = 0.45, THROWN_ROLL_FROM = 0.12, THROWN_DROP = 0.45;
 /** A daily challenge's stinger covers this much of the road, from one kerb (buildDaily). */
 const DAILY_SPIKE_SHARE = 0.6;
 /** Closest and furthest a site may be, in metres; the window itself scales with speed (see _findSite). */
@@ -337,7 +337,8 @@ export class RoadblockManager {
     const y = e.deck ? g.levelOn(e, sx, sz) : game.sim.heightAt ? game.sim.heightAt(sx, sz) : game.groundAt(sx, sz);
     // "Make the spike strip quite a lot smaller ... just a tiny bit wider than the actual car that it's dropped out of."
     // It was kerb to kerb. It rolls out sideways from under the back bumper (syncVisuals), down from bumper height.
-    const len = v.spec.dims.w + THROWN_SPARE;
+    // And then: "not double as wide, but half double as wide": half as wide again.
+    const len = (v.spec.dims.w + THROWN_SPARE) * THROWN_WIDER;
     const mesh = new THREE.Mesh(spikeStripGeometry(len), game.stingerMaterial || (game.stingerMaterial = vertexColorMaterial()));
     mesh.position.set(sx, 0.012 + y + THROWN_DROP, sz);
     mesh.rotation.y = Math.atan2(tx, tz);
