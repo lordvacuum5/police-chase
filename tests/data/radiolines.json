@@ -2113,15 +2113,15 @@
 ],
 [
 "city",
-"Control, in pursuit of a vehicle southbound, not stopping. May be our suspect from before."
+"Control, in pursuit southbound, vehicle not stopping. That's our suspect from before."
 ],
 [
 "wexbury",
-"Control, in pursuit of a vehicle northbound, not stopping. May be our suspect from before."
+"Control, in pursuit northbound, vehicle not stopping. That's our suspect from before."
 ],
 [
 "haldon",
-"Control, in pursuit of a vehicle westbound, not stopping. May be our suspect from before."
+"Control, in pursuit westbound, vehicle not stopping. That's our suspect from before."
 ],
 [
 "city",
@@ -2149,15 +2149,15 @@
 ],
 [
 "city",
-"Control, vehicle failed to stop, heading westbound. Could be the suspect from earlier."
+"Control, vehicle failed to stop, heading westbound. It's the suspect from earlier."
 ],
 [
 "wexbury",
-"Control, vehicle failed to stop, heading northbound. Could be the suspect from earlier."
+"Control, vehicle failed to stop, heading northbound. It's the suspect from earlier."
 ],
 [
 "haldon",
-"Control, vehicle failed to stop, heading eastbound. Could be the suspect from earlier."
+"Control, vehicle failed to stop, heading eastbound. It's the suspect from earlier."
 ],
 [
 "city",

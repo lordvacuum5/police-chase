@@ -13,9 +13,10 @@
 //  - Not wanted, a patrol car that sees you within STOP_SPOT comes after you to have a look: off the force's
 //    board, driven here, blipping its lights and siren. A good look (LOOK_TIME seconds within LOOK_CLOSE, in
 //    sight) and the old level is back. Get STOP_LOSE away from it with it still watching and it is a pursuit
-//    for failing to stop, at one star; out of its sight STOP_UNSEEN seconds and it has lost you.
+//    for failing to stop, at the old level too; out of its sight STOP_UNSEEN seconds and it has lost you.
 //  - Wanted, a unit's good look at you puts the level up to the old one if it is lower. Never down.
-// A respray at the garage takes the car off file. Arrested, the run ends, and R starts it clean.
+// A respray to another colour and they do not know it; back to the colour on file and they do again. Arrested, the run ends, and R
+// starts it clean.
 // Single player only: in a multiplayer game the heat is one machine's and the other players' cars are not.
 
 import { ROLE } from '../ai/officer.js';
@@ -68,10 +69,12 @@ export class KnownCar {
     return !!(f && p && p.specKey === f.kind && (p.paint || 0) === f.paint);
   }
 
-  /** Resprayed: off file, whatever was on it. */
+  /**
+   * Resprayed: the file is kept, and the car is only known while it is the colour on file (recognisable). It was taken off file
+   * altogether: "if I resprayed it back to the original colour, they still didn't recognise me, and the car symbol didn't come back."
+   */
   resprayed() {
     if (this.stop) this._release();
-    this.file = null;
     this.look = 0;
   }
 
@@ -164,11 +167,18 @@ export class KnownCar {
     if (gap > STOP_LOSE && sees) {
       // Away from it: that is a pursuit, for not stopping. Close enough later, they will know you.
       const word = d._bearingWord(u.vehicle.position, p.position);
+      // Straight back to the level on file: running from the car that came to look is as good as the look. It was one star for
+      // failing to stop and a second look to put it back: "it doesn't need to be where like they ... give me wanted level 1 and
+      // then they go, 'Oh, I think it is actually them' ... Just bump up straight to the wanted level".
       this._release();
-      g.heat.bump(1, 'failing to stop');
+      const h = g.heat, tier = this.file.tier;
+      h.bump(1, 'failing to stop');
+      if (h.value < tier) h.value = tier;
+      h.peak = Math.max(h.peak, h.value);
+      this.look = 0;
       g.say('knownFled', [
-        () => `Control, vehicle failed to stop, heading ${word}bound. Could be the suspect from earlier.`,
-        () => `Control, in pursuit of a vehicle ${word}bound, not stopping. May be our suspect from before.`,
+        () => `Control, vehicle failed to stop, heading ${word}bound. It's the suspect from earlier.`,
+        () => `Control, in pursuit ${word}bound, vehicle not stopping. That's our suspect from before.`,
       ], {}, true);
       return;
     }

@@ -71,6 +71,7 @@ const BUMP_H = 0.08, BUMP_HALF = 2.0;
 const CLEAR_RAIL = 1, CLEAR_CANAL = 2;
 
 export function buildWexbury(sim, scene, seed = 51807) {
+  const T0 = performance.now(), TM = {};
   const rng = makeRng(seed);
   const graph = new RoadGraph(48);
   const surface = new Uint8Array(GRID_N * GRID_N);
@@ -93,24 +94,34 @@ export function buildWexbury(sim, scene, seed = 51807) {
   ctx.base = base;
 
   // ---------------------------------------------------------------- the town's bones
+  const TR = performance.now();
   const rings = buildRings(ctx);
   const radials = buildRadials(ctx, rings);
   ctx.bypass = buildBypass(ctx, radials);
   // ---------------------------------------------------------------- the railway and the canal, and what they cut
+  TM.rail = performance.now();
   ctx.rail = planLine(ctx, 'rail', null);
   // No canal: "Just remove canals ... Can you put a lake or a river in?" A river along where it was, and a lake out in the country.
+  TM.river = performance.now();
   ctx.canal = planLine(ctx, 'canal', ctx.rail);
+  TM.lake = performance.now();
   ctx.lake = planLake(ctx);
+  TM.cut = performance.now();
   cutForLines(ctx);
   // ---------------------------------------------------------------- everything else, kept off them
   buildEstates(ctx, radials);
   buildLanes(ctx, radials);
   ctx.summit = buildHillRoad(ctx, radials);
   buildAlleys(ctx, rings);
+  const T1 = performance.now();
+  declutter(graph);
+  ctx.declutterMs = Math.round(performance.now() - T1);
   prune(graph);
   ctx.roundabouts = buildRoundabouts(ctx);
   graph.addTurningHeads(15, 10, H - 40, (x, z, r) => nearLines(ctx, x, z, r + 10));
   prune(graph);
+  ctx.roadsMs = Math.round(performance.now() - TR);
+  TM.finalise = performance.now();
   graph.finalise();
   // Every road's line a point every 6 m, so it lies on the hills (as Ashfield's: citygen.js). The pieces it was in kept, for
   // what is laid along it: in 6 m pieces, the houses (spaced along each piece, none on one under 10 m) were none at all.
@@ -146,6 +157,7 @@ export function buildWexbury(sim, scene, seed = 51807) {
   // Nothing laid over the river's valley: the roads and the railway cross it on decks (riverDecks), as Ashfield's bridges do. Laid,
   // each stood on a dam across the water.
   const inRiver = (x, z) => !!(ctx.canal && ctx.canal.near(x, z, CANAL_W + 6).d < CANAL_W + 1);
+  TM.grid = performance.now();
   const hgrid = buildHeightGrid(base, { half: H, graph, flatten, crests, lines: rail ? [railGround(rail)] : [],
     skipClaim: (e, x, z) => inRiver(x, z), skipLine: (x, z) => inRiver(x, z) });
   ctx.grid = hgrid;
@@ -164,7 +176,8 @@ export function buildWexbury(sim, scene, seed = 51807) {
   // ---------------------------------------------------------------- surfaces
   makeClearMask(ctx);
   if (rail) markLine(ctx, rail.points, 15, CLEAR_RAIL);
-  if (canal) markLine(ctx, canal.points, BANK_OUT + 2, CLEAR_CANAL);
+  // Out as far as the bridges' decks reach (riverDecks looks for one only inside this).
+  if (canal) markLine(ctx, canal.points, CANAL_W + DECK_RUN + 4, CLEAR_CANAL);
   paintSurfaces(ctx);
   rasteriseRoads(graph, surface);
   // The towpath is not marked as road: the ground drawn beside a road is let down, and beyond the canal's bank on the towpath's side
@@ -180,6 +193,7 @@ export function buildWexbury(sim, scene, seed = 51807) {
   // ---------------------------------------------------------------- visuals
   buildGround(ctx);          // the plate and the wall round the edge; the hills are drawn below
   const meshes = [];
+  TM.terrain = performance.now();
   meshes.push(...buildTerrain(ctx, hgrid));
   const [tarmac, markings, kerbs, wear] = buildRoadMeshes(ctx);
   const lifted = liftRoads(ctx, [tarmac, markings, kerbs]);
@@ -196,10 +210,12 @@ export function buildWexbury(sim, scene, seed = 51807) {
   const placed = new Placed();
   ctx.placed = placed;
   meshes.push(...buildLandmarks(ctx));
+  TM.houses = performance.now();
   meshes.push(...buildFrontages(ctx));
   meshes.push(...buildFurniture(ctx, canal));
   const waterMesh = canal || ctx.ford || ctx.lake ? buildWater(ctx, canal) : null;
   if (waterMesh) meshes.push(waterMesh);
+  TM.trees = performance.now();
   meshes.push(...buildTrees(ctx));
   if (rail) meshes.push(buildRailTrack(ctx, rail));
   for (const m of meshes) if (m) scene.add(m);
@@ -222,6 +238,11 @@ export function buildWexbury(sim, scene, seed = 51807) {
     rail,
     railway,
     clearAt: ctx.clearAt,
+    // For the minimap (game/hud.js): the river as wide as its water, the lake's outline.
+    minimapWater: {
+      rivers: canal ? [{ width: CANAL_HALF * 2, points: canal.points.filter((_, k) => k % 3 === 0) }] : [],
+      lakes: ctx.lake ? [Array.from({ length: 48 }, (_, k) => { const a = (k / 48) * TAU, r = ctx.lake.Rat(a) - 6; return { x: ctx.lake.x + Math.cos(a) * r, z: ctx.lake.z + Math.sin(a) * r }; })] : [],
+    },
     // Bollards and benches to knock over (game/streetprops.js).
     props: ctx.props,
     // The canal: in it, under its surface, is in the water (main.js _checkWater, Game.waterBetween). The ford is water a car
@@ -234,6 +255,7 @@ export function buildWexbury(sim, scene, seed = 51807) {
       roundaboutAt: ctx.roundabouts.filter((r) => r.magic || r.double).map((r) => [Math.round(r.x), Math.round(r.z)]), locks: canal ? canal.locks.length : 0,
       lake: ctx.lake ? { x: Math.round(ctx.lake.x), z: Math.round(ctx.lake.z), R: ctx.lake.R } : null,
       ford: ctx.ford ? { x: Math.round(ctx.ford.x), z: Math.round(ctx.ford.z) } : null, roundabouts: ctx.roundabouts.map((r) => (r.magic ? 'magic' : r.inMagic ? 'magic-mini' : r.double ? 'double' : 'mini')),
+      buildMs: Math.round(performance.now() - T0), marks: Object.fromEntries(Object.entries(TM).map(([k, v]) => [k, Math.round(v - T0)])), declutterMs: ctx.declutterMs, roadsMs: ctx.roadsMs,
       whyNot: ctx.whyNot, alleys: ctx.alleys, shops: (ctx.signs || []).slice(0, 3).map((g) => [Math.round(g.x), Math.round(g.z), +g.fx.toFixed(2), +g.fz.toFixed(2)]), bumps: ctx.bumps.length, pinches: ctx.pinches, laybys: ctx.laybys.length, marketDay: ctx.marketDay, summit: ctx.summit && { x: Math.round(ctx.summit.x), z: Math.round(ctx.summit.z) },
     },
     // More cars than the old town's 17, on half again as much road each way.
@@ -656,8 +678,70 @@ function cutForLines(ctx) {
 function guarded(ctx, a, b, kind, mids, allow = { rail: true, canal: true }) {
   const { graph } = ctx;
   const pts = [a, ...(mids || []), b];
-  if (badForLines(ctx, pts, (ROAD_KIND[kind] || ROAD_KIND.street).width, allow)) return null;
+  const width = (ROAD_KIND[kind] || ROAD_KIND.street).width;
+  if (badForLines(ctx, pts, width, allow) || crowded(graph, a, b, pts, width)) return null;
   return graph.addEdge(a, b, kind, mids && mids.length ? mids : null);
+}
+
+/** How much a road matters, for declutter: the least goes first. */
+const RANK = { alley: 0, lane: 1, country: 2, street: 3, avenue: 4, dual: 5 };
+
+/**
+ * Of any two roads still laid alongside each other once the network is all in (crowded), the lesser taken out: the A-roads, the
+ * bypass and the rings are laid before anything is checked, and 8 of them still ran over each other or the estates.
+ */
+function declutter(graph) {
+  const order = graph.edges.filter((e) => !e.dead).sort((p, q) => (RANK[p.kind] ?? 3) - (RANK[q.kind] ?? 3));
+  let any = false;
+  for (const e of order) {
+    if (e.dead) continue;
+    if (crowded(graph, graph.nodes[e.a], graph.nodes[e.b], e.points, e.width)) { e.dead = true; any = true; }
+  }
+  if (any) graph.reindexEdges();
+}
+
+/**
+ * Would a road along `pts` (from a to b) run alongside another for 20 m or more, nearer than their edges and 5 m? "There's a section
+ * here with way too much road, like so many bits of road." An estate's crescent laid beside an A-road it was hung off, a lane down
+ * the side of a street: two carriageways and their pavements overlapping in a heap. Not counted within 22 m of either end, where a
+ * road leaving a junction is always beside the others leaving it.
+ */
+function crowded(graph, a, b, pts, width) {
+  if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('pc.crowded') === 'off') return false;
+  const S = [];
+  for (let k = 0; k < pts.length - 1; k++) {
+    const p = pts[k], q = pts[k + 1], L = Math.hypot(q.x - p.x, q.z - p.z), n = Math.max(1, Math.ceil(L / 4));
+    for (let m = 0; m < n; m++) S.push({ x: lerp(p.x, q.x, m / n), z: lerp(p.z, q.z, m / n) });
+  }
+  const total = S.length * 4;
+  let run = 0;
+  for (let k = 0; k < S.length; k++) {
+    const s0 = k * 4;
+    if (s0 < 22 || total - s0 < 22) { run = 0; continue; }
+    const { x, z } = S[k];
+    let close = false;
+    for (const e of graph.edges) {
+      if (e.dead || e.a === a.id || e.b === a.id || e.a === b.id || e.b === b.id) continue;
+      const lim = width * 0.5 + e.width * 0.5 + 5, P = e.points;
+      // Its bounds first, kept with it: every road against every other, point by point, was seconds of the map's build.
+      if (!e._bb || e._bb.n !== P.length) {
+        let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+        for (const q of P) { x0 = Math.min(x0, q.x); x1 = Math.max(x1, q.x); z0 = Math.min(z0, q.z); z1 = Math.max(z1, q.z); }
+        e._bb = { n: P.length, x0, x1, z0, z1 };
+      }
+      if (x < e._bb.x0 - lim || x > e._bb.x1 + lim || z < e._bb.z0 - lim || z > e._bb.z1 + lim) continue;
+      for (let i = 0; i < P.length - 1 && !close; i++) {
+        const p = P[i], q = P[i + 1], dx = q.x - p.x, dz = q.z - p.z, L2 = dx * dx + dz * dz;
+        if (Math.min(p.x, q.x) - lim > x || Math.max(p.x, q.x) + lim < x || Math.min(p.z, q.z) - lim > z || Math.max(p.z, q.z) + lim < z) continue;
+        const t = L2 > 0 ? clamp(((x - p.x) * dx + (z - p.z) * dz) / L2, 0, 1) : 0;
+        if (Math.hypot(p.x + dx * t - x, p.z + dz * t - z) < lim) close = true;
+      }
+      if (close) break;
+    }
+    run = close ? run + 1 : 0;
+    if (run >= 5) return true;
+  }
+  return false;
 }
 
 /** Everything not joined to the biggest piece of the network, taken out: the lines leave bits of town cut off. */
@@ -779,12 +863,16 @@ function finishCanal(ctx) {
  * ground's level at each end and rising in an arch to clear the water by DECK_CLEAR (the railway's by less, a train's grade being
  * what it is). Returned: the deck's height at (x, z), or -Infinity off every deck.
  */
-const DECK_CLEAR = 4.2, RAIL_CLEAR = 3.2;
+// The deck's top over the water at the middle, m (its underside 1.1-1.3 under that). It ran on only 3 m past the valley and rose as
+// half a sine, so it left the road at up to 26%, a ramp: "it's still bumpy round there ... the bridge needs to be better". Now it
+// runs DECK_RUN past the valley onto the banks each side and rises as a sine squared, level where it leaves the road: about 7% at
+// the steepest.
+const DECK_CLEAR = 3.4, RAIL_CLEAR = 3.0, DECK_RUN = 16;
 function riverDecks(ctx, canal, rail, hgrid) {
   const L = canal.line, spans = [];
   const span = (x, z, dx, dz, hw, rail2) => {
     const nr = L.near(x, z, 30), cp = L.at(nr.s), sin = Math.max(0.35, Math.abs(dx * -cp.dz + dz * cp.dx));
-    const Lh = (CANAL_W + 3) / sin;
+    const Lh = (CANAL_W + DECK_RUN) / sin;
     const ax = x - dx * Lh, az = z - dz * Lh, bx = x + dx * Lh, bz = z + dz * Lh;
     const ha = hgrid.at(ax, az), hb = hgrid.at(bx, bz), lv = canal.waterAtS(nr.s);
     const rise = Math.max(rail2 ? 0.3 : 0.8, lv + (rail2 ? RAIL_CLEAR : DECK_CLEAR) - lerp(ha, hb, 0.5));
@@ -794,7 +882,7 @@ function riverDecks(ctx, canal, rail, hgrid) {
   for (const b of canal.bridges) span(b.x, b.z, b.dx, b.dz, b.width * 0.5 + 1.2, false);
   if (rail) for (const c of rail.line.crossings(canal.points)) { const r = rail.line.at(c.s); span(c.x, c.z, r.dx, r.dz, 3.6, true); }
   canal.spans = spans;
-  const deck = (b, t) => lerp(b.ha, b.hb, t) + b.rise * Math.sin(Math.PI * t);
+  const deck = (b, t) => lerp(b.ha, b.hb, t) + b.rise * Math.sin(Math.PI * t) ** 2;
   canal.deck = deck;
   return (x, z) => {
     if (ctx.clearAt && !ctx.clearAt(x, z, CLEAR_CANAL)) return -Infinity;

@@ -340,6 +340,8 @@ export function buildCity(sim, scene, seed = 20260822) {
     // Under a bridge too: asked whether a deck was below the car, a car in the water under one was dry.
     inWater: (x, z, y) => y < WATER + 0.4 && riverOn(z) > 0.3 && Math.abs(riverSide(x, z)) < WATER_HALF + BANK_RUN * 0.6,
     water: WATER,
+    // For the minimap (game/hud.js): the river down its length, as wide as its water.
+    minimapWater: { rivers: [{ width: WATER_HALF * 2, points: (() => { const pts = []; for (let z = -RIVER_END; z <= RIVER_END; z += 20) if (riverOn(z) > 0.3) pts.push({ x: riverX(z), z }); return pts; })() }] },
     /** The water's surface over (x, z), or null where there is none. */
     waterAt: (x, z) => (riverOn(z) > 0.3 && Math.abs(riverSide(x, z)) < WATER_HALF + BANK_RUN * 0.6 ? WATER : null),
     clearAt: (x, z) => inChannel(x, z, 2),

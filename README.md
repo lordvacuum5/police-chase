@@ -11024,3 +11024,16 @@ A walk round it in screenshots after: a house stood in the Magic Roundabout's mi
 arriving lower than the top (the top within 70 m is now brought down to it, so the viewpoint is the top); and the ford's stream lay at the ford's level across fields lower than the lane, a sheet of water on
 the grass. Its water now follows the ground, coming to the ford's level only at the lane, in a channel of its own. The first try read the ground as it cut it and each point dug the last one's channel
 deeper, into a gorge 6 m deep. Through the ford: 69 km/h in, 34 out, never flooded.
+
+### Wexbury's roads tidied, rivers on the minimap, gentler bridges; recognised straight back to the old level; a respray back is known again
+
+- *"A section here with way too much road, like so many bits of road."* Roads laid alongside another (nearer than their edges and 5 m for 20 m or more, not counting the 22 m at each end): 22 on the
+  map. A road added after the town's bones is refused if it would be (`crowded`); then of any two still alongside, the lesser goes (`declutter`: alley, lane, country, street, avenue, dual). 22 to 3. 133 ms.
+- The minimap: rivers and lakes in blue under the roads, Ashfield's river too (`map.minimapWater`, game/hud.js).
+- The bridges: decks ran 3 m past the valley and rose as half a sine, leaving the road at up to 26%. Now 16 m onto the banks each side, a sine squared (level where they leave the road), clearing the
+  water by a little less: about 7% at the steepest. Driven: the street's bridge 5.4 to 7.5 m and down, 6.6 m/s2 at the most; no water, no damage.
+- *"Just bump up straight to the wanted level after they've had a look at me."* Driving off from the car that came to look was one star for failing to stop, and a second look to put it back. Now straight
+  to the level on file, and the radio says so ("It's the suspect from earlier"). Recorded; `tests/radiovoice.js` 690 of 690.
+- *"If I resprayed it back to the original colour, they still didn't recognise me, and the car symbol didn't come back."* A respray took the car off file. The file is kept now; it is known only while
+  the colour matches, so back to the colour on file it is known again (checked: on file at 3, a respray not known, back to the original known at 3).
+- Found, not changed: Wexbury takes 16 s to build in the test pane (ground drawn 4 s, houses 6 s, trees 3 s).

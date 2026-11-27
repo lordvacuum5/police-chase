@@ -125,6 +125,26 @@ export class Hud {
 
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+    // Water first, under the roads (so a bridge is a road across it): "can you make the river on the map ... blue, so you can
+    // actually see it on the map? ... the same with the American map." A map's rivers as lines with a width, its lakes as outlines.
+    const wmap = this.game.world && this.game.world.__map, water = wmap && wmap.minimapWater;
+    if (water) {
+      ctx.strokeStyle = ctx.fillStyle = '#1f5f8f';
+      for (const r of water.rivers || []) {
+        ctx.lineWidth = Math.max(2, r.width * scale);
+        ctx.beginPath();
+        ctx.moveTo(toPx(r.points[0].x), toPx(r.points[0].z));
+        for (let i = 1; i < r.points.length; i++) ctx.lineTo(toPx(r.points[i].x), toPx(r.points[i].z));
+        ctx.stroke();
+      }
+      for (const poly of water.lakes || []) {
+        ctx.beginPath();
+        ctx.moveTo(toPx(poly[0].x), toPx(poly[0].z));
+        for (let i = 1; i < poly.length; i++) ctx.lineTo(toPx(poly[i].x), toPx(poly[i].z));
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
     for (const kind of order) {
       ctx.strokeStyle = colour[kind] || '#333a33';
       for (const e of this.game.graph.edges) {
