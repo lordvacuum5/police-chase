@@ -12,6 +12,20 @@ const _m = new THREE.Matrix4();
 const _nm = new THREE.Matrix3();
 const _v = new THREE.Vector3();
 const _c = new THREE.Color();
+/** A 2 m BoxGeometry's corners and normals, laid out as its toNonIndexed lays them (MeshBuilder.addBox). */
+let _boxS = null, _boxN = null;
+/** addTaperedBox's corners, faces and working vectors. */
+const _tbV = new Float64Array(24);
+const TB_FACES = [
+  0, 1, 2, 0, 2, 3,       // bottom
+  4, 6, 5, 4, 7, 6,       // top
+  0, 5, 1, 0, 4, 5,       // -Z
+  2, 7, 3, 2, 6, 7,       // +Z
+  1, 6, 2, 1, 5, 6,       // +X
+  3, 4, 0, 3, 7, 4,       // -X
+];
+const _tbA = new THREE.Vector3(), _tbB = new THREE.Vector3(), _tbC = new THREE.Vector3();
+const _tbAB = new THREE.Vector3(), _tbAC = new THREE.Vector3(), _tbN = new THREE.Vector3();
 
 export class MeshBuilder {
   constructor() {
@@ -97,12 +111,35 @@ export class MeshBuilder {
     return this;
   }
 
-  /** Axis-aligned box, optionally rotated about Y. */
+  /**
+   * Axis-aligned box, optionally rotated about Y.
+   *
+   * Exactly what `addGeometry(new THREE.BoxGeometry(w, h, d))` gave, to the bit, without making one: a BoxGeometry's
+   * corners are every one of them +-half its size (as float32, which is how the geometry held them), in the order
+   * its `toNonIndexed` lays them out, so the corners of one 2 m box scaled by the halves are the same numbers. A
+   * BoxGeometry and its copy a box -- some hundreds of thousands of them on a load -- were most of what the
+   * garbage collector had to clear up: "the American map loads much worse".
+   */
   addBox(w, h, d, x, y, z, color, rotY = 0) {
-    const geo = new THREE.BoxGeometry(w, h, d);
+    if (!_boxS) {
+      const g = new THREE.BoxGeometry(2, 2, 2), ng = g.toNonIndexed();
+      _boxS = Float64Array.from(ng.attributes.position.array);
+      _boxN = Float64Array.from(ng.attributes.normal.array);
+      g.dispose(); ng.dispose();
+    }
     _m.makeRotationY(rotY).setPosition(x, y, z);
-    this.addGeometry(geo, _m, color);
-    geo.dispose();
+    _nm.getNormalMatrix(_m);
+    _c.set(color);
+    const r = _c.r, gg = _c.g, b = _c.b;
+    const hx = Math.fround(w / 2), hy = Math.fround(h / 2), hz = Math.fround(d / 2);
+    const pos = this.pos, norm = this.norm, col = this.col;
+    for (let i = 0; i < _boxS.length; i += 3) {
+      _v.set(_boxS[i] * hx, _boxS[i + 1] * hy, _boxS[i + 2] * hz).applyMatrix4(_m);
+      pos.push(_v.x, _v.y, _v.z);
+      _v.set(_boxN[i], _boxN[i + 1], _boxN[i + 2]).applyMatrix3(_nm).normalize();
+      norm.push(_v.x, _v.y, _v.z);
+      col.push(r, gg, b);
+    }
     return this;
   }
 
@@ -113,38 +150,31 @@ export class MeshBuilder {
   addTaperedBox(w, h, d, x, y, z, color, topX = 1, topZ = 1, rotY = 0, shiftZ = 0) {
     const hw = w * 0.5, hh = h * 0.5, hd = d * 0.5;
     const tw = hw * topX, td = hd * topZ;
-    // 8 corners: bottom 0-3, top 4-7
-    const v = [
-      [-hw, -hh, -hd], [hw, -hh, -hd], [hw, -hh, hd], [-hw, -hh, hd],
-      [-tw, hh, -td + shiftZ], [tw, hh, -td + shiftZ], [tw, hh, td + shiftZ], [-tw, hh, td + shiftZ],
-    ];
-    const faces = [
-      [0, 1, 2], [0, 2, 3],       // bottom
-      [4, 6, 5], [4, 7, 6],       // top
-      [0, 5, 1], [0, 4, 5],       // -Z
-      [2, 7, 3], [2, 6, 7],       // +Z
-      [1, 6, 2], [1, 5, 6],       // +X
-      [3, 4, 0], [3, 7, 4],       // -X
-    ];
+    // 8 corners: bottom 0-3, top 4-7 (kept in one array between calls, as are the faces and vectors: the same numbers,
+    // without the 27 small arrays and six vectors a box this made for the collector)
+    const v = _tbV;
+    v[0] = -hw; v[1] = -hh; v[2] = -hd;  v[3] = hw; v[4] = -hh; v[5] = -hd;
+    v[6] = hw; v[7] = -hh; v[8] = hd;    v[9] = -hw; v[10] = -hh; v[11] = hd;
+    v[12] = -tw; v[13] = hh; v[14] = -td + shiftZ;  v[15] = tw; v[16] = hh; v[17] = -td + shiftZ;
+    v[18] = tw; v[19] = hh; v[20] = td + shiftZ;    v[21] = -tw; v[22] = hh; v[23] = td + shiftZ;
 
     _m.makeRotationY(rotY).setPosition(x, y, z);
     _nm.getNormalMatrix(_m);
     _c.set(color);
 
-    const a = new THREE.Vector3(), b = new THREE.Vector3(), cc = new THREE.Vector3();
-    const ab = new THREE.Vector3(), ac = new THREE.Vector3(), nrm = new THREE.Vector3();
+    const a = _tbA, b = _tbB, cc = _tbC, ab = _tbAB, ac = _tbAC, nrm = _tbN;
+    const pos = this.pos, norm = this.norm, col = this.col;
 
-    for (const f of faces) {
-      a.fromArray(v[f[0]]).applyMatrix4(_m);
-      b.fromArray(v[f[1]]).applyMatrix4(_m);
-      cc.fromArray(v[f[2]]).applyMatrix4(_m);
+    for (let f = 0; f < 36; f += 3) {
+      const i0 = TB_FACES[f] * 3, i1 = TB_FACES[f + 1] * 3, i2 = TB_FACES[f + 2] * 3;
+      a.set(v[i0], v[i0 + 1], v[i0 + 2]).applyMatrix4(_m);
+      b.set(v[i1], v[i1 + 1], v[i1 + 2]).applyMatrix4(_m);
+      cc.set(v[i2], v[i2 + 1], v[i2 + 2]).applyMatrix4(_m);
       ab.subVectors(b, a); ac.subVectors(cc, a);
       nrm.crossVectors(ab, ac).normalize();
-      for (const pt of [a, b, cc]) {
-        this.pos.push(pt.x, pt.y, pt.z);
-        this.norm.push(nrm.x, nrm.y, nrm.z);
-        this.col.push(_c.r, _c.g, _c.b);
-      }
+      pos.push(a.x, a.y, a.z, b.x, b.y, b.z, cc.x, cc.y, cc.z);
+      norm.push(nrm.x, nrm.y, nrm.z, nrm.x, nrm.y, nrm.z, nrm.x, nrm.y, nrm.z);
+      col.push(_c.r, _c.g, _c.b, _c.r, _c.g, _c.b, _c.r, _c.g, _c.b);
     }
     return this;
   }

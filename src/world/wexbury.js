@@ -161,6 +161,7 @@ export function buildWexbury(sim, scene, seed = 51807) {
   const hgrid = buildHeightGrid(base, { half: H, graph, flatten, crests, lines: rail ? [railGround(rail)] : [],
     skipClaim: (e, x, z) => inRiver(x, z), skipLine: (x, z) => inRiver(x, z) });
   ctx.grid = hgrid;
+  TM.carve = performance.now();
   const water = waterGrid(hgrid);
   ctx.water = water;
   if (canal) carveCanal(ctx, canal, hgrid, water);
@@ -174,6 +175,7 @@ export function buildWexbury(sim, scene, seed = 51807) {
   ctx.at = at;
 
   // ---------------------------------------------------------------- surfaces
+  TM.surfaces = performance.now();
   makeClearMask(ctx);
   if (rail) markLine(ctx, rail.points, 15, CLEAR_RAIL);
   // Out as far as the bridges' decks reach (riverDecks looks for one only inside this).
@@ -195,7 +197,9 @@ export function buildWexbury(sim, scene, seed = 51807) {
   const meshes = [];
   TM.terrain = performance.now();
   meshes.push(...buildTerrain(ctx, hgrid));
+  TM.roadMeshes = performance.now();
   const [tarmac, markings, kerbs, wear] = buildRoadMeshes(ctx);
+  TM.lift = performance.now();
   const lifted = liftRoads(ctx, [tarmac, markings, kerbs]);
   meshes.push(trueDepth(chunkMesh(lifted[0], 300), DRAW_ORDER.tarmac), chunkMesh(lifted[1], 300), trueDepth(chunkMesh(lifted[2], 300), DRAW_ORDER.tarmac + 0.3));
   if (wear) {
@@ -204,14 +208,19 @@ export function buildWexbury(sim, scene, seed = 51807) {
     wear.material.polygonOffsetUnits = -2;
     meshes.push(wear.geometry.index ? wear : chunkMesh(wear, 300));
   }
+  TM.pavements = performance.now();
   meshes.push(buildPavements(ctx));
+  TM.extras = performance.now();
   meshes.push(buildExtrasFlat(ctx, canal));
+  TM.bridges = performance.now();
   if (canal) meshes.push(...buildBridges(ctx, canal));
   const placed = new Placed();
   ctx.placed = placed;
+  TM.landmarks = performance.now();
   meshes.push(...buildLandmarks(ctx));
   TM.houses = performance.now();
   meshes.push(...buildFrontages(ctx));
+  TM.furniture = performance.now();
   meshes.push(...buildFurniture(ctx, canal));
   const waterMesh = canal || ctx.ford || ctx.lake ? buildWater(ctx, canal) : null;
   if (waterMesh) meshes.push(waterMesh);
@@ -436,22 +445,27 @@ class Line {
 
   /** { d, s, k } of the nearest point within `r` (Infinity if none). */
   near(x, z, r = 40) {
-    let best = { d: Infinity, s: 0, k: -1 };
+    // Which pieces are done by a stamp a call, not a Set a call, and the best so far in three numbers rather than an
+    // object each time it improves: the same answer, without the garbage of the river's many thousand asks.
+    let bd = Infinity, bs = 0, bk = -1;
     const c = this.cell, n = Math.ceil(r / c);
-    const ci = Math.floor(x / c), cj = Math.floor(z / c), seen = new Set();
+    const ci = Math.floor(x / c), cj = Math.floor(z / c);
+    if (!this._seen) { this._seen = new Uint32Array(this.points.length); this._stamp = 0; }
+    const seen = this._seen, stamp = ++this._stamp;
     for (let i = ci - n; i <= ci + n; i++) for (let j = cj - n; j <= cj + n; j++) {
       const l = this.map.get(i * 100003 + j);
       if (!l) continue;
-      for (const k of l) {
-        if (seen.has(k)) continue;
-        seen.add(k);
+      for (let m = 0; m < l.length; m++) {
+        const k = l[m];
+        if (seen[k] === stamp) continue;
+        seen[k] = stamp;
         const a = this.points[k], b = this.points[k + 1], dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz;
         const t = L2 > 0 ? clamp(((x - a.x) * dx + (z - a.z) * dz) / L2, 0, 1) : 0;
         const d = Math.hypot(a.x + dx * t - x, a.z + dz * t - z);
-        if (d < best.d) best = { d, s: this.sAt[k] + t * Math.sqrt(L2), k };
+        if (d < bd) { bd = d; bs = this.sAt[k] + t * Math.sqrt(L2); bk = k; }
       }
     }
-    return best;
+    return { d: bd, s: bs, k: bk };
   }
 
   /** Where a polyline crosses this: [{ x, z, i, t, s, cos }]. `i` its segment, `t` along it, `s` along this. */
@@ -460,13 +474,17 @@ class Line {
     for (let i = 0; i < pts.length - 1; i++) {
       const p = pts[i], q = pts[i + 1];
       const mx = (p.x + q.x) / 2, mz = (p.z + q.z) / 2, r = Math.hypot(q.x - p.x, q.z - p.z) / 2 + 2;
-      const c = this.cell, n = Math.ceil(r / c) + 1, ci = Math.floor(mx / c), cj = Math.floor(mz / c), seen = new Set();
+      const c = this.cell, n = Math.ceil(r / c) + 1, ci = Math.floor(mx / c), cj = Math.floor(mz / c);
+      // A stamp a segment of `pts`, as `near`.
+      if (!this._seen) { this._seen = new Uint32Array(this.points.length); this._stamp = 0; }
+      const seen = this._seen, stamp = ++this._stamp;
       for (let a = ci - n; a <= ci + n; a++) for (let b = cj - n; b <= cj + n; b++) {
         const l = this.map.get(a * 100003 + b);
         if (!l) continue;
-        for (const k of l) {
-          if (seen.has(k)) continue;
-          seen.add(k);
+        for (let m = 0; m < l.length; m++) {
+          const k = l[m];
+          if (seen[k] === stamp) continue;
+          seen[k] = stamp;
           const c0 = this.points[k], c1 = this.points[k + 1];
           if (!segX(p, q, c0, c1)) continue;
           const rx = q.x - p.x, rz = q.z - p.z, sx = c1.x - c0.x, sz = c1.z - c0.z, den = rx * sz - rz * sx;
@@ -1455,6 +1473,9 @@ function vnoise(x, z, size, k) {
   return lerp(lerp(a, b, su), lerp(c, d, su), sv);
 }
 
+/** Where buildTerrain's nearRoad looks round a point for a road or footway: [x, z, x, z, ...]. */
+const NEAR_ROAD_OFF = [0, 0, 5, 0, -5, 0, 0, 5, 0, -5, 4, 4, -4, 4, 4, -4, -4, -4];
+
 function buildTerrain(ctx, hgrid) {
   const sf = ctx.surfAt, water = ctx.water;
   // Under the pavements too: "on a hill bit with the houses ... the occasional bit where like a bit of green ground poked through
@@ -1463,8 +1484,9 @@ function buildTerrain(ctx, hgrid) {
     // Well under water where it is: the far tiles, 12 m a step across a 30 m river, stood up through it in green patches.
     const lv = water.levelAt(x, z);
     if (lv !== null && hgrid.at(x, z) < lv - 0.3 && !water.fordAt(x, z)) return 1.5;
-    for (const [ox, oz] of [[0, 0], [5, 0], [-5, 0], [0, 5], [0, -5], [4, 4], [-4, 4], [4, -4], [-4, -4]]) {
-      const v = sf(x + ox, z + oz);
+    // The offsets made once, not nine little arrays for each of the ground's 600,000 points (Wexbury's load).
+    for (let k = 0; k < NEAR_ROAD_OFF.length; k += 2) {
+      const v = sf(x + NEAR_ROAD_OFF[k], z + NEAR_ROAD_OFF[k + 1]);
       if (v === SURF_ROAD || v === SURF_PAVED) return 0.45;
     }
     return 0;
@@ -1654,19 +1676,21 @@ function shopSigns(signs) {
   return mesh;
 }
 
+// Cells keyed by a small number rather than a string made for every cell of every ask (Wexbury's load).
+const placedKey = (i, j) => (i + 4096) * 8192 + (j + 4096);
 class Placed {
   constructor(cell = 24) { this.cell = cell; this.map = new Map(); }
   free(x, z, r) {
     const c = Math.ceil(r / this.cell) + 1, ix = Math.floor(x / this.cell), iz = Math.floor(z / this.cell);
     for (let i = ix - c; i <= ix + c; i++) for (let j = iz - c; j <= iz + c; j++) {
-      const list = this.map.get(`${i},${j}`);
+      const list = this.map.get(placedKey(i, j));
       if (!list) continue;
       for (const p of list) if ((p.x - x) ** 2 + (p.z - z) ** 2 < (p.r + r) ** 2) return false;
     }
     return true;
   }
   add(x, z, r) {
-    const k = `${Math.floor(x / this.cell)},${Math.floor(z / this.cell)}`;
+    const k = placedKey(Math.floor(x / this.cell), Math.floor(z / this.cell));
     (this.map.get(k) || this.map.set(k, []).get(k)).push({ x, z, r });
   }
 }
@@ -1805,6 +1829,8 @@ function buildFrontages(ctx) {
   ctx.whyNot = {};
   const out0 = [];
   const paveOf = (e) => e.pave || 0;
+  // The roundabouts and the bypass's junctions, no house in any: the list made once, not for each house tried.
+  const circles = (ctx.roundabouts || []).concat((ctx.bypass && ctx.bypass.junctions) || []);
   let count = 0;
   for (const e of graph.edges) {
     if (e.dead || e.kind === 'dual' || e.kind === 'alley' || e.width === 11 || e.hill) continue;
@@ -1842,7 +1868,7 @@ function buildFrontages(ctx) {
             roofDark = 0x33302b;
           }
           const bx = px + nx * side * (setback + d * 0.5), bz = pz + nz * side * (setback + d * 0.5), radius = Math.hypot(w, d) * 0.5;
-          const why = (ctx.roundabouts || []).concat((ctx.bypass && ctx.bypass.junctions) || []).some((c) => Math.hypot(bx - c.x, bz - c.z) < c.r + radius + 3)
+          const why = circles.some((c) => Math.hypot(bx - c.x, bz - c.z) < c.r + radius + 3)
             || Math.hypot(bx, bz) < SQUARE_R + radius + 4 || Math.abs(bx) > WORLD_HALF - 30 || Math.abs(bz) > WORLD_HALF - 30 ? 'edge'
             : !placed.free(bx, bz, Math.min(w, d) * 0.46) ? 'placed' : graph.overlapsRoad(bx, bz, w, d, Math.atan2(dx, dz), 3.5) ? 'road' : !clearSpot(ctx, bx, bz, radius) ? 'lines' : null;
           if (why) {

@@ -568,12 +568,40 @@ export function buildTerrainMesh(grid, colourAt, step = 8, dropAt = null, hole =
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
   g.setIndex(new THREE.BufferAttribute(q < index.length ? index.slice(0, q) : index, 1));
-  g.computeVertexNormals();
+  vertexNormals(g);
   const mesh = new THREE.Mesh(g, vertexColorMaterial());
   groundDetail(mesh, 'grass');
   mesh.receiveShadow = true;
   mesh.name = 'terrain';
   return mesh;
+}
+
+/**
+ * `g.computeVertexNormals()` for an indexed geometry with a plain float32 position, to the bit: three.js's own sums in
+ * its own order (each face's cross product added into the float32 normals of its three corners, all three read before
+ * any is written, then each normalised as Vector3.normalize does), on the arrays rather than through a Vector3 and a
+ * get and a set for every number. The ground's 200 tiles of it were a third of a second of Wexbury's load.
+ */
+function vertexNormals(g) {
+  const P = g.attributes.position.array, I = g.index.array, N = new Float32Array(P.length);
+  for (let u = 0; u + 2 < I.length; u += 3) {
+    const d = I[u] * 3, p = I[u + 1] * 3, m = I[u + 2] * 3;
+    // cb = C - B, ab = A - B, cb x ab (three.js: l.subVectors(n, r), c.subVectors(i, r), l.cross(c)).
+    const lx = P[m] - P[p], ly = P[m + 1] - P[p + 1], lz = P[m + 2] - P[p + 2];
+    const cx = P[d] - P[p], cy = P[d + 1] - P[p + 1], cz = P[d + 2] - P[p + 2];
+    const x = ly * cz - lz * cy, y = lz * cx - lx * cz, z = lx * cy - ly * cx;
+    const a0 = N[d] + x, a1 = N[d + 1] + y, a2 = N[d + 2] + z;
+    const o0 = N[p] + x, o1 = N[p + 1] + y, o2 = N[p + 2] + z;
+    const h0 = N[m] + x, h1 = N[m + 1] + y, h2 = N[m + 2] + z;
+    N[d] = a0; N[d + 1] = a1; N[d + 2] = a2;
+    N[p] = o0; N[p + 1] = o1; N[p + 2] = o2;
+    N[m] = h0; N[m + 1] = h1; N[m + 2] = h2;
+  }
+  for (let k = 0; k < N.length; k += 3) {
+    const x = N[k], y = N[k + 1], z = N[k + 2], s = 1 / (Math.sqrt(x * x + y * y + z * z) || 1);
+    N[k] = x * s; N[k + 1] = y * s; N[k + 2] = z * s;
+  }
+  g.setAttribute('normal', new THREE.BufferAttribute(N, 3));
 }
 
 /** Lift every vertex of a mesh built flat by the height under it. */

@@ -117,10 +117,21 @@ function markDisc(ctx, x, z, r, bit) {
   const cx = (x + WORLD_HALF) / CELL, cz = (z + WORLD_HALF) / CELL, cr = r / CELL;
   const x0 = Math.max(0, Math.floor(cx - cr)), x1 = Math.min(GRID_N - 1, Math.ceil(cx + cr));
   const z0 = Math.max(0, Math.floor(cz - cr)), z1 = Math.min(GRID_N - 1, Math.ceil(cz + cr));
+  // A row's run of cells found from its ends, not every cell of the square asked (as common.js paintDisc): the same
+  // test decides, and along a row it holds over one run. Laid every half radius down the railway and the river,
+  // the squares were a quarter of a second of Wexbury's load.
+  const r2 = cr * cr;
   for (let j = z0; j <= z1; j++) {
-    for (let i = x0; i <= x1; i++) {
-      if ((i + 0.5 - cx) ** 2 + (j + 0.5 - cz) ** 2 <= cr * cr) m[j * GRID_N + i] |= bit;
-    }
+    const dz2 = (j + 0.5 - cz) ** 2;
+    if (dz2 > r2) continue;
+    const inside = (i) => (i + 0.5 - cx) ** 2 + dz2 <= r2;
+    const h = Math.sqrt(r2 - dz2);
+    let lo = Math.max(x0, Math.ceil(cx - 0.5 - h)), hi = Math.min(x1, Math.floor(cx - 0.5 + h));
+    while (lo > x0 && inside(lo - 1)) lo--;
+    while (lo <= hi && !inside(lo)) lo++;
+    while (hi < x1 && inside(hi + 1)) hi++;
+    while (hi >= lo && !inside(hi)) hi--;
+    for (let i = lo, k = j * GRID_N + lo; i <= hi; i++, k++) m[k] |= bit;
   }
 }
 

@@ -41,13 +41,23 @@ function canvas(grey, size = SIZE) {
   return { c, x };
 }
 
-/** Fine speckle over everything, so no surface is perfectly flat. */
+/**
+ * Fine speckle over everything, so no surface is perfectly flat.
+ *
+ * White or black with the speck's strength as globalAlpha, not an rgba() string made and read for every one of the
+ * 56,000 a texture: in a fifth to a half of the time (0.7 s of Wexbury's load was these textures), and as near the
+ * same pixels as makes none -- compared, every one, the gravel is identical, and of the brick's, the panels' and the
+ * roof's 6.3 million colour values 21 are one step (of 255) different.
+ */
 function speckle(x, r, n, amt, size = SIZE) {
+  let was = -1;
   for (let k = 0; k < n; k++) {
-    const light = r() < 0.5;
-    x.fillStyle = light ? `rgba(255,255,255,${amt * r()})` : `rgba(0,0,0,${amt * r()})`;
+    const light = r() < 0.5 ? 1 : 0;
+    if (light !== was) { x.fillStyle = light ? '#ffffff' : '#000000'; was = light; }
+    x.globalAlpha = amt * r();
     x.fillRect(r() * size, r() * size, 1 + r() * 2, 1 + r() * 2);
   }
+  x.globalAlpha = 1;
 }
 
 /**

@@ -11047,3 +11047,37 @@ Loading: *"the American map is much worse"*. The build is timed now (`game.loadT
 lifting them 1.5, cutting them into cells 1.2, raised decks 2.8, buildings 4.8, trees 1.1. Wexbury 16 s. The grid's bank sweep unpacked a list of neighbours for every cell, six times over (13 million): unrolled,
 3.4 s to 2.2 s, the ground identical (sum of 5,700 heights the same to 3 places). The decks' cover test with segment boxes: 2.8 to 2.6. The rest of the decks' 2.8 s is not in the parts timed (collider 0.04,
 cover 0.15, lift 0.45): to find next.
+
+### Maps load about a third faster, the same maps; the car photos are kept on Ashfield
+
+*"Well, I tried doing the American map. Well, both, but the American map is much worse."* Page opened to playable (`game.loadTimes.ready`), the old version and this one loaded one after the other in the
+test pane, the car photos already taken on both. This machine runs either fast or about twice as slow from one load to the next, so only neighbouring pairs compare:
+
+| | before | after | |
+|---|---|---|---|
+| Ashfield | 42.4 s | 27.9 s | -34% |
+| Ashfield | 15.6 s | 11.7 s | -25% |
+| Wexbury | 41.8 s | 25.2 s | -40% |
+| Wexbury | 13.4 s | 9.3 s | -31% |
+| Wexbury | 12.7 s | 9.9 s | -22% |
+| Wexbury | 17.0 s | 10.5 s | -38% |
+
+The maps are the same to the bit: `tests/worldhash.js` hashes every number of every geometry in the scene (and the canvas textures' pixels apart), and it is the same before and after on both maps;
+the grass is the same 243,567 tufts in the same places. The one change anyone could find is the building textures' speckle, below. Where it went, found with the browser's sampling profiler
+(`tests/loadprofile.js`, which needs the page served with `Document-Policy: js-profiling`): a good half of every build stage shows as no JavaScript running at all -- which, tried on a loop that only
+makes small objects, is how this profiler shows allocating and collecting them. So most of what was done is making less garbage.
+- The verges' grass, 7.9 s on Ashfield in a slow run: every tuft asked whether it was on a drive of all 383 drives one by one (4.8 s); now a 32 m grid of them (`driveLookup`). Its road check asked the
+  spatial hash afresh for each tuft; now each 16 m cell's pieces of road once (`roadLookup`, the same answers while no road's keep is past 24 m: Ashfield's widest is 16.2). The fields' noise keeps its
+  corners; cells keyed by numbers, not strings. 3.2 s after the first two, about 1.2 now.
+- Car models fetched together, and the light bar found by rays against only the triangles under each ray: the supercar's and the runner's 50,000 triangles took 2 s each (lamps the same to 9 places).
+- The far cars' simplified models: a triangle's cells first, and the textures sampled only for the ones kept (most are dropped). 2.4 s to 1.1-1.6 s for every model at every cell size; keyed by numbers
+  instead of strings it measured slower (2.4 s), so strings they stay.
+- `MeshBuilder.addBox` made a three.js BoxGeometry and a copy of it for every box; now the corners of one 2 m box scaled, the same float32 numbers. `addTaperedBox` keeps its arrays and vectors.
+- `paintDisc` and Wexbury's `markDisc` fill each row's run of cells, found from its ends, instead of testing every cell of the square; `edgesNear` and Wexbury's river `near`/`crossings` use a stamp, not
+  a Set a call; `overlapsRoad` skips a piece of road wholly out of reach; Wexbury's ground no longer makes nine arrays a point to look for a road, and its house-plots keyed by numbers.
+- The ground's normals worked out on the arrays (three.js's own sums in its own order, so the same bits): a third of a second of Wexbury.
+- The speckle on the brick, panel, roof and gravel textures drawn with globalAlpha instead of an rgba() string a speck: 2-5 times faster. Gravel identical; of the other three's 6.3 million colour
+  values, 21 differ by one step in 255.
+
+And a bug that cost every Ashfield load: the menu's car photos are taken by stepping the game with the fog switched off, and Ashfield's traffic reads the fog, so it threw, nothing was kept, and every
+load tried again (0.6 s, and the menu never got its photos there). The fog is off only for the photo now. The first load after this takes them once, about 7 s on Ashfield; after that, never.

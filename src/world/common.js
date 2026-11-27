@@ -79,11 +79,20 @@ export function paintDisc(surface, x, z, radius, value) {
   const x0 = Math.max(0, Math.floor(cx - cr)), x1 = Math.min(GRID_N - 1, Math.ceil(cx + cr));
   const z0 = Math.max(0, Math.floor(cz - cr)), z1 = Math.min(GRID_N - 1, Math.ceil(cz + cr));
   const r2 = cr * cr;
+  // Each row's run of cells found and filled at once, not every cell of the square asked: the cells inside are the same
+  // ones (the test below, which is all that decides, is monotonic along a row, so they are one run). Pavements are
+  // painted a disc every 1.5 m (paintPavements), and the square of each was 0.5 s of Ashfield City's load.
+  const inside = (i, dz2) => { const dx = i + 0.5 - cx; return dx * dx + dz2 <= r2; };
   for (let j = z0; j <= z1; j++) {
-    for (let i = x0; i <= x1; i++) {
-      const dx = i + 0.5 - cx, dz = j + 0.5 - cz;
-      if (dx * dx + dz * dz <= r2) surface[j * GRID_N + i] = value;
-    }
+    const dz = j + 0.5 - cz, dz2 = dz * dz;
+    if (dz2 > r2) continue;
+    const h = Math.sqrt(r2 - dz2);
+    let lo = Math.max(x0, Math.ceil(cx - 0.5 - h)), hi = Math.min(x1, Math.floor(cx - 0.5 + h));
+    while (lo > x0 && inside(lo - 1, dz2)) lo--;
+    while (lo <= hi && !inside(lo, dz2)) lo++;
+    while (hi < x1 && inside(hi + 1, dz2)) hi++;
+    while (hi >= lo && !inside(hi, dz2)) hi--;
+    if (lo <= hi) surface.fill(value, j * GRID_N + lo, j * GRID_N + hi + 1);
   }
 }
 

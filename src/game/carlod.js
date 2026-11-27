@@ -57,7 +57,8 @@ export function simplifyCar(root, spec, wheelGeo, cell) {
   _inv.copy(root.matrixWorld).invert();
   const cells = new Map(), verts = new Map(), tris = new Map();
   const cellOf = (x, y, z) => {
-    const k = `${Math.round(x / cell)},${Math.round(y / cell)},${Math.round(z / cell)}`;
+    const ix = Math.round(x / cell), iy = Math.round(y / cell), iz = Math.round(z / cell);
+    const k = `${ix},${iy},${iz}`;
     let c = cells.get(k);
     if (!c) cells.set(k, (c = { id: cells.size, x: 0, y: 0, z: 0, n: 0 }));
     c.x += x; c.y += y; c.z += z; c.n++;
@@ -72,16 +73,26 @@ export function simplifyCar(root, spec, wheelGeo, cell) {
     const flip = mat && mat.map && mat.map.flipY;
     _nm.getNormalMatrix(matrix);
     const n = I ? I.count : P.count, mirrored = matrix.determinant() < 0;
+    const ix = [0, 0, 0], cs = [null, null, null];
     for (let t = 0; t + 2 < n; t += 3) {
-      const ix = [0, 1, 2].map((k) => (I ? I.getX(t + k) : t + k));
-      if (mirrored) ix.reverse();
+      ix[0] = I ? I.getX(t) : t; ix[1] = I ? I.getX(t + 1) : t + 1; ix[2] = I ? I.getX(t + 2) : t + 2;
+      if (mirrored) { const s = ix[0]; ix[0] = ix[2]; ix[2] = s; }
+      // Which cells its corners fall in first: most of a model's triangles are inside one or two, and are dropped,
+      // and everything else asked of them below (normals, the textures' colours) was being worked out for nothing.
+      // "The American map loads much worse": FarCars, all of this, took 1.4 s of every map's load. (Keys as numbers
+      // rather than strings measured slower: 2.4 s against 1.1-1.6 s for every car at every cell size it uses.)
+      for (let k = 0; k < 3; k++) {
+        w[k].fromBufferAttribute(P, ix[k]).applyMatrix4(matrix);
+        cs[k] = cellOf(w[k].x, w[k].y, w[k].z);
+      }
+      if (cs[0] === cs[1] || cs[1] === cs[2] || cs[0] === cs[2]) continue;
       let u = 0, vv = 0, r = 0, g = 0, bl = 0;
-      ix.forEach((i, k) => {
-        w[k].fromBufferAttribute(P, i).applyMatrix4(matrix);
+      for (let k = 0; k < 3; k++) {
+        const i = ix[k];
         if (N) m[k].fromBufferAttribute(N, i).applyMatrix3(_nm).normalize();
         if (U) { u += U.getX(i) / 3; vv += U.getY(i) / 3; }
         if (C) { r += C.getX(i) / 3; g += C.getY(i) / 3; bl += C.getZ(i) / 3; }
-      });
+      }
       _col.setRGB(1, 1, 1);
       if (C) _col.setRGB(r, g, bl);
       if (map) { sample(map, flip, u, vv, rgb); _col.multiply(_tex.setRGB(rgb[0], rgb[1], rgb[2], THREE.SRGBColorSpace)); }
@@ -90,8 +101,6 @@ export function simplifyCar(root, spec, wheelGeo, cell) {
       let rough = mat && mat.roughness !== undefined ? mat.roughness : 1, metal = mat && mat.metalness !== undefined ? mat.metalness : 0;
       if (mr) rough *= sample(mr, flip, u, vv, rgb)[1];
       if (mm) metal *= sample(mm, flip, u, vv, rgb)[2];
-      const cs = [0, 1, 2].map((k) => cellOf(w[k].x, w[k].y, w[k].z));
-      if (cs[0] === cs[1] || cs[1] === cs[2] || cs[0] === cs[2]) continue;
       const q = (x) => Math.round(x * 12), look = `${q(_col.r)},${q(_col.g)},${q(_col.b)},${paint},${q(rough)},${q(metal)}`;
       const vs = cs.map((c, k) => {
         const d = m[k], ax = Math.abs(d.x), ay = Math.abs(d.y), az = Math.abs(d.z);
@@ -105,7 +114,8 @@ export function simplifyCar(root, spec, wheelGeo, cell) {
       // One triangle between the same three cells facing the same way.
       let a = 0;
       for (let k = 1; k < 3; k++) if (cs[k].id < cs[a].id) a = k;
-      const key = `${cs[a].id},${cs[(a + 1) % 3].id},${cs[(a + 2) % 3].id}`;
+      const i0 = cs[a].id, i1 = cs[(a + 1) % 3].id, i2 = cs[(a + 2) % 3].id;
+      const key = `${i0},${i1},${i2}`;
       if (!tris.has(key)) tris.set(key, vs);
     }
   };

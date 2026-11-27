@@ -15,7 +15,7 @@
 
 import * as THREE from 'three';
 import { nearBuilding } from '../physics/world.js';
-import { onDrive } from '../world/drives.js';
+import { driveLookup } from '../world/drives.js';
 import { block } from './still.js';
 
 const VERGE_CELL = 100;
@@ -45,12 +45,23 @@ function hash(a, b, k) {
   return (h >>> 0) / 4294967296;
 }
 
-/** Smooth noise 0..1, `size` m across: where the patches are. */
-function patchNoise(x, z, size) {
+/**
+ * Smooth noise 0..1, `size` m across: where the patches are. `lattice` (a Map, kept by the caller) keeps each corner's
+ * value once worked out: a hundred points of the fields' grid share each square's four, which were worked out afresh
+ * for each -- four hashes a point over Ashfield's 875,000. The same numbers.
+ */
+function patchNoise(x, z, size, lattice) {
   const fx = x / size, fz = z / size, i = Math.floor(fx), j = Math.floor(fz), tx = fx - i, tz = fz - j;
   const sx = tx * tx * (3 - 2 * tx), sz = tz * tz * (3 - 2 * tz);
-  const v = (a, b) => hash(a * 7.31, b * 7.31, 11);
-  const top = v(i, j) + (v(i + 1, j) - v(i, j)) * sx, bot = v(i, j + 1) + (v(i + 1, j + 1) - v(i, j + 1)) * sx;
+  const v = (a, b) => {
+    // Small whole numbers for keys: as large ones (past 2^30) the Map was slower than working the hash out again.
+    const k = (a + 2048) * 4096 + (b + 2048);
+    let h = lattice.get(k);
+    if (h === undefined) lattice.set(k, (h = hash(a * 7.31, b * 7.31, 11)));
+    return h;
+  };
+  const v00 = v(i, j), v10 = v(i + 1, j), v01 = v(i, j + 1), v11 = v(i + 1, j + 1);
+  const top = v00 + (v10 - v00) * sx, bot = v01 + (v11 - v01) * sx;
   return top + (bot - top) * sz;
 }
 
@@ -127,6 +138,61 @@ function tuftGeometry() {
   return g;
 }
 
+const ROAD_CELL = 16;
+/**
+ * Is (x, z) within an edge's keep (its half width, footway and 0.7 m) of any road `graph.edgesNear(x, z, 24)` gives?
+ * Each 16 m cell's candidate pieces of road found once and kept: asked afresh of every tuft, the spatial hash's
+ * lists, a Set and an array a time, it was the dearest of `green`'s questions once the drives had a lookup.
+ * Every candidate the old way had is in a cell's list (the cell's lookup reaches 24 m past its sides), and a piece
+ * of road is left out only if no point in the cell is within its keep of it; so while no keep is past 24 m
+ * (Ashfield's widest is 16.2 m) the answers are the same. If one ever were, each is asked as before.
+ */
+function roadLookup(graph) {
+  const keepOf = (e) => e.width * 0.5 + (e.pave || 0) + 0.7;
+  const slow = (x, z) => {
+    for (const e of graph.edgesNear(x, z, 24)) {
+      const keep = keepOf(e);
+      for (const sg of e.segs) {
+        const dx = sg.b.x - sg.a.x, dz = sg.b.z - sg.a.z, l2 = dx * dx + dz * dz;
+        let t = l2 > 1e-9 ? ((x - sg.a.x) * dx + (z - sg.a.z) * dz) / l2 : 0;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const px = sg.a.x + dx * t - x, pz = sg.a.z + dz * t - z;
+        if (px * px + pz * pz < keep * keep) return true;
+      }
+    }
+    return false;
+  };
+  if (graph.edges.some((e) => !e.cut && keepOf(e) > 24)) return slow;
+  const cells = new Map();
+  const listFor = (ci, cj) => {
+    const x0 = ci * ROAD_CELL, z0 = cj * ROAD_CELL, x1 = x0 + ROAD_CELL, z1 = z0 + ROAD_CELL;
+    const out = [];
+    for (const e of graph.edgesNear(x0 + ROAD_CELL * 0.5, z0 + ROAD_CELL * 0.5, ROAD_CELL * 0.5 + 24)) {
+      const keep = keepOf(e);
+      for (const sg of e.segs) {
+        if (Math.max(sg.a.x, sg.b.x) + keep < x0 || Math.min(sg.a.x, sg.b.x) - keep > x1) continue;
+        if (Math.max(sg.a.z, sg.b.z) + keep < z0 || Math.min(sg.a.z, sg.b.z) - keep > z1) continue;
+        const dx = sg.b.x - sg.a.x, dz = sg.b.z - sg.a.z;
+        out.push(sg.a.x, sg.a.z, dx, dz, dx * dx + dz * dz, keep * keep);
+      }
+    }
+    return out;
+  };
+  return (x, z) => {
+    const ci = Math.floor(x / ROAD_CELL), cj = Math.floor(z / ROAD_CELL), k = ci * 65536 + cj;
+    let L = cells.get(k);
+    if (!L) cells.set(k, (L = listFor(ci, cj)));
+    for (let i = 0; i < L.length; i += 6) {
+      const ax = L[i], az = L[i + 1], dx = L[i + 2], dz = L[i + 3], l2 = L[i + 4];
+      let t = l2 > 1e-9 ? ((x - ax) * dx + (z - az) * dz) / l2 : 0;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const px = ax + dx * t - x, pz = az + dz * t - z;
+      if (px * px + pz * pz < L[i + 5]) return true;
+    }
+    return false;
+  };
+}
+
 /** Plant the verges of `game`'s roads; returns the group added to the scene, or null. */
 export function addVerges(game, blocks = null) {
   if (window.__noVerges || !game.graph || !game.sim.surfaceAt) return null;
@@ -135,7 +201,7 @@ export function addVerges(game, blocks = null) {
   // dropped once the map is built, and with it gone nearBuilding said no to everything -- "it shouldn't
   // then be inside houses".
   const world = { __blocks: blocks };
-  const strips = map.driveStrips;
+  const onDrive = driveLookup(map.driveStrips, 0.6);
   /**
    * Only on the green: "it shouldn't be on the pavement... it should only be in the green". The grip grid
    * calls a footway grass where it has no kerb (Wexbury's lanes, and the edge of every pavement drawn wider
@@ -143,22 +209,14 @@ export function addVerges(game, blocks = null) {
    */
   // Not in Haldon's quarry: dug rock and gravel, whose walls are not on the building list.
   const quarry = map.quarry, qr = quarry ? quarry.r + 10 : 0;
+  const nearRoad = roadLookup(graph);
   const green = (x, z) => {
     if (surf(x, z) !== 0) return false;
     // Nor on the railway's sleepers or the dirt tracks, which the grip grid calls grass.
     if (map.clearAt && map.clearAt(x, z)) return false;
     if (quarry && (x - quarry.x) * (x - quarry.x) + (z - quarry.z) * (z - quarry.z) < qr * qr) return false;
-    for (const e of graph.edgesNear(x, z, 24)) {
-      const keep = e.width * 0.5 + (e.pave || 0) + 0.7;
-      for (const sg of e.segs) {
-        const dx = sg.b.x - sg.a.x, dz = sg.b.z - sg.a.z, l2 = dx * dx + dz * dz;
-        let t = l2 > 1e-9 ? ((x - sg.a.x) * dx + (z - sg.a.z) * dz) / l2 : 0;
-        t = t < 0 ? 0 : t > 1 ? 1 : t;
-        const px = sg.a.x + dx * t - x, pz = sg.a.z + dz * t - z;
-        if (px * px + pz * pz < keep * keep) return false;
-      }
-    }
-    if (onDrive(strips, x, z, 0.6)) return false;
+    if (nearRoad(x, z)) return false;
+    if (onDrive(x, z)) return false;
     // Nor on the garage's forecourt, which is laid after the map (game/garage.js).
     if (game.garage && game.garage.covers(x, z, 1)) return false;
     return !nearBuilding(world, x, z, 0.9);
@@ -175,7 +233,7 @@ export function addVerges(game, blocks = null) {
       const tx = (b.x - a.x) / len, tz = (b.z - a.z) / len, nx = -tz, nz = tx;
       for (let s = carry; s < len; s += STEP) {
         const px = a.x + tx * s, pz = a.z + tz * s;
-        for (const side of [-1, 1]) {
+        for (let side = -1; side <= 1; side += 2) {
           const h1 = hash(px, pz, side + 2);
           const off = e.width * 0.5 + (e.pave || 0) + 0.8 + h1 * BAND;
           const x = px + nx * side * off + tx * (hash(pz, px, 7) - 0.5), z = pz + nz * side * off + tz * (hash(px, pz, 8) - 0.5);
@@ -192,9 +250,10 @@ export function addVerges(game, blocks = null) {
   // odd that it's at the side of the road and not other places." Thicker where the noise is high, none
   // where it is low, so it reads as rough patches in the fields rather than an even fur.
   const half = (map.bounds || 1000) - 4;
+  const lattice = new Map();
   for (let gx = -half; gx < half; gx += FIELD_STEP) {
     for (let gz = -half; gz < half; gz += FIELD_STEP) {
-      const n = patchNoise(gx, gz, FIELD_PATCH);
+      const n = patchNoise(gx, gz, FIELD_PATCH, lattice);
       const keep = (n - 0.42) * 2.2;
       if (keep <= 0 || hash(gx, gz, 12) > keep) continue;
       const x = gx + (hash(gx, gz, 13) - 0.5) * FIELD_STEP, z = gz + (hash(gz, gx, 14) - 0.5) * FIELD_STEP;
@@ -223,19 +282,22 @@ export function addVerges(game, blocks = null) {
     mat.customProgramCacheKey = () => 'verge-grow';
     return mat;
   });
+  // By cell and kind, in the order each was first met (as the string keys these were had them). Keyed by a small
+  // number, not a string a tuft: a quarter of a second of Ashfield's load.
   const cells = new Map();
   for (const s of spots) {
-    const key = `${Math.floor(s.x / VERGE_CELL)},${Math.floor(s.z / VERGE_CELL)},${s.f === 2 ? 2 : s.f ? 1 : 0}`;
+    const ci = Math.floor(s.x / VERGE_CELL), cj = Math.floor(s.z / VERGE_CELL), f = s.f === 2 ? 2 : s.f ? 1 : 0;
+    const key = ((ci + 512) * 1024 + (cj + 512)) * 4 + f;
     let list = cells.get(key);
-    if (!list) cells.set(key, (list = []));
+    if (!list) { cells.set(key, (list = [])); list.ci = ci; list.cj = cj; list.f = f; }
     list.push(s);
   }
   const root = new THREE.Group();
   root.name = 'verges';
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), sc = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
   const col = new THREE.Color();
-  for (const [key, list] of cells) {
-    const [ci, cj, f] = key.split(',').map(Number);
+  for (const list of cells.values()) {
+    const { ci, cj, f } = list;
     const ox = (ci + 0.5) * VERGE_CELL, oz = (cj + 0.5) * VERGE_CELL;
     const im = new THREE.InstancedMesh(geo, mats[f], list.length);
     list.forEach((s, i) => {

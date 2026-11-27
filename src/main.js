@@ -414,7 +414,7 @@ class Game {
     const tBuild = performance.now();
     const built = this.mapDef.build(this.sim, this.scene, this.mapDef.seed || 20260822);
     // How long the load took, by part, for the rigs: "the American map is much worse".
-    this.loadTimes = { build: Math.round(performance.now() - tBuild) };
+    this.loadTimes = { build: Math.round(performance.now() - tBuild), marks: built.marks, deckT: built.deckT };
     this.graph = built.graph;
     this.sim.surfaceAt = built.surfaceAt;
     // Raised decks' colliders (Ashfield City): a wheel on one is on road (Vehicle).
@@ -582,6 +582,9 @@ class Game {
     boot.set(1, 'ready');
     await frame();
     boot.hide();
+    // Page opened to playable, and when the build began, for the rigs (tests/loadprofile.js).
+    this.loadTimes.ready = Math.round(performance.now());
+    this.loadTimes.buildStart = Math.round(tBuild);
 
     this.say('routine', [
       'Control, all units, routine patrol.',

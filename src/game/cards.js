@@ -63,9 +63,11 @@ export function takeCarCards(game, kinds = ['runner', 'supercar', 'offroad', ...
     renderer.setSize(W, H, false);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     // The card's own background, and no fog: the car is a few metres from the
-    // lens and fog is for a city.
+    // lens and fog is for a city. The fog only for the picture itself (shoot): taken away
+    // for the whole of this, the traffic, which reads it as the game is stepped to settle
+    // each car, threw on Ashfield City, so nothing was ever kept there and every load of
+    // that map tried again.
     scene.background = new THREE.Color(0x0d1116);
-    scene.fog = null;
 
     for (const kind of kinds) {
       if (cars[kind]) continue;
@@ -142,7 +144,13 @@ function shoot(game, renderer, kind) {
     cam.position.copy(centre).addScaledVector(dir, dist);
     cam.lookAt(centre);
 
-    renderer.render(game.scene, cam);
+    const fog = game.scene.fog;
+    game.scene.fog = null;
+    try {
+      renderer.render(game.scene, cam);
+    } finally {
+      game.scene.fog = fog;
+    }
     for (const o of hidden) o.visible = true;
 
     // JPEG: nothing here needs transparency, the background is the card's own

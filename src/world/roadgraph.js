@@ -908,16 +908,23 @@ export class RoadGraph {
   edgesNear(x, z, radius) {
     const cs = this.cellSize;
     const out = [];
-    const seen = new Set();
+    // Which edges are in `out` already, by a stamp a call rather than a Set a call (as nearestEdge): the same edges in
+    // the same order. Asked some hundreds of thousands of times while a map is laid out, the Sets were garbage.
+    if (!this._nearSeen || this._nearSeen.length < this.edges.length) {
+      this._nearSeen = new Uint32Array(this.edges.length + 256);
+      this._nearStamp = 0;
+    }
+    const seen = this._nearSeen, stamp = ++this._nearStamp;
     const cx0 = Math.floor((x - radius) / cs), cx1 = Math.floor((x + radius) / cs);
     const cz0 = Math.floor((z - radius) / cs), cz1 = Math.floor((z + radius) / cs);
     for (let cx = cx0; cx <= cx1; cx++) {
       for (let cz = cz0; cz <= cz1; cz++) {
         const list = this.cells.get(this._cell(cx, cz));
         if (!list) continue;
-        for (const eid of list) {
-          if (seen.has(eid)) continue;
-          seen.add(eid);
+        for (let i = 0; i < list.length; i++) {
+          const eid = list[i];
+          if (seen[eid] === stamp) continue;
+          seen[eid] = stamp;
           out.push(this.edges[eid]);
         }
       }
@@ -935,8 +942,13 @@ export class RoadGraph {
     const ca = Math.cos(-rot), sa = Math.sin(-rot);
     for (const e of this.edgesNear(px, pz, reach)) {
       const halfW = e.width * 0.5 + margin;
-      const bx = w * 0.5 + halfW, bz = d * 0.5 + halfW;
+      const bx = w * 0.5 + halfW, bz = d * 0.5 + halfW, R = bx + bz + 1e-3;
       for (const s of e.segs) {
+        // A piece of road wholly further off than any of its points could be and still be tested (below) has nothing
+        // to say: passed over whole, rather than point by point. (A millimetre to spare, for where a point between
+        // its ends is worked out a hair past them.)
+        if (Math.min(s.a.x, s.b.x) - px > R || px - Math.max(s.a.x, s.b.x) > R
+          || Math.min(s.a.z, s.b.z) - pz > R || pz - Math.max(s.a.z, s.b.z) > R) continue;
         const steps = Math.max(1, Math.ceil(s.len / 4));
         for (let k = 0; k <= steps; k++) {
           const t = k / steps;

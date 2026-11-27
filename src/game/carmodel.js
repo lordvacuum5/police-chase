@@ -313,6 +313,41 @@ const _from = new THREE.Vector3();
 /** Down a ray, anything within this of the bar's top, m, is the bar. */
 const BAR_HIGH = 0.08;
 
+/**
+ * What a ray straight down at `x` could hit in `scene`: each plain mesh cut to the triangles that reach
+ * across x (with a millimetre to spare), on the same vertices, material and place, so a ray gets the same
+ * hits from it as from the whole car. `findLightBar` sends a few hundred along the bar, and against the
+ * whole of the supercar's and the runner's 50,000 triangles they took 2 s each of the load.
+ * Anything else (several materials, groups, morphs, skins) is handed over whole.
+ */
+function sliceAt(scene, x) {
+  const out = [], v = new THREE.Vector3();
+  scene.traverse((o) => {
+    if (!o.layers.test(_ray.layers)) return;
+    if (!o.isMesh) { if (o.raycast !== THREE.Object3D.prototype.raycast) out.push(o); return; }
+    const g = o.geometry, pos = g && g.attributes.position;
+    const plain = pos && !Array.isArray(o.material) && !o.isSkinnedMesh && !o.isInstancedMesh && !g.groups.length
+      && !(g.morphAttributes && g.morphAttributes.position) && g.drawRange.start === 0 && g.drawRange.count === Infinity;
+    if (!plain) { out.push(o); return; }
+    const wx = new Float64Array(pos.count);
+    for (let i = 0; i < pos.count; i++) wx[i] = v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld).x;
+    const idx = g.index, n = idx ? idx.count : pos.count, keep = [];
+    for (let t = 0; t + 2 < n; t += 3) {
+      const a = idx ? idx.getX(t) : t, b = idx ? idx.getX(t + 1) : t + 1, c = idx ? idx.getX(t + 2) : t + 2;
+      if (Math.min(wx[a], wx[b], wx[c]) <= x + 1e-3 && Math.max(wx[a], wx[b], wx[c]) >= x - 1e-3) keep.push(a, b, c);
+    }
+    if (!keep.length) return;
+    const sub = new THREE.BufferGeometry();
+    for (const k in g.attributes) sub.setAttribute(k, g.attributes[k]);
+    sub.setIndex(keep);
+    const m = new THREE.Mesh(sub, o.material);
+    m.matrixAutoUpdate = false;
+    m.matrixWorld.copy(o.matrixWorld);
+    out.push(m);
+  });
+  return out;
+}
+
 function findLightBar(scene, fitted) {
   const top = fitted.max.y;
   const p = new THREE.Vector3();
@@ -357,9 +392,10 @@ function findLightBar(scene, fitted) {
       // 0.54 m when its bar, at the lamps, is 0.28.
       const at = (x) => {
         let best = null, run = null;
+        const slice = sliceAt(scene, x);
         for (let z = z0 - 0.1; z <= z1 + 0.1; z += 0.01) {
           _ray.set(_from.set(x, barTop + 1, z), _down);
-          const hit = _ray.intersectObject(scene, true)[0];
+          const hit = _ray.intersectObjects(slice, false)[0];
           if (hit && hit.point.y > barTop - BAR_HIGH) {
             if (!run) run = { a: z, b: z, y: hit.point.y };
             run.b = z;
@@ -400,15 +436,22 @@ function findLightBar(scene, fitted) {
  * on the console.
  */
 export async function loadCarModels(game, table = CAR_MODELS) {
+  // All fetched at once, not one after another; kept in the table's order. Each model's fitting runs in one go
+  // once its file is in (no waits inside it), so they cannot get in each other's way.
   const out = {};
-  for (const [specKey, opts] of Object.entries(table)) {
+  const jobs = Object.entries(table).map(([specKey, opts]) => {
     try {
       const target = game._geometryFor(specKey, specKey, !!opts.police, !!opts.unmarked);
-      const model = await loadCarModel(opts.url, target, opts, SPECS[specKey]);
-      if (model) out[specKey] = model;
+      return loadCarModel(opts.url, target, opts, SPECS[specKey]).then((model) => ({ model }), (e) => ({ e }));
     } catch (e) {
-      console.warn(`[carmodel] ${specKey}: ${opts.url} failed to load --`, e.message);
+      return Promise.resolve({ e });
     }
-  }
+  });
+  const got = await Promise.all(jobs);
+  Object.entries(table).forEach(([specKey, opts], i) => {
+    const { model, e } = got[i];
+    if (e) console.warn(`[carmodel] ${specKey}: ${opts.url} failed to load --`, e && e.message);
+    else if (model) out[specKey] = model;
+  });
   return out;
 }
