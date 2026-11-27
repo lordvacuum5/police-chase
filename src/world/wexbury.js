@@ -118,14 +118,17 @@ export function buildWexbury(sim, scene, seed = 51807) {
   declutter(graph);
   ctx.declutterMs = Math.round(performance.now() - T1);
   prune(graph);
+  trimStubs(graph);
   ctx.roundabouts = buildRoundabouts(ctx);
   graph.addTurningHeads(15, 10, H - 40, (x, z, r) => nearLines(ctx, x, z, r + 10));
   prune(graph);
+  trimStubs(graph);
   // The railway station, out where there is nothing else, and Station Road to it (world/station.js).
   TM.station = performance.now();
   ctx.station = planStation(ctx, base);
   ctx.roadsMs = Math.round(performance.now() - TR);
   TM.finalise = performance.now();
+  graph.trimStubs = STUB;
   graph.finalise();
   // Every road's line a point every 6 m, so it lies on the hills (as Ashfield's: citygen.js). The pieces it was in kept, for
   // what is laid along it: in 6 m pieces, the houses (spaced along each piece, none on one under 10 m) were none at all.
@@ -181,9 +184,11 @@ export function buildWexbury(sim, scene, seed = 51807) {
   if (ctx.lake) carveLake(ctx.lake, hgrid, water);
   if (ctx.ford) carveFord(ctx, ctx.ford, hgrid, water);
   if (ctx.summit) levelSummit(ctx.summit, hgrid);
-  addHeightfield(sim.world, hgrid);
   // The bridges' decks: where there is one, the height of anything is the deck's (as Ashfield's: citygen.js deckAt).
   const deckAt = canal ? riverDecks(ctx, canal, rail, hgrid) : () => -Infinity;
+  ctx.deckAt = deckAt;
+  if (canal) dipTowUnder(ctx, canal, hgrid, deckAt);
+  addHeightfield(sim.world, hgrid);
   const at = (x, z) => Math.max(hgrid.at(x, z), deckAt(x, z));
   ctx.at = at;
 
@@ -193,6 +198,8 @@ export function buildWexbury(sim, scene, seed = 51807) {
   if (rail) markLine(ctx, rail.points, 15, CLEAR_RAIL);
   // Out as far as the bridges' decks reach (riverDecks looks for one only inside this).
   if (canal) markLine(ctx, canal.points, CANAL_W + DECK_RUN + 4, CLEAR_CANAL);
+  // Each deck's own footprint, for deckAt.
+  if (canal) for (const sp of canal.spans) markLine(ctx, [{ x: sp.x - sp.dx * sp.La, z: sp.z - sp.dz * sp.La }, { x: sp.x + sp.dx * sp.Lb, z: sp.z + sp.dz * sp.Lb }], sp.hw + 3, CLEAR_DECK);
   paintSurfaces(ctx);
   rasteriseRoads(graph, surface);
   if (ctx.station) stationSurfaces(ctx, ctx.station, markLine, CLEAR_RAIL);
@@ -232,7 +239,7 @@ export function buildWexbury(sim, scene, seed = 51807) {
   TM.pavements = performance.now();
   meshes.push(buildPavements(ctx));
   TM.extras = performance.now();
-  meshes.push(buildExtrasFlat(ctx, canal));
+  meshes.push(...buildExtrasFlat(ctx, canal));
   TM.bridges = performance.now();
   if (canal) meshes.push(...buildBridges(ctx, canal));
   const placed = new Placed();
@@ -788,6 +795,25 @@ function crowded(graph, a, b, pts, width) {
 }
 
 /** Everything not joined to the biggest piece of the network, taken out: the lines leave bits of town cut off. */
+/**
+ * Dead ends under STUB m taken off: a scrap of street left out into the grass past a junction, where the road it led to was taken
+ * out -- "you can see there's that bit of road there. It needs to kind of stop when it reaches the pavement." (Victoria Street had one
+ * of 27 m.) Over and over, as taking one can leave another.
+ */
+const STUB = 40;
+function trimStubs(graph) {
+  const live = (n) => n.edges.filter((id) => !graph.edges[id].dead).length;
+  for (let pass = 0; pass < 4; pass++) {
+    let any = false;
+    for (const e of graph.edges) {
+      if (e.dead || e.turningHead || e.length >= STUB) continue;
+      if (live(graph.nodes[e.a]) === 1 || live(graph.nodes[e.b]) === 1) { e.dead = true; any = true; }
+    }
+    if (!any) break;
+    graph.reindexEdges();
+  }
+}
+
 function prune(graph) {
   const comp = new Int32Array(graph.nodes.length).fill(-1);
   const sizes = [];
@@ -910,28 +936,80 @@ function finishCanal(ctx) {
 // half a sine, so it left the road at up to 26%, a ramp: "it's still bumpy round there ... the bridge needs to be better". Now it
 // runs DECK_RUN past the valley onto the banks each side and rises as a sine squared, level where it leaves the road: about 7% at
 // the steepest.
-const DECK_CLEAR = 3.4, RAIL_CLEAR = 3.0, DECK_RUN = 16;
+const DECK_CLEAR = 3.4, RAIL_CLEAR = 3.4, DECK_RUN = 16;
+/**
+ * The deck level at its full height across the river and the towpath (DECK_FLAT, out from the river's middle), then down to the road
+ * over DECK_RAMP, as a half sine squared -- so the towpath goes under it, in a dip to TOW_UNDER over the water: "on both bridges ...
+ * you can see the towpath ... make it so ... the bridge goes over the towpath". Before, the deck came down to the ground right where
+ * the towpath was, and the towpath, laid on whatever was highest, ran up into it. Its underside DECK_UNDER (road) and RAIL_UNDER
+ * under its top: 2.4 m of headroom on the towpath under a road bridge, 2.0 under the railway's.
+ */
+const DECK_FLAT = 32, DECK_RAMP = 24, RAMP_MAX = 75, RAMP_GRADE = 0.09, TOW_UNDER = 0.2, DECK_UNDER = 0.8, RAIL_UNDER = 1.2;
+/** A mask bit: under a bridge's deck (riverDecks looks for one only here). */
+const CLEAR_DECK = 4;
 /** A car whose middle is this far under a deck, m, is under the bridge, not on it (heightAtY). */
 const UNDER_DECK = 1.4;
 /** A road bridge's room past the road's edge to the parapet's inner face, m (it was 0.75: 1.2 less the parapet). */
 const BRIDGE_SPARE = 2.2;
+/**
+ * The towpath down under each deck: to TOW_UNDER over the water where it passes beneath, easing back to the bank over 12 m either
+ * side, the ground 3 m each side of its line taken down with it.
+ */
+function dipTowUnder(ctx, canal, hgrid, deckAt) {
+  const { n, half, step, H } = hgrid, tow = canal.tow;
+  const under = tow.map((p) => deckAt(p.x, p.z) > -Infinity);
+  for (let k = 0; k < tow.length; k++) {
+    // How near (in metres along the towpath) the nearest point under a deck is.
+    let near = Infinity;
+    for (let m = Math.max(0, k - 6); m <= Math.min(tow.length - 1, k + 6); m++) if (under[m]) near = Math.min(near, Math.abs(tow[m].s - tow[k].s));
+    if (near === Infinity) continue;
+    const w = near <= 0 ? 1 : Math.max(0, 1 - near / 12) ** 2 * (3 - 2 * Math.max(0, 1 - near / 12));
+    if (w <= 0) continue;
+    const p = tow[k], y = canal.waterAtS(p.s) + TOW_UNDER;
+    const i0 = Math.max(0, Math.floor((p.x - 4 + half) / step)), i1 = Math.min(n - 1, Math.ceil((p.x + 4 + half) / step));
+    const j0 = Math.max(0, Math.floor((p.z - 4 + half) / step)), j1 = Math.min(n - 1, Math.ceil((p.z + 4 + half) / step));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const d = Math.hypot(i * step - half - p.x, j * step - half - p.z);
+      if (d > 4) continue;
+      const kk = j * n + i, ww = w * (d < 2.5 ? 1 : (4 - d) / 1.5);
+      const t = lerp(H[kk], y, ww);
+      if (t < H[kk]) H[kk] = t;
+    }
+  }
+}
+
 function riverDecks(ctx, canal, rail, hgrid) {
   const L = canal.line, spans = [];
   const span = (x, z, dx, dz, hw, rail2) => {
     const nr = L.near(x, z, 30), cp = L.at(nr.s), sin = Math.max(0.35, Math.abs(dx * -cp.dz + dz * cp.dx));
-    const Lh = (CANAL_W + DECK_RUN) / sin;
-    const ax = x - dx * Lh, az = z - dz * Lh, bx = x + dx * Lh, bz = z + dz * Lh;
-    const ha = hgrid.at(ax, az), hb = hgrid.at(bx, bz), lv = canal.waterAtS(nr.s);
-    const rise = Math.max(rail2 ? 0.3 : 0.8, lv + (rail2 ? RAIL_CLEAR : DECK_CLEAR) - lerp(ha, hb, 0.5));
-    spans.push({ x, z, dx, dz, hw, Lh, ha, hb, rise, lv, rail: rail2, s: nr.s, sin, nx: -cp.dz, nz: cp.dx,
-      minX: Math.min(ax, bx) - hw - 2, maxX: Math.max(ax, bx) + hw + 2, minZ: Math.min(az, bz) - hw - 2, maxZ: Math.max(az, bz) + hw + 2 });
+    const lv = canal.waterAtS(nr.s), top = lv + (rail2 ? RAIL_CLEAR : DECK_CLEAR);
+    // Each side's ramp as long as its own bank needs: no steeper than RAMP_GRADE at the steepest (a half sine squared is pi/2 of its
+    // mean), from the level top down to the ground where it ends. A deck sloped from one bank's height to the other's sat 0.8 m over
+    // the towpath on the low side of Wexbury's second bridge.
+    const side = (sg) => {
+      let R = DECK_RAMP, g = 0;
+      for (let i = 0; i < 4; i++) {
+        const a = (DECK_FLAT + R) / sin;
+        g = hgrid.at(x + dx * a * sg, z + dz * a * sg);
+        R = clamp(Math.max(0, top - g) * Math.PI / (2 * RAMP_GRADE), DECK_RAMP, RAMP_MAX);
+      }
+      return { R, g, L: (DECK_FLAT + R) / sin };
+    };
+    const A = side(-1), Bs = side(1);
+    const ax = x - dx * A.L, az = z - dz * A.L, bx = x + dx * Bs.L, bz = z + dz * Bs.L;
+    const sp = { x, z, dx, dz, hw, La: A.L, Lb: Bs.L, Ra: A.R, Rb: Bs.R, ha: A.g, hb: Bs.g, top, lv, rail: rail2, s: nr.s, sin, nx: -cp.dz, nz: cp.dx,
+      minX: Math.min(ax, bx) - hw - 2, maxX: Math.max(ax, bx) + hw + 2, minZ: Math.min(az, bz) - hw - 2, maxZ: Math.max(az, bz) + hw + 2 };
+    // Along it (from its middle, signed) at t from 0 to 1, and back.
+    sp.aOf = (t) => -sp.La + (sp.La + sp.Lb) * t;
+    sp.tOf = (a) => (a + sp.La) / (sp.La + sp.Lb);
+    spans.push(sp);
   };
   // Each road's deck as wide as the road wanders across it, and a margin: a deck is straight and 84 m or more long, and a road
   // that bends at all on it ran into the parapet -- "a lot of the police cars just ended up hitting the sides and just instant
   // stopping". How far its own line strays from the deck's, either way, within the deck's length.
   for (const b of canal.bridges) {
     const nr = L.near(b.x, b.z, 30), cp = L.at(nr.s), sin = Math.max(0.35, Math.abs(b.dx * -cp.dz + b.dz * cp.dx));
-    const Lh = (CANAL_W + DECK_RUN) / sin;
+    const Lh = (DECK_FLAT + RAMP_MAX) / sin;
     let stray = 0;
     const pts = b.edge.points;
     for (let k = 0; k < pts.length - 1; k++) {
@@ -946,16 +1024,23 @@ function riverDecks(ctx, canal, rail, hgrid) {
   }
   if (rail) for (const c of rail.line.crossings(canal.points)) { const r = rail.line.at(c.s); span(c.x, c.z, r.dx, r.dz, 3.6, true); }
   canal.spans = spans;
-  const deck = (b, t) => lerp(b.ha, b.hb, t) + b.rise * Math.sin(Math.PI * t) ** 2;
+  // Out from the river's middle, square to it: level to DECK_FLAT, down over DECK_RAMP.
+  const deck = (b, t) => {
+    const a = b.aOf(t), p = Math.abs(a) * b.sin;
+    if (p <= DECK_FLAT) return b.top;
+    const R = a < 0 ? b.Ra : b.Rb, g = a < 0 ? b.ha : b.hb;
+    const f = Math.sin((Math.PI / 2) * Math.max(0, 1 - (p - DECK_FLAT) / R)) ** 2;
+    return g + (b.top - g) * f;
+  };
   canal.deck = deck;
   return (x, z) => {
-    if (ctx.clearAt && !ctx.clearAt(x, z, CLEAR_CANAL)) return -Infinity;
+    if (ctx.clearAt && !ctx.clearAt(x, z, CLEAR_DECK)) return -Infinity;
     let best = -Infinity;
     for (const b of spans) {
       if (x < b.minX || x > b.maxX || z < b.minZ || z > b.maxZ) continue;
       const dx = x - b.x, dz = z - b.z, along = dx * b.dx + dz * b.dz;
-      if (Math.abs(along) > b.Lh || Math.abs(dx * b.dz - dz * b.dx) > b.hw) continue;
-      best = Math.max(best, deck(b, (along + b.Lh) / (2 * b.Lh)));
+      if (along < -b.La || along > b.Lb || Math.abs(dx * b.dz - dz * b.dx) > b.hw) continue;
+      best = Math.max(best, deck(b, b.tOf(along)));
     }
     return best;
   };
@@ -977,18 +1062,34 @@ function buildBridges(ctx, canal) {
   };
   const quad = (b, a, bb, c, d, colour) => { tri(b, a, bb, c, colour); tri(b, a, c, d, colour); };
   for (const sp of canal.spans) {
-    const N = Math.max(6, Math.ceil((sp.Lh * 2) / 2)), lx = sp.dz, lz = -sp.dx;
+    const SL = sp.La + sp.Lb, N = Math.max(6, Math.ceil(SL / 2)), lx = sp.dz, lz = -sp.dx;
     const P = (t, o, dy = 0) => {
-      const a = -sp.Lh + 2 * sp.Lh * t, y = canal.deck(sp, t) + dy;
+      const a = sp.aOf(t), y = canal.deck(sp, t) + dy;
       return [sp.x + sp.dx * a + lx * o, y, sp.z + sp.dz * a + lz * o];
     };
     const wall = sp.rail ? steel : stone, wallCol = sp.rail ? 0x3f4a52 : 0x9a8f7c, deckCol = sp.rail ? 0x5d5852 : 0x8f8676;
-    const hw = sp.hw, under = sp.rail ? 1.3 : 1.1, pH = sp.rail ? 1.6 : 1.05, pT = sp.rail ? 0.3 : 0.45;
+    const hw = sp.hw, under = sp.rail ? RAIL_UNDER : DECK_UNDER, pH = sp.rail ? 1.1 : 1.05, pT = sp.rail ? 0.3 : 0.45;
+    const rot = Math.atan2(sp.dx, sp.dz);
+    // Out from the river's middle, square to it, at t; and the ground (not the deck) under a point.
+    const perp = (t) => Math.abs(sp.aOf(t)) * sp.sin;
+    const G = (q) => ctx.grid.at(q[0], q[2]);
+    // The abutments start past the towpath: open under the deck over the water and the towpath, solid stone beyond.
+    const ABUT = TOW_OFF + 2.6;
     for (let k = 0; k < N; k++) {
       const t0 = k / N, t1 = (k + 1) / N;
       // The deck's sides and underside.
       for (const side of [1, -1]) quad(stone, P(t0, hw * side, 0), P(t1, hw * side, 0), P(t1, hw * side, -under), P(t0, hw * side, -under), deckCol);
       quad(top, P(t0, -hw, -under), P(t1, -hw, -under), P(t1, hw, -under), P(t0, hw, -under), 0x5b564e);
+      // Beyond the towpath, the abutment: its walls from under the deck down into the ground, and solid.
+      if (perp((t0 + t1) / 2) > ABUT) {
+        for (const side of [1, -1]) {
+          const a0 = P(t0, hw * side, -under), a1 = P(t1, hw * side, -under);
+          const b0 = [a0[0], G(a0) - 0.6, a0[2]], b1 = [a1[0], G(a1) - 0.6, a1[2]];
+          if (a0[1] - b0[1] > 0.2 || a1[1] - b1[1] > 0.2) quad(stone, a0, a1, b1, b0, 0x8d8371);
+        }
+        const c = P((t0 + t1) / 2, 0, -under), g = G(c), h = c[1] - g;
+        if (h > 0.3) addStaticBox(W, c[0], g + h * 0.5, c[2], hw, h * 0.5, SL / (2 * N) + 0.05, GROUP.BUILDING, rot);
+      }
       // The parapets (girders on the railway's): outer face, inner face, top.
       for (const side of [1, -1]) {
         const o1 = hw * side, o0 = (hw - pT) * side;
@@ -1002,13 +1103,63 @@ function buildBridges(ctx, canal) {
       const t = (k + 0.5) / N;
       for (const side of [1, -1]) {
         const c = P(t, (hw - pT * 0.5) * side, pH * 0.5);
-        addStaticBox(W, c[0], c[1], c[2], pT * 0.5, pH * 0.5, sp.Lh / N + 0.05, GROUP.BUILDING, Math.atan2(sp.dx, sp.dz));
+        addStaticBox(W, c[0], c[1], c[2], pT * 0.5, pH * 0.5, SL / (2 * N) + 0.05, GROUP.BUILDING, Math.atan2(sp.dx, sp.dz));
       }
     }
-    // Piers: in the water, about every 16 m, and one under each end at the river's edge.
-    const span2 = sp.Lh * 2, piers = Math.max(1, Math.round(span2 / 16) - 1);
-    for (let k = 1; k <= piers; k++) {
-      const t = k / (piers + 1), c = P(t, 0, -under), d = Math.abs((t - 0.5) * span2 * sp.sin);
+    // The abutments' faces toward the river, each side, past the towpath: stone, with a darker plinth.
+    for (const e of [-1, 1]) {
+      const t = sp.tOf(e * ABUT / sp.sin);
+      const a0 = P(t, -hw, -under), a1 = P(t, hw, -under);
+      const g0 = G(a0) - 0.6, g1 = G(a1) - 0.6;
+      quad(stone, a0, a1, [a1[0], g1, a1[2]], [a0[0], g0, a0[2]], 0x9a8f7c);
+      quad(stone, [a0[0], g0 + 0.9, a0[2]], [a1[0], g1 + 0.9, a1[2]], [a1[0], g1, a1[2]], [a0[0], g0, a0[2]], 0x6f675a);
+    }
+    // The railway's: a steel truss each side over the open span -- top chord, verticals and diagonals -- in the line's green.
+    if (sp.rail) {
+      const TH = 3.6, ta = sp.tOf(-ABUT / sp.sin), tb = sp.tOf(ABUT / sp.sin);
+      const bays = Math.max(4, Math.round(((tb - ta) * SL) / 5));
+      const bar = (p0, p1, w, col) => {
+        const dx = p1[0] - p0[0], dy = p1[1] - p0[1], dz = p1[2] - p0[2], L2 = Math.hypot(dx, dy, dz);
+        const upv = Math.abs(dy) > 0.9 * L2 ? new THREE.Vector3(sp.dx, 0, sp.dz) : new THREE.Vector3(0, 1, 0);
+        const m = new THREE.Matrix4().lookAt(new THREE.Vector3(...p0), new THREE.Vector3(...p1), upv);
+        const g = new THREE.BoxGeometry(w, w, L2).applyMatrix4(m).translate((p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2, (p0[2] + p1[2]) / 2);
+        steel.addGeometry(g, new THREE.Matrix4(), col);
+        g.dispose();
+      };
+      const TRUSS = 0x2c4a3b;
+      for (const side of [1, -1]) {
+        const o = (hw - 0.15) * side;
+        for (let k = 0; k < bays; k++) {
+          const t0 = ta + (tb - ta) * k / bays, t1 = ta + (tb - ta) * (k + 1) / bays;
+          const b0 = P(t0, o, 0.1), b1 = P(t1, o, 0.1), u0 = P(t0, o, TH), u1 = P(t1, o, TH);
+          bar(u0, u1, 0.32, TRUSS);              // top chord
+          bar(b0, b1, 0.36, TRUSS);              // bottom chord
+          bar(b0, u0, 0.22, TRUSS);              // vertical
+          bar(k % 2 ? b0 : u0, k % 2 ? u1 : b1, 0.2, TRUSS); // diagonal, alternating (a Warren with verticals)
+        }
+        bar(P(tb, o, 0.1), P(tb, o, TH), 0.22, TRUSS);
+        // End posts raked down to the abutment.
+        bar(P(ta, o, TH), P(ta - 0.03, o, 0.1), 0.3, TRUSS);
+        bar(P(tb, o, TH), P(tb + 0.03, o, 0.1), 0.3, TRUSS);
+      }
+      // Cross bracing over the top, every other bay.
+      for (let k = 0; k <= bays; k += 2) {
+        const t = ta + (tb - ta) * k / bays;
+        bar(P(t, -(hw - 0.15), TH), P(t, hw - 0.15, TH), 0.18, TRUSS);
+      }
+      // Rivet-plate badge: the line's name plate on each side's middle.
+      for (const side of [1, -1]) {
+        const c0 = P(0.48, (hw + 0.02) * side, 0.35), c1 = P(0.52, (hw + 0.02) * side, 0.35);
+        quad(steel, c0, c1, [c1[0], c1[1] + 0.5, c1[2]], [c0[0], c0[1] + 0.5, c0[2]], 0xb8a46a);
+      }
+    }
+    // Piers: in the water, about every 16 m, not on the towpath.
+    // Spaced over the water, from one bank's edge to the other's.
+    const wa = sp.tOf(-(CANAL_W - 3) / sp.sin), wb = sp.tOf((CANAL_W - 3) / sp.sin);
+    const piers = Math.max(1, Math.round(((wb - wa) * SL) / 16));
+    for (let k = 0; k <= piers; k++) {
+      const t = wa + (wb - wa) * k / piers, c = P(t, 0, -under), d = Math.abs(sp.aOf(t)) * sp.sin;
+      if (d > CANAL_W - 3) continue;
       const bed = canal.towAt(sp.s) - dipAt(d) - 0.8, h = c[1] - bed;
       if (h < 0.5) continue;
       const rot = Math.atan2(sp.dx, sp.dz);
@@ -1614,12 +1765,15 @@ function buildPavements(ctx) {
 function buildExtrasFlat(ctx, canal) {
   const { graph } = ctx;
   const b = new MeshBuilder();
+  // The towpath on its own, on the ground (not the decks): it goes under the bridges (dipTowUnder).
+  const tb = new MeshBuilder();
   if (canal) {
-    // In runs, broken where a road crosses (the bridge is the road's).
+    // In runs, broken where a road crosses on the ground; under a bridge it carries on.
     let run = [];
-    const flush = () => { if (run.length > 1) b.addRibbon(run, 4.2, 0, 0x6e6555); run = []; };
+    const flush = () => { if (run.length > 1) tb.addRibbon(run, 4.2, 0, 0x6e6555); run = []; };
     for (const p of canal.tow) {
-      if (onARoad(graph, p.x, p.z, 1)) { flush(); continue; }
+      const overhead = ctx.deckAt(p.x, p.z) - ctx.grid.at(p.x, p.z) > 1.5;
+      if (!overhead && onARoad(graph, p.x, p.z, 1)) { flush(); continue; }
       run.push(p);
     }
     flush();
@@ -1641,13 +1795,17 @@ function buildExtrasFlat(ctx, canal) {
       b.addQuadY(x, z, x + Math.cos(a0) * 24, z + Math.sin(a0) * 24, x + Math.cos(a1) * 24, z + Math.sin(a1) * 24, x, z, 0, 0x2c2e31);
     }
   }
-  if (!b.vertexCount) return null;
-  const mesh = new THREE.Mesh(b.build(), vertexColorMaterial({ polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 }));
-  liftMesh(mesh, ctx.at, LIFT + 0.02);
-  mesh.name = 'extras';
-  mesh.receiveShadow = true;
-  groundDetail(mesh, 'tarmac');
-  return chunkMesh(mesh, 300);
+  const out = [];
+  for (const [builder, at] of [[b, ctx.at], [tb, (x, z) => ctx.grid.at(x, z)]]) {
+    if (!builder.vertexCount) continue;
+    const mesh = new THREE.Mesh(builder.build(), vertexColorMaterial({ polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 }));
+    liftMesh(mesh, at, LIFT + 0.02);
+    mesh.name = 'extras';
+    mesh.receiveShadow = true;
+    groundDetail(mesh, 'tarmac');
+    out.push(chunkMesh(mesh, 300));
+  }
+  return out;
 }
 
 // =====================================================================

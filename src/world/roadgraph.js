@@ -816,6 +816,20 @@ export class RoadGraph {
     // middle of an arc, or a polyline rounded off, can put two roads across
     // each other that were not crossing before it ran.
     this.stitchCrossings();
+    // Where a map asks (`trimStubs`, m: Wexbury): the tails stitching leaves -- a road cut where another crosses it, its last few
+    // metres out past the junction into the grass. "It needs to kind of stop when it reaches the pavement."
+    if (this.trimStubs) {
+      for (let pass = 0; pass < 4; pass++) {
+        let any = false;
+        const live = (n) => n.edges.filter((id) => !this.edges[id].dead).length;
+        for (const e of this.edges) {
+          if (e.dead || e.cut || e.turningHead || e.keep || e.length >= this.trimStubs) continue;
+          if (live(this.nodes[e.a]) === 1 || live(this.nodes[e.b]) === 1) { e.dead = true; any = true; }
+        }
+        if (!any) break;
+        this.reindexEdges();
+      }
+    }
     this.dropDuplicateEdges();
     for (const n of this.nodes) {
       this.bounds.minX = Math.min(this.bounds.minX, n.x);
