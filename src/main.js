@@ -3549,9 +3549,11 @@ class Game {
       if (mine && !v.isPolice) {
         this.onBusted(true);
       } else if (mine) {
-        this._recoverPlayer();
+        // "When my police car goes in the water, I want it to respawn at the repair station, not just like by the water. So
+        // there's actually more of a punishment." The flood bar full: on the road at the nearest repair station.
+        if (!this._recoverAtGarage()) this._recoverPlayer();
         v.repair();
-        if (this.hud) this.hud.toast('OUT OF THE RIVER');
+        if (this.hud) this.hud.toast('FISHED OUT -- AT THE REPAIR STATION');
       } else {
         v._sunkFor = (v._sunkFor || 0) + dt;
         if (v._sunkFor > SUNK_SHOWN || !this.seenByAnyone(v.position)) this._takeOut(v, false);
@@ -3674,6 +3676,23 @@ class Game {
   }
 
   /** Towed back to the nearest road, facing along it, stopped. */
+  /** The player on the road by the nearest repair station (Garages); false if there is none. */
+  _recoverAtGarage() {
+    const p = this.player, gs = this.garage && this.garage.markers;
+    if (!gs || !gs.length) return false;
+    let best = null, bd = Infinity;
+    for (const m of gs) { const d = dist2(m.x, m.z, p.position.x, p.position.z); if (d < bd) { bd = d; best = m; } }
+    const node = this.graph.nearestNode(best.x, best.z);
+    const place = node && this._placeOnRoad(node);
+    if (!place) return false;
+    p.teleport(place.position, place.heading);
+    p._readState();
+    p.setVelocity({ x: 0, y: 0, z: 0 });
+    p._readState();
+    p.flood = 0;
+    return true;
+  }
+
   _recoverPlayer() {
     const p = this.player;
     const node = this.graph.nearestNode(p.position.x, p.position.z, this.sim.decks ? p.position.y : null);
