@@ -23,7 +23,7 @@ import { buildingDetail } from './buildtex.js';
 import { groundDetail } from './groundtex.js';
 import { RoadGraph, ROAD_KIND, DRIVE_SIDE } from './roadgraph.js';
 import { approachesAt, addNodeWedges } from './junctions.js';
-import { GROUP, addStaticBox, addCanopy, nearBuilding, EDGE_FACE } from '../physics/world.js';
+import { GROUP, addStaticBox, addCanopy, nearBuilding, EDGE_FACE, RAPIER, groups } from '../physics/world.js';
 import { makeRng, rand, randInt, clamp, lerp, dist2, TAU, smoothstep } from '../util/math.js';
 import {
   WORLD_HALF, CELL, GRID_N, KERB_H, SURF_ROAD, SURF_PAVED, PALETTE,
@@ -1136,13 +1136,25 @@ function buildBridges(ctx, canal) {
         quad(top, P(t0, o0, pH), P(t1, o0, pH), P(t1, o1, pH), P(t0, o1, pH), sp.rail ? 0x2f383e : 0xb3a994);
       }
     }
-    // The parapets solid, in pieces along the deck.
-    for (let k = 0; k < N; k++) {
-      const t = (k + 0.5) / N;
-      for (const side of [1, -1]) {
-        const c = P(t, (hw - pT * 0.5) * side, pH * 0.5);
-        addStaticBox(W, c[0], c[1], c[2], pT * 0.5, pH * 0.5, SL / (2 * N) + 0.05, GROUP.BUILDING, Math.atan2(sp.dx, sp.dz));
+    // The parapets solid, each one piece the whole length: its inner face, top and outer face as one mesh. In boxes, a piece a
+    // couple of metres long each at its own height up the ramps, a car brushing along it caught on every join -- "I keep on
+    // hitting ... almost tiny like wall[s] ... because you seem to do lots of different little sections of bridge". Nearly
+    // frictionless, as Ashfield's crash barriers: to scrape along, not to stop on.
+    for (const side of [1, -1]) {
+      const v = [], idx = [];
+      for (let k = 0; k <= N; k++) {
+        const t = k / N;
+        for (const q of [P(t, (hw - pT) * side, -0.3), P(t, (hw - pT) * side, pH), P(t, hw * side, pH), P(t, hw * side, -0.3)]) v.push(q[0], q[1], q[2]);
       }
+      for (let k = 0; k < N; k++) {
+        const a = k * 4, b = (k + 1) * 4;
+        for (let f = 0; f < 3; f++) idx.push(a + f, b + f, b + f + 1, a + f, b + f + 1, a + f + 1);
+      }
+      for (const e of [0, N * 4]) idx.push(e, e + 1, e + 2, e, e + 2, e + 3);
+      const desc = RAPIER.ColliderDesc.trimesh(new Float32Array(v), new Uint32Array(idx))
+        .setCollisionGroups(groups(GROUP.BUILDING, 0xFFFF))
+        .setFriction(0.02).setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min);
+      W.createCollider(desc);
     }
     // The abutments' faces toward the river, each side, past the towpath: stone, with a darker plinth.
     for (const e of [-1, 1]) {

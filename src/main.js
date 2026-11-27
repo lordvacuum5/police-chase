@@ -168,6 +168,8 @@ const SLOW_CLOSING = 12;
 /** Your own speed must be over this, m/s (50 mph): "only appear when I'm going over ~50 mph. Otherwise, don't do it." */
 const SLOW_SPEED = 22.35;
 const SLOW_AHEAD = 0.45;
+/** How far apart, m, past their half widths, two cars may pass and still count as about to hit (Game._aboutToHit). */
+const SLOW_MISS = 0.4;
 const SLOW_OUT = 7;
 /** Game._netTrain: further out than this, s, the train jumps to the host's; nearer, it closes the gap at this rate, 1/s. */
 const TRAIN_SNAP = 2;
@@ -2444,10 +2446,17 @@ class Game {
       const dx = v.position.x - p.position.x, dz = v.position.z - p.position.z;
       const d = Math.hypot(dx, dz);
       if (d > 30 || d < 0.5) continue;
-      const closing = ((p.linvel.x - v.linvel.x) * dx + (p.linvel.z - v.linvel.z) * dz) / d;
+      const wx = p.linvel.x - v.linvel.x, wz = p.linvel.z - v.linvel.z;
+      const closing = (wx * dx + wz * dz) / d;
       if (closing < SLOW_CLOSING) continue;
       const when = (d - (p.spec.dims.l + v.spec.dims.l) * 0.35) / closing;
-      if (when < soonest) { soonest = when; best = v; }
+      if (when >= soonest) continue;
+      // And on course to meet, not to pass: "it keeps on activating quite a lot when I'm not gonna hit a police car." Closing fast
+      // was all it asked, and a car going by a couple of metres off closes fast too. Where the two are nearest, going as they
+      // are, they must be within their half widths and SLOW_MISS of each other -- and that within SLOW_AHEAD.
+      const w2 = wx * wx + wz * wz, tc = w2 > 1e-6 ? Math.max(0, (dx * wx + dz * wz) / w2) : 0;
+      if (Math.hypot(dx - wx * tc, dz - wz * tc) > (p.spec.dims.w + v.spec.dims.w) * 0.5 + SLOW_MISS) continue;
+      soonest = when; best = v;
     }
     return best;
   }
