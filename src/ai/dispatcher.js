@@ -161,6 +161,8 @@ const STRAND_MOVED = 6;
  */
 const CUT_EVERY = [0, 0, 0, 16, 11, 8];
 const STINGER_EVERY = 18;
+/** A stinger run (_stingerRun): out to the side to come past, m; how far in front to get, m; the least gap it is thrown at, m; given up after, s. */
+const STINGER_PASS_LAT = 3.6, STINGER_PASS_AHEAD = 14, STINGER_LEAD = 52, STINGER_GAP = 40, STINGER_GIVE_UP = 25;
 /** How long a car cutting them off is left to it, s. */
 const CUT_HOLD = 14;
 
@@ -687,6 +689,53 @@ export class Dispatcher {
     this._courseX /= l; this._courseZ /= l;
   }
 
+  /** A car chasing behind, near enough to come past: the nearest from 70 m back to alongside, on the same road and heading. */
+  _pickStingerRunner(target) {
+    let best = null, bd = Infinity;
+    for (const u of this.units) {
+      if (u.human || u.vehicle.disabled || u.role === ROLE.HOLD || u.role === ROLE.BLOCK || u.role === ROLE.RHINO || u === this.blockUnit) continue;
+      const r = relativeTo(target, u.vehicle);
+      if (r.long > 2 || r.long < -70 || Math.abs(r.lat) > 10 || u.vehicle.forward.dot(target.forward) < 0.7) continue;
+      const d = -r.long + Math.abs(r.lat);
+      if (d < bd) { bd = d; best = u; }
+    }
+    return best;
+  }
+
+  /**
+   * A stinger from in front, put there by a car that came past: "try and make it so like one police car quite often will try and get
+   * in front of me and then release the spike strip ... a little bit far in front of me ... just so someone actually has time to
+   * react." Alongside first, out to one side (STINGER_PASS_LAT), then in ahead to STINGER_LEAD m in front, and once it is
+   * STINGER_GAP or more ahead in the same lane, the stinger goes out of its back. Given up after STINGER_GIVE_UP s, or if it falls
+   * far behind; back to the chase either way.
+   */
+  _stingerRun(target, dt) {
+    const run = this.stingerRun, u = run.u;
+    run.t += dt;
+    const end = () => {
+      this.stingerRun = null;
+      u.stingerRun = false;
+      if (!u.vehicle.disabled && this.units.includes(u)) u.setRole(ROLE.PURSUE);
+    };
+    if (!this.units.includes(u) || u.vehicle.disabled || run.t > STINGER_GIVE_UP || Math.abs(target.forwardSpeed) < 8) { end(); return; }
+    const r = relativeTo(target, u.vehicle);
+    if (r.long < -110) { end(); return; }
+    if (run.phase === 'pass' && r.long > 3) {
+      run.phase = 'lead';
+      u.setRole(ROLE.BOX, { slot: { name: 'stinger', x: 0, z: STINGER_LEAD }, tightness: 0 });
+    }
+    if (run.phase === 'lead' && r.long > STINGER_GAP && Math.abs(r.lat) < 3.5 && u.vehicle.forward.dot(target.forward) > 0.8) {
+      if (this.game.roadblocks.throwStinger(u.vehicle)) {
+        this.game.say('stinger-thrown', [
+          (v) => `${v.cs}, stinger out behind me.`,
+          (v) => `${v.cs}, deploying stinger.`,
+          (v) => `${v.cs}, spikes down, they're coming at it.`,
+        ], { cs: u.callsign }, true, { every: 10 });
+        end();
+      }
+    }
+  }
+
   /** Rough "could the player see this car" test, for tidying up off screen. */
   _visibleTo(unit, target) {
     _eye.copy(target.position); _eye.y += 1.1;
@@ -827,7 +876,7 @@ export class Dispatcher {
 
     // Cars manning a roadblock are not available for anything: they are where
     // they are meant to be, and they decide for themselves when to leave.
-    const available = this.units.filter((u) => !u.human && !u.vehicle.disabled && u.role !== ROLE.HOLD);
+    const available = this.units.filter((u) => !u.human && !u.vehicle.disabled && u.role !== ROLE.HOLD && !u.stingerRun);
     available.sort((a, b) => a.distanceTo(k.position) - b.distanceTo(k.position));
 
     const assigned = new Set();
@@ -1056,6 +1105,7 @@ export class Dispatcher {
 
     // ---- 5b3. a stinger out of the back of a unit ahead ----
     this.stingerCooldown = (this.stingerCooldown ?? 8) - (this._dtNow || 0);
+    if (this.stingerRun) this._stingerRun(target, this._dtNow || 0);
     if (this.person && this.tier >= 4 && k.seen && this.stingerCooldown <= 0 && Math.abs(target.forwardSpeed) > 12) {
       const ahead = this.units.find((u) => {
         if (u.human || u.vehicle.disabled) return false;
@@ -1063,7 +1113,21 @@ export class Dispatcher {
         // In front, near enough the way they are heading (a road bends), and going the same way.
         return r.long > 20 && r.long < 120 && Math.abs(r.lat) < 4 + r.long * 0.35 && u.vehicle.forward.dot(target.forward) > 0.5 && u.vehicle.speed > 4;
       });
-      if (ahead && this.game.roadblocks.throwStinger(ahead.vehicle)) {
+      // Or, more often, one of the cars behind comes past to do it (_stingerRun).
+      const runner = !ahead && !this.stingerRun ? this._pickStingerRunner(target) : null;
+      if (runner) {
+        this.stingerRun = { u: runner, t: 0, side: Math.random() < 0.5 ? 1 : -1, phase: 'pass' };
+        runner.stingerRun = true;
+        runner.setRole(ROLE.BOX, { slot: { name: 'stinger', x: this.stingerRun.side * STINGER_PASS_LAT, z: STINGER_PASS_AHEAD }, tightness: 0 });
+        this.stingerCooldown = STINGER_EVERY;
+        this.game.say('stinger-run', [
+          (v) => `${v.cs}, coming past them, stinger ready.`,
+          (v) => `${v.cs}, I'll get in front and put the spikes down.`,
+          (v) => `${v.cs}, overtaking, stinger to follow.`,
+        ], { cs: runner.callsign }, true, { every: 12 });
+      } else if (this.stingerRun) {
+        this.stingerCooldown = 1;
+      } else if (ahead && relativeTo(target, ahead.vehicle).long > STINGER_GAP && this.game.roadblocks.throwStinger(ahead.vehicle)) {
         this.stingerCooldown = STINGER_EVERY;
         this.game.say('stinger-thrown', [
           (v) => `${v.cs}, stinger out behind me.`,

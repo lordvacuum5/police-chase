@@ -3164,9 +3164,11 @@ export class Officer {
     // line is actually open and takes to the roads when it is not. Driving
     // straight at a slot forty metres away is how boxing units ended up
     // crossing gardens to reach a point beside a car they could not see.
-    if (gap > 18) return this._pursue(dt, target);
+    // Not a car going past to put a stinger down ahead (Dispatcher._stingerRun): once past, its slot is up the road and you are
+    // behind it, and the chase turned it round to come back at you.
+    if (gap > 18 && slot.name !== 'stinger') return this._pursue(dt, target);
 
-    if (gap > 9) {
+    if (gap > 9 && slot.name !== 'stinger') {
       // Closer in, aim between the target and the slot: pure pursuit onto a
       // point a couple of metres off the side of a car twenty metres away is a
       // hard turn away from the direction that closes the gap.
@@ -3233,6 +3235,8 @@ export class Officer {
     // Told to come alongside: it has what it takes to. Level with you at your own top speed, nothing it had would do it: "they can keep
     // up with you, but then they don't actually come really close to you ever. They don't really come alongside".
     if (this.role === ROLE.PIT && this.afterPerson) a.boost = Math.max(a.boost, 1.25 + 0.35 * this.aggression);
+    // Coming past to put a stinger down in front (Dispatcher._stingerRun): the same, or it sat at your back corner and never got by.
+    if (this.stingerRun) a.boost = Math.max(a.boost, 1.45);
     // And none of the help at one and two stars.
     if (this.tame) a.boost = 1;
 
