@@ -87,6 +87,8 @@ const RAIL_TOP = 0.14;
 const BED_HALF = 9;
 /** The train: how fast, how many cars, how long each, how long between runs, s. */
 const TRAIN_SPEED = 33;
+/** A train braking for a station, and pulling away from it, m/s/s. */
+const TRAIN_BRAKE = 0.9;
 const CARS = 5;
 const CAR_LEN = 23;
 const CAR_GAP = 1;
@@ -1316,7 +1318,10 @@ export class Railway {
     this.world = ctx.sim.world;
     this.len = rail.sAt[rail.sAt.length - 1];
     this.trainLen = CARS * (CAR_LEN + CAR_GAP);
-    this.runTime = (this.len + this.trainLen + 120) / TRAIN_SPEED;
+    // A station (Wexbury's: world/station.js): each way, the train brakes to stand at its platform for `wait` seconds and
+    // pulls away again. Still a pure function of the clock, so the crossings and every player's train agree.
+    this.stop = rail.stops && rail.stops[0] ? rail.stops[0] : null;
+    this.runTime = (this.len + this.trainLen + 120) / TRAIN_SPEED + (this.stop ? this.stop.wait + TRAIN_SPEED / TRAIN_BRAKE : 0);
     this.period = 2 * (this.runTime + TRAIN_WAIT);
     this.clock = (Date.now() / 1000) % this.period;
     this.at = ctx.at;
@@ -1424,7 +1429,20 @@ export class Railway {
     const dir = p < half ? 1 : -1;
     const q = p < half ? p : p - half;
     if (q > this.runTime) return null;
-    const d = q * TRAIN_SPEED - 60;
+    let d = q * TRAIN_SPEED - 60;
+    if (this.stop) {
+      // Where the front stands with the train's middle at the platforms', in this run's distance.
+      const dS = dir > 0 ? this.stop.s + this.trainLen * 0.5 : this.len - this.stop.s + this.trainLen * 0.5;
+      const V = TRAIN_SPEED, A = TRAIN_BRAKE, tb = V / A, Bk = (V * V) / (2 * A);
+      const t1 = (dS + 60 - Bk) / V;
+      if (q >= t1) {
+        let r = q - t1;
+        if (r < tb) d = dS - Bk + V * r - A * r * r * 0.5;
+        else if ((r -= tb) < this.stop.wait) d = dS;
+        else if ((r -= this.stop.wait) < tb) d = dS + A * r * r * 0.5;
+        else d = dS + Bk + V * (r - tb);
+      }
+    }
     return dir > 0 ? { s: d, dir } : { s: this.len - d, dir };
   }
 
@@ -1494,7 +1512,9 @@ export class Railway {
       const a = this._pose(f.s), b = this._pose(f.s - f.dir * 5);
       const dx = a.x - b.x, dz = a.z - b.z, l = Math.hypot(dx, dz) || 1;
       train.front = { x: a.x, z: a.z, dx: dx / l, dz: dz / l };
-      train.speed = TRAIN_SPEED;
+      // Its real speed, slowing into a station: from where it will be a tenth of a second on.
+      const f2 = this.frontAt(this.clock + 0.1);
+      train.speed = f2 ? Math.abs(f2.s - f.s) * 10 : TRAIN_SPEED;
     }
     let bell = null;
     for (const c of this.crossings) {

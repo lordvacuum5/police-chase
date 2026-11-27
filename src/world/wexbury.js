@@ -34,6 +34,7 @@ import { baseRelief, buildHeightGrid, addHeightfield, buildTerrainMesh, liftMesh
 import { spline, segX } from './countrygen.js';
 import { makeClearMask, markLine, railGround, buildRailTrack, Railway } from './countryextras.js';
 import { rippleNormals } from './citygen.js';
+import { planStation, stationFlatten, stationSurfaces, buildStation, stationStop, stationTrees } from './station.js';
 
 const RINGS = [85, 180, 290, 410, 540, 700];
 const RING_NODES = [8, 12, 16, 22, 28, 34];
@@ -120,6 +121,9 @@ export function buildWexbury(sim, scene, seed = 51807) {
   ctx.roundabouts = buildRoundabouts(ctx);
   graph.addTurningHeads(15, 10, H - 40, (x, z, r) => nearLines(ctx, x, z, r + 10));
   prune(graph);
+  // The railway station, out where there is nothing else, and Station Road to it (world/station.js).
+  TM.station = performance.now();
+  ctx.station = planStation(ctx, base);
   ctx.roadsMs = Math.round(performance.now() - TR);
   TM.finalise = performance.now();
   graph.finalise();
@@ -136,10 +140,18 @@ export function buildWexbury(sim, scene, seed = 51807) {
     if (out.length !== e.points.length) graph.setEdgePoints(e, out);
   }
   graph._buildIndex();
+  // Station Road again by the node at its end: finalise's smoothing makes the edges afresh, and the flag went with the old one.
+  if (ctx.station && ctx.station.mouth) {
+    ctx.station.road = graph.edges.find((e) => !e.dead && (e.a === ctx.station.mouth.id || e.b === ctx.station.mouth.id)) || null;
+    if (ctx.station.road) ctx.station.road.station = true;
+  }
   nameRoads(ctx);
+  if (ctx.station && ctx.station.road) ctx.station.road.name = 'Station Road';
 
   // ---------------------------------------------------------------- where the roads meet the lines
   const rail = ctx.rail ? finishRail(ctx) : null;
+  // The trains stop at it.
+  if (rail && ctx.station) rail.stops = [stationStop(ctx.station)];
   const canal = ctx.canal ? finishCanal(ctx) : null;
   ctx.ford = pickFord(ctx);
   const crests = [...(canal ? canal.humps : [])];
@@ -154,6 +166,7 @@ export function buildWexbury(sim, scene, seed = 51807) {
   for (const v of ctx.villages || []) flatten.push({ x: v.x, z: v.z, r: 60, fade: 50 });
   if (ctx.lake) flatten.push({ x: ctx.lake.x, z: ctx.lake.z, r: ctx.lake.R + 10, fade: 40, h: ctx.lake.bank });
   if (canal) for (const f of canal.discs) flatten.push(f);
+  if (ctx.station) flatten.push(...stationFlatten(ctx.station));
   // Nothing laid over the river's valley: the roads and the railway cross it on decks (riverDecks), as Ashfield's bridges do. Laid,
   // each stood on a dam across the water.
   const inRiver = (x, z) => !!(ctx.canal && ctx.canal.near(x, z, CANAL_W + 6).d < CANAL_W + 1);
@@ -182,6 +195,7 @@ export function buildWexbury(sim, scene, seed = 51807) {
   if (canal) markLine(ctx, canal.points, CANAL_W + DECK_RUN + 4, CLEAR_CANAL);
   paintSurfaces(ctx);
   rasteriseRoads(graph, surface);
+  if (ctx.station) stationSurfaces(ctx, ctx.station, markLine, CLEAR_RAIL);
   // The towpath is not marked as road: the ground drawn beside a road is let down, and beyond the canal's bank on the towpath's side
   // that left a ledge the length of the canal. "On one of the sides ... there's almost a drop off."
   ctx.laybys = buildLaybyPlan(ctx);
@@ -227,6 +241,8 @@ export function buildWexbury(sim, scene, seed = 51807) {
   meshes.push(...buildLandmarks(ctx));
   TM.houses = performance.now();
   meshes.push(...buildFrontages(ctx));
+  TM.stationBuild = performance.now();
+  if (ctx.station) meshes.push(...buildStation(ctx, ctx.station));
   TM.furniture = performance.now();
   meshes.push(...buildFurniture(ctx, canal));
   const waterMesh = canal || ctx.ford || ctx.lake ? buildWater(ctx, canal) : null;
@@ -268,6 +284,7 @@ export function buildWexbury(sim, scene, seed = 51807) {
     waterAt: (x, z) => water.levelAt(x, z),
     // What was built, for the rigs (tests/wexbury.js).
     stats: {
+      station: ctx.station ? { x: Math.round(ctx.station.cx), z: Math.round(ctx.station.cz), s: Math.round(ctx.station.s), road: !!ctx.station.road } : null,
       buildings: ctx.buildingCount, railCrossings: rail ? rail.cross.length : 0, bridges: canal ? canal.bridges.map((q) => [Math.round(q.x), Math.round(q.z)]) : [], lockAt: canal ? canal.locks.map((l) => { const q = canal.line.at(l); return [Math.round(q.x), Math.round(q.z)]; }) : [],
       roundaboutAt: ctx.roundabouts.filter((r) => r.magic || r.double).map((r) => [Math.round(r.x), Math.round(r.z)]), locks: canal ? canal.locks.length : 0,
       lake: ctx.lake ? { x: Math.round(ctx.lake.x), z: Math.round(ctx.lake.z), R: ctx.lake.R } : null,
@@ -1120,7 +1137,7 @@ function pickFord(ctx) {
   const { graph } = ctx;
   let best = null;
   for (const e of graph.edges) {
-    if (e.dead || e.cut || (e.kind !== 'country' && e.kind !== 'lane') || e.length < 110 || e.hill) continue;
+    if (e.dead || e.cut || (e.kind !== 'country' && e.kind !== 'lane') || e.length < 110 || e.hill || e.station) continue;
     const s = e.length / 2;
     const sg = e.segs.find((g) => s >= g.start && s <= g.start + g.len) || e.segs[0];
     const t = (s - sg.start) / (sg.len || 1);
@@ -1862,7 +1879,7 @@ function buildFrontages(ctx) {
   const circles = (ctx.roundabouts || []).concat((ctx.bypass && ctx.bypass.junctions) || []);
   let count = 0;
   for (const e of graph.edges) {
-    if (e.dead || e.kind === 'dual' || e.kind === 'alley' || e.width === 11 || e.hill) continue;
+    if (e.dead || e.kind === 'dual' || e.kind === 'alley' || e.width === 11 || e.hill || e.station) continue;
     for (const s of runsOf(e)) {
       const len = s.len;
       if (len < 10) continue;
@@ -2124,14 +2141,15 @@ function buildWater(ctx, canal) {
 //  Trees
 // =====================================================================
 
-function addTreeT(ctx, b, pieces, x, z, scale = 1) {
+function addTreeT(ctx, b, pieces, x, z, scale = 1, planted = false) {
   const { rng, graph } = ctx;
   if (graph.overlapsRoad(x, z, 2.4, 2.4, 0, 2.5)) return false;
   const h = rand(rng, 7, 14) * scale;
   if (nearBuilding(ctx.sim.world, x, z, h * 0.4)) return false;
   const crown = new THREE.Color().setHSL(rand(rng, 0.22, 0.31), rand(rng, 0.30, 0.48), rand(rng, 0.12, 0.21));
   const turn = rand(rng, 0, TAU);
-  if (ctx.clearAt(x, z) || ctx.water.levelAt(x, z) !== null) return false;
+  // `planted`: the station's, which stand in what it keeps clear of the wild ones.
+  if ((!planted && ctx.clearAt(x, z)) || ctx.water.levelAt(x, z) !== null) return false;
   if (Math.abs(x) > WORLD_HALF - 40 || Math.abs(z) > WORLD_HALF - 40) return false;
   if (ctx.summit && Math.hypot(x - ctx.summit.x, z - ctx.summit.z) < 40) return false;
   const s = b.vertexCount;
@@ -2164,7 +2182,7 @@ function buildTrees(ctx) {
     }
   }
   for (const e of graph.edges) {
-    if (e.dead || !(e.kind === 'country' || e.kind === 'lane' || e.kind === 'dual' || e.kind === 'avenue')) continue;
+    if (e.dead || e.station || !(e.kind === 'country' || e.kind === 'lane' || e.kind === 'dual' || e.kind === 'avenue')) continue;
     for (const s of runsOf(e)) {
       const steps = Math.floor(s.len / 22);
       for (let k = 0; k < steps; k++) {
@@ -2176,6 +2194,8 @@ function buildTrees(ctx) {
       }
     }
   }
+  // Round the station's car park.
+  if (ctx.station) for (const p of stationTrees(ctx.station)) addTreeT(ctx, b, pieces, p.x, p.z, rand(rng, 0.75, 1.0), true);
   // Trees round the market square, between its rings of benches.
   for (let k = 0; k < 16; k++) {
     const a = (k / 16) * TAU + 0.2, r = k % 2 ? 37 : 26;
