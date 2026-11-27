@@ -74,12 +74,36 @@ export function addParkedCars(game, spots) {
   return new ParkedCars(game, spots, kinds, have);
 }
 
+/**
+ * How a car stands in its spot: tilted to the ground under its four wheels, its body's middle PARK_HY up from the ground along
+ * its own up. Stood level at the height under its middle, on a slope one end was in the ground: "the parked cars are kind of in
+ * the ground slightly" (Wexbury). Into the spot: `q` (a quaternion) and `mx`, `my`, `mz`.
+ */
+const _f = new THREE.Vector3(), _r = new THREE.Vector3(), _u = new THREE.Vector3(), _basis = new THREE.Matrix4();
+function settle(game, s) {
+  const H = game.sim.terrainAt || null, h = s.heading;
+  const fx = Math.sin(h), fz = Math.cos(h), rx = Math.cos(h), rz = -Math.sin(h);
+  const g = (x, z) => (H ? H(x, z) : s.y || 0);
+  const hf = g(s.x + fx * 1.6, s.z + fz * 1.6), hb = g(s.x - fx * 1.6, s.z - fz * 1.6);
+  const hr = g(s.x + rx * 0.8, s.z + rz * 0.8), hl = g(s.x - rx * 0.8, s.z - rz * 0.8);
+  _f.set(fx * 3.2, hf - hb, fz * 3.2).normalize();
+  _r.set(rx * 1.6, hr - hl, rz * 1.6).normalize();
+  _u.crossVectors(_f, _r).normalize();
+  if (_u.y < 0) _u.negate();
+  _r.crossVectors(_u, _f).normalize();
+  _basis.makeBasis(_r, _u, _f);
+  s.q = new THREE.Quaternion().setFromRotationMatrix(_basis);
+  const y = H ? (hf + hb + hr + hl) * 0.25 : s.y || 0;
+  s.mx = s.x + _u.x * PARK_HY; s.my = y + _u.y * PARK_HY; s.mz = s.z + _u.z * PARK_HY;
+}
+
 export class ParkedCars {
   constructor(game, spots, kinds, have) {
     this.game = game;
     this.cars = [];
     this.time = 0;
     for (const sp of spots) {
+      settle(game, sp);
       const K = kinds[have[sp.i % have.length]];
       this.cars.push({ s: sp, K, paint: trafficPaint(`p${sp.i}`), pos: new THREE.Vector3(), quat: new THREE.Quaternion(), alarm: 0, sound: null, settled: true });
     }
@@ -156,10 +180,10 @@ export class ParkedCars {
   _makeBody(car) {
     const { s } = car, world = this.game.world;
     if (s.body) { world.removeRigidBody(s.body); s.body = null; }
-    const h = s.heading * 0.5;
+    const q = s.q;
     const body = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic()
-      .setTranslation(s.x, (s.y || 0) + PARK_HY, s.z)
-      .setRotation({ x: 0, y: Math.sin(h), z: 0, w: Math.cos(h) })
+      .setTranslation(s.mx, s.my, s.mz)
+      .setRotation({ x: q.x, y: q.y, z: q.z, w: q.w })
       .setLinearDamping(0.6)
       .setAngularDamping(1.2)
       .setSleeping(true));
@@ -170,7 +194,7 @@ export class ParkedCars {
       .setRestitution(0.05)
       .setCollisionGroups(groups(GROUP.STREET, GROUP.TERRAIN | GROUP.HILL | GROUP.VEHICLE | GROUP.BUILDING | GROUP.STREET | GROUP.PROP | GROUP.HEDGE)), body);
     car.body = body;
-    car.rest = { x: s.x, z: s.z, y: Math.sin(h), w: Math.cos(h) };
+    car.rest = { x: s.mx, z: s.mz, y: q.y, w: q.w };
   }
 
   /** Where its model is drawn, from where its body is. */
@@ -245,16 +269,16 @@ export class ParkedCars {
   /** A new game: every car back on its drive, asleep, quiet. */
   reset() {
     for (const car of this.cars) {
-      const { s, body } = car, h = s.heading * 0.5;
-      body.setTranslation({ x: s.x, y: (s.y || 0) + PARK_HY, z: s.z }, false);
-      body.setRotation({ x: 0, y: Math.sin(h), z: 0, w: Math.cos(h) }, false);
+      const { s, body } = car, q = s.q;
+      body.setTranslation({ x: s.mx, y: s.my, z: s.mz }, false);
+      body.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, false);
       body.setLinvel({ x: 0, y: 0, z: 0 }, false);
       body.setAngvel({ x: 0, y: 0, z: 0 }, false);
       body.sleep();
       if (car.sound) car.sound.stop();
       car.sound = null;
       car.alarm = 0;
-      car.rest = { x: s.x, z: s.z, y: Math.sin(h), w: Math.cos(h) };
+      car.rest = { x: s.mx, z: s.mz, y: q.y, w: q.w };
       if (!car.settled) { this._pose(car); car.settled = true; }
     }
   }
